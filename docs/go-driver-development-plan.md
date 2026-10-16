@@ -12,7 +12,7 @@
 
 ## 1. 使用方式与当前基线
 
-2026-10-17 的仓库只有设计文档、忽略配置和 lint 配置，尚无 `go.mod`、Go 源码和测试。本文中的源文件、测试名、命令均为**待实施约定**，不是已经存在或执行成功的结果。
+计划制定时仓库只有设计文档、忽略配置和 lint 配置，尚无 `go.mod`、Go 源码和测试。下列任务是实施约定；当前实际代码与执行结果以进度表为准。用户要求本阶段暂不进行数据库联调，相关验收条目保持未验证，先实现并运行本地/协议测试。
 
 本计划采用已配置仓库对应的模块路径 `github.com/cocosip/go-oceanbase`，公共包名 `oceanbase`。若仓库归属以后改变，应在首个代码任务统一调整模块与示例导入。
 
@@ -33,7 +33,7 @@
 - 上限基线：逻辑消息 64 MiB、LOB 自动物化 16 MiB、fetch 128 行、清理 1 秒、执行摘要 1024 项；均按架构规定提供配置和错误语义。
 - 认证敏感阶段在发送前统一检查；明文密码要求驱动完成并验证 TLS，禁止认证降级。
 - 文档只写仓库相对路径或固定版本上游 URL；不写开发机器的磁盘路径、凭据或测试服务地址。
-- 保留当前工作区的其他修改；不擅自创建/切换分支，不自动提交、推送或发布。
+- 保留当前工作区的其他修改；不擅自创建/切换分支；提交、推送或发布以用户明确授权为准。
 
 ## 3. 文件职责与接口约定
 
@@ -61,7 +61,7 @@
 
 生产依赖仅允许 `oceanbase → internal/{wire,auth,routing,charset}`，四个内部包不反向导入根包，也不互相导入。Config/Mode、公开插件接口和会话执行归根包；wire/auth/routing/charset 各定义自己的窄输入/结果，根包负责转换。公开认证接口不能出现 internal 类型；auth 不直接收发协议包或 Socket，根包负责握手编排、受控发送和统一安全门禁。禁止为了打通依赖再建 common/core/interfaces 包。
 
-`internal/testutil` 只依赖标准库，以 net.Conn/字节/context 模拟对端，不能导入根包或驱动内部包；生产代码不导入 testutil。D02 的 `architecture_test.go` 使用外部测试包，解析 `go list -json -test -tags=integration ./...` 检查生产和测试依赖；真正循环还由编译及 `go list -deps ./...` 直接拒绝。新增包/依赖边同时修改架构 §4、此表及守卫断言。
+`internal/testutil` 只依赖标准库，以 net.Conn/字节/context 模拟对端，不能导入根包或驱动内部包；生产代码不导入 testutil。D02 的 `architecture_test.go` 使用外部测试包，解析 `go list -deps -json -test -tags=integration ./...` 检查生产和测试依赖；真正循环还由编译及 `go list -deps ./...` 直接拒绝。新增包/依赖边同时修改架构 §4、此表及守卫断言。
 
 内部命令和公开 API 的调用方向同样固定：Metadata 等公开函数通过标准 Session 调用进入包私有请求；字典解析/LOB 物化在驱动操作内直接使用当前物理会话的命令执行器，不能递归调用 Metadata 或 sql.DB/Conn/Tx/Session。完整响应边界解决包流顺序，不能解除 database/sql 已持有的连接锁；内部调度持有一次会话操作所有权，不重新获取该锁或自己的操作锁。D13/D16/D18 共享字典 SQL、描述和缓存，不共享公开调用栈，不使用辅助连接替代原事务可见性。
 
@@ -186,9 +186,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：注册 `oceanbase`；实现 ParseDSN/NewConnector、Mode、配置枚举与既定默认值、配置快照。Config 的常用字段沿用架构，DialContext 使用 `func(context.Context, string, string) (net.Conn, error)`。此任务不宣称可建连；Connect 在 D04 完成，之前调用返回明确尚不可用错误，不返回伪造会话。
 
-- [ ] 测试 `TestConfigDefaults`、`TestDSNStrict`、`TestConnectorSnapshot`、`TestLoggerIsolation`：默认值与架构一致；未知/重复敏感参数拒绝；后续修改 map/TLS 不改变快照；nil logger 无输出，两个 Connector 输出互不串扰；错误不含密码或完整 DSN。
-- [ ] 执行 `go test . -run 'Test(Config|DSN|ConnectorSnapshot|Logger)' -count=1`，确认新断言失败。
-- [ ] 实现上述配置/注册；NewConnector 拒绝 InsecureSkipVerify；用户提供的日志 handler 不在内部网络锁下调用。建立固定 Java 版本 option 清单，逐项记录所属 Dxx、Go 承载或仅 Java 用途和迁移状态；未落地字段不得填成已支持。
+- [x] 测试 `TestConfigDefaults`、`TestDSNStrict`、`TestConnectorSnapshot`、`TestLoggerIsolation`：默认值与架构一致；未知/重复敏感参数拒绝；后续修改 map/TLS 不改变快照；nil logger 无输出，两个 Connector 输出互不串扰；错误不含密码或完整 DSN。
+- [x] 执行 `go test . -run 'Test(Config|DSN|ConnectorSnapshot|Logger)' -count=1`，确认新断言失败。
+- [x] 实现上述配置/注册；NewConnector 拒绝 InsecureSkipVerify；用户提供的日志 handler 不在内部网络锁下调用。建立固定 Java 版本 option 清单，逐项记录所属 Dxx、Go 承载或仅 Java 用途和迁移状态；未落地字段不得填成已支持。
 - [ ] 同命令通过；建立 §5.3 的双 Go 版本、Linux/Windows test/vet/list/lint CI，记录真实工具链和执行链接。D01 验收不能写成“驱动已可用”。
 
 ### D02 标准包流与故障对端
@@ -199,23 +199,23 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：§3.2 的 PacketIO，按协议分包/重组、序号重置、最大逻辑消息限制；故障对端可控制读写和统计命令，不使用真实服务端作为单测前提。
 
-- [ ] 测试 `TestPacketRoundTrip`、`TestPacketLimit`、`TestPacketShortIO`：空消息、恰好分包边界及终止包、序号回绕、错误序号、超长/截断在分配前拒绝；短写不丢数据。
-- [ ] 执行 `go test ./internal/wire ./internal/testutil -count=1`，确认相关断言失败。
-- [ ] 实现包流和故障注入；字节夹具标明来源和协议版本，不保存认证秘密。实现 §3.1 的包依赖守卫，用一条反向导入夹具证明守卫拒绝，并接入已有 CI。
+- [x] 测试 `TestPacketRoundTrip`、`TestPacketLimit`、`TestPacketShortIO`：空消息、恰好分包边界及终止包、序号回绕、错误序号、超长/截断在分配前拒绝；短写不丢数据。
+- [x] 执行 `go test ./internal/wire ./internal/testutil -count=1`，确认相关断言失败。
+- [x] 实现包流和故障注入；字节夹具标明来源和协议版本，不保存认证秘密。实现 §3.1 的包依赖守卫，用一条反向导入夹具证明守卫拒绝，并接入已有 CI。
 - [ ] 同命令通过；执行 `go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s`，无 panic/失控分配；执行 386 边界用例。
 
 ### D03 握手、基础认证、TLS 与模式识别
 
 依赖：D02。对应：M03、M04；架构 §8–§9、§17.2。
 
-文件：新增 `internal/wire/handshake.go`、`internal/auth/auth.go`、`native.go`、`sha2.go`、`clear.go`、对应测试；新增 `mode.go`、`capabilities.go`，修改 `connector.go`。
+文件：新增 `internal/wire/handshake.go`、`internal/auth/auth.go`、`native.go`、`sha2.go`、`clear.go`、对应测试；新增 `authentication.go`、`errors.go`，修改配置快照；会话模式锁定在 D04 完成。
 
 交付：解析握手与认证响应、native/SHA/clear 基础路径及切换；共享状态机统一凭据门禁；实际模式/版本/能力分开。ModeAuto 只在首个成功初始化会话后锁定，失败尝试不锁定 Connector。
 
-- [ ] 测试 `TestAuthSecurityGate`、`TestAuthSwitch`、`TestTLSRequired`、`TestActualMode`：无 TLS 的 clear/full-auth 阶段发送明文凭据字节数为 0；证书/主机名失败不降级；自定义 Dial 伪造安全状态无效；模式不符关闭连接。
-- [ ] 执行 `go test ./internal/auth ./internal/wire . -run 'Test(Auth|TLS|ActualMode)' -count=1`，确认失败。
-- [ ] 实现握手、固定公钥的无 TLS 加密路径和认证阶段检查；根包适配公开认证工厂与 auth 算法输入/结果，工厂按会话创建状态，不泄漏 internal 类型或 Socket，不产生 auth→根包/wire 依赖。
-- [ ] 同命令通过；建立版本能力证据表 `docs/go-driver-compatibility-matrix.md`，只写已确认的源码条件，其余标记待取证，不猜服务端版本门槛。
+- [x] 测试 `TestAuthSecurityGate`、`TestAuthSwitch`、`TestTLSRequired`、`TestActualMode`：无 TLS 的 clear/full-auth 阶段发送明文凭据字节数为 0；证书/主机名失败不降级；自定义 Dial 伪造安全状态无效；模式不符关闭连接。
+- [x] 执行 `go test ./internal/auth ./internal/wire . -run 'Test(Auth|TLS|ActualMode)' -count=1`，确认失败。
+- [x] 实现握手、固定公钥的无 TLS 加密路径和认证阶段检查；根包适配公开认证工厂与 auth 算法输入/结果，工厂按会话创建状态，不泄漏 internal 类型或 Socket，不产生 auth→根包/wire 依赖。
+- [x] 同命令通过；建立版本能力证据表 `docs/go-driver-compatibility-matrix.md`，只写已确认的源码条件，其余标记待取证，不猜服务端版本门槛。
 
 ### D04 建连、初始化、Ping 与集成测试入口
 

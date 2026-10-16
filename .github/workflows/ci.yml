@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        go: ['1.25.x', '1.26.x']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - run: go version
+      - run: go list -deps ./...
+      - run: go test ./... -count=1
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+
+  protocol-boundaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.25.x', '1.26.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - run: go test ./... -count=1
+        env:
+          GOARCH: '386'
+      - run: go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s -parallel 2
+      - run: go test ./internal/wire -run '^$' -fuzz FuzzHandshake -fuzztime 30s -parallel 2

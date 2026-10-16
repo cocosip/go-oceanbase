@@ -119,7 +119,7 @@ go-oceanbase/
 | 地址、发现结果、负载选择状态 | routing 自有类型；根包提供必要配置值并检查模式/角色策略，不传整个 Config |
 | 编码器、collation 数据 | charset 自有类型；根包 codec 负责数据库类型和值语义 |
 
-测试辅助 `internal/testutil` 只依赖标准库，用 net.Conn、字节及 context 模拟对端，不导入根包或上述内部包；生产代码不得导入它。包测试可以单向使用 testutil，外部 API 测试和 integration 可导入根包。D01 起 CI 用 `go list -deps ./...` 检测实际循环；D02 增加根包外部测试 `architecture_test.go`，解析 `go list -json -test -tags=integration ./...` 校验生产及测试 import 边，阻止反向/横向依赖。新增内部包或依赖边先同步本节及测试规则，不能仅因编译暂时通过而放行。
+测试辅助 `internal/testutil` 只依赖标准库，用 net.Conn、字节及 context 模拟对端，不导入根包或上述内部包；生产代码不得导入它。包测试可以单向使用 testutil，外部 API 测试和 integration 可导入根包。D01 起 CI 用 `go list -deps ./...` 检测实际循环；D02 增加根包外部测试 `architecture_test.go`，解析 `go list -deps -json -test -tags=integration ./...` 校验生产及测试 import 边，阻止反向/横向依赖。新增内部包或依赖边先同步本节及测试规则，不能仅因编译暂时通过而放行。
 
 模式分派采用具体函数和小范围 `switch`，例如 `initSession`、`encodeParameter`、`decodeColumn`、`metadataSQL`。只有两种实现且调用点固定时，不先引入 DialectFactory、ProtocolFactory、ServiceContainer 等结构。
 
@@ -176,7 +176,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 
 | 分组 | 承载能力与建议默认值 |
 | --- | --- |
-| 连接 | `Addr` 默认 `127.0.0.1:2881`；User 必填；连接建立总预算默认 10 秒，受调用 context 更早期限约束 |
+| 连接 | `Addr` 默认 `127.0.0.1:2881`；静态 User 或 Credentials 回调必填；连接建立总预算默认 10 秒，受调用 context 更早期限约束 |
 | 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
 | 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
 | 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password |
@@ -188,6 +188,8 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | 诊断 | 慢请求阈值、受限包追踪回调、完整链路追踪；日志开关由 Logger 是否为 nil 决定 |
 
 建议初始资源默认值：逻辑消息上限 64 MiB、单个 LOB 自动物化上限 16 MiB、游标 fetch 128 行、一次 Execute 的结果摘要上限 `MaxResultItems=1024`、清理时间上限 1 秒。具体限制可以配置；超过限制返回明确错误，不截断后宣称成功；大对象提示使用流式入口。物理分包长度和逻辑消息上限是两个不同概念。
+
+认证配置现有接口为 `Credentials func(context.Context) (Credentials, error)`、`AuthOptions{RSAKey, Plugins}`。Plugins 按协议插件名映射到每次认证的工厂，返回实现 Security/Respond 的插件。RSAKey 使用调用方固定的公钥且在 Connector 中复制，禁自动检索。回调、插件工厂及外部 TLS 对象内的回调/私钥对象需满足并发安全与 context 契约。接口的安全边界见 [兼容矩阵](go-driver-compatibility-matrix.md)。
 
 配置规则：
 
