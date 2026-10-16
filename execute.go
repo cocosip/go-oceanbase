@@ -36,12 +36,21 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return nil, wire.ErrMessageTooLarge
 	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	if err := c.lock(ctx); err != nil {
+		return nil, err
+	}
+	if c.closed.Load() {
+		c.unlock()
 		return nil, driver.ErrBadConn
 	}
 	r := &textRows{conn: c, ctx: ctx, done: true}
+	if ctx.Done() != nil {
+		r.cancelDone = make(chan struct{})
+		r.stopCancel = context.AfterFunc(ctx, func() {
+			c.discard()
+			close(r.cancelDone)
+		})
+	}
 	c.session.packets.ResetSequence()
 	if err := c.session.packets.WriteMessage(ctx, append([]byte{3}, query...)); err != nil {
 		// A rejected pre-send packet does not poison the physical session.

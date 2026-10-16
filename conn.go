@@ -4,16 +4,16 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"sync"
+	"sync/atomic"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 type conn struct {
-	mu      sync.Mutex
+	mu      chan struct{}
 	session *handshakeSession
 	cfg     Config
-	closed  bool
+	closed  atomic.Bool
 }
 
 func (c *conn) Prepare(string) (driver.Stmt, error) {
@@ -22,13 +22,19 @@ func (c *conn) Prepare(string) (driver.Stmt, error) {
 func (c *conn) Begin() (driver.Tx, error) { return nil, fmt.Errorf("%w: transactions", ErrUnsupported) }
 
 func (c *conn) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
+	if c.closed.Load() {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
 	defer cancel()
+	if err := c.lock(ctx); err != nil {
+		c.discard()
+		return err
+	}
+	defer c.unlock()
+	if c.closed.Load() {
+		return nil
+	}
 	c.session.packets.ResetSequence()
 	err := c.session.packets.WriteMessage(ctx, []byte{1})
 	c.discard()
@@ -36,21 +42,38 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) Ping(ctx context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if err := c.lock(ctx); err != nil {
+		return err
+	}
+	defer c.unlock()
 	return c.commandOK(ctx, []byte{14})
 }
 
 func (c *conn) IsValid() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return !c.closed
+	return !c.closed.Load()
 }
 
-// discard is called with the operation lock held or before publishing the connection.
+func (c *conn) lock(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case c.mu <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			c.unlock()
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *conn) unlock() { <-c.mu }
+
+// discard may run from cancellation while the operation still owns protocol state.
 func (c *conn) discard() {
-	if !c.closed {
-		c.closed = true
+	if c.closed.CompareAndSwap(false, true) {
 		_ = c.session.raw.Close()
 	}
 }
@@ -59,7 +82,7 @@ func (c *conn) commandOK(ctx context.Context, payload []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if c.closed {
+	if c.closed.Load() {
 		return driver.ErrBadConn
 	}
 	p := c.session.packets

@@ -21,6 +21,8 @@ type textRows struct {
 	items                int
 	last                 result
 	err                  error
+	stopCancel           func() bool
+	cancelDone           chan struct{}
 }
 
 func (r *textRows) Columns() []string {
@@ -34,7 +36,10 @@ func (r *textRows) Columns() []string {
 func (r *textRows) release() {
 	if !r.released {
 		r.released = true
-		r.conn.mu.Unlock()
+		if r.stopCancel != nil && !r.stopCancel() {
+			<-r.cancelDone
+		}
+		r.conn.unlock()
 	}
 }
 func (r *textRows) fail(err error, broken bool) error {

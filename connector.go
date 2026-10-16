@@ -57,7 +57,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn := &conn{session: session, cfg: c.cfg}
+	conn := &conn{session: session, cfg: c.cfg, mu: make(chan struct{}, 1)}
 	if err = c.checkMode(session.mode, false); err == nil {
 		err = conn.initialize(ctx)
 	}
