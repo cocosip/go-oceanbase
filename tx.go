@@ -39,6 +39,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 {
 		return nil, fmt.Errorf("oceanbase: transaction already active or autocommit disabled")
 	}
+	if err = c.invalidateResourcesLocked(ctx, false); err != nil {
+		return nil, err
+	}
 	for _, query := range commands {
 		if err = c.commandOK(ctx, append([]byte{3}, query...)); err != nil {
 			// Setup may already have changed transaction state; never return this session to the pool.
@@ -114,11 +117,15 @@ func (t *tx) finish(commit bool) error {
 	if c.activeTx != t {
 		return fmt.Errorf("oceanbase: transaction does not own session")
 	}
-	c.activeTx = nil
+	defer func() { c.activeTx = nil }()
 	if c.closed.Load() {
 		return driver.ErrBadConn
 	}
 	if err := ctx.Err(); err != nil {
+		c.discard()
+		return err
+	}
+	if err := c.invalidateResourcesLocked(ctx, false); err != nil {
 		c.discard()
 		return err
 	}

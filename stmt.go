@@ -10,11 +10,13 @@ import (
 )
 
 type stmt struct {
-	conn       *conn
-	id         uint32
-	plan       bindPlan
-	closed     bool // guarded by the owning connection's gate
-	parameters []wire.Column
+	conn           *conn
+	id             uint32
+	plan           bindPlan
+	closed         bool // guarded by the owning connection's gate
+	closeRequested bool
+	leases         int
+	parameters     []wire.Column
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
@@ -140,6 +142,7 @@ func (c *conn) readMetadata(ctx context.Context, count int, budget *int64, valid
 		if err != nil {
 			return nil, err
 		}
+		c.observeResourceStatus(eof.Status)
 		c.session.ok.Status, c.session.ok.Warnings = eof.Status, eof.Warnings
 	}
 	return columns, nil
@@ -157,6 +160,10 @@ func (s *stmt) Close() error {
 	return s.closeLocked(ctx)
 }
 func (s *stmt) closeLocked(ctx context.Context) error {
+	s.closeRequested = true
+	if s.leases != 0 {
+		return nil
+	}
 	if s.closed {
 		return nil
 	}
@@ -241,7 +248,7 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	if err = s.conn.lock(ctx); err != nil {
 		return nil, err
 	}
-	if s.closed {
+	if s.closed || s.closeRequested {
 		s.conn.unlock()
 		return nil, fmt.Errorf("oceanbase: statement closed")
 	}

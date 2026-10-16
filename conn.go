@@ -15,7 +15,8 @@ type conn struct {
 	cfg            Config
 	closed         atomic.Bool
 	activeTx       *tx
-	responseActive bool // guarded by mu; internal commands require a complete response boundary
+	resources      resourceState // guarded by mu
+	responseActive bool          // guarded by mu; internal commands require a complete response boundary
 }
 
 func (c *conn) Close() error {
@@ -35,6 +36,7 @@ func (c *conn) Close() error {
 	c.session.packets.ResetSequence()
 	err := c.session.packets.WriteMessage(ctx, []byte{1})
 	c.discard()
+	_ = c.cleanupResourcesLocked(ctx, true)
 	return err
 }
 
@@ -109,6 +111,7 @@ func (c *conn) commandOK(ctx context.Context, payload []byte) error {
 		c.discard()
 		return fmt.Errorf("%w: unexpected additional command results", ErrUnsupported)
 	}
+	c.observeResourceStatus(ok.Status)
 	c.session.ok = ok
 	return nil
 }

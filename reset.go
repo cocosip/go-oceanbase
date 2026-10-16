@@ -16,6 +16,10 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	if c.closed.Load() {
 		return driver.ErrBadConn
 	}
+	if err := c.invalidateResourcesLocked(ctx, true); err != nil {
+		c.discard()
+		return driver.ErrBadConn
+	}
 	// No reliable OceanBase COM_RESET_CONNECTION condition is established yet.
 	// Full reset uses a fresh physical session, so database/sql also rebuilds its statements.
 	if c.cfg.ResetMode == ResetFull || c.activeTx != nil {

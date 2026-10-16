@@ -64,13 +64,18 @@ func (r *textRows) release() {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
 			r.err = errors.Join(r.err, r.outputs.finishLocked(ctx, r.conn, r.err == nil))
 			cancel()
-			if cause := r.contextError(); cause != nil {
-				r.err = errors.Join(r.err, cause)
-				r.conn.discard()
-			}
-			if r.err == nil {
-				r.err = r.conn.assignOutputs(r.outputs.bindings, r.outputs.values)
-			}
+		}
+		if !r.keepGate {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			r.err = errors.Join(r.err, r.conn.cleanupResourcesLocked(ctx, false))
+			cancel()
+		}
+		if cause := r.contextError(); cause != nil && !errors.Is(r.err, cause) {
+			r.err = errors.Join(r.err, cause)
+			r.conn.discard()
+		}
+		if r.outputs != nil && r.err == nil {
+			r.err = r.conn.assignOutputs(r.outputs.bindings, r.outputs.values)
 		}
 		if r.stopTx != nil {
 			r.stopTx()
@@ -144,6 +149,7 @@ func (r *textRows) advance(ctx context.Context) error {
 				return err
 			}
 			r.last = result{affected: ok.AffectedRows, id: ok.InsertID, known: true}
+			r.conn.observeResourceStatus(ok.Status)
 			r.conn.session.ok = ok
 			if err = r.execution.command(ok); err != nil {
 				return err
@@ -232,6 +238,7 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 		if err != nil {
 			return r.fail(err, true)
 		}
+		r.conn.observeResourceStatus(ok.Status)
 		r.conn.session.ok = ok
 		r.done = true
 		if !r.hiddenOut {

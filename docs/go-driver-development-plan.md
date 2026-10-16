@@ -368,14 +368,16 @@ go test -tags=integration ./tests/integration -count=1
 
 依赖：D09、D11。对应：M08、M10、M13；架构 §10.3、§13.2、§14.1。
 
-文件：新增 `resource.go`、`resource_test.go`；修改 `session.go`、`bind.go`、`execution.go`。
+文件：新增 `resource.go`、`resource_test.go`；复用 `execution.go` 的 Session 校验，修改 `conn.go`、`bind.go`、`execute.go`、`stmt.go`、`rows.go`、`tx.go`、`reset.go`、`call_execution.go`。
 
 交付：包内具体资源记录、代次检查、父 statement 租约及私有请求分派；公开 Session 只沿用架构的 Exec/Query 调用面。
 
-- [ ] 测试 `TestResourceSession`、`TestResourceGeneration`、`TestResourceLease`：DB/包装器/typed nil 发送前拒绝；不能跨 Conn/Tx/reset 使用；最后一份租约才释放服务器 statement；Close 不结束调用方事务。
-- [ ] 执行 `go test . -run 'TestResource' -count=1`，确认失败。
-- [ ] 实现共享身份和清理规则，不保存 Raw 回调中的 driverConn，不增加公共 ResourceManager 或全局句柄注册表。
-- [ ] 同命令通过；故障、事务结束及 reset 时未发布资源不泄漏；每项扩展后续复用这些断言。
+- [x] 测试 `TestResourceSession`、`TestResourceGeneration`、`TestResourceLease`：DB/包装器/typed nil 发送前拒绝；不能跨 Conn/Tx/reset 使用；最后一份租约才释放服务器 statement；Close 不结束调用方事务。
+- [x] 执行 `go test . -run 'TestResource' -count=1`，确认失败。
+- [x] 实现共享身份和清理规则，不保存 Raw 回调中的 driverConn，不增加公共 ResourceManager 或全局句柄注册表。
+- [x] 同命令通过；故障、事务结束及 reset 时未发布资源不泄漏；每项扩展后续复用这些断言。
+
+本项交付内部生命周期基础；具体 LOB/游标记录和服务器释放命令随 D16/D19/D20 接入，不据此声明高级句柄可用或真实数据库验收通过。
 
 ### D16 原生 BLOB/CLOB/NCLOB
 

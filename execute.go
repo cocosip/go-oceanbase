@@ -41,6 +41,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(resourceRequest); ok {
+			return c.execResource(ctx, request)
+		}
 		if request, ok := args[0].Value.(savepointRequest); ok {
 			return c.execSavepoint(ctx, request)
 		}

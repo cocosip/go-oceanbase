@@ -50,7 +50,7 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	if c.closed.Load() {
 		return nil, driver.ErrBadConn
 	}
-	if prepared != nil && prepared.closed {
+	if prepared != nil && (prepared.closed || prepared.closeRequested) {
 		return nil, fmt.Errorf("oceanbase: statement closed")
 	}
 	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {

@@ -68,3 +68,7 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 输出发布 | 普通结果保持流式；最终响应/清理结束并确认未取消后写回；内置转换先暂存，自定义 Scanner 可能部分副作用由 OutError.Partial 报告 | 溢出/NULL/重复冲突/行数异常/关闭失败/最终化期间取消回归通过 |
 
 `TestScalarCall` 与 `TestReturning` 已加入手动集成入口，当前仅编译。真实四目标仍全部未验证；LOB、REF CURSOR/句柄输出分别随 D16/D20 实现。
+
+## 6. 固定资源生命周期（D15）
+
+已实现包内资源记录、物理连接/会话/事务代次、父 statement 租约和标准 Session 私有关闭分派；没有公开 ResourceManager，也不保留 Raw 取得的 driverConn。Close 不结束调用方事务；代次失效返回 ErrResource，标准库可先返回 Conn/Tx 已结束错误。事务与 reset 清理受 CleanupTimeout 约束；分派前取消允许再次关闭。合成对端验证身份、租约、未发布记录、取消、超时与池复用。具体 LOB/游标释放协议属于后续任务；当前没有真实服务器资源验收结论。
