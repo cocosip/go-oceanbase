@@ -9,25 +9,32 @@ import (
 )
 
 func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	plan, values, err := c.bindQuery(ctx, query, args)
+	if len(args) == 0 {
+		return c.queryText(ctx, query)
+	}
+	prepared, err := c.prepareArguments(ctx, query, args)
 	if err != nil {
 		return nil, err
 	}
-	if len(values) != 0 {
-		return nil, fmt.Errorf("%w: query parameters", ErrUnsupported)
+	rows, err := prepared.query(ctx, args, true)
+	if err != nil {
+		_ = prepared.Close()
 	}
-	return c.queryText(ctx, plan.query)
+	return rows, err
 }
-
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	plan, values, err := c.bindQuery(ctx, query, args)
-	if err != nil {
-		return nil, err
+	if len(args) > 0 {
+		prepared, err := c.prepareArguments(ctx, query, args)
+		if err != nil {
+			return nil, err
+		}
+		result, err := prepared.exec(ctx, args, true)
+		if err != nil {
+			_ = prepared.Close()
+		}
+		return result, err
 	}
-	if len(values) != 0 {
-		return nil, fmt.Errorf("%w: execution parameters", ErrUnsupported)
-	}
-	rows, err := c.queryText(ctx, plan.query)
+	rows, err := c.queryText(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -36,41 +43,40 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 	return rows.last, nil
 }
-
-func (c *conn) bindQuery(ctx context.Context, query string, args []driver.NamedValue) (bindPlan, []boundValue, error) {
+func (c *conn) prepareArguments(ctx context.Context, query string, args []driver.NamedValue) (*stmt, error) {
 	if err := ctx.Err(); err != nil {
-		return bindPlan{}, nil, err
+		return nil, err
 	}
 	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
-		return bindPlan{}, nil, wire.ErrMessageTooLarge
+		return nil, wire.ErrMessageTooLarge
 	}
 	if len(args) > 65535 {
-		return bindPlan{}, nil, fmt.Errorf("%w: too many arguments", ErrBind)
+		return nil, fmt.Errorf("%w: too many arguments", ErrBind)
 	}
-	converted := make([]driver.NamedValue, len(args))
-	for i, arg := range args {
-		v, err := convertArgument(arg.Value)
-		if err != nil {
-			return bindPlan{}, nil, err
+	for i := range args {
+		if c.session.mode == ModeMySQL && args[i].Name != "" {
+			return nil, fmt.Errorf("%w: unexpected named argument", ErrBind)
 		}
-		converted[i] = arg
-		converted[i].Value = v
+		value, err := convertArgument(args[i].Value)
+		if err != nil {
+			return nil, err
+		}
+		args[i].Value = value
 	}
-	// Ordinary SQL remains native: the server parses compound statements and session quoting.
-	if len(args) == 0 {
-		return bindPlan{query: query, sql: query, mode: c.session.mode}, nil, nil
+	if c.session.mode == ModeOracle {
+		plan, err := buildBindPlan(query, c.session.mode)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = bindArguments(plan, args); err != nil {
+			return nil, err
+		}
 	}
-	if err := c.lock(ctx); err != nil {
-		return bindPlan{}, nil, err
-	}
-	noBackslash := c.session.ok.Status&512 != 0
-	c.unlock()
-	plan, err := buildBindPlanEscapes(query, c.session.mode, noBackslash)
+	prepared, err := c.PrepareContext(ctx, query)
 	if err != nil {
-		return bindPlan{}, nil, err
+		return nil, err
 	}
-	values, err := bindArguments(plan, converted)
-	return plan, values, err
+	return prepared.(*stmt), nil
 }
 
 func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
@@ -87,22 +93,30 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 		c.unlock()
 		return nil, driver.ErrBadConn
 	}
-	r := &textRows{conn: c, ctx: ctx, done: true}
+	return c.queryCommandLocked(ctx, append([]byte{3}, query...), false, nil)
+}
+
+func (c *conn) startRows(ctx context.Context, binary bool, auto *stmt) *textRows {
+	r := &textRows{conn: c, ctx: ctx, done: true, binary: binary, autoStmt: auto}
 	if ctx.Done() != nil {
 		r.cancelDone = make(chan struct{})
-		r.stopCancel = context.AfterFunc(ctx, func() {
-			c.discard()
-			close(r.cancelDone)
-		})
+		r.stopCancel = context.AfterFunc(ctx, func() { c.discard(); close(r.cancelDone) })
 	}
+	return r
+}
+func (c *conn) queryCommandLocked(ctx context.Context, payload []byte, binary bool, auto *stmt) (*textRows, error) {
+	r := c.startRows(ctx, binary, auto)
 	c.session.packets.ResetSequence()
-	if err := c.session.packets.WriteMessage(ctx, append([]byte{3}, query...)); err != nil {
+	if err := c.session.packets.WriteMessage(ctx, payload); err != nil {
 		// A rejected pre-send packet does not poison the physical session.
 		broken := !errorsPreSend(err)
 		return nil, r.fail(err, broken)
 	}
 	if err := r.advance(ctx); err != nil {
 		return nil, r.fail(err, true)
+	}
+	if r.err != nil {
+		return nil, r.err
 	}
 	return r, nil
 }

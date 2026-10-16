@@ -23,6 +23,8 @@ type textRows struct {
 	err                  error
 	stopCancel           func() bool
 	cancelDone           chan struct{}
+	binary               bool
+	autoStmt             *stmt
 }
 
 func (r *textRows) Columns() []string {
@@ -38,6 +40,13 @@ func (r *textRows) release() {
 		r.released = true
 		if r.stopCancel != nil && !r.stopCancel() {
 			<-r.cancelDone
+		}
+		if r.autoStmt != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			if err := r.autoStmt.closeLocked(ctx); err != nil && r.err == nil {
+				r.err = err
+			}
+			cancel()
 		}
 		r.conn.unlock()
 	}
@@ -87,7 +96,7 @@ func (r *textRows) advance(ctx context.Context) error {
 			r.columns = nil
 			if !r.more {
 				r.release()
-				return nil
+				return r.err
 			}
 			continue
 		}
@@ -170,9 +179,17 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 		if !r.more {
 			r.release()
 		}
+		if r.err != nil {
+			return r.err
+		}
 		return io.EOF
 	}
-	fields, err := wire.DecodeTextRow(data, len(r.columns))
+	var fields [][]byte
+	if r.binary {
+		fields, err = wire.DecodeBinaryRow(data, r.columns)
+	} else {
+		fields, err = wire.DecodeTextRow(data, len(r.columns))
+	}
 	if err != nil {
 		return r.fail(err, true)
 	}
@@ -181,7 +198,11 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 			if typ := r.columns[i].Type; typ >= 249 && typ <= 252 && int64(len(field)) > r.conn.cfg.Limits.MaxLOBBytes {
 				return r.fail(wire.ErrMessageTooLarge, true)
 			}
-			dest[i], err = decodeTextValue(r.columns[i], r.conn.session.mode, field)
+			if r.binary {
+				dest[i], err = decodeBinaryValue(r.columns[i], r.conn.session.mode, field)
+			} else {
+				dest[i], err = decodeTextValue(r.columns[i], r.conn.session.mode, field)
+			}
 			if err != nil {
 				return r.fail(err, true)
 			}
@@ -204,7 +225,7 @@ func (r *textRows) drainAll(ctx context.Context) error {
 		return r.err
 	}
 	if r.released {
-		return nil
+		return r.err
 	}
 	for {
 		if err := r.drainCurrent(ctx); err != nil {
@@ -212,13 +233,13 @@ func (r *textRows) drainAll(ctx context.Context) error {
 		}
 		if !r.more {
 			r.release()
-			return nil
+			return r.err
 		}
 		if err := r.advance(ctx); err != nil {
 			return r.fail(err, true)
 		}
 		if r.released {
-			return nil
+			return r.err
 		}
 	}
 }

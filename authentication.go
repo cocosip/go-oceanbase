@@ -142,7 +142,7 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	if server&required != required {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
-	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF
+	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF
 	if c.cfg.AllowMultiStatements {
 		wanted |= wire.ClientMultiStatements
 	}

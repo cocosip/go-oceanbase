@@ -54,7 +54,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `assureReadOnly` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L351) | D09 | 标准 sql.Tx / reset / 只读策略 | 待迁移/验证 |
 | `useLegacyDatetimeCode` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L358) | D12 | SessionOptions / 精确值 / 时间与类型语义 | 待迁移/验证 |
 | `maximizeMysqlCompatibility` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L368) | D12 | SessionOptions / 精确值 / 时间与类型语义 | 待迁移/验证 |
-| `useServerPrepStmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L377) | D08 | 服务端预处理 | 待迁移/验证 |
+| `useServerPrepStmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L377) | D08 | 标准 sql.Stmt 与带参数执行默认使用服务端预处理；不同于 Java 默认值，不提供同名布尔开关 | 本地已实现/验证，真实服务端待联调；D10 补显式客户端策略 |
 | `trustStore` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L385) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
 | `trustStorePassword` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L393) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
 | `keyStore` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L400) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
@@ -115,7 +115,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `useServerPsStmtChecksum` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L797) | D24 | 有界 statement 缓存 / 通用执行策略 | 待迁移/验证 |
 | `characterEncoding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L803) | D12 | Config.Session.Charset | 配置已实现，默认 utf8mb4；编解码待 D12 |
 | `useCursorFetch` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L809) | D19 | Limits.FetchSize / Cursor | 待迁移/验证 |
-| `supportNameBinding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L815) | D07 | 绑定计划与输入校验 | 待迁移/验证 |
+| `supportNameBinding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L815) | D07 | 绑定计划与输入校验 | 命名绑定本地已实现，Oracle 无须开关；MySQL 拒绝命名参数；其他改写选项仍待 D10 验证 |
 | `socksProxyHost` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L821) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
 | `socksProxyPort` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L827) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
 | `connectProxy` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L834) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
@@ -166,4 +166,4 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `locatorFetchBufferSize` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L1151) | D17 | OpenTableBlob / 表内分块 | 待迁移/验证 |
 | `maxReconnects` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L1158) | D26 | Connector 新建连接选址 / 不重放业务 | 待迁移/验证 |
 
-当前本地测试包含配置/注册/日志、包流、基础认证/TLS/模式识别，证据见开发进度。尚无公共连接/SQL 实现，未验证真实数据库兼容。TLS 对象已用于本地握手验证；Java keystore 文件格式、密码编码和 pipeline 等逐项迁移仍保持未完成。
+当前本地测试包含配置/注册/日志、包流、基础认证/TLS/模式识别、建连/文本执行、取消、参数绑定和服务端预处理/二进制收发，证据见开发进度。真实数据库兼容尚未验证。TLS 对象已用于本地握手验证；Java keystore 文件格式、密码编码和 pipeline 等逐项迁移仍保持未完成。

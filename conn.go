@@ -16,9 +16,6 @@ type conn struct {
 	closed  atomic.Bool
 }
 
-func (c *conn) Prepare(string) (driver.Stmt, error) {
-	return nil, fmt.Errorf("%w: prepared statements", ErrUnsupported)
-}
 func (c *conn) Begin() (driver.Tx, error) { return nil, fmt.Errorf("%w: transactions", ErrUnsupported) }
 
 func (c *conn) Close() error {
