@@ -54,6 +54,7 @@ jobs:
       - run: go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzHandshake -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzText -fuzztime 30s -parallel 2
+      - run: go test . -run '^$' -fuzz FuzzBindPlan -fuzztime 30s -parallel 2
 
   integration:
     if: github.event_name == 'workflow_dispatch' && inputs.integration
