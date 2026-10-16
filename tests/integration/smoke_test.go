@@ -26,7 +26,7 @@ func TestSmoke(t *testing.T) {
 			}
 			query := "SELECT ob_version()"
 			if p.mode == oceanbase.ModeOracle {
-				query += " FROM dual"
+				query += oracleDualSuffix
 			}
 			var version string
 			if err := db.QueryRowContext(testContext(t), query).Scan(&version); err != nil {

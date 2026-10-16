@@ -23,6 +23,11 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	return rows, err
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(savepointRequest); ok {
+			return c.execSavepoint(ctx, request)
+		}
+	}
 	if len(args) > 0 {
 		prepared, err := c.prepareArguments(ctx, query, args)
 		if err != nil {

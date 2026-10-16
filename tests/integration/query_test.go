@@ -72,7 +72,7 @@ func TestQueryResults(t *testing.T) {
 			ctx := testContext(t)
 			query := "SELECT 42 AS v, NULL AS n"
 			if p.mode == oceanbase.ModeOracle {
-				query += " FROM dual"
+				query += oracleDualSuffix
 			}
 			rows, err := db.QueryContext(ctx, query)
 			if err != nil {

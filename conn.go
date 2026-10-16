@@ -10,13 +10,12 @@ import (
 )
 
 type conn struct {
-	mu      chan struct{}
-	session *handshakeSession
-	cfg     Config
-	closed  atomic.Bool
+	mu       chan struct{}
+	session  *handshakeSession
+	cfg      Config
+	closed   atomic.Bool
+	activeTx *tx
 }
-
-func (c *conn) Begin() (driver.Tx, error) { return nil, fmt.Errorf("%w: transactions", ErrUnsupported) }
 
 func (c *conn) Close() error {
 	if c.closed.Load() {

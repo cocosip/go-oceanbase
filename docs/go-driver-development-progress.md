@@ -4,11 +4,11 @@
 
 ## 1. 当前状态
 
-- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定与服务端预处理/二进制执行已实现；继续 D09。
-- 实现完成：**8 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
-- 当前执行任务：**D09 本地事务、保存点与 reset**。
-- 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、包依赖守卫及 CI 定义。
-- 仓库尚无：事务/reset、客户端预处理及高级扩展；D09–D32 仍需实现。
+- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset 已实现；继续 D10。
+- 实现完成：**9 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
+- 当前执行任务：**D10 客户端预处理与显式 escape 转换**。
+- 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
+- 仓库尚无：客户端预处理及高级扩展；D10–D32 仍需实现。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -58,8 +58,8 @@
 | D06 | 取消、错误边界、连接淘汰 | D05 | 已实现 | 本地通过 | 无（待联调） | §5.6 D06 |
 | D07 | 词法绑定与参数转换 | D05 | 已实现 | 本地通过 | 无 | §5.6 D07 |
 | D08 | 服务端预处理、二进制结果 | D06、D07 | 已实现 | 本地通过 | 无（待联调） | §5.6 D08 |
-| D09 | 事务、保存点、reset 代次 | D08 | 进行中 | 未验证 | 无 | — |
-| D10 | 客户端预处理、escape | D07、D08 | 未开始 | 未验证 | 无 | — |
+| D09 | 事务、保存点、reset 代次 | D08 | 已实现 | 本地通过 | 无（待联调） | §5.6 D09 |
+| D10 | 客户端预处理、escape | D07、D08 | 进行中 | 未验证 | 无 | — |
 | D11 | Execute、多结果、计数策略 | D08、D09 | 未开始 | 未验证 | 无 | — |
 | D12 | 全类型、字符集、时间 | D08、D10 | 未开始 | 未验证 | 无 | — |
 | D13 | 结构/结果/参数元数据 | D09、D12 | 未开始 | 未验证 | 无 | — |
@@ -288,6 +288,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 与 Windows/386 运行通过，integration 辅助代码 lint 0 issues。FuzzStmt 各 30 秒，916,857 / 898,336 次，通过；CI 已增加该 fuzz。
 - 独立复核未发现剩余可操作问题；`TestPrepareRoundTrip` 已仅编译并加入手动集成 job，未连接数据库。Linux/远程 CI/race 与真实两模式/OBProxy 往返待验证；验收仍 0/32。
 
+#### D09 本地事务、保存点与 reset
+
+- 开发：已实现；验证：本地通过。代码：`tx.go`、`savepoint.go`、`reset.go`，标准 ConnBeginTx/Tx/SessionResetter 接线；测试：`tx_test.go`、`reset_test.go` 和仅编译的 `tests/integration/tx_test.go`。
+- MySQL 支持默认、ReadCommitted、RepeatableRead、Serializable；Oracle 支持默认、ReadCommitted、Serializable，ReadOnly 与显式 ReadCommitted 的冲突在发送前拒绝；两模式均拒绝 ReadUncommitted。不用 Java 的只读到可重复读转换改变 Go 请求语义。
+- COMMIT 丢响应返回 ErrCommitUnknown，不重放或声称回滚；确认提交后恢复失败返回 ErrTxCleanup。取消后的 Rollback 使用独立清理 context；事务始终留在原物理连接。保存点名称按模式引用，Oracle RELEASE 在发送前拒绝。
+- Managed 仅在池复用边界修复驱动管理的事务/autocommit，不承诺清除任意用户状态。Full 在未确认可靠 OceanBase 原生 reset 条件时淘汰物理连接；database/sql 在新会话重新 prepare，不迁移旧 statement ID。本任务没有声称原生 COM_RESET_CONNECTION 已取证。
+- RED→GREEN：事务接口、提交结果未知/恢复失败、脏池复用、Full 后 statement 重建及 MySQL ReadUncommitted 发送前拒绝；事务/reset 针对套件连续 10 次通过。独立复核发现的隔离级别门禁已修复，不另存报告。
+- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、Windows/386 运行通过；普通和 integration 辅助代码 lint 0 issues。集成源码仅编译，未连接数据库；Linux/远程 CI/race 仍待验证，验收维持 0/32。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
@@ -304,7 +313,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 ## 7. 下一步工作
 
-1. 推进 D09：本地事务、保存点、reset 和 statement 失效边界；随后接入客户端预处理。
+1. 推进 D10：显式客户端预处理、模式安全的字面量编码与 JDBC escape 转换。
 2. 继续用故障对端验证标准 database/sql 查询，不连接真实数据库。
 3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
 

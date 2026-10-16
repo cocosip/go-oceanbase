@@ -19,6 +19,8 @@ type profile struct {
 	mode      oceanbase.Mode
 }
 
+const oracleDualSuffix = " FROM dual"
+
 func profiles(name string) ([]profile, error) {
 	all := []profile{{"mysql", "OB_MYSQL_DSN", oceanbase.ModeMySQL}, {"oracle", "OB_ORACLE_DSN", oceanbase.ModeOracle}, {"proxy-mysql", "OBPROXY_MYSQL_DSN", oceanbase.ModeMySQL}, {"proxy-oracle", "OBPROXY_ORACLE_DSN", oceanbase.ModeOracle}}
 	if name == "" || name == "all" {
@@ -32,7 +34,7 @@ func profiles(name string) ([]profile, error) {
 	return nil, errors.New("invalid integration profile")
 }
 
-func openProfile(t *testing.T, p profile) *sql.DB {
+func profileConfig(t *testing.T, p profile) oceanbase.Config {
 	t.Helper()
 	dsn := os.Getenv(p.env)
 	if dsn == "" {
@@ -49,6 +51,12 @@ func openProfile(t *testing.T, p profile) *sql.DB {
 		t.Fatal("DSN mode differs from profile: " + p.name)
 	}
 	cfg.Mode = p.mode
+	return cfg
+}
+
+func openProfile(t *testing.T, p profile) *sql.DB {
+	t.Helper()
+	cfg := profileConfig(t, p)
 	connector, err := oceanbase.NewConnector(cfg)
 	if err != nil {
 		t.Fatal("invalid config for profile: " + p.name)
