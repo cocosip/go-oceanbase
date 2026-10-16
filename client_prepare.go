@@ -77,6 +77,9 @@ func (s *clientStmt) queryRows(ctx context.Context, args []driver.NamedValue) (*
 		c.unlock()
 		return nil, fmt.Errorf("oceanbase: statement closed")
 	}
+	if hasOutputArguments(args) {
+		return c.queryOutputsLocked(ctx, s.query, args, nil)
+	}
 	query, err := c.interpolate(s.query, args)
 	if err != nil {
 		c.unlock()
@@ -99,6 +102,12 @@ func (c *conn) interpolate(query string, args []driver.NamedValue) (string, erro
 	if err != nil {
 		return "", err
 	}
+	return c.interpolatePlan(plan, values)
+}
+
+func (c *conn) interpolatePlan(plan bindPlan, values []boundValue) (string, error) {
+	query := plan.query
+	limit := c.cfg.Limits.MaxMessageBytes - 1
 	var b strings.Builder
 	offset := 0
 	for i, slot := range plan.slots {
@@ -134,6 +143,11 @@ func (c *conn) interpolate(query string, args []driver.NamedValue) (string, erro
 func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 	var s string
 	switch v := v.(type) {
+	case outputVariable:
+		if int64(len(v)) > limit {
+			return "", wire.ErrMessageTooLarge
+		}
+		return string(v), nil
 	case Number:
 		return plainNumber(string(v), limit)
 	case NString, Raw, RowID, TimestampTZ, TimestampLTZ, IntervalYM, IntervalDS:

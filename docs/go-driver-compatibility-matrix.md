@@ -25,7 +25,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |
 | --- | --- | --- |
 | INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
-| PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 最小 RETURNING 路径、D24 通用策略；未实现 |
+| PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 通用策略未实现；真实版本待联调 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19；未实现 |
 | LOB locator V2 / array binding / OB20 / reset | 需分别补协商位、连接变量、精确版本及执行条件；不从上述两个版本门槛外推 | D09 Full 已实现淘汰旧物理会话；原生 reset 及 D16/D22/D23 待取证/未实现 |
 
@@ -57,3 +57,14 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 现有 collations 按固定映射解析；未取证的新编号不猜测字符集。`TestAllScalarTypes` 已建立四目标、文本/服务端/客户端三路径的真实测试源码与显式 CI 入口，仅完成编译；本阶段没有连接数据库。本地协议对端验证驱动转换和字节布局，不能证明目标服务端 SQL/时区表或字符集组合兼容。
 
 D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查询：MySQL information_schema 与 Oracle ALL_* 分开实现，Oracle catalog 不存在时返回空行集，MySQL 无 UDT/同义词字典时返回 ErrUnsupported；权限错误保留服务端代码。StatementParameters 总是服务端 prepare 后关闭，保留逻辑/物理映射和原始协议方向码。公开与内部字典执行共用计划，内部只在完整响应边界保持原 gate 与物理连接。以上为本地对端验证，真实字典字段及 OBProxy 兼容未验证。
+
+## 5. 标量 OUT、INOUT、RETURNING（D14）
+
+| 能力 | Go 行为 | 验证状态 |
+| --- | --- | --- |
+| 标量 OUT / INOUT | sql.Out 或 Out；nil/不支持目的发送前拒绝；可空值、完整 unsigned、扩展标量保留输入身份 | 两模式协议对端及预处理复用通过；真实例程待联调 |
+| Oracle 输出与 RETURNING | 实际 ob_version >=2.2.76；COM_STMT_PREPARE_EXECUTE；接受 RETURNING 标志 1/3 和 PL OUT；强制读取尾随 OK/ERR；临时 statement 关闭后发布 | 编码、EOF/弃用 EOF、错误与尾部边界本地通过；SQL/OBProxy 行为未验证 |
+| MySQL 输出 | 同一会话随机私有变量；初始化、主命令、输出 SELECT、清空；辅助结果不进入摘要；清理失败淘汰连接 | 主命令/SELECT/清理故障、类型尺寸、连接复用本地通过；真实 SQL 待联调 |
+| 输出发布 | 普通结果保持流式；最终响应/清理结束并确认未取消后写回；内置转换先暂存，自定义 Scanner 可能部分副作用由 OutError.Partial 报告 | 溢出/NULL/重复冲突/行数异常/关闭失败/最终化期间取消回归通过 |
+
+`TestScalarCall` 与 `TestReturning` 已加入手动集成入口，当前仅编译。真实四目标仍全部未验证；LOB、REF CURSOR/句柄输出分别随 D16/D20 实现。

@@ -254,13 +254,13 @@ func mysqlConvertType(typ string) string {
 	case "char", "varchar", "longvarchar", "nchar", "nvarchar", "longnvarchar", "clob", "nclob", "sqlxml":
 		return typeNameChar
 	case "numeric", "decimal":
-		return "DECIMAL"
+		return typeNameDecimal
 	case "date":
 		return typeNameDate
 	case "time":
 		return "TIME"
 	case "timestamp":
-		return "DATETIME"
+		return typeNameDateTime
 	}
 	return ""
 }
@@ -277,15 +277,15 @@ func oracleConvertType(typ string) string {
 	case "numeric", "decimal":
 		return typeNameNumber
 	case "float", "double":
-		return "BINARY_DOUBLE"
+		return typeNameBinaryDouble
 	case "real":
-		return "BINARY_FLOAT"
+		return typeNameBinaryFloat
 	case "char":
 		return typeNameChar
 	case "varchar", "longvarchar":
 		return "VARCHAR2(4000)"
 	case "nchar":
-		return "NCHAR"
+		return typeNameNChar
 	case "nvarchar", "longnvarchar":
 		return "NVARCHAR2(2000)"
 	case "date":

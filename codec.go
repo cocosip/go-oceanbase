@@ -13,6 +13,26 @@ import (
 )
 
 const (
+	typeNameBoolean      = "BOOLEAN"
+	typeNameVarbinary    = "VARBINARY"
+	typeNameDecimal      = "DECIMAL"
+	typeNameBigInt       = "BIGINT"
+	typeNameDateTime     = "DATETIME"
+	typeNameIntervalDS   = "INTERVAL DAY TO SECOND"
+	typeNameBinaryFloat  = "BINARY_FLOAT"
+	typeNameBinaryDouble = "BINARY_DOUBLE"
+	typeNameVarchar2     = "VARCHAR2"
+	typeNameRaw          = "RAW"
+	typeNameTimestampTZ  = "TIMESTAMP WITH TIME ZONE"
+	typeNameTimestampLTZ = "TIMESTAMP WITH LOCAL TIME ZONE"
+	typeNameIntervalYM   = "INTERVAL YEAR TO MONTH"
+	typeNameNVarchar2    = "NVARCHAR2"
+	typeNameNChar        = "NCHAR"
+	typeNameRowID        = "ROWID"
+	typeNameFloat        = "FLOAT"
+	typeNameDouble       = "DOUBLE"
+	typeNameVarchar      = "VARCHAR"
+
 	typeNameDate      = "DATE"
 	typeNameNumber    = "NUMBER"
 	typeNameTimestamp = "TIMESTAMP"
@@ -54,31 +74,31 @@ func textTypeName(c wire.Column, mode Mode) string {
 		case 3:
 			return typeNameNumber
 		case 4:
-			return "BINARY_FLOAT"
+			return typeNameBinaryFloat
 		case 5:
-			return "BINARY_DOUBLE"
+			return typeNameBinaryDouble
 		case 15, 253:
-			return "VARCHAR2"
+			return typeNameVarchar2
 		case 203:
-			return "RAW"
+			return typeNameRaw
 		case 200:
-			return "TIMESTAMP WITH TIME ZONE"
+			return typeNameTimestampTZ
 		case 201:
-			return "TIMESTAMP WITH LOCAL TIME ZONE"
+			return typeNameTimestampLTZ
 		case 202:
 			return typeNameTimestamp
 		case 204:
-			return "INTERVAL YEAR TO MONTH"
+			return typeNameIntervalYM
 		case 205:
-			return "INTERVAL DAY TO SECOND"
+			return typeNameIntervalDS
 		case 206:
 			return typeNameNumber
 		case 207:
-			return "NVARCHAR2"
+			return typeNameNVarchar2
 		case 208:
-			return "NCHAR"
+			return typeNameNChar
 		case 209:
-			return "ROWID"
+			return typeNameRowID
 		case 246:
 			return typeNameNumber
 		case 7, 10, 11, 13, 14, 245, 249, 250, 251, 252, 255:
@@ -91,7 +111,7 @@ func textTypeName(c wire.Column, mode Mode) string {
 func mysqlTextTypeName(c wire.Column) string {
 	switch c.Type {
 	case 0, 246:
-		return "DECIMAL"
+		return typeNameDecimal
 	case 1:
 		return "TINYINT"
 	case 2:
@@ -99,15 +119,15 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 3:
 		return "INTEGER"
 	case 4:
-		return "FLOAT"
+		return typeNameFloat
 	case 5:
-		return "DOUBLE"
+		return typeNameDouble
 	case 6:
 		return sqlNullLiteral
 	case 7:
 		return typeNameTimestamp
 	case 8:
-		return "BIGINT"
+		return typeNameBigInt
 	case 9:
 		return "MEDIUMINT"
 	case 10, 14:
@@ -115,11 +135,11 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 11:
 		return "TIME"
 	case 12:
-		return "DATETIME"
+		return typeNameDateTime
 	case 13:
 		return "YEAR"
 	case 15, 253:
-		return "VARCHAR"
+		return typeNameVarchar
 	case 16:
 		return "BIT"
 	case 245:

@@ -509,6 +509,29 @@ MySQL 兼容模式使用其 CALL/函数语法和能力对应的 OUT 路径。对
 
 内置标量输出先完成服务端响应及临时值转换，再写回所有目标，避免转换失败造成部分写回。调用方自定义 Scanner 可能具有不可回滚的副作用；逐个调用时一旦失败就返回明确错误，并说明先前目标可能已更新，不承诺任意 Scanner 的原子性。批量 OUT 则按项保存状态。
 
+D14 的具体入口与边界：
+
+```go
+type Out struct {
+    Dest any
+    In bool
+    Type string
+    Length int64
+    Precision int64
+    Scale int64
+}
+```
+
+- Type 为封闭的 SQL 标量类型名，忽略两端空白及大小写；空值由 Go 目的类型推断。自定义 Scanner 必须显式声明 Type，INOUT 还需实现 driver.Valuer。Number、NString、Raw、RowID、时间/间隔以及标准 sql.Null[T] 保留输入身份；普通 unsigned 值支持完整 uint64 范围。
+- Length 为文本字符数或二进制字节数，单位由声明类型决定；0 表示不额外约束。Precision/Scale 用于 NUMBER/DECIMAL 的无损范围验证，Precision=0 时 Scale 必须为 0。Oracle 精度最大 38、scale -84..127；MySQL 精度最大 65、scale 0..30 且不大于精度。输出超界报错，驱动不截断或舍入。
+- Type 和尺寸用于客户端模式/值约束。纯 OUT 按 Java 路径发送 NULL，服务端从 SQL 或例程形参确定类型；需要强制数据库类型时在 SQL 中显式转换。句柄、LOB、OBJECT/ARRAY 的协议绑定由后续任务实现，标量入口在发送前拒绝相应目的。
+- Oracle OUT/INOUT/RETURNING 使用真实 ob_version() >=2.2.76 的 COM_STMT_PREPARE_EXECUTE；版本未知或更旧时在发送业务前返回 ErrUnsupported。该语义要求也适用于 PrepareClient。接收参数/列描述、内部输出、强制尾随 OK/ERR，临时 statement 关闭后才发布输出；显式服务端 statement 可复用原 ID。
+- MySQL 使用每次调用随机命名的私有会话变量，固定同一连接完成初始化、原 SQL、输出 SELECT 和变量清空。主命令的普通结果继续流式读取；辅助命令不加入 Execution 摘要。变量替换共用当前 SQL mode 的严格词法/字面量路径；无法安全替换的 SQL 在发送前拒绝。清理失败淘汰物理会话并保留错误。
+- Query/Execute 的输出随最终响应消费或 Close 完成后生效；Exec 在返回前完成该步骤。清理后再次检查操作取消；失败、取消、输出形状错误均不写回内置目的。重复逻辑 OUT 的各物理输出必须一致，只写回一次；不同逻辑 OUT 指向同一目的时拒绝。
+- ErrOut 可识别输出验证/转换错误；OutError.Parameter 为 SQL 的逻辑绑定位置，Partial=true 表示自定义 Scanner 已可能产生部分副作用。使用 errors.As 获取详细错误，继续保留底层 Scanner 错误链。多个输出先完成全部内置转换，再按 SQL 中首次出现的顺序写回；自定义 Scanner 失败后停止发布后续目的。
+
+上述协议布局已对照固定 Java 源码并用合成对端验证；真实服务端/OBProxy 的例程与 RETURNING 仍须按兼容矩阵联调。
+
 ### 13.2 REF CURSOR 及连接相关输出
 
 Go 1.25 的驱动不能自行构造 `*sql.Rows` 写入 `sql.Out.Dest`。过程的普通结果集、逐项摘要及一个或多个输出游标统一通过 §11.4 的 Execute 承载：

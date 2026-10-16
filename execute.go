@@ -20,6 +20,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 			return c.QueryContext(context.WithValue(ctx, executionContextKey{}, request.execution), request.query, request.args)
 		}
 	}
+	if hasOutputArguments(args) {
+		return c.queryOutputs(ctx, query, args, nil)
+	}
 	if len(args) == 0 {
 		return c.queryText(ctx, query)
 	}
@@ -41,6 +44,16 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		if request, ok := args[0].Value.(savepointRequest); ok {
 			return c.execSavepoint(ctx, request)
 		}
+	}
+	if hasOutputArguments(args) {
+		rows, err := c.queryOutputs(ctx, query, args, nil)
+		if err != nil {
+			return nil, err
+		}
+		if err = rows.drainAll(ctx); err != nil {
+			return nil, err
+		}
+		return rows.last, nil
 	}
 	if len(args) > 0 {
 		if c.cfg.PrepareMode == PrepareClient {
@@ -166,10 +179,17 @@ func (c *conn) queryCommandLocked(ctx context.Context, payload []byte, binary bo
 
 // keepGate lets an internal query finish without releasing its caller's operation gate.
 func (c *conn) queryCommandOwnedLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool) (*textRows, error) {
+	return c.queryCommandStateLocked(ctx, payload, binary, auto, keepGate, nil)
+}
+
+func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool, outputs *outputState) (*textRows, error) {
 	r := c.startRows(ctx, binary, auto)
 	r.keepGate = keepGate
+	r.outputs = outputs
 	ctx = r.ctx
-	r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
+	if !keepGate {
+		r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
+	}
 	c.session.packets.ResetSequence()
 	if err := c.session.packets.WriteMessage(ctx, payload); err != nil {
 		// A rejected pre-send packet does not poison the physical session.

@@ -287,9 +287,9 @@ func (r *metadataRows) Next(values []driver.Value) error {
 }
 func (r *metadataRows) ColumnTypeDatabaseTypeName(i int) string {
 	if r.columns[i].numeric {
-		return "BIGINT"
+		return typeNameBigInt
 	}
-	return "VARCHAR"
+	return typeNameVarchar
 }
 func (r *metadataRows) ColumnTypeScanType(i int) reflect.Type {
 	if r.columns[i].numeric {

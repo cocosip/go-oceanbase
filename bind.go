@@ -53,22 +53,32 @@ func bindArguments(plan bindPlan, args []driver.NamedValue) ([]boundValue, error
 }
 
 func convertArgument(value any) (any, error) {
-	switch value.(type) {
-	case sql.Null[Number], sql.Null[NString], sql.Null[Raw], sql.Null[RowID],
-		sql.Null[TimestampTZ], sql.Null[TimestampLTZ], sql.Null[IntervalYM], sql.Null[IntervalDS],
-		*sql.Null[Number], *sql.Null[NString], *sql.Null[Raw], *sql.Null[RowID],
-		*sql.Null[TimestampTZ], *sql.Null[TimestampLTZ], *sql.Null[IntervalYM], *sql.Null[IntervalDS]:
-		rv := reflect.ValueOf(value)
-		if rv.Kind() == reflect.Pointer {
-			if rv.IsNil() {
+	switch v := value.(type) {
+	case sql.Out:
+		return makeOutput(Out{Dest: v.Dest, In: v.In})
+	case Out:
+		return makeOutput(v)
+	case *outBinding:
+		return v, nil
+	}
+	// Preserve driver scalar identity and unsigned range inside standard nullable values.
+	if nullable := reflect.ValueOf(value); nullable.IsValid() {
+		typ := nullable.Type()
+		if typ.Kind() == reflect.Pointer {
+			typ = typ.Elem()
+		}
+		if typ.PkgPath() == "database/sql" && strings.HasPrefix(typ.Name(), "Null[") {
+			if nullable.Kind() == reflect.Pointer {
+				if nullable.IsNil() {
+					return nil, nil
+				}
+				nullable = nullable.Elem()
+			}
+			if !nullable.FieldByName("Valid").Bool() {
 				return nil, nil
 			}
-			rv = rv.Elem()
+			return convertArgument(nullable.FieldByName("V").Interface())
 		}
-		if !rv.FieldByName("Valid").Bool() {
-			return nil, nil
-		}
-		return convertArgument(rv.FieldByName("V").Interface())
 	}
 	switch value.(type) {
 	case Number, NString, Raw, RowID, *Number, *NString, *Raw, *RowID,

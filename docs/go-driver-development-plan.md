@@ -353,14 +353,16 @@ go test -tags=integration ./tests/integration -count=1
 
 依赖：D11、D12。对应：M07、M08；架构 §13.1、§13.3。
 
-文件：新增 `call.go`、`prepare_execute.go`、`out_test.go`，修改 `bind*.go`、`execute.go` 和必要的 wire 命令定义；新增 `tests/integration/call_test.go`。
+文件：新增 `call.go`、`call_execution.go`、`call_mysql.go`、`prepare_execute.go`、`out_test.go`、`out_paths_test.go`，修改 `bind*.go`、`execute.go` 和必要的 wire 命令定义；新增 `tests/integration/call_test.go`。
 
 交付：sql.Out、带显式数据库类型/长度/精度的 Out、RETURNING；普通内置输出暂存转换后写回，自定义 Scanner 的可能部分副作用明确返回。Oracle RETURNING 在本任务交付所需的最小 COM_STMT_PREPARE_EXECUTE 编码/响应和版本能力门禁，D24 复用它扩展通用策略；不把必要基础协议推迟为优化，不让 D14 反向依赖 D24。
 
-- [ ] 测试 `TestOutValidation`、`TestOutFinalization`、`TestOutReturningProtocol`：nil/不可写目的和不支持类型在发送前拒绝；INOUT 初值；NULL 不能写成非空零值；溢出不部分更新内置目标；Scanner 失败不隐藏先前副作用；RETURNING 必要合并命令、输出顺序及能力不满足时零业务发送。
-- [ ] 执行 `go test . -run 'TestOut' -count=1`，确认失败。
-- [ ] 实现两模式实际 OUT 响应及 RETURNING 必需的合并基础路径；变量中转只在固定会话完成并清理；输出在最终响应后生效。未经源码与目标服务验证，不能把普通分离式 prepare/execute 当作 RETURNING 的替代。
-- [ ] 同命令通过；`TestScalarCall`、`TestReturning` 验证多个输出、函数、匿名块和错误；连接句柄输出留给 D20，不假装已有支持。
+- [x] 测试 `TestOutValidation`、`TestOutFinalization`、`TestOutReturningProtocol`：nil/不可写目的和不支持类型在发送前拒绝；INOUT 初值；NULL 不能写成非空零值；溢出不部分更新内置目标；Scanner 失败不隐藏先前副作用；RETURNING 必要合并命令、输出顺序及能力不满足时零业务发送。
+- [x] 执行 `go test . -run 'TestOut' -count=1`，确认失败。
+- [x] 实现两模式实际 OUT 响应及 RETURNING 必需的合并基础路径；变量中转只在固定会话完成并清理；输出在最终响应后生效。未经源码与目标服务验证，不能把普通分离式 prepare/execute 当作 RETURNING 的替代。
+- [x] 同命令通过；`TestScalarCall`、`TestReturning` 验证多个输出、函数、匿名块和错误；连接句柄输出留给 D20，不假装已有支持。
+
+本地实现与验证已完成；`TestScalarCall`、`TestReturning` 仅完成集成源码编译，按当前约束暂不执行真实数据库联调。真实模式/版本验收不随本地任务勾选完成。
 
 ### D15 固定会话资源与生命周期
 

@@ -108,6 +108,10 @@ func (c *conn) prepareServer(ctx context.Context, query string) (*stmt, error) {
 }
 
 func (c *conn) prepareMetadata(ctx context.Context, count int, budget *int64) ([]wire.Column, error) {
+	return c.readMetadata(ctx, count, budget, false)
+}
+
+func (c *conn) readMetadata(ctx context.Context, count int, budget *int64, validate bool) ([]wire.Column, error) {
 	columns := make([]wire.Column, 0, min(count, 64))
 	for i := 0; i < count; i++ {
 		data, err := c.session.packets.ReadMessage(ctx)
@@ -121,6 +125,9 @@ func (c *conn) prepareMetadata(ctx context.Context, count int, budget *int64) ([
 		column, err := c.decodeColumn(data)
 		if err != nil {
 			return nil, err
+		}
+		if validate && textTypeName(column, c.session.mode) == "" {
+			return nil, &UnsupportedTypeError{Type: column.Type, Mode: c.session.mode}
 		}
 		columns = append(columns, column)
 	}
@@ -194,6 +201,9 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	return s.query(ctx, args, false)
 }
 func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (*textRows, error) {
+	if hasOutputArguments(args) {
+		return s.conn.queryOutputs(ctx, s.plan.query, args, s)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

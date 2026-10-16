@@ -30,6 +30,9 @@ type textRows struct {
 	autoStmt             *stmt
 	execution            *Execution
 	keepGate             bool
+	outputs              *outputState
+	nativeTail           bool
+	hiddenOut            bool
 }
 
 func (r *textRows) Columns() []string {
@@ -50,15 +53,27 @@ func (r *textRows) release() {
 		if r.stopCancel != nil && !r.stopCancel() {
 			<-r.cancelDone
 		}
-		if r.stopTx != nil {
-			r.stopTx()
-		}
 		if r.autoStmt != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
 			if err := r.autoStmt.closeLocked(ctx); err != nil && r.err == nil {
 				r.err = err
 			}
 			cancel()
+		}
+		if r.outputs != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			r.err = errors.Join(r.err, r.outputs.finishLocked(ctx, r.conn, r.err == nil))
+			cancel()
+			if cause := r.contextError(); cause != nil {
+				r.err = errors.Join(r.err, cause)
+				r.conn.discard()
+			}
+			if r.err == nil {
+				r.err = r.conn.assignOutputs(r.outputs.bindings, r.outputs.values)
+			}
+		}
+		if r.stopTx != nil {
+			r.stopTx()
 		}
 		r.execution.finish(r.err)
 		if !r.keepGate {
@@ -113,6 +128,12 @@ func (r *textRows) advance(ctx context.Context) error {
 			}
 			return err
 		}
+		if r.nativeTail {
+			if data[0] != 0 {
+				return wire.ErrMalformed
+			}
+			r.nativeTail = false
+		}
 		r.items++
 		if r.items > r.conn.cfg.Limits.MaxResultItems {
 			return fmt.Errorf("oceanbase: result item limit exceeded")
@@ -140,38 +161,39 @@ func (r *textRows) advance(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		r.execution.add(ResultInfo{Kind: ResultRows})
-		r.columns = make([]wire.Column, n)
-		metadataBytes := int64(len(data))
-		for i := range r.columns {
-			data, err = r.conn.session.packets.ReadMessage(ctx)
-			if err != nil {
-				return err
-			}
-			if int64(len(data)) > r.conn.cfg.Limits.MaxMessageBytes-metadataBytes {
-				return wire.ErrMessageTooLarge
-			}
-			metadataBytes += int64(len(data))
-			if r.columns[i], err = r.conn.decodeColumn(data); err != nil {
-				return err
-			}
-			if textTypeName(r.columns[i], r.conn.session.mode) == "" {
-				return &UnsupportedTypeError{Type: r.columns[i].Type, Mode: r.conn.session.mode}
-			}
+		if err = r.readColumns(ctx, n, int64(len(data))); err != nil {
+			return err
 		}
-		if r.conn.session.capabilities&wire.ClientDeprecateEOF == 0 {
-			data, err = r.conn.session.packets.ReadMessage(ctx)
-			if err != nil {
+		if r.hiddenOut {
+			if err = r.readOutputs(ctx); err != nil {
 				return err
 			}
-			if _, err = wire.DecodeEOF(data); err != nil {
-				return err
+			if !r.more {
+				r.release()
+				return r.err
 			}
+			continue
 		}
-		r.done = false
-		r.more = false
 		return nil
 	}
+}
+
+func (r *textRows) readColumns(ctx context.Context, count int, budget int64) error {
+	if count < 1 || count > maxTextColumns {
+		return wire.ErrMessageTooLarge
+	}
+	columns, err := r.conn.readMetadata(ctx, count, &budget, true)
+	if err != nil {
+		return err
+	}
+	if r.outputs != nil && r.conn.session.capabilities&wire.ClientDeprecateEOF == 0 && r.conn.session.ok.Status&4096 != 0 {
+		r.hiddenOut = true
+	}
+	r.columns, r.done, r.more = columns, false, false
+	if !r.hiddenOut {
+		r.execution.add(ResultInfo{Kind: ResultRows})
+	}
+	return nil
 }
 
 func (r *textRows) Next(dest []driver.Value) error {
@@ -212,9 +234,11 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 		}
 		r.conn.session.ok = ok
 		r.done = true
-		r.execution.rowDone()
-		r.more = ok.Status&8 != 0
-		if !r.more {
+		if !r.hiddenOut {
+			r.execution.rowDone()
+		}
+		r.more = ok.Status&8 != 0 || r.nativeTail
+		if !r.more && !r.hiddenOut {
 			r.release()
 		}
 		if r.err != nil {
