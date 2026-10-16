@@ -430,14 +430,17 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D12、D13、D16。对应：M09、M10、M11；架构 §11.2、§14、§16.1。
 
-文件：新增 `complex.go`、`type_descriptor.go`、`complex_test.go`，修改 codec/字典；新增 `tests/integration/complex_test.go`。
+文件：新增 `complex.go`、`complex_codec.go`、`type_descriptor.go`、复杂值普通/故障/fuzz 测试与 `internal/wire/complex.go`，修改 codec/字典/预处理/OUT/Rows；新增 `tests/integration/complex_test.go`。
 
-交付：Object/Array Scanner/Valuer、真实复杂类型绑定协议、自描述版本化 JSON 文本扫描表示；类型描述按会话权限/模式/schema/名称/版本隔离缓存。
+交付：Object/Array Scanner/Valuer、真实复杂类型绑定协议、自描述版本化 JSON 文本扫描表示；类型描述只在同一物理会话的单业务命令内按模式/schema/名称/协议版本复用，每业务命令/reset 清空，避免跨权限/schema 复用。0 表示服务端当前版本。
 
-- [ ] 测试 `TestComplexLossless`、`TestDescriptorRefresh`、`TestDescriptorNoReentry`：嵌套 NULL/空集合、十进制文本、base64、时间和字段顺序、同义词/类型版本、最大嵌套深度；DDL 失配刷新但不重放已发送操作。通过真实 database/sql 的 QueryContext/Rows.Next 和协议对端覆盖描述缓存未命中，限定超时、同一物理会话、先读完响应再查字典，断言不重入公开会话或操作锁。
-- [ ] 执行 `go test . -run 'Test(Complex|Descriptor)' -count=1`，确认失败。
-- [ ] 实现显式类型名与字段计划，不反射任意 struct/slice；描述查询只在完整响应边界通过内部执行器完成，不调用 Metadata/Session/sql.Conn 等公开入口。
-- [ ] 同命令通过；`TestComplexTypes` 做真实对象/集合往返和嵌套 LOB；字节 mock 不能作为类型兼容通过依据。
+- [x] 测试 `TestComplexLossless`、`TestDescriptorRefresh`、`TestDescriptorNoReentry`：嵌套 NULL/空集合、十进制文本、base64、时间和字段顺序、同义词/类型版本、最大嵌套深度；DDL 失配刷新但不重放已发送操作。通过真实 database/sql 的 QueryContext/Rows.Next 和协议对端覆盖描述缓存未命中，限定超时、同一物理会话、先读完响应再查字典，断言不重入公开会话或操作锁。
+- [x] 执行 `go test . -run 'Test(Complex|Descriptor)' -count=1`，确认失败。
+- [x] 实现显式类型名与字段计划，不反射任意 struct/slice；描述查询只在完整响应边界通过内部执行器完成，不调用 Metadata/Session/sql.Conn 等公开入口。
+- [x] 同命令本地通过；补齐复杂 OUT 列数、共享物化预算、后续复杂行集排空、非法集合元素头、关闭最终 OUT 超时及缓冲描述刷新回归。
+- [ ] `TestComplexTypes` 已提供对象/集合、NULL 元素、精度/RAW/DATE、嵌套 LOB、原事务和复杂 OUT 的四目标集成源码，本阶段仅编译；真实服务端类型兼容待联调，字节对端不替代验收。
+
+本地支持边界见架构 §11.2.2：仅服务端预处理二进制复杂结果；明确拒绝文本复杂结果、客户端插值、非 NULL TIMESTAMP/LOB 字段输入及无已确认元素头的集合。后续真实环境需补齐对应协议证据与兼容验收，不以本地实现完成宣称全功能验收。
 
 ### D19 游标、滚动、刷新与可更新结果
 

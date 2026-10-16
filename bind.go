@@ -81,7 +81,7 @@ func convertArgument(value any) (any, error) {
 		}
 	}
 	switch value.(type) {
-	case Number, NString, Raw, RowID, *Number, *NString, *Raw, *RowID,
+	case Object, Array, *Object, *Array, Number, NString, Raw, RowID, *Number, *NString, *Raw, *RowID,
 		TimestampTZ, TimestampLTZ, IntervalYM, IntervalDS, *TimestampTZ, *TimestampLTZ, *IntervalYM, *IntervalDS:
 		rv := reflect.ValueOf(value)
 		if rv.Kind() == reflect.Pointer {

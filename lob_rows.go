@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 
@@ -13,26 +14,88 @@ import (
 type lobRowset struct {
 	columns []wire.Column
 	rows    [][]driver.Value
+	rawRows [][]byte
 }
 
-func (r *textRows) bufferLOBResponse() error {
+// decodeComplexRowsetLocked runs only after every response packet has been read.
+func (r *textRows) decodeComplexRowsetLocked(ctx context.Context, set *lobRowset) error {
+	if len(set.rawRows) == 0 {
+		return nil
+	}
+	if err := r.conn.describeComplexColumnsLocked(ctx, set.columns); err != nil {
+		return err
+	}
+	decoder := &textRows{conn: r.conn, columns: set.columns, binary: true, captureLOB: true, ctx: ctx, keepGate: true}
+	for _, raw := range set.rawRows {
+		if _, err := wire.DecodeBinaryRow(raw, set.columns); err != nil {
+			r.conn.clearDescriptors()
+			if err = r.conn.describeComplexColumnsLocked(ctx, set.columns); err != nil {
+				return err
+			}
+			if _, err = wire.DecodeBinaryRow(raw, set.columns); err != nil {
+				return err
+			}
+		}
+		row := make([]driver.Value, len(set.columns))
+		if err := decoder.decodeRow(raw, row); err != nil {
+			return err
+		}
+		if err := r.conn.materializeComplexValuesLocked(ctx, set.columns, row); err != nil {
+			return err
+		}
+		r.bufferBytes += lobValuesSize(row) - int64(len(raw))
+		if r.bufferBytes > r.conn.cfg.Limits.MaxMessageBytes {
+			return wire.ErrMessageTooLarge
+		}
+		set.rows = append(set.rows, row)
+	}
+	set.rawRows = nil
+	return nil
+}
+
+func (c *conn) materializeComplexValuesLocked(ctx context.Context, columns []wire.Column, values []driver.Value) error {
+	for i, column := range columns {
+		if column.Type != 160 || values[i] == nil {
+			continue
+		}
+		raw, ok := values[i].([]byte)
+		if !ok {
+			return ErrComplex
+		}
+		value, err := c.complexValueLocked(ctx, column, raw)
+		if err != nil {
+			return err
+		}
+		values[i] = value
+		if lobValuesSize(values) > c.cfg.Limits.MaxMessageBytes {
+			return wire.ErrMessageTooLarge
+		}
+	}
+	return nil
+}
+
+func (r *textRows) bufferLOBResponse(ctx context.Context) error {
 	if r.captureLOB || r.released || r.conn.session.mode != ModeOracle {
 		return nil
 	}
 	found := false
 	for _, column := range r.columns {
-		found = found || column.Type == 210 || column.Type == 211
+		found = found || column.Type == 210 || column.Type == 211 || column.Type == 160
 	}
 	if !found {
 		return nil
 	}
 	r.holdRelease, r.captureLOB = true, true
-	sets, err := r.collectLOBResponse()
+	sets, err := r.collectLOBResponse(ctx)
 	if err == nil {
-		for _, set := range sets {
+		for i := range sets {
+			set := &sets[i]
+			if err = r.decodeComplexRowsetLocked(ctx, set); err != nil {
+				break
+			}
 			for _, row := range set.rows {
 				before := lobValuesSize(row)
-				if err = r.conn.materializeLOBValuesLocked(r.ctx, set.columns, row, r.conn.cfg.Limits.MaxMessageBytes-r.bufferBytes+before); err != nil {
+				if err = r.conn.materializeLOBValuesLocked(ctx, set.columns, row, r.conn.cfg.Limits.MaxMessageBytes-r.bufferBytes+before); err != nil {
 					break
 				}
 				r.bufferBytes += lobValuesSize(row) - before
@@ -50,7 +113,7 @@ func (r *textRows) bufferLOBResponse() error {
 	if err != nil {
 		return r.fail(err, true)
 	}
-	r.release()
+	r.releaseWithContext(ctx)
 	if r.err != nil {
 		return r.err
 	}
@@ -58,10 +121,17 @@ func (r *textRows) bufferLOBResponse() error {
 	return nil
 }
 
-func (r *textRows) collectLOBResponse() ([]lobRowset, error) {
+func (r *textRows) collectLOBResponse(ctx context.Context) ([]lobRowset, error) {
 	var sets []lobRowset
 	for {
 		set := lobRowset{columns: r.columns}
+		hasComplex := false
+		for _, column := range r.columns {
+			hasComplex = hasComplex || column.Type == 160
+		}
+		if hasComplex && !r.binary {
+			return nil, fmt.Errorf("%w: complex rows require server prepared statements", ErrUnsupported)
+		}
 		r.bufferBytes += 32
 		for _, column := range r.columns {
 			r.bufferBytes += 128 + int64(len(column.Catalog)) + int64(len(column.Schema)) + int64(len(column.Table)) + int64(len(column.OriginalTable)) + int64(len(column.Name)) + int64(len(column.OriginalName))
@@ -70,25 +140,37 @@ func (r *textRows) collectLOBResponse() ([]lobRowset, error) {
 			return nil, wire.ErrMessageTooLarge
 		}
 		for !r.done {
-			row := make([]driver.Value, len(r.columns))
-			err := r.next(r.ctx, row)
+			var row []driver.Value
+			var err error
+			if hasComplex {
+				var data []byte
+				data, err = r.rowPacket(ctx)
+				if err == nil {
+					set.rawRows = append(set.rawRows, data)
+				}
+			} else {
+				row = make([]driver.Value, len(r.columns))
+				err = r.next(ctx, row)
+			}
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
 				return nil, err
 			}
-			r.bufferBytes += int64(len(row))*16 + 24
+			r.bufferBytes += int64(len(r.columns))*16 + 24
 			if r.bufferBytes > r.conn.cfg.Limits.MaxMessageBytes {
 				return nil, wire.ErrMessageTooLarge
 			}
-			set.rows = append(set.rows, row)
+			if !hasComplex {
+				set.rows = append(set.rows, row)
+			}
 		}
 		sets = append(sets, set)
 		if !r.more {
 			break
 		}
-		if err := r.advance(r.ctx); err != nil {
+		if err := r.advance(ctx); err != nil {
 			return nil, err
 		}
 		if r.done && !r.more {

@@ -28,7 +28,7 @@ func supportsPrepareExecute(version string) bool {
 	return slices.Compare(numbers[:], []uint32{2, 2, 76}) >= 0
 }
 
-func (c *conn) outputPrepareExecute(plan bindPlan, values []boundValue, prepared *stmt) ([]byte, error) {
+func (c *conn) outputPrepareExecute(ctx context.Context, plan bindPlan, values []boundValue, prepared *stmt) ([]byte, error) {
 	if !supportsPrepareExecute(c.session.obVersion) {
 		return nil, fmt.Errorf("%w: Oracle output bindings require OceanBase >= 2.2.76", ErrUnsupported)
 	}
@@ -58,14 +58,14 @@ func (c *conn) outputPrepareExecute(plan bindPlan, values []boundValue, prepared
 		case Raw, []byte:
 			limit = min(limit, c.cfg.Limits.MaxLOBBytes)
 		}
-		params[i], err = encodeParameter(v.value, plan.mode, c.cfg.Session, limit)
+		params[i], err = c.encodeParameterLocked(ctx, v.value, limit)
 		if err != nil {
 			return nil, err
 		}
-		if params[i].EncodedSize() > budget {
+		if (params[i].EncodedSize() + int64(len(params[i].TypeMetadata))) > budget {
 			return nil, wire.ErrMessageTooLarge
 		}
-		budget -= params[i].EncodedSize()
+		budget -= (params[i].EncodedSize() + int64(len(params[i].TypeMetadata)))
 	}
 	var id uint32
 	if prepared != nil {
@@ -128,7 +128,7 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 			return nil, r.fail(err, true)
 		}
 		if !r.hiddenOut {
-			if err = r.bufferLOBResponse(); err != nil {
+			if err = r.bufferLOBResponse(r.ctx); err != nil {
 				return nil, err
 			}
 			return r, nil
@@ -140,7 +140,7 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 	if err = r.advance(ctx); err != nil {
 		return nil, r.fail(err, true)
 	}
-	if err = r.bufferLOBResponse(); err != nil {
+	if err = r.bufferLOBResponse(r.ctx); err != nil {
 		return nil, err
 	}
 	return r, r.err

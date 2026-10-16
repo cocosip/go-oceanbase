@@ -4,11 +4,11 @@
 
 ## 1. 当前状态
 
-- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB 及 D17 表内 BLOB 已实现；继续 D18。
-- 实现完成：**17 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
-- 下一执行任务：**D18 OBJECT/ARRAY 与类型描述**。
+- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB、D17 表内 BLOB 及 D18 OBJECT/ARRAY 已有本地实现；继续 D19，复杂类型支持边界见架构 §11.2.2。
+- 实现完成：**18 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
+- 下一执行任务：**D19 游标、滚动、刷新和更新**。
 - 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；复杂类型、游标及 D18–D32 的其他能力仍需实现。
+- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；游标及 D19–D32 的其他能力仍需实现。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -67,7 +67,7 @@
 | D15 | 固定会话资源、代次与租约 | D09、D11 | 已实现 | 本地通过 | 无 | §5.6 D15 |
 | D16 | 原生 BLOB/CLOB/NCLOB | D12、D13、D15 | 已实现 | 本地通过 | 无（待联调） | 本地协议、双版本/386/lint/fuzz；真实原事务/NCLOB/锁行为待联调 |
 | D17 | MySQL 表内 BLOB 模拟 locator | D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D17 |
-| D18 | OBJECT/ARRAY、类型描述 | D12、D13、D16 | 未开始 | 未验证 | 无 | — |
+| D18 | OBJECT/ARRAY、类型描述 | D12、D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D18，支持边界见架构 §11.2.2 |
 | D19 | 游标、滚动、刷新和更新 | D13、D15、D16 | 未开始 | 未验证 | 无 | — |
 | D20 | REF CURSOR/流式 LOB 输出 | D14、D16、D19 | 未开始 | 未验证 | 无 | — |
 | D21 | 长参数、分段上传 | D08、D12、D15 | 未开始 | 未验证 | 无 | — |
@@ -89,7 +89,7 @@
 | --- | --- | --- | --- | --- |
 | G1 | 建连与标准查询，D01–D05 | 5/5 | 0/5 | 进行中 |
 | G2 | 执行与会话正确性，D06–D12 | 7/7 | 0/7 | 待验收 |
-| G3 | 完整扩展数据能力，D13–D22 | 5/10 | 0/10 | 进行中 |
+| G3 | 完整扩展数据能力，D13–D22 | 6/10 | 0/10 | 进行中 |
 | G4 | 协议与运行能力，D23–D30 | 0/8 | 0/8 | 未开始 |
 | G5 | 分布式事务，D31 | 0/1 | 0/1 | 未开始 |
 | G6 | 完整交付，D32 | 0/1 | 0/1 | 未开始 |
@@ -370,6 +370,16 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 最终在 Go 1.25.0/1.26.0 Windows amd64 运行 `go test ./... -count=1`、`go vet ./...` 和目标用例重复 10 次通过；两版本实际 Windows/386 全包测试通过。普通与 `--build-tags=integration` 的 golangci-lint 均 0 issues；集成源码使用 `-run '^$'` 仅编译。`FuzzBlobIdentifiers` 两版本各 30 秒通过，分别 554034 / 642929 次；CI 定义已加入。
 - 实现 17/32，验收仍为 0/32。`TestTableBlob` 四目标源码覆盖大对象、ChangedRows、并发锁/回滚、截断和资源结束；未连接数据库，实际 SQL/字典/锁/Oracle locator/非严格模式仍待联调。Linux、远程 CI 和成功 race 尚无证据。
 
+#### D18 OBJECT/ARRAY 与同会话类型描述
+
+- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增 `complex.go`、`complex_codec.go`、`type_descriptor.go`、`internal/wire/complex.go`、复杂值普通/故障/fuzz 测试及仅编译的 `tests/integration/complex_test.go`；根包编排复用现有 wire/charset/metadata/LOB，不增公开包、依赖或循环引用。
+- Object/Array/Attribute 保留精确类型与字段顺序，Scanner/Valuer 使用 format=1 JSON；NUMBER 十进制、RAW/BLOB base64、墙钟时间、嵌套/NULL/空集合无损。NamedValueChecker 保留原生输入身份，参数发送真实 COMPLEX160，不把 JSON 字符串当作对象协议。
+- 字典缓存仅限单业务命令/单物理会话；模式/schema/name/协议版本为键，命令/reset 清空；0 表示服务端当前版本。复用 D13 类型/属性/集合/同义词计划，支持 private/PUBLIC synonym，拒绝远程链接和循环。未读响应禁止内部命令；先有界缓冲全部剩余响应再查字典/读嵌套 LOB，不重入公开 Metadata/Session/database/sql，不开辅助连接，不重放业务 SQL。
+- 当前支持及拒绝边界见架构 §11.2.2、兼容矩阵 §9。要求服务端预处理二进制结果；非 NULL TIMESTAMP/LOB 字段输入和未确认的内置集合元素头明确拒绝。JSON/树/描述响应有界，根复杂值的嵌套 LOB 共享剩余额度；最终表示与整响应另受 MaxMessageBytes 限制。
+- `TestComplexLossless`、`TestDescriptorNoReentry`、`TestDescriptorRefresh` 覆盖标准 database/sql 缓存未命中、完整响应、类型版本/字段变化及精确值；补齐具名/匿名对象集合、CLOB 字符集、PUBLIC 同义词、描述累计预算、复杂 OUT 尾错等路径。四处问题均先复现再修复：OUT 列数越界、树构建期共享预算、Close/Exec 后续复杂结果集排空、非法数组元素头；同时补齐最终 OUT 清理超时及缓冲描述刷新回归。独立只读复核未发现遗留 Important/Critical，不保存独立走查报告。
+- Go 1.25.0/1.26.0 Windows amd64 全包 `go test ./... -count=1` / `go vet ./...`、复杂/描述用例重复 10 次、实际 Windows/386 全包运行均通过；普通及 `--build-tags=integration` 的 golangci-lint 两版本均 0 issues。`FuzzComplex` 两版本各 30 秒通过，分别 203745 / 266653 次，CI 已加入。integration 使用 `-run '^$'` 仅编译，没有数据库连接。
+- 实现 18/32、G3 6/10，验收仍为 0/32。`TestComplexTypes` 已提供四目标对象/集合、精度/RAW/DATE、NULL、嵌套 LOB、原事务及复杂 OUT 源码；实际类型/权限/版本/OBProxy 行为仍未联调。Linux、远程 CI 和成功 race 仍无运行证据。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
@@ -386,7 +396,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 ## 7. 下一步工作
 
-1. 推进 D18：OBJECT/ARRAY、同会话类型描述/缓存、复杂类型绑定及嵌套 LOB。
+1. 推进 D19：同会话服务器游标、Fetch/Close、滚动、刷新与可更新结果；沿用已有 gate/资源代次/完整响应边界。
 2. 继续用故障对端验证标准 database/sql 查询，不连接真实数据库。
 3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
 

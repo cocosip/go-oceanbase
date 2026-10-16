@@ -61,7 +61,7 @@ func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (_ drive
 	}
 	r := rows.(*textRows)
 	r.holdRelease = true
-	sets, err := r.collectLOBResponse()
+	sets, err := r.collectLOBResponse(ctx)
 	r.holdRelease = false
 	if err != nil {
 		return nil, r.fail(err, true)

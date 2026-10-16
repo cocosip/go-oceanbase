@@ -14,14 +14,17 @@ import (
 )
 
 type outputState struct {
-	internal bool
-	columns  []wire.Column
-	bindings []*outBinding
-	physical []int
-	values   []driver.Value
-	seen     bool
-	err      error
-	vars     []string
+	complexColumns []wire.Column
+	complexRows    [][]byte
+	complexBytes   int64
+	internal       bool
+	columns        []wire.Column
+	bindings       []*outBinding
+	physical       []int
+	values         []driver.Value
+	seen           bool
+	err            error
+	vars           []string
 }
 
 func hasOutputArguments(args []driver.NamedValue) bool {
@@ -43,6 +46,7 @@ func (c *conn) queryOutputs(ctx context.Context, query string, args []driver.Nam
 
 // queryOutputsLocked transfers the gate to the returned Rows, including failure cleanup.
 func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driver.NamedValue, prepared *stmt) (*textRows, error) {
+	c.clearDescriptors()
 	owned := true
 	defer func() {
 		if owned {
@@ -71,7 +75,7 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 		return nil, err
 	}
 	if c.session.mode == ModeOracle {
-		payload, err := c.outputPrepareExecute(plan, values, prepared)
+		payload, err := c.outputPrepareExecute(ctx, plan, values, prepared)
 		if err != nil {
 			return nil, err
 		}
@@ -167,6 +171,11 @@ func (s *outputState) finishLocked(ctx context.Context, c *conn, success bool) e
 }
 
 func (r *textRows) readOutputs(ctx context.Context) error {
+	for _, column := range r.columns {
+		if column.Type == 160 {
+			return r.readComplexOutputs(ctx)
+		}
+	}
 	for !r.done {
 		values := make([]driver.Value, len(r.columns))
 		if err := r.next(ctx, values); err != nil {
@@ -184,5 +193,60 @@ func (r *textRows) readOutputs(ctx context.Context) error {
 		}
 	}
 	r.hiddenOut = false
+	return nil
+}
+
+func (r *textRows) readComplexOutputs(ctx context.Context) error {
+	if !r.binary {
+		return ErrUnsupported
+	}
+	if r.outputs.complexColumns != nil {
+		r.outputs.err = ErrOut
+	}
+	r.outputs.complexColumns = r.columns
+	for !r.done {
+		data, err := r.rowPacket(ctx)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		r.outputs.complexBytes += int64(len(data)) + 24
+		if r.outputs.complexBytes > r.conn.cfg.Limits.MaxMessageBytes {
+			return r.fail(wire.ErrMessageTooLarge, true)
+		}
+		r.outputs.complexRows = append(r.outputs.complexRows, data)
+	}
+	r.hiddenOut = false
+	return nil
+}
+
+func (s *outputState) decodeComplexLocked(ctx context.Context, c *conn) error {
+	if len(s.complexRows) == 0 {
+		return nil
+	}
+	if err := c.describeComplexColumnsLocked(ctx, s.complexColumns); err != nil {
+		return err
+	}
+	r := &textRows{conn: c, ctx: ctx, columns: s.complexColumns, binary: true, captureLOB: true, keepGate: true}
+	for _, raw := range s.complexRows {
+		values := make([]driver.Value, len(s.complexColumns))
+		if err := r.decodeRow(raw, values); err != nil {
+			return err
+		}
+		if err := c.materializeComplexValuesLocked(ctx, s.complexColumns, values); err != nil {
+			return err
+		}
+		s.capture(values, true)
+		if s.err != nil {
+			return s.err
+		}
+	}
+	s.columns = make([]wire.Column, len(s.bindings))
+	for i, column := range s.complexColumns {
+		s.columns[s.physical[i]] = column
+	}
+	s.complexRows = nil
 	return nil
 }

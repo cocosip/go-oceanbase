@@ -9,6 +9,12 @@ type Column struct {
 	Flags                                                     uint16
 	Decimals, Precision, InOut                                byte
 	Extra                                                     []byte
+	ComplexSchema, ComplexName                                string
+	ComplexVersion                                            uint64
+	ElementType                                               byte
+	ElementSchema, ElementName                                string
+	ElementVersion                                            uint64
+	ComplexShape                                              *ComplexShape
 }
 
 // DecodeColumn parses a complete column definition, preserving optional extension bytes.
@@ -25,6 +31,17 @@ func DecodeColumn(data []byte) (Column, error) {
 	c.Decimals = r.u8()
 	c.Precision = r.u8()
 	c.InOut = r.u8()
+	if c.Type == 160 {
+		c.ComplexSchema, c.ComplexName = string(r.lenBytes()), string(r.lenBytes())
+		c.ComplexVersion = r.lenEnc()
+		if c.ComplexName == "" {
+			c.ElementType = r.u8()
+			if c.ElementType == 160 {
+				c.ElementSchema, c.ElementName = string(r.lenBytes()), string(r.lenBytes())
+				c.ElementVersion = r.lenEnc()
+			}
+		}
+	}
 	c.Extra = r.take(r.remaining())
 	if r.err != nil {
 		return Column{}, r.err

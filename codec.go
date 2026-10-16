@@ -13,6 +13,9 @@ import (
 )
 
 const (
+	typeNameObject       = "OBJECT"
+	typeNameArray        = "ARRAY"
+	typeNameNumeric      = "NUMERIC"
 	typeNameInteger      = "INTEGER"
 	typeNameTime         = "TIME"
 	typeNameBoolean      = "BOOLEAN"
@@ -50,7 +53,7 @@ func (c *conn) decodeColumn(data []byte) (wire.Column, error) {
 	if name == "" {
 		name = charsetUTF8MB4
 	}
-	for _, field := range []*string{&column.Catalog, &column.Schema, &column.Table, &column.OriginalTable, &column.Name, &column.OriginalName} {
+	for _, field := range []*string{&column.Catalog, &column.Schema, &column.Table, &column.OriginalTable, &column.Name, &column.OriginalName, &column.ComplexSchema, &column.ComplexName, &column.ElementSchema, &column.ElementName} {
 		*field, err = charset.Decode(name, []byte(*field))
 		if err != nil {
 			return wire.Column{}, err
@@ -73,6 +76,8 @@ func (*UnsupportedTypeError) Unwrap() error { return ErrUnsupported }
 func textTypeName(c wire.Column, mode Mode) string {
 	if mode == ModeOracle {
 		switch c.Type {
+		case 160:
+			return "OBJECT/ARRAY"
 		case 3:
 			return typeNameNumber
 		case 4:

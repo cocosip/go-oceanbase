@@ -217,7 +217,7 @@ func (c *conn) tableBlobQueryLocked(ctx context.Context, query string, args []dr
 		return nil, err
 	}
 	r.holdRelease = true
-	sets, err := r.collectLOBResponse()
+	sets, err := r.collectLOBResponse(ctx)
 	r.holdRelease = false
 	if err != nil {
 		return nil, r.fail(err, true)
@@ -363,7 +363,7 @@ func tableBlobKeyType(mode Mode, typ string) bool {
 	switch typ {
 	case typeNameDate, typeNameChar, typeNameFloat:
 		return true
-	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", typeNameInteger, typeNameBigInt, typeNameDecimal, "NUMERIC", typeNameDouble, "REAL", "BIT", "YEAR", typeNameDateTime, typeNameTime, typeNameVarchar, "BINARY", typeNameVarbinary, "ENUM", "SET":
+	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", typeNameInteger, typeNameBigInt, typeNameDecimal, typeNameNumeric, typeNameDouble, "REAL", "BIT", "YEAR", typeNameDateTime, typeNameTime, typeNameVarchar, "BINARY", typeNameVarbinary, "ENUM", "SET":
 		return mode == ModeMySQL
 	case "NUMBER", "BINARY_FLOAT", "BINARY_DOUBLE", "VARCHAR2", "NVARCHAR2", "NCHAR", "RAW", "ROWID", "UROWID", "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND":
 		return mode == ModeOracle

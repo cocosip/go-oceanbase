@@ -97,6 +97,8 @@ func makeOutput(out Out) (*outBinding, error) {
 
 func validOutputType(name string) bool {
 	switch name {
+	case typeNameObject, typeNameArray:
+		return true
 	case typeNameNumber, typeNameDecimal, typeNameInteger, typeNameBigInt, "BIGINT UNSIGNED", typeNameBoolean, typeNameFloat, typeNameDouble, typeNameBinaryFloat, typeNameBinaryDouble,
 		typeNameVarchar, typeNameVarchar2, typeNameChar, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameVarbinary, typeNameDate, typeNameDateTime, typeNameTimestamp,
 		typeNameTimestampTZ, typeNameTimestampLTZ, typeNameIntervalYM, typeNameIntervalDS, typeNameBlob, typeNameClob, typeNameNClob:
@@ -130,6 +132,12 @@ func (b *outBinding) validateMode(mode Mode) error {
 }
 
 func inferOutputType(t reflect.Type) string {
+	if t == reflect.TypeFor[Object]() {
+		return typeNameObject
+	}
+	if t == reflect.TypeFor[Array]() {
+		return typeNameArray
+	}
 	switch t {
 	case reflect.TypeFor[Number]():
 		return typeNameNumber

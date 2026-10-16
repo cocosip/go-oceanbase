@@ -10,13 +10,15 @@ import (
 )
 
 type conn struct {
-	mu             chan struct{}
-	session        *handshakeSession
-	cfg            Config
-	closed         atomic.Bool
-	activeTx       *tx
-	resources      resourceState // guarded by mu
-	responseActive bool          // guarded by mu; internal commands require a complete response boundary
+	mu              chan struct{}
+	session         *handshakeSession
+	cfg             Config
+	closed          atomic.Bool
+	activeTx        *tx
+	resources       resourceState                     // guarded by mu
+	responseActive  bool                              // guarded by mu; internal commands require a complete response boundary
+	descriptors     map[descriptorKey]*typeDescriptor // guarded by mu; one command lifetime
+	descriptorBytes int64
 }
 
 func (c *conn) Close() error {

@@ -195,6 +195,9 @@ func (c *conn) queryCommandOwnedLocked(ctx context.Context, payload []byte, bina
 }
 
 func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool, outputs *outputState) (*textRows, error) {
+	if !keepGate {
+		c.clearDescriptors()
+	}
 	r := c.startRows(ctx, binary, auto)
 	r.keepGate = keepGate
 	if state, _ := ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil {
@@ -224,7 +227,7 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 	if r.err != nil {
 		return nil, r.err
 	}
-	if err := r.bufferLOBResponse(); err != nil {
+	if err := r.bufferLOBResponse(r.ctx); err != nil {
 		return nil, err
 	}
 	return r, nil

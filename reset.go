@@ -13,6 +13,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 	defer c.unlock()
+	c.clearDescriptors()
 	if c.closed.Load() {
 		return driver.ErrBadConn
 	}

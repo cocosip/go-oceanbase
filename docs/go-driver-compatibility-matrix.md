@@ -16,7 +16,7 @@
 
 握手字符集已实现 utf8mb4、utf8/utf8mb3、latin1、GBK、GB18030、ASCII、binary 的协议编号；其他显式客户端字符集返回能力错误。认证阶段保留服务端版本原文，D05 已通过模式对应的 ob_version() 查询保留 OceanBase 版本原文；真实版本仍待联调，会话初始化已在 D04 接通。
 
-标准文本与 COM_STMT_PREPARE/EXECUTE/CLOSE 已实现：沿用 [Java prepare 协议](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtPrepare.java) 的元数据/EOF 边界；MySQL 参数数以服务端元数据为准，Oracle 命名映射后复核物理数量。二进制 NUMBER 协议类型 3 按固定 4 字节整数读取，246 保留精确十进制文本，不从 Java 类型名称猜测字节布局。基础两模式合成对端、EOF 两路径、混合多结果、错误和关闭已本地测试；真实目标尚未验证。D12 已实现标量扩展类型；复杂类型继续属于 D18，客户端预处理已在 D10 实现。
+标准文本与 COM_STMT_PREPARE/EXECUTE/CLOSE 已实现：沿用 [Java prepare 协议](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtPrepare.java) 的元数据/EOF 边界；MySQL 参数数以服务端元数据为准，Oracle 命名映射后复核物理数量。二进制 NUMBER 协议类型 3 按固定 4 字节整数读取，246 保留精确十进制文本，不从 Java 类型名称猜测字节布局。基础两模式合成对端、EOF 两路径、混合多结果、错误和关闭已本地测试；真实目标尚未验证。D12 已实现标量扩展类型；D18 已提供复杂类型的本地协议实现，支持边界见 §9，客户端预处理已在 D10 实现。
 
 D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化；完整 uint64 ID 保留文本。Snapshot 仅观察驱动状态，Close 在停止迭代后协调标准库取消错误。MySQL MatchedRows/ChangedRows 通过 CLIENT_FOUND_ROWS 控制；Oracle 拒绝 ChangedRows。合成包流通过，真实混合结果及无变化 UPDATE/upsert 待联调。
 
@@ -97,3 +97,17 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | Oracle 后端 | 相同目标查询复用原生 Blob；可写 Tx 打开时 FOR UPDATE，只读不加锁 | 原生捕获、CHAR/DATE/NUMBER 主键和事务锁 SQL 本地通过；实际 locator/权限待联调 |
 
 `TestTableBlob` 四目标源码及手动 CI 入口已加入，本阶段仅编译。未连接数据库，未把本地协议测试计为真实 SQL/锁/事务验收。
+
+## 9. OBJECT/ARRAY 与描述（D18）
+
+| 能力 | Go 当前行为 | 验证状态 |
+| --- | --- | --- |
+| 值与扫描 | 根包 Object/Array/Attribute，format=1 JSON；精确 NUMBER、base64、墙钟时间、嵌套/NULL/空集合；Scan 失败保留原值 | 无损/边界/深度及 fuzz 本地验证；API 详见架构 §11.2.2 |
+| 原生参数 | COMPLEX160；字典字段计划；对象与匿名集合元素头分别编码 | database/sql 服务端预处理、具名/匿名数组和复杂 OUT 对端通过；真实目标未验证 |
+| 描述与缓存 | 同物理会话/单命令，模式/schema/name/协议版本隔离；实体优先，private/PUBLIC synonym；失配仅刷新描述和解析缓冲字节 | Query/Next 完整响应后内部查询、版本变化、同义词和缓存预算本地通过；DDL/权限/版本联调未完成 |
+| 嵌套 LOB / 结果清理 | 完整剩余响应后物化，共享根值预算；普通/后续复杂行集与隐藏 OUT 同路径；关闭时最终解码继承清理 context | 嵌套 BLOB/CLOB、总量限制、OUT 列数不匹配、尾错、Close/Exec 排空和清理超时回归通过 |
+| 当前拒绝边界 | MySQL 原生复杂输入、文本复杂结果、客户端复杂插值；非 NULL TIMESTAMP/LOB 字段输入；NCHAR/NVARCHAR2/TIMESTAMP/LOB 内置集合元素头 | 明确报错，非法元素头发送前拒绝，空/全 NULL 集合同样拒绝；待服务端写协议证据补齐 |
+
+协议依据为同一 Java 基线的 [对象参数](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBStructParameter.java)、[集合参数](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBArrayParameter.java) 和 [二进制行解析](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/rowprotocol/BinaryRowProtocol.java)。Java 文本复杂读取没有可用表示；Go 明确拒绝该路径。当前实现未证明所有目标版本或所有字段类型兼容。
+
+`TestComplexTypes` 只做 integration 标签编译，未连接数据库。四目标真实对象/集合/嵌套 LOB/事务/复杂 OUT、同义词权限及实际版本仍待联调；不计入验收完成。

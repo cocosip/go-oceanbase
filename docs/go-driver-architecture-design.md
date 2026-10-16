@@ -330,7 +330,7 @@ Oracle RETURNING 所需的 COM_STMT_PREPARE_EXECUTE 基础编码、输出解码�
 
 `Number` 仅负责无损表示、验证和 Scanner/Valuer，不实现一套十进制运算库。输入扩展类型首先由 `NamedValueChecker` 识别并保持协议类型；普通第三方 `driver.Valuer` 再按标准库契约转换。[G04]
 
-复杂值的普通 Scan 表示需自描述：格式版本、schema/type 名称、字段顺序与类型、NULL、精确数值、时间和二进制都有明确标记。建议采用 `encoding/json` 实现的带类型标签表示，数值以十进制文本保存、二进制以 base64 保存；`Object.Scan`/`Array.Scan` 负责解析。它是公开、文档化的类型表示，不是进程内句柄或对未知类型的兜底。
+复杂值的普通 Scan 表示需自描述：格式版本、schema/type 名称、字段顺序与类型、NULL、精确数值、时间和二进制都有明确标记。已采用 `encoding/json` 实现的 format=1 带类型标签表示，数值以十进制文本保存、二进制以 base64 保存；`Object.Scan`/`Array.Scan` 负责解析。它是公开、文档化的类型表示，不是进程内句柄或对未知类型的兜底。
 
 输入 Object/Array 保留明确的类型名和字段顺序；不将任意 struct 反射成数据库对象，不将任意 slice 自动当作 Oracle 集合。类型描述缓存以会话模式、schema、type 名称及可得版本为键；DDL 或类型失配后刷新描述，业务执行不盲目重放。
 
@@ -347,6 +347,46 @@ Number 验证十进制与指数文本，不接收 float64 来重建精确值，�
 Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用原生 TIMESTAMP(9)，MySQL 协议只支持微秒，超过精度明确报错。IntervalYM/DS 保留符号、最高九位年/日与最高九位秒小数，不换算成 time.Duration。二进制和文本行中的 Oracle 扩展时间均按原生字段体解码，不能把它误当成字符文本。
 
 字符集叶包使用 x/text v0.31.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。
+
+### 11.2.2 已实现的 OBJECT/ARRAY 约定（D18）
+
+公开值均位于根包，不增加公开 codec/descriptor 包：
+
+```go
+type Attribute struct {
+    Name, Type string
+    Value any
+}
+type Object struct {
+    Schema, Type string
+    Version uint64
+    Fields []Attribute
+    Null bool
+}
+type Array struct {
+    Schema, Type string
+    Version uint64
+    ElementType string
+    ElementVersion uint64
+    Elements []any
+    Null bool
+}
+```
+
+Schema、Type、字段 Name/Type 使用字典精确拼写；Schema 省略时在原会话查询 CURRENT_SCHEMA。Object 输入按字典字段顺序逐项检查，Attribute.Type 可省略；不反射任意 struct 或 slice。Array.Type 为空表示匿名集合，ElementType 是内置类型或显式对象类型；匿名对象集合的 Schema/ElementVersion 描述元素。具名集合从字典解析元素类型。Version/ElementVersion 来自协议；0 表示服务端当前版本，不从字典虚构数字版本。
+
+`Null=true` 表示整个 SQL NULL；普通 nil/空 Elements 均表示空集合，元素 nil 保留为元素 NULL。Object/Array 均实现 Scanner/Valuer，Scan(nil) 设置 Null；失败的 Scan 不修改目标。标准查询返回 format=1 JSON 字符串，包含 kind、schema、type、version、null、fields（name/type/value）或 elementType、elementVersion、elements。空 fields/elements 可省略，扫描后规范化为空容器。NUMBER 使用十进制字符串，RAW/BLOB 使用 base64，DATE/TIMESTAMP 使用墙钟文本，子对象/集合使用同格式嵌套文档，元素顺序与字段顺序不变。Valuer 提供该无损表示；本驱动先由 NamedValueChecker 保留值身份，再发送原生复杂参数，不把 JSON 当作服务器对象值。
+
+原生绑定与结果支持 Oracle 兼容模式，使用 COMPLEX(160) 及服务端预处理二进制结果。对象参数头携带 schema/name/version；集合参数头为匿名头和元素协议类型，对象元素另携带其类型名/版本。文本结果缺少可验证的复杂值表示，明确 ErrUnsupported；客户端插值不生成复杂值字面量，已发送操作不会为切换协议而重放。MySQL 兼容模式的原生复杂输入同样明确拒绝。
+
+已实现字段输入为 NUMBER/INTEGER/DECIMAL/NUMERIC、CHAR/VARCHAR/VARCHAR2、NCHAR/NVARCHAR2、RAW、DATE 及嵌套对象/集合；非 NULL TIMESTAMP/LOB 字段输入没有已确认的写协议，返回 ErrUnsupported。内置集合元素头当前仅支持数值、CHAR/VARCHAR/VARCHAR2、RAW、DATE；NCHAR/NVARCHAR2/TIMESTAMP/LOB 集合即使为空或全 NULL 也在发送前拒绝。结果支持以上基础字段以及 TIMESTAMP、BLOB/CLOB/NCLOB 的有界内容物化。未支持的字段/元素类型明确报错，不兜底成未知字节或伪造成功；这些边界尚不能作为全部复杂类型的真实兼容验收。
+
+物化前先有界缓冲整个剩余响应，包括后续结果集和隐藏 OUT；完成响应后才能同会话查字典或读取嵌套 LOB。Close/Exec 排空同样执行这条路径，Close 的清理 context 传到最终复杂 OUT 解码，错误时不发布 OUT。根复杂值共享剩余预算，节点、字段元数据、普通值和嵌套 LOB 累计计入；LOB 读取前检查剩余额度，RAW/BLOB 计入 base64 膨胀，最终 JSON 及整响应再次受限。最大嵌套深度 32、节点 65536、JSON 16 MiB，并与更小的 MaxMessageBytes、MaxLOBBytes 同时约束；不通过扩大单个 LOB 预算绕过总量限制。
+
+描述复用 D13 的类型/属性/集合/同义词查询计划。优先实体类型，再 private/PUBLIC 同义词；拒绝远程 DB_LINK、循环和超深依赖。缓存仅存在于一个物理会话的单个业务命令内，以模式/schema/name/协议版本为键；每次业务命令和 reset 清空，不跨权限/schema 变化复用。帧解析与描述失配时清缓存并仅重新解析已缓冲字节，业务 SQL 不重放；相同形状下的类型语义变化仍需目标服务端版本/字典联调验证。描述查询累计响应也受 MaxMessageBytes 限制。
+
+上述能力已有本地协议/标准 database/sql 回归；`TestComplexTypes` 仅编译，Oracle/OBProxy 的类型定义、同义词、协议版本和原事务可见性尚未联调。
+
 
 ### 11.3 错误
 
@@ -761,7 +801,7 @@ defer rows.Close()
 - MySQL PARAMETERS 只在建连读取的 `ob_version()` 确认 OceanBase >= 4.1 时启用，不能使用 greeting 中的 MySQL 5.7/8.0 版本。未知或旧版本明确 ErrUnsupported，权限及字典 SQL 错误保留服务端 Error。ServerInfo 的字典能力位描述当前驱动开放的查询路径，不证明当前用户拥有字典权限。
 - StatementParameters 对 Query 执行一次服务端 prepare，保存参数列描述，关闭临时 statement 后返回独立的内存 Rows，绝不执行 Query；即使 Config.PrepareMode=PrepareClient 也遵循此规则。物理位置与逻辑位置均从 1 开始，Oracle 重复命名参数共享逻辑位置，name 为规范化绑定名。protocol_type/protocol_direction 保留协议字节，不能把未取证的 direction 字节猜成 IN/OUT；该入口的 direction 为 NULL，例程方向请查询 RoutineParameters。MySQL 参数可空性未知，参数类型和尺寸仅为 prepare 回报的信息，不承诺推断出的业务列定义。
 - Columns.length：MySQL 为 CHARACTER_MAXIMUM_LENGTH；Oracle 字符语义为 CHAR_LENGTH，其余为 DATA_LENGTH（字节），需结合 data_type 使用。RoutineParameters/TypeAttributes/CollectionElements 的 length 保留字典原始单位；未知不补默认长度。普通结果 ColumnTypes 的长度按协议及已知字符集报告字符数/二进制字节数；未知字符集或不可解释的尺寸返回 ok=false。DECIMAL 的精度去掉符号和小数点，Oracle NUMBER 使用显式 precision 和带符号 scale；未指定/超出合法范围返回 ok=false。Oracle FLOAT 的二进制 precision 与 -127 浮动 scale 不作为十进制精度报告。
-- `metadataLocked` 在已拥有连接 gate 且响应已完整结束时执行，复用同一参数化计划和现有字符集/安全字面量编码；返回 Rows 只关闭自身取消回调，不释放外层 gate。未读响应直接拒绝；内部查询不会经 Metadata/Session 或另开物理连接。公开入口把锁所有权交给返回 Rows。描述缓存待 D18 随类型描述实现，D13 不缓存任意字典行集。
+- `metadataLocked` 在已拥有连接 gate 且响应已完整结束时执行，复用同一参数化计划和现有字符集/安全字面量编码；返回 Rows 只关闭自身取消回调，不释放外层 gate。未读响应直接拒绝；内部查询不会经 Metadata/Session 或另开物理连接。公开入口把锁所有权交给返回 Rows。D18 已实现单业务命令内的类型描述缓存，D13 不缓存任意字典行集。
 - UDT 属性与集合元素投影使用 OceanBase 的 NUMBER_PRECISION 字段，输出别名仍为 precision；依据固定 [v4.3.5_CE 属性视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25001_25050.cpp) 与 [集合视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25051_25100.cpp)，不套用不一致的字典字段。
 
 以上路径已由协议对端覆盖，真实数据库字典字段、版本差异及权限仍需集成验证；D16/D18 的 Query/Next 缓存未命中场景仍由各自任务验证。

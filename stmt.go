@@ -218,6 +218,22 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	if err != nil {
 		return nil, err
 	}
+	if err = s.conn.lock(ctx); err != nil {
+		return nil, err
+	}
+	gateOwned := true
+	defer func() {
+		if gateOwned {
+			s.conn.unlock()
+		}
+	}()
+	s.conn.clearDescriptors()
+	if s.closed || s.closeRequested {
+		return nil, fmt.Errorf("oceanbase: statement closed")
+	}
+	if s.conn.closed.Load() {
+		return nil, driver.ErrBadConn
+	}
 	params := make([]wire.Parameter, len(values))
 	budget := s.conn.cfg.Limits.MaxMessageBytes - 10
 	if len(values) > 0 {
@@ -232,30 +248,20 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 		case Raw, []byte:
 			limit = min(limit, s.conn.cfg.Limits.MaxLOBBytes)
 		}
-		params[i], err = encodeParameter(v.value, s.plan.mode, s.conn.cfg.Session, limit)
+		params[i], err = s.conn.encodeParameterLocked(ctx, v.value, limit)
 		if err != nil {
 			return nil, err
 		}
-		if params[i].EncodedSize() > budget {
+		if (params[i].EncodedSize() + int64(len(params[i].TypeMetadata))) > budget {
 			return nil, wire.ErrMessageTooLarge
 		}
-		budget -= params[i].EncodedSize()
+		budget -= (params[i].EncodedSize() + int64(len(params[i].TypeMetadata)))
 	}
 	payload, err := wire.EncodeStmtExecute(s.id, params, s.conn.cfg.Limits.MaxMessageBytes)
 	if err != nil {
 		return nil, err
 	}
-	if err = s.conn.lock(ctx); err != nil {
-		return nil, err
-	}
-	if s.closed || s.closeRequested {
-		s.conn.unlock()
-		return nil, fmt.Errorf("oceanbase: statement closed")
-	}
-	if s.conn.closed.Load() {
-		s.conn.unlock()
-		return nil, driver.ErrBadConn
-	}
+	gateOwned = false
 	var owned *stmt
 	if auto {
 		owned = s

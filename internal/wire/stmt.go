@@ -22,6 +22,7 @@ func DecodePrepareOK(data []byte) (PrepareOK, error) {
 // Parameter contains the wire type and unprefixed data for length-encoded values.
 type Parameter struct {
 	Type          uint16
+	TypeMetadata  []byte
 	Data          []byte
 	LengthEncoded bool
 }
@@ -60,7 +61,7 @@ func EncodeStmtExecute(id uint32, params []Parameter, limit int64) ([]byte, erro
 		n += int64((len(params)+7)/8 + 1 + 2*len(params))
 	}
 	for _, p := range params {
-		size := p.EncodedSize()
+		size := p.EncodedSize() + int64(len(p.TypeMetadata))
 		if size > limit-n {
 			return nil, ErrMessageTooLarge
 		}
@@ -84,6 +85,7 @@ func EncodeStmtExecute(id uint32, params []Parameter, limit int64) ([]byte, erro
 			b[bitmap+i/8] |= 1 << uint(i%8)
 		}
 		b = binary.LittleEndian.AppendUint16(b, p.Type)
+		b = append(b, p.TypeMetadata...)
 	}
 	for _, p := range params {
 		if byte(p.Type) == 6 {
@@ -111,6 +113,17 @@ func DecodeBinaryRow(data []byte, columns []Column) ([][]byte, error) {
 			continue
 		}
 		switch c.Type {
+		case 160:
+			if c.ComplexShape == nil {
+				return nil, ErrMalformed
+			}
+			start := r.offset
+			budget := 65536
+			_, err := r.complex(c.ComplexShape, 0, &budget, false)
+			if err != nil {
+				return nil, err
+			}
+			fields[i] = data[start:r.offset]
 		case 1:
 			fields[i] = r.take(1)
 		case 2, 13:

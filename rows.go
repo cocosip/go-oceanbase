@@ -49,7 +49,9 @@ func (r *textRows) Columns() []string {
 	return names
 }
 
-func (r *textRows) release() {
+func (r *textRows) release() { r.releaseWithContext(r.ctx) }
+
+func (r *textRows) releaseWithContext(opCtx context.Context) {
 	if r.holdRelease {
 		r.conn.responseActive = false
 		return
@@ -71,11 +73,17 @@ func (r *textRows) release() {
 			cancel()
 		}
 		if r.outputs != nil {
+			if r.err == nil {
+				r.err = r.outputs.decodeComplexLocked(opCtx, r.conn)
+				if r.err != nil {
+					r.conn.discard()
+				}
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
 			r.err = errors.Join(r.err, r.outputs.finishLocked(ctx, r.conn, r.err == nil))
 			cancel()
 			if !r.outputs.internal && r.err == nil {
-				r.err = r.conn.materializeLOBValuesLocked(r.ctx, r.outputs.columns, r.outputs.values, r.conn.cfg.Limits.MaxMessageBytes)
+				r.err = r.conn.materializeLOBValuesLocked(opCtx, r.outputs.columns, r.outputs.values, r.conn.cfg.Limits.MaxMessageBytes)
 				if r.err != nil {
 					r.conn.discard()
 				}
@@ -174,7 +182,7 @@ func (r *textRows) advance(ctx context.Context) error {
 			r.done = true
 			r.columns = nil
 			if !r.more {
-				r.release()
+				r.releaseWithContext(ctx)
 				return r.err
 			}
 			continue
@@ -191,7 +199,7 @@ func (r *textRows) advance(ctx context.Context) error {
 				return err
 			}
 			if !r.more {
-				r.release()
+				r.releaseWithContext(ctx)
 				return r.err
 			}
 			continue
@@ -243,23 +251,31 @@ func (r *textRows) Next(dest []driver.Value) error {
 }
 
 func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
+	data, err := r.rowPacket(ctx)
+	if err != nil {
+		return err
+	}
+	return r.decodeRow(data, dest)
+}
+
+func (r *textRows) rowPacket(ctx context.Context) ([]byte, error) {
 	data, err := r.conn.session.packets.ReadMessage(ctx)
 	if err != nil {
-		return r.fail(err, true)
+		return nil, r.fail(err, true)
 	}
 	if r.holdRelease {
 		r.bufferBytes += int64(len(data))
 		if r.bufferBytes > r.conn.cfg.Limits.MaxMessageBytes {
-			return r.fail(wire.ErrMessageTooLarge, true)
+			return nil, r.fail(wire.ErrMessageTooLarge, true)
 		}
 	}
 	if len(data) == 0 {
-		return r.fail(wire.ErrMalformed, true)
+		return nil, r.fail(wire.ErrMalformed, true)
 	}
 	if data[0] == 255 {
 		err = decodeServerError(data)
 		var server *Error
-		return r.fail(err, !errors.As(err, &server))
+		return nil, r.fail(err, !errors.As(err, &server))
 	}
 	if data[0] == 254 && (len(data) < 9 || (r.conn.session.capabilities&wire.ClientDeprecateEOF != 0 && len(data) < 0xffffff)) {
 		var ok wire.OK
@@ -269,7 +285,7 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 			ok, err = wire.DecodeEOF(data)
 		}
 		if err != nil {
-			return r.fail(err, true)
+			return nil, r.fail(err, true)
 		}
 		r.conn.observeResourceStatus(ok.Status)
 		r.conn.session.ok = ok
@@ -279,14 +295,19 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 		}
 		r.more = ok.Status&8 != 0 || r.nativeTail
 		if !r.more && !r.hiddenOut {
-			r.release()
+			r.releaseWithContext(ctx)
 		}
 		if r.err != nil {
-			return r.err
+			return nil, r.err
 		}
-		return io.EOF
+		return nil, io.EOF
 	}
+	return data, nil
+}
+
+func (r *textRows) decodeRow(data []byte, dest []driver.Value) error {
 	var fields [][]byte
+	var err error
 	if r.binary {
 		fields, err = wire.DecodeBinaryRow(data, r.columns)
 	} else {
@@ -297,6 +318,15 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 	}
 	if dest != nil {
 		for i, field := range fields {
+			if r.columns[i].Type == 160 {
+				if !r.binary {
+					return r.fail(fmt.Errorf("%w: complex rows require server prepared statements", ErrUnsupported), true)
+				}
+				if field != nil {
+					dest[i] = append([]byte{}, field...)
+				}
+				continue
+			}
 			if (r.captureLOB || r.hiddenOut) && r.conn.session.mode == ModeOracle {
 				if value, ok := captureLOBValue(r.columns[i], field); ok {
 					dest[i] = value
@@ -332,11 +362,18 @@ func (r *textRows) drainAll(ctx context.Context) error {
 		return r.err
 	}
 	for {
+		if err := r.bufferLOBResponse(ctx); err != nil {
+			return err
+		}
+		if r.released {
+			r.buffered = nil
+			return r.err
+		}
 		if err := r.drainCurrent(ctx); err != nil {
 			return err
 		}
 		if !r.more {
-			r.release()
+			r.releaseWithContext(ctx)
 			return r.err
 		}
 		if err := r.advance(ctx); err != nil {
@@ -401,7 +438,7 @@ func (r *textRows) NextResultSet() error {
 	if r.released {
 		return io.EOF
 	}
-	if err := r.bufferLOBResponse(); err != nil {
+	if err := r.bufferLOBResponse(r.ctx); err != nil {
 		return err
 	}
 	return nil
