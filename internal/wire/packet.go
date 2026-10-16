@@ -65,17 +65,12 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 	if err = p.check(ctx); err != nil {
 		return nil, err
 	}
-	finish, err := p.prepareIO(ctx, false)
+	finish, err := p.prepareIO(ctx)
 	if err != nil {
 		return nil, p.fail(ctx, "read", 0, err)
 	}
 	var transferred int64
-	defer func() {
-		if cleanupErr := finish(); cleanupErr != nil && err == nil {
-			message = nil
-			err = p.fail(ctx, "read", transferred, cleanupErr)
-		}
-	}()
+	defer finish()
 	for {
 		var header [4]byte
 		n, readErr := io.ReadFull(p.conn, header[:])
@@ -113,16 +108,12 @@ func (p *PacketIO) WriteMessage(ctx context.Context, payload []byte) (err error)
 	if _, err = messageSize(0, len(payload), p.maxMessageBytes); err != nil {
 		return err
 	}
-	finish, err := p.prepareIO(ctx, true)
+	finish, err := p.prepareIO(ctx)
 	if err != nil {
 		return p.fail(ctx, "write", 0, err)
 	}
 	var transferred int64
-	defer func() {
-		if cleanupErr := finish(); cleanupErr != nil && err == nil {
-			err = p.fail(ctx, "write", transferred, cleanupErr)
-		}
-	}()
+	defer finish()
 	for {
 		length := min(len(payload), 0xffffff)
 		header := [4]byte{byte(length), byte(length >> 8), byte(length >> 16), p.sequence}
@@ -187,27 +178,23 @@ func (p *PacketIO) fail(ctx context.Context, operation string, n int64, err erro
 	return &IOError{Op: operation, Bytes: n, Err: err}
 }
 
-func (p *PacketIO) prepareIO(ctx context.Context, write bool) (func() error, error) {
-	set := p.conn.SetReadDeadline
-	if write {
-		set = p.conn.SetWriteDeadline
-	}
+func (p *PacketIO) prepareIO(ctx context.Context) (func(), error) {
 	deadline, _ := ctx.Deadline()
-	if err := set(deadline); err != nil {
+	// TLS reads may write control records, so refresh both directions at every entry.
+	if err := p.conn.SetDeadline(deadline); err != nil {
 		return nil, err
 	}
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
-		if err := set(time.Now()); err != nil {
+		if err := p.conn.SetDeadline(time.Now()); err != nil {
 			_ = p.conn.Close()
 		}
 		close(done)
 	})
-	return func() error {
-		// Wait before clearing the deadline so an old callback cannot cancel the next command.
+	return func() {
+		// Preserve complete responses and stop old callbacks before the next operation.
 		if !stop() {
 			<-done
 		}
-		return set(time.Time{})
 	}, nil
 }

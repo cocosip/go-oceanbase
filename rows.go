@@ -23,8 +23,10 @@ type textRows struct {
 	err                  error
 	stopCancel           func() bool
 	cancelDone           chan struct{}
+	stopTx               func()
 	binary               bool
 	autoStmt             *stmt
+	execution            *Execution
 }
 
 func (r *textRows) Columns() []string {
@@ -37,9 +39,15 @@ func (r *textRows) Columns() []string {
 
 func (r *textRows) release() {
 	if !r.released {
+		if r.err == nil {
+			r.err = r.contextError()
+		}
 		r.released = true
 		if r.stopCancel != nil && !r.stopCancel() {
 			<-r.cancelDone
+		}
+		if r.stopTx != nil {
+			r.stopTx()
 		}
 		if r.autoStmt != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
@@ -48,10 +56,16 @@ func (r *textRows) release() {
 			}
 			cancel()
 		}
+		r.execution.finish(r.err)
 		r.conn.unlock()
 	}
 }
 func (r *textRows) fail(err error, broken bool) error {
+	if !r.released {
+		if cause := r.contextError(); cause != nil && !errors.Is(err, cause) {
+			err = errors.Join(err, cause)
+		}
+	}
 	if r.err == nil {
 		r.err = err
 	}
@@ -60,6 +74,16 @@ func (r *textRows) fail(err error, broken bool) error {
 	}
 	r.release()
 	return r.err
+}
+
+func (r *textRows) contextError() error {
+	if err := context.Cause(r.ctx); err != nil {
+		return err
+	}
+	if r.conn.activeTx != nil {
+		return context.Cause(r.conn.activeTx.ctx)
+	}
+	return nil
 }
 
 // advance skips command-only results so NextResultSet exposes ordinary rowsets only.
@@ -76,6 +100,9 @@ func (r *textRows) advance(ctx context.Context) error {
 			err = decodeServerError(data)
 			var server *Error
 			if errors.As(err, &server) {
+				if r.execution != nil && r.items < r.conn.cfg.Limits.MaxResultItems {
+					r.execution.add(ResultInfo{Kind: ResultFailure, Complete: true, Err: err})
+				}
 				return r.fail(err, false)
 			}
 			return err
@@ -91,6 +118,9 @@ func (r *textRows) advance(ctx context.Context) error {
 			}
 			r.last = result{affected: ok.AffectedRows, id: ok.InsertID, known: true}
 			r.conn.session.ok = ok
+			if err = r.execution.command(ok); err != nil {
+				return err
+			}
 			r.more = ok.Status&8 != 0
 			r.done = true
 			r.columns = nil
@@ -104,6 +134,7 @@ func (r *textRows) advance(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		r.execution.add(ResultInfo{Kind: ResultRows})
 		r.columns = make([]wire.Column, n)
 		metadataBytes := int64(len(data))
 		for i := range r.columns {
@@ -175,6 +206,7 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 		}
 		r.conn.session.ok = ok
 		r.done = true
+		r.execution.rowDone()
 		r.more = ok.Status&8 != 0
 		if !r.more {
 			r.release()
@@ -248,7 +280,7 @@ func (r *textRows) Close() error {
 	if r.released {
 		return r.err
 	}
-	if err := r.ctx.Err(); err != nil {
+	if err := r.contextError(); err != nil {
 		return r.fail(err, true)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)

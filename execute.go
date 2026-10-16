@@ -9,6 +9,11 @@ import (
 )
 
 func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(executionRequest); ok {
+			return c.QueryContext(context.WithValue(ctx, executionContextKey{}, request.execution), request.query, request.args)
+		}
+	}
 	if len(args) == 0 {
 		return c.queryText(ctx, query)
 	}
@@ -109,6 +114,17 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 
 func (c *conn) startRows(ctx context.Context, binary bool, auto *stmt) *textRows {
 	r := &textRows{conn: c, ctx: ctx, done: true, binary: binary, autoStmt: auto}
+	if c.activeTx != nil && c.activeTx.ctx.Done() != nil {
+		txctx := c.activeTx.ctx
+		op, cancel := context.WithCancelCause(ctx)
+		stop := context.AfterFunc(txctx, func() { cancel(context.Cause(txctx)) })
+		if txctx.Err() != nil {
+			cancel(context.Cause(txctx))
+		}
+		r.stopTx = func() { stop(); cancel(nil) }
+		ctx = op
+		r.ctx = ctx
+	}
 	if ctx.Done() != nil {
 		r.cancelDone = make(chan struct{})
 		r.stopCancel = context.AfterFunc(ctx, func() { c.discard(); close(r.cancelDone) })
@@ -117,12 +133,18 @@ func (c *conn) startRows(ctx context.Context, binary bool, auto *stmt) *textRows
 }
 func (c *conn) queryCommandLocked(ctx context.Context, payload []byte, binary bool, auto *stmt) (*textRows, error) {
 	r := c.startRows(ctx, binary, auto)
+	ctx = r.ctx
+	r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
 	c.session.packets.ResetSequence()
 	if err := c.session.packets.WriteMessage(ctx, payload); err != nil {
 		// A rejected pre-send packet does not poison the physical session.
 		broken := !errorsPreSend(err)
+		if broken {
+			r.execution.begin()
+		}
 		return nil, r.fail(err, broken)
 	}
+	r.execution.begin()
 	if err := r.advance(ctx); err != nil {
 		return nil, r.fail(err, true)
 	}

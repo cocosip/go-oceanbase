@@ -397,7 +397,8 @@ Session 的定义见 §14.1。Execute 只接受非 nil 的 `*sql.Conn` 或 `*sql
 - Rows 项在读到完整结果边界后标记 Complete；成功 drain 也可以使它完成，不表示业务读取了每一行。命令项收到完整 OK 后完成；明确的独立服务端 ERR 可形成 Failure 项。行结果中途失败则保留该项未完成及其错误，不生成虚假的后续项。
 - Snapshot 并发安全并返回摘要副本。Done 表示该执行已结束，包括失败结束；成功条件为 Done 且 Err 为 nil。失败时保留已确认的前缀和原错误，未观察到的语句是否执行不能由摘要推断。
 - 参数/配置在发送前失败可以返回 nil、error；开始发送后若 QueryContext 直接失败，仍返回非 nil Execution 和 error，保留已经确认的信息，此时 Rows 可为 nil。不能以 ErrBadConn 隐藏部分执行结果。
-- Close 幂等，有界关闭/排空 Rows 并完成摘要、OUT 和资源发布。它返回读取、最终化或清理的错误，即使 Rows 已自动关闭，也不能丢失此前错误。取消、超时或清理失败时标记未完成结果，清理未发布资源并淘汰无法同步的会话。调用方检查 Execute 错误、Rows.Err、Close 错误和最终 Snapshot。
+- Close 幂等，有界关闭/排空 Rows 并完成摘要、OUT 和资源发布。它返回读取、最终化或清理的错误，即使 Rows 已自动关闭，也不能丢失此前错误。取消、超时或清理失败时标记未完成结果，清理未发布资源并淘汰无法同步的会话。调用方停止行迭代后调用 Close，检查 Execute 错误、Rows.Err、Close 错误和最终 Snapshot。
+- Snapshot 只复制驱动内存状态，可与行迭代并发调用；它不查询标准 Rows。标准库内部事务取消没有向驱动公开，显式 Commit/Rollback 自动关闭未读 Rows 时，其取消错误由 Execution.Close 读取 Rows.Err 并合并到最终摘要，保留此前驱动错误和原始超时原因。Done 表示驱动已完成收尾；取得包含标准库错误的最终摘要以 Close 为边界。
 - `Rows().Close()` 走同一最终化逻辑；已发布 Cursor/LOB 的寿命见 §13.2，不随 Execution.Close 关闭。Rows 的读取与关闭仍遵守标准库并发契约；仅 Snapshot 允许并发观察，不承诺并发 Next。
 - 摘要达到 MaxResultItems 后不再无界分配：返回资源上限错误，保留已记录前缀并有界清理，不能将后续项默认为未执行或静默丢弃后返回成功。
 

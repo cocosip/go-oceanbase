@@ -11,6 +11,7 @@ import (
 	"net"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/cocosip/go-oceanbase/internal/auth"
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -189,6 +190,10 @@ func (c *connector) upgradeTLS(ctx context.Context, s *handshakeSession, respons
 	cfg := cloneTLSConfig(c.cfg.TLSConfig)
 	if cfg.ServerName == "" {
 		cfg.ServerName, _, _ = net.SplitHostPort(c.cfg.Addr)
+	}
+	// HandshakeContext owns cancellation until packet I/O refreshes the deadlines.
+	if err = s.conn.SetDeadline(time.Time{}); err != nil {
+		return err
 	}
 	secure := tls.Client(s.conn, cfg)
 	if err = secure.HandshakeContext(ctx); err != nil {

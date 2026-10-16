@@ -29,6 +29,41 @@ func (*bufferConn) SetDeadline(time.Time) error      { return nil }
 func (*bufferConn) SetReadDeadline(time.Time) error  { return nil }
 func (*bufferConn) SetWriteDeadline(time.Time) error { return nil }
 
+type closedOnClearConn struct{ *bufferConn }
+
+func (*closedOnClearConn) SetDeadline(d time.Time) error {
+	if d.IsZero() {
+		return io.ErrClosedPipe
+	}
+	return nil
+}
+func (*closedOnClearConn) SetReadDeadline(d time.Time) error {
+	if d.IsZero() {
+		return io.ErrClosedPipe
+	}
+	return nil
+}
+func (*closedOnClearConn) SetWriteDeadline(d time.Time) error {
+	if d.IsZero() {
+		return io.ErrClosedPipe
+	}
+	return nil
+}
+
+func TestPacketCompleteBeforeClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c := &closedOnClearConn{newBufferConn([]byte{1, 0, 0, 0, 'a'})}
+	p := NewPacketIO(c, 64)
+	data, err := p.ReadMessage(ctx)
+	if err != nil || string(data) != "a" {
+		t.Fatal("completed response overwritten by deadline cleanup", data, err)
+	}
+	if err = p.WriteMessage(ctx, []byte{'b'}); err != nil {
+		t.Fatal("completed write overwritten by deadline cleanup", err)
+	}
+}
+
 func TestPacketTransportUpgrade(t *testing.T) {
 	first := newBufferConn([]byte{1, 0, 0, 0, 'a'})
 	p := NewPacketIO(first, 10)

@@ -50,6 +50,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, driver.ErrBadConn
 	}
 	r := c.startRows(ctx, false, nil)
+	ctx = r.ctx
 	defer r.release()
 	p := c.session.packets
 	p.ResetSequence()
@@ -89,8 +90,12 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, r.fail(fmt.Errorf("%w: server parameter count", ErrBind), true)
 	}
 	prepared := &stmt{conn: c, id: header.ID, plan: plan}
+	err = ctx.Err()
 	r.release()
-	if err = ctx.Err(); err != nil {
+	if err == nil {
+		err = r.err
+	}
+	if err != nil {
 		_ = prepared.Close()
 		return nil, err
 	}

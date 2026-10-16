@@ -88,7 +88,8 @@ func convertArgument(value any) (any, error) {
 }
 
 func (*conn) CheckNamedValue(value *driver.NamedValue) error {
-	if _, ok := value.Value.(savepointRequest); ok {
+	switch value.Value.(type) {
+	case savepointRequest, executionRequest:
 		return nil
 	}
 	v, err := convertArgument(value.Value)
