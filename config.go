@@ -131,14 +131,10 @@ func normalizeConfig(cfg Config) (Config, error) {
 	if cfg.Limits.CleanupTimeout == 0 {
 		cfg.Limits.CleanupTimeout = time.Second
 	}
-	if cfg.Session.Charset == "" {
-		cfg.Session.Charset = "utf8mb4"
+	cfg.Session, err = cloneSessionOptions(cfg.Session)
+	if err != nil {
+		return Config{}, err
 	}
-	if cfg.Session.Location == nil {
-		cfg.Session.Location = time.UTC
-	}
-	cfg.Session.Variables = maps.Clone(cfg.Session.Variables)
-	cfg.Session.InitSQL = slices.Clone(cfg.Session.InitSQL)
 	cfg.Auth, err = cloneAuthOptions(cfg.Auth)
 	if err != nil {
 		return Config{}, err

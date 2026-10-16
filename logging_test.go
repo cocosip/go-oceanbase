@@ -3,7 +3,9 @@ package oceanbase
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"strings"
 	"testing"
 )
@@ -22,7 +24,7 @@ func TestLoggerIsolation(t *testing.T) {
 		{"second-secret", slog.New(slog.NewJSONHandler(&second, options))},
 		{"silent-secret", nil},
 	} {
-		c, err := NewConnector(Config{User: tc.user, Password: "never-log-password", Logger: tc.logger})
+		c, err := NewConnector(Config{User: tc.user, Password: "never-log-password", Logger: tc.logger, DialContext: func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("test dial failure") }})
 		if err != nil {
 			t.Fatal(err)
 		}

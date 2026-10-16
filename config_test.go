@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+const testUTCOffset = "+00:00"
 const testUser = "app"
 const testPassword = "secret"
 const testServerName = "db.example"
@@ -92,7 +93,7 @@ func TestConfigValidation(t *testing.T) {
 
 func TestConnectorSnapshot(t *testing.T) {
 	const mutated = "changed"
-	variables := map[string]string{"time_zone": "+00:00"}
+	variables := map[string]string{"time_zone": testUTCOffset}
 	initSQL := []string{"SET @a=1"}
 	protos := []string{"original"}
 	roots := x509.NewCertPool()
@@ -112,7 +113,7 @@ func TestConnectorSnapshot(t *testing.T) {
 	tlsConfig.ServerName = mutated
 	certDER[0] = 9
 	snapshot := c.(*connector).cfg
-	if snapshot.Session.Variables["time_zone"] != "+00:00" || snapshot.Session.InitSQL[0] != "SET @a=1" || snapshot.TLSConfig.ServerName != testServerName || snapshot.TLSConfig.NextProtos[0] != "original" || snapshot.TLSConfig.Certificates[0].Certificate[0][0] != 1 || snapshot.TLSConfig.RootCAs == roots {
+	if snapshot.Session.Variables["time_zone"] != testUTCOffset || snapshot.Session.InitSQL[0] != "SET @a=1" || snapshot.TLSConfig.ServerName != testServerName || snapshot.TLSConfig.NextProtos[0] != "original" || snapshot.TLSConfig.Certificates[0].Certificate[0][0] != 1 || snapshot.TLSConfig.RootCAs == roots {
 		t.Fatal("connector retained mutable caller configuration")
 	}
 	if calls != 0 {
@@ -130,8 +131,10 @@ func TestDriverRegistration(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err = db.PingContext(context.Background()); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("D01 must explicitly reject unavailable Connect: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err = db.PingContext(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled Ping opened a connection: %v", err)
 	}
 	if _, err = sql.Open("oceanbase", "oceanbase://app:secret@localhost/demo?unknown=secret"); err == nil {
 		t.Fatal("DriverContext must validate DSN before dialing")

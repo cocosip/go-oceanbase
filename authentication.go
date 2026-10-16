@@ -66,6 +66,7 @@ type AuthOptions struct {
 
 type handshakeSession struct {
 	conn         net.Conn
+	raw          net.Conn
 	packets      *wire.PacketIO
 	hello        wire.Handshake
 	ok           wire.OK
@@ -81,7 +82,7 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 			_ = raw.Close()
 		}
 	}()
-	s := &handshakeSession{conn: raw, packets: wire.NewPacketIO(raw, c.cfg.Limits.MaxMessageBytes)}
+	s := &handshakeSession{conn: raw, raw: raw, packets: wire.NewPacketIO(raw, c.cfg.Limits.MaxMessageBytes)}
 	data, err := s.packets.ReadMessage(ctx)
 	if err != nil {
 		return nil, err

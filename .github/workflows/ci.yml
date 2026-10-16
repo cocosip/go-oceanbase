@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      integration:
+        description: 'Run integration tests against explicitly configured test databases'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,3 +51,26 @@ jobs:
           GOARCH: '386'
       - run: go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzHandshake -fuzztime 30s -parallel 2
+
+  integration:
+    if: github.event_name == 'workflow_dispatch' && inputs.integration
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.25.x', '1.26.x']
+        profile: [mysql, oracle, proxy-mysql, proxy-oracle]
+    env:
+      OB_TEST_REQUIRE: '1'
+      OB_TEST_PROFILE: ${{ matrix.profile }}
+      OB_MYSQL_DSN: ${{ secrets.OB_MYSQL_DSN }}
+      OB_ORACLE_DSN: ${{ secrets.OB_ORACLE_DSN }}
+      OBPROXY_MYSQL_DSN: ${{ secrets.OBPROXY_MYSQL_DSN }}
+      OBPROXY_ORACLE_DSN: ${{ secrets.OBPROXY_ORACLE_DSN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - run: go test -tags=integration ./tests/integration -run TestSmoke -count=1

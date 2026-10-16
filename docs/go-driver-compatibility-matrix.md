@@ -7,14 +7,14 @@
 | 能力 | 已确认依据 | Go 当前行为 | 验证状态 |
 | --- | --- | --- | --- |
 | Protocol v10 / 4.1 | [初始握手解析](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/ReadInitialHandShakePacket.java#L85)、[客户端响应](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L120) | 严格解析 v10，要求 Protocol41/SecureConnection；仅声明已实现的协议路径 | 合成包流单测；真实版本待联调 |
-| Oracle 兼容模式 | [状态位 4](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/util/constant/ServerStatus.java#L57)、[认证 OK 判断](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823) | 按认证 OK 状态识别；显式模式不符关闭；ChangedRows 在 Oracle 模式拒绝；Connector 锁模式由 D04 的成功初始化完成 | 合成模式正反例；真实版本待联调 |
+| Oracle 兼容模式 | [状态位 4](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/util/constant/ServerStatus.java#L57)、[认证 OK 判断](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823) | 按认证 OK 状态识别；显式模式不符关闭；ChangedRows 在 Oracle 模式拒绝；Connector 在成功初始化后原子锁定模式 | 合成模式正反例；真实版本待联调 |
 | CLIENT_SUPPORT_ORACLE | [客户端声明](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L303) | 客户端始终声明，不要求 greeting 回显该位 | 合成握手；真实版本待联调 |
 | native / caching SHA2 / SHA256 / clear | [认证编排](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L720) | 共享门禁；初始/切换/多阶段；clear 要求驱动验证的 TLS；SHA 无 TLS 仅用外部固定 RSA 公钥，禁自动取公钥 | 算法向量、对端解密、切换/拒绝路径通过；服务端插件组合未确认 |
 | TLS | [SSL 能力位](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/OceanBaseCapabilityFlag.java#L67) | 显式 TLSConfig 启用，SSLRequest 后升级；校验证书与主机名，不降级；自定义 Dial 的安全状态不作为凭据发送依据 | 本地 TLS 服务端正向/错误证书/错误主机名；真实证书环境待联调 |
 
 认证扩展使用 `AuthOptions.Plugins` 的每次认证工厂。`Security` 在 `Respond` 获得凭据前执行；每阶段重新判定，插件声明需 TLS 的阶段在未验证时不会调用 Respond。扩展属于调用方可信代码，需正确声明安全级别，并遵守 context；不暴露原始 Socket。Credentials 回调在每次新认证调用，NewConnector 不调用回调，事务中不刷新。
 
-当前握手字符集只实现 utf8mb4、utf8/utf8mb3、latin1 的协议编号；其他显式字符集返回能力错误，完整字符集转换由 D12 交付。认证阶段保留服务端版本原文，真实 OceanBase 版本查询与会话初始化按 D04/D05 继续实现。
+当前握手字符集只实现 utf8mb4、utf8/utf8mb3、latin1 的协议编号；其他显式字符集返回能力错误，完整字符集转换由 D12 交付。认证阶段保留服务端版本原文，真实 OceanBase 版本查询按 D05 继续实现，会话初始化已在 D04 接通。
 
 ## 2. 后续高级协议条件
 

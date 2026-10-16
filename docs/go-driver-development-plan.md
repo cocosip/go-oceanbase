@@ -225,9 +225,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：Connector.Connect、driver.Conn 基本方法和 Pinger；连接总预算覆盖 Dial/TLS/凭据/初始化，失败路径释放连接；按 §5.2 建立测试环境入口和临时对象清理。
 
-- [ ] 测试 `TestConnectBudget`、`TestConnectorModePinning`、`TestPingFailure`：Dial/TLS/凭据/初始化各阶段共用总预算；并发初始化不混模式；初始化失败不锁模式；Ping 失败不伪成功。多地址候选循环在 D26 增加，复用本任务的总预算而非重置计时。
-- [ ] 执行 `go test . -run 'Test(Connect|ConnectorModePinning|Ping)' -count=1`，确认失败。
-- [ ] 实现建连和初始化基线；早期尚未完成的 Exec/Prepare/BeginTx 明确报错，不把空实现当成功。
+- [x] 测试 `TestConnectBudget`、`TestConnectorModePinning`、`TestPingFailure`：Dial/TLS/凭据/初始化各阶段共用总预算；并发初始化不混模式；初始化失败不锁模式；Ping 失败不伪成功。多地址候选循环在 D26 增加，复用本任务的总预算而非重置计时。
+- [x] 执行 `go test . -run 'Test(Connect|ConnectorModePinning|Ping)' -count=1`，确认失败。
+- [x] 实现建连和初始化基线；早期尚未完成的 Exec/Prepare/BeginTx 明确报错，不把空实现当成功。
 - [ ] 同命令通过；将 integration job 接入既有 CI，按四个 profile 执行 `TestSmoke`，验收设置 OB_TEST_REQUIRE=1，记录实际认证、模式、版本；缺环境标为待联调，不能通过 G1。
 
 ### D05 COM_QUERY、文本结果与标准计数
