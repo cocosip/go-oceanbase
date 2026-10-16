@@ -19,6 +19,8 @@ type profile struct {
 	mode      oceanbase.Mode
 }
 
+const selectParameterSQL = "SELECT ?"
+
 const oracleDualSuffix = " FROM dual"
 
 func profiles(name string) ([]profile, error) {

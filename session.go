@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+const (
+	charsetUTF8         = "utf8"
+	charsetUTF8MB3Alias = "utf8mb3"
+)
+
 func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
 	if options.Charset == "" {
 		options.Charset = "utf8mb4"
@@ -37,8 +42,8 @@ func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
 
 func (c *conn) initialize(ctx context.Context) error {
 	charset := strings.ToLower(c.cfg.Session.Charset)
-	if charset == "utf8mb3" {
-		charset = "utf8"
+	if charset == charsetUTF8MB3Alias {
+		charset = charsetUTF8
 	}
 	if err := c.initSQL(ctx, "SET NAMES "+charset); err != nil {
 		return err

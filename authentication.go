@@ -169,7 +169,7 @@ func handshakeCharset(name string) (byte, error) {
 	switch strings.ToLower(name) {
 	case "utf8mb4":
 		return 45, nil
-	case "utf8", "utf8mb3":
+	case charsetUTF8, charsetUTF8MB3Alias:
 		return 33, nil
 	case "latin1":
 		return 8, nil

@@ -60,7 +60,7 @@ func TestBinaryRows(t *testing.T) {
 	if err = s.QueryRowContext(context.Background()).Scan(&n, &value, &u, &d, &f, &b, &n6, &n7, &text, &n9); err != nil {
 		t.Fatal(err)
 	}
-	if n.Valid || n6.Valid || n7.Valid || n9.Valid || value != 42 || u != "18446744073709551615" || d != "12345678901234567.890" || f != 1.25 || len(b) != 2 || b[1] != 255 || text != "" {
+	if n.Valid || n6.Valid || n7.Valid || n9.Valid || value != 42 || u != testMaxUint64Text || d != "12345678901234567.890" || f != 1.25 || len(b) != 2 || b[1] != 255 || text != "" {
 		t.Fatal(n, value, u, d, f, b, n6, n7, text, n9)
 	}
 	if err = s.Close(); err != nil {

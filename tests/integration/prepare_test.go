@@ -72,7 +72,7 @@ func TestPrepareRoundTrip(t *testing.T) {
 			if err = read.QueryRowContext(ctx, 2).Scan(&binary, &binaryNumber); err != nil || binary.Valid {
 				t.Fatal(binary, err)
 			}
-			query := "SELECT ?"
+			query := selectParameterSQL
 			args := []any{int64(42)}
 			if p.mode == oceanbase.ModeOracle {
 				query = "SELECT :x,:X FROM dual"

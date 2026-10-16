@@ -91,7 +91,7 @@ func TestStmtAfterReset(t *testing.T) {
 			db := sql.OpenDB(connector)
 			db.SetMaxOpenConns(1)
 			defer func() { _ = db.Close() }()
-			query := "SELECT ?"
+			query := selectParameterSQL
 			if p.mode == oceanbase.ModeOracle {
 				query += oracleDualSuffix
 			}

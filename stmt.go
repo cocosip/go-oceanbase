@@ -22,6 +22,9 @@ func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	return c.PrepareContext(context.Background(), query)
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	if c.cfg.PrepareMode == PrepareClient {
+		return c.prepareClient(ctx, query)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

@@ -262,7 +262,7 @@ const (
 
 - 无参数普通执行优先 COM_QUERY。
 - 有参数默认走服务端 prepare/execute，避免在普通调用中实现文本插值。
-- 用户显式选择客户端预处理时，采用模式感知的词法计划和文本编码；不拼接未转义参数。
+- Config.PrepareMode 默认 PrepareServer；显式 PrepareClient 采用模式感知的词法计划和文本编码。MySQL 文本使用明确字符集的 hex literal；Oracle 使用引用及类型字面量。执行时使用当前 NO_BACKSLASH_ESCAPES，不插入 sql_mode 查询。当前不自动降级。
 - Oracle 游标、LOB 或需要扩展协议的语句可选择服务端执行，即使没有 IN 参数。
 - 连接中保留原 SQL、绑定计划和 statement 代次；服务端缓存按物理会话存放，LRU 有界，驱逐时释放服务端资源。
 - PrepareExecute、checksum、参数类型头复用、long/piece data、多发包、bulk、array binding 均是同一内核内的实现策略。

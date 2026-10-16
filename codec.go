@@ -11,6 +11,11 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
+const (
+	typeNameDate = "DATE"
+	typeNameChar = "CHAR"
+)
+
 // UnsupportedTypeError identifies a type whose decoding is not implemented for this mode.
 type UnsupportedTypeError struct {
 	Type byte
@@ -65,7 +70,7 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 9:
 		return "MEDIUMINT"
 	case 10, 14:
-		return "DATE"
+		return typeNameDate
 	case 11:
 		return "TIME"
 	case 12:
@@ -88,7 +93,7 @@ func mysqlTextTypeName(c wire.Column) string {
 		}
 		return "TEXT"
 	case 254:
-		return "CHAR"
+		return typeNameChar
 	case 255:
 		return "GEOMETRY"
 	}

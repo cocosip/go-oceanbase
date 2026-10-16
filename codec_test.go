@@ -22,7 +22,7 @@ func TestTextScalarValues(t *testing.T) {
 		{"number", wire.Column{Type: 3}, ModeOracle, []byte("12345678901234567890.123456789"), "12345678901234567890.123456789", false},
 		{"decimal", wire.Column{Type: 246}, ModeMySQL, []byte("0.000000000000000000000001"), "0.000000000000000000000001", false},
 		{"signed", wire.Column{Type: 8}, ModeMySQL, []byte("-9223372036854775808"), int64(math.MinInt64), false},
-		{"unsigned", wire.Column{Type: 8, Flags: 32}, ModeMySQL, []byte("18446744073709551615"), "18446744073709551615", false},
+		{"unsigned", wire.Column{Type: 8, Flags: 32}, ModeMySQL, []byte(testMaxUint64Text), testMaxUint64Text, false},
 		{"unsigned-small", wire.Column{Type: 8, Flags: 32}, ModeMySQL, []byte("42"), int64(42), false},
 		{"raw", wire.Column{Type: 203}, ModeOracle, []byte{0, 255}, []byte{0, 255}, false},
 		{"float", wire.Column{Type: 5}, ModeOracle, []byte("-1.25"), float64(-1.25), false},

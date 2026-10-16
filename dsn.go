@@ -74,6 +74,15 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		default:
 			err = &ConfigError{Field: "rowsAffectedMode"}
 		}
+	case "prepareMode":
+		switch value {
+		case "server":
+			cfg.PrepareMode = PrepareServer
+		case "client":
+			cfg.PrepareMode = PrepareClient
+		default:
+			err = &ConfigError{Field: "prepareMode"}
+		}
 	case "resetMode":
 		switch value {
 		case "managed":

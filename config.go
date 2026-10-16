@@ -43,6 +43,15 @@ const (
 	ResetFull
 )
 
+// PrepareMode selects the parameterized execution strategy.
+type PrepareMode uint8
+
+// Preparation strategies. Client interpolation is always explicitly selected.
+const (
+	PrepareServer PrepareMode = iota
+	PrepareClient
+)
+
 // Limits bounds protocol messages, materialization and cleanup. Zero uses defaults.
 type Limits struct {
 	MaxMessageBytes int64
@@ -78,6 +87,7 @@ type Config struct {
 	Limits               Limits
 	RowsAffectedMode     RowsAffectedMode
 	ResetMode            ResetMode
+	PrepareMode          PrepareMode
 	AllowMultiStatements bool
 }
 
@@ -101,6 +111,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.ResetMode > ResetFull {
 		return Config{}, &ConfigError{Field: "ResetMode"}
+	}
+	if cfg.PrepareMode > PrepareClient {
+		return Config{}, &ConfigError{Field: "PrepareMode"}
 	}
 	if cfg.ConnectTimeout < 0 {
 		return Config{}, &ConfigError{Field: "ConnectTimeout"}

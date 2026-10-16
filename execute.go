@@ -12,6 +12,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	if len(args) == 0 {
 		return c.queryText(ctx, query)
 	}
+	if c.cfg.PrepareMode == PrepareClient {
+		return (&clientStmt{conn: c, query: query}).queryRows(ctx, args)
+	}
 	prepared, err := c.prepareArguments(ctx, query, args)
 	if err != nil {
 		return nil, err
@@ -29,6 +32,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		}
 	}
 	if len(args) > 0 {
+		if c.cfg.PrepareMode == PrepareClient {
+			return (&clientStmt{conn: c, query: query}).ExecContext(ctx, args)
+		}
 		prepared, err := c.prepareArguments(ctx, query, args)
 		if err != nil {
 			return nil, err

@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+const testUTF8MB4 = "utf8mb4"
+const testMaxUint64Text = "18446744073709551615"
+
 const testUTCOffset = "+00:00"
 const testUser = "app"
 const testPassword = "secret"
@@ -56,7 +59,7 @@ func TestConfigDefaults(t *testing.T) {
 	if cfg.RowsAffectedMode != MatchedRows || cfg.ResetMode != ResetManaged || cfg.AllowMultiStatements || cfg.Logger != nil || cfg.TLSConfig != nil {
 		t.Fatal("unsafe defaults")
 	}
-	if cfg.Session.Charset != "utf8mb4" || cfg.Session.Location != time.UTC {
+	if cfg.Session.Charset != testUTF8MB4 || cfg.Session.Location != time.UTC {
 		t.Fatal("unstable charset/time defaults")
 	}
 }

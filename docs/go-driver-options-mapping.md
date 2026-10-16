@@ -4,7 +4,7 @@
 
 当前仅配置基础层已开始实现；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。后续能力落地时补实际 Go 字段、默认差异、测试及验证组合。
 
-Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。当前选项：mode、connectTimeout、charset、ncharset、location、rowsAffectedMode、resetMode、allowMultiStatements、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。敏感值只放 userinfo；logger/TLS/回调只能程序化注入。
+Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。当前选项：mode、prepareMode、connectTimeout、charset、ncharset、location、rowsAffectedMode、resetMode、allowMultiStatements、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。敏感值只放 userinfo；logger/TLS/回调只能程序化注入。
 
 Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 128 行，摘要 1024 项，清理 1 秒；零值选默认，负值拒绝。TLS 配置克隆其证书字节、证书池、切片/map；回调、私钥、已解析 Leaf 及 logger 仍为调用方共享的不可变/并发安全对象。
 
@@ -54,7 +54,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `assureReadOnly` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L351) | D09 | 标准 sql.Tx / reset / 只读策略 | 待迁移/验证 |
 | `useLegacyDatetimeCode` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L358) | D12 | SessionOptions / 精确值 / 时间与类型语义 | 待迁移/验证 |
 | `maximizeMysqlCompatibility` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L368) | D12 | SessionOptions / 精确值 / 时间与类型语义 | 待迁移/验证 |
-| `useServerPrepStmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L377) | D08 | 标准 sql.Stmt 与带参数执行默认使用服务端预处理；不同于 Java 默认值，不提供同名布尔开关 | 本地已实现/验证，真实服务端待联调；D10 补显式客户端策略 |
+| `useServerPrepStmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L377) | D08 | 标准 sql.Stmt 与带参数执行默认使用服务端预处理；不同于 Java 默认值，不提供同名布尔开关 | 本地已实现/验证；PrepareMode 可显式选 PrepareClient，默认仍 PrepareServer；真实服务端待联调 |
 | `trustStore` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L385) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
 | `trustStorePassword` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L393) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
 | `keyStore` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L400) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
@@ -115,7 +115,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `useServerPsStmtChecksum` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L797) | D24 | 有界 statement 缓存 / 通用执行策略 | 待迁移/验证 |
 | `characterEncoding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L803) | D12 | Config.Session.Charset | 配置已实现，默认 utf8mb4；编解码待 D12 |
 | `useCursorFetch` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L809) | D19 | Limits.FetchSize / Cursor | 待迁移/验证 |
-| `supportNameBinding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L815) | D07 | 绑定计划与输入校验 | 命名绑定本地已实现，Oracle 无须开关；MySQL 拒绝命名参数；其他改写选项仍待 D10 验证 |
+| `supportNameBinding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L815) | D07 | 绑定计划与输入校验 | 命名绑定本地已实现，Oracle 无须开关；MySQL 拒绝命名参数；显式 JDBC escape 转换已本地验证，真实语义待联调 |
 | `socksProxyHost` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L821) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
 | `socksProxyPort` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L827) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
 | `connectProxy` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L834) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
@@ -124,7 +124,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `useOraclePrepareExecute` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L853) | D14 | Out / 必要 PrepareExecute / D24 缓存 | 待迁移/验证 |
 | `autoDeserialize` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L859) | D18 | 显式 Object/Array/JSON 值；不自动恢复 Java 序列化对象 | Java 序列化不引入 Go；等价值功能待 D18 |
 | `maxBatchTotalParamsNum` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L865) | D22 | ExecBatch / 明确批量策略 | 待迁移/验证 |
-| `emulateUnsupportedPstmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L872) | D10 | 显式客户端预处理策略 | 待迁移/验证 |
+| `emulateUnsupportedPstmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L872) | D10 | Config.PrepareMode / prepareMode DSN | 已实现显式 PrepareClient；不提供自动降级，只有调用方明确选择才插值 |
 | `enableQueryTimeouts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L878) | D06 | context / 有界 I/O / 不确定结果 | 待迁移/验证 |
 | `useCursorOffset` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L884) | D19 | Limits.FetchSize / Cursor | 待迁移/验证 |
 | `blobSendChunkSize` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L890) | D21 | LongData / 分段上传 | 待迁移/验证 |
