@@ -74,8 +74,29 @@ func serveOK(ctx context.Context, t *testing.T, p *wire.PacketIO, want []byte, s
 	return true
 }
 
-func serveBaseline(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte) bool {
-	return serveOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && serveOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status)
+func serveBaseline(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, deprecate ...bool) bool {
+	return serveOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && serveOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status) && serveVersion(ctx, t, p, status, len(deprecate) > 0 && deprecate[0])
+}
+
+func serveVersion(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, deprecate bool) bool {
+	query := "SELECT ob_version()"
+	if status&4 != 0 {
+		query += " FROM dual"
+	}
+	if !readQuery(ctx, t, p, query) {
+		return false
+	}
+	if !sendPackets(ctx, t, p, []byte{1}, textColumn("version", 253, 45, 0)) {
+		return false
+	}
+	if !deprecate && !sendPackets(ctx, t, p, []byte{254, 0, 0, status, 0}) {
+		return false
+	}
+	terminal := []byte{254, 0, 0, status, 0}
+	if deprecate {
+		terminal = []byte{254, 0, 0, status, 0, 0, 0}
+	}
+	return sendPackets(ctx, t, p, []byte{7, '4', '.', '3', '.', '5', '.', '1'}, terminal)
 }
 
 func serveQuit(t *testing.T, p *wire.PacketIO) {
@@ -246,6 +267,9 @@ func TestConnectorConcurrentModes(t *testing.T) {
 			t.Error(err)
 			return
 		}
+		if !serveVersion(ctx, t, p, status, false) {
+			return
+		}
 		p.ResetSequence()
 		data, err := p.ReadMessage(context.Background())
 		if err == nil {
@@ -382,5 +406,26 @@ func TestConnectSessionValueEncoding(t *testing.T) {
 		if value := c.quoteSessionValue(tc.value); value != tc.want {
 			t.Fatalf("unsafe SET literal: %q want %q", value, tc.want)
 		}
+	}
+}
+
+func TestConnectOceanBaseVersion(t *testing.T) {
+	c, err := NewConnector(Config{User: testUser, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+		if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) {
+			return
+		}
+		p.ResetSequence()
+		serveQuit(t, p)
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := c.Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = created.Close() }()
+	if created.(*conn).session.obVersion != "4.3.5.1" {
+		t.Fatal("OceanBase version was inferred from MySQL greeting instead of server query")
 	}
 }

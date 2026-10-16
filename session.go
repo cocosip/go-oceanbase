@@ -2,6 +2,8 @@ package oceanbase
 
 import (
 	"context"
+	"database/sql/driver"
+	"io"
 	"maps"
 	"slices"
 	"strings"
@@ -44,6 +46,9 @@ func (c *conn) initialize(ctx context.Context) error {
 	if err := c.initSQL(ctx, "SET autocommit=1"); err != nil {
 		return err
 	}
+	if err := c.readOceanBaseVersion(ctx); err != nil {
+		return err
+	}
 	if name := c.cfg.Session.NCharset; name != "" {
 		if c.session.mode != ModeOracle {
 			return &ConfigError{Field: "Session.NCharset"}
@@ -77,8 +82,46 @@ func (c *conn) initialize(ctx context.Context) error {
 	return nil
 }
 
+func (c *conn) readOceanBaseVersion(ctx context.Context) error {
+	const responseField = "server version response"
+	query := "SELECT ob_version()"
+	if c.session.mode == ModeOracle {
+		query += " FROM dual"
+	}
+	rows, err := c.queryText(ctx, query)
+	if err != nil {
+		return err
+	}
+	if len(rows.columns) != 1 {
+		return rows.fail(&ConfigError{Field: responseField}, true)
+	}
+	values := make([]driver.Value, 1)
+	if err = rows.Next(values); err != nil {
+		return rows.fail(err, true)
+	}
+	version, ok := values[0].(string)
+	if !ok || len(version) == 0 || len(version) > 256 {
+		return rows.fail(&ConfigError{Field: responseField}, true)
+	}
+	if err = rows.Next(values); err != io.EOF {
+		if err == nil {
+			err = &ConfigError{Field: responseField}
+		}
+		return rows.fail(err, true)
+	}
+	if rows.more {
+		return rows.fail(&ConfigError{Field: responseField}, true)
+	}
+	c.session.obVersion = version
+	return nil
+}
+
 func (c *conn) initSQL(ctx context.Context, query string) error {
-	return c.commandOK(ctx, append([]byte{3}, query...))
+	rows, err := c.queryText(ctx, query)
+	if err != nil {
+		return err
+	}
+	return rows.drainAll(ctx)
 }
 
 func sessionVariableName(name string) bool {

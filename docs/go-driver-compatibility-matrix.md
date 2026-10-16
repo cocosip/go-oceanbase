@@ -14,7 +14,7 @@
 
 认证扩展使用 `AuthOptions.Plugins` 的每次认证工厂。`Security` 在 `Respond` 获得凭据前执行；每阶段重新判定，插件声明需 TLS 的阶段在未验证时不会调用 Respond。扩展属于调用方可信代码，需正确声明安全级别，并遵守 context；不暴露原始 Socket。Credentials 回调在每次新认证调用，NewConnector 不调用回调，事务中不刷新。
 
-当前握手字符集只实现 utf8mb4、utf8/utf8mb3、latin1 的协议编号；其他显式字符集返回能力错误，完整字符集转换由 D12 交付。认证阶段保留服务端版本原文，真实 OceanBase 版本查询按 D05 继续实现，会话初始化已在 D04 接通。
+当前握手字符集只实现 utf8mb4、utf8/utf8mb3、latin1 的协议编号；其他显式字符集返回能力错误，完整字符集转换由 D12 交付。认证阶段保留服务端版本原文，D05 已通过模式对应的 ob_version() 查询保留 OceanBase 版本原文；真实版本仍待联调，会话初始化已在 D04 接通。
 
 ## 2. 后续高级协议条件
 

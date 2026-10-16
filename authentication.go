@@ -74,6 +74,7 @@ type handshakeSession struct {
 	capabilities uint64
 	tlsVerified  bool
 	user         string
+	obVersion    string
 }
 
 func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *handshakeSession, err error) {
@@ -141,7 +142,10 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	if server&required != required {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
-	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc
+	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF
+	if c.cfg.AllowMultiStatements {
+		wanted |= wire.ClientMultiStatements
+	}
 	if c.cfg.RowsAffectedMode == MatchedRows {
 		wanted |= wire.ClientFoundRows
 	}

@@ -5,6 +5,8 @@ package integration
 import (
 	"os"
 	"testing"
+
+	"github.com/cocosip/go-oceanbase"
 )
 
 func TestSmoke(t *testing.T) {
@@ -22,8 +24,18 @@ func TestSmoke(t *testing.T) {
 			if err := db.PingContext(testContext(t)); err != nil {
 				failOperation(t, "Ping", err)
 			}
-			// D05 adds SQL-based version capture; Ping already validates actual mode through authentication.
-			t.Log("authenticated connection, session initialization and Ping passed; server version capture pending D05")
+			query := "SELECT ob_version()"
+			if p.mode == oceanbase.ModeOracle {
+				query += " FROM dual"
+			}
+			var version string
+			if err := db.QueryRowContext(testContext(t), query).Scan(&version); err != nil {
+				failOperation(t, "version", err)
+			}
+			if version == "" {
+				t.Fatal("empty OceanBase version")
+			}
+			t.Logf("authenticated connection, initialization, Ping and version query passed; OceanBase=%s", version)
 		})
 	}
 }
