@@ -99,6 +99,13 @@ func textTypeName(c wire.Column, mode Mode) string {
 			return typeNameNChar
 		case 209:
 			return typeNameRowID
+		case 210:
+			return typeNameBlob
+		case 211:
+			if name, _ := charset.Collation(c.Charset); name == charsetUTF16 {
+				return typeNameNClob
+			}
+			return typeNameClob
 		case 246:
 			return typeNameNumber
 		case 7, 10, 11, 13, 14, 245, 249, 250, 251, 252, 255:
@@ -150,7 +157,7 @@ func mysqlTextTypeName(c wire.Column) string {
 		return "SET"
 	case 249, 250, 251, 252:
 		if c.Charset == 63 {
-			return "BLOB"
+			return typeNameBlob
 		}
 		return "TEXT"
 	case 254:

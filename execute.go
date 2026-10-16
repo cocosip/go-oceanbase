@@ -41,6 +41,12 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(lobOpenRequest); ok {
+			return c.execOpenLOB(ctx, request)
+		}
+		if request, ok := args[0].Value.(lobRequest); ok {
+			return c.execLOB(ctx, request)
+		}
 		if request, ok := args[0].Value.(resourceRequest); ok {
 			return c.execResource(ctx, request)
 		}
@@ -158,7 +164,7 @@ func (c *conn) encodeSQL(query string) ([]byte, error) {
 
 func (c *conn) startRows(ctx context.Context, binary bool, auto *stmt) *textRows {
 	c.responseActive = true
-	r := &textRows{conn: c, ctx: ctx, done: true, binary: binary, autoStmt: auto}
+	r := &textRows{conn: c, ctx: ctx, iterationCtx: ctx, done: true, binary: binary, autoStmt: auto}
 	if c.activeTx != nil && c.activeTx.ctx.Done() != nil {
 		txctx := c.activeTx.ctx
 		op, cancel := context.WithCancelCause(ctx)
@@ -188,6 +194,9 @@ func (c *conn) queryCommandOwnedLocked(ctx context.Context, payload []byte, bina
 func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool, outputs *outputState) (*textRows, error) {
 	r := c.startRows(ctx, binary, auto)
 	r.keepGate = keepGate
+	if state, _ := ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil && !keepGate {
+		state.gate, r.keepGate, r.captureLOB = true, true, true
+	}
 	r.outputs = outputs
 	ctx = r.ctx
 	if !keepGate {
@@ -208,6 +217,9 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 	}
 	if r.err != nil {
 		return nil, r.err
+	}
+	if err := r.bufferLOBResponse(); err != nil {
+		return nil, err
 	}
 	return r, nil
 }

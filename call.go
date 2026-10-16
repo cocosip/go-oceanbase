@@ -99,7 +99,7 @@ func validOutputType(name string) bool {
 	switch name {
 	case typeNameNumber, typeNameDecimal, "INTEGER", typeNameBigInt, "BIGINT UNSIGNED", typeNameBoolean, typeNameFloat, typeNameDouble, typeNameBinaryFloat, typeNameBinaryDouble,
 		typeNameVarchar, typeNameVarchar2, typeNameChar, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameVarbinary, typeNameDate, typeNameDateTime, typeNameTimestamp,
-		typeNameTimestampTZ, typeNameTimestampLTZ, typeNameIntervalYM, typeNameIntervalDS:
+		typeNameTimestampTZ, typeNameTimestampLTZ, typeNameIntervalYM, typeNameIntervalDS, typeNameBlob, typeNameClob, typeNameNClob:
 		return true
 	}
 	return false
@@ -108,7 +108,7 @@ func validOutputType(name string) bool {
 func (b *outBinding) validateMode(mode Mode) error {
 	if b.Length > 0 {
 		switch b.Type {
-		case typeNameVarchar, typeNameVarchar2, typeNameChar, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameVarbinary:
+		case typeNameVarchar, typeNameVarchar2, typeNameChar, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameVarbinary, typeNameBlob, typeNameClob, typeNameNClob:
 		default:
 			return fmt.Errorf("%w: length requires a text or binary output type", ErrOut)
 		}
@@ -120,7 +120,7 @@ func (b *outBinding) validateMode(mode Mode) error {
 		return nil
 	}
 	switch b.Type {
-	case typeNameVarchar2, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameBinaryFloat, typeNameBinaryDouble, typeNameTimestampTZ, typeNameTimestampLTZ, typeNameIntervalYM, typeNameIntervalDS:
+	case typeNameVarchar2, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameBinaryFloat, typeNameBinaryDouble, typeNameTimestampTZ, typeNameTimestampLTZ, typeNameIntervalYM, typeNameIntervalDS, typeNameClob, typeNameNClob:
 		return fmt.Errorf("%w: output type in MySQL compatibility mode", ErrUnsupported)
 	}
 	if b.Precision > 0 && (b.Scale < 0 || b.Scale > 30 || b.Scale > b.Precision) {
@@ -346,7 +346,7 @@ func (c *conn) validateOutputValue(b *outBinding, value driver.Value) error {
 		}
 		size := len(text)
 		switch b.Type {
-		case typeNameRaw, typeNameVarbinary:
+		case typeNameRaw, typeNameVarbinary, typeNameBlob:
 		default:
 			if !utf8.ValidString(text) {
 				return fmt.Errorf("%w: output text is not UTF-8", ErrOut)

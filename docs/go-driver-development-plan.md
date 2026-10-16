@@ -383,7 +383,7 @@ go test -tags=integration ./tests/integration -count=1
 
 依赖：D12、D13、D15。对应：M10；架构 §14.1–§14.3。
 
-文件：新增 `lob.go`、`lob_oracle.go`、`lob_test.go`；修改 `rows.go` 和 codec；新增 `tests/integration/lob_test.go`。
+文件：新增根包 `lob*.go`（公开入口、原生调度、字符、修改、有界行集），新增 `internal/wire/lob.go` 与测试；修改 Rows、codec、资源、合并执行及握手；新增 `tests/integration/lob_test.go`。
 
 交付：OpenBlob/OpenClob；先固定以下操作面，再实现原生后端。Reader/Writer 适配器绑定显式 context，不保存打开操作的 context 作为永久寿命。
 
@@ -402,10 +402,13 @@ func (c *Clob) Close() error
 
 Blob 的短读/短写遵守 io.ReaderAt/WriterAt 语义，off 为 0 起点。Clob 的 off/count 以 0 起点 Unicode 码点计，不按 UTF-8 字节计；后端字符单位不一致时明确转换或拒绝，不能静默分裂字符。WriteChars 返回已写码点数。
 
-- [ ] 测试 `TestLOBLocator`、`TestLOBInterleave`、`TestLOBNoReentry`、`TestClobOffsets`：V1/V2、NULL/空/临时/持久、内联/外联、超过16MiB、分块短读、字符/字节偏移区分；未读响应内不插入 LOB 命令。用真实 database/sql QueryContext/Rows.Next + 协议对端覆盖原会话物化，限定超时证明不重入公开会话/操作锁，不只断言内部 helper 被调用。
-- [ ] 执行 `go test . -run 'Test(LOB|Clob)' -count=1`，确认失败。
-- [ ] 实现 locator 查询完整结束后发布；Clob 字符操作以 rune/字符计数命名并单独定义索引，不能复用 Blob 字节索引；临时 LOB 释放与本地关闭分清。
-- [ ] 同命令通过；`TestNativeLOB` 在原事务读取未提交数据、取消/释放/reset；交错不支持版本使用架构允许的有界路径，不开辅助连接。
+- [x] 测试 `TestLOBLocator`、`TestLOBInterleave`、`TestLOBNoReentry`、`TestClobOffsets`：V1/V2、NULL/空/临时/持久、内联/外联、超过16MiB、分块短读、字符/字节偏移区分；未读响应内不插入 LOB 命令。用真实 database/sql QueryContext/Rows.Next + 协议对端覆盖原会话物化，限定超时证明不重入公开会话/操作锁，不只断言内部 helper 被调用。
+- [x] 执行 `go test . -run 'Test(LOB|Clob)' -count=1`，确认失败。
+- [x] 实现 locator 查询完整结束后发布；Clob 字符操作以 rune/字符计数命名并单独定义索引，不能复用 Blob 字节索引；临时 LOB 释放与本地关闭分清。
+- [x] 同命令通过；QueryContext/Rows.NextResultSet、标量 OUT 与混合结果的原会话物化已覆盖；无辅助连接。双版本 test/vet/386、lint 及 locator fuzz 本地通过。
+- [ ] `TestNativeLOB` 在原事务读取未提交数据、取消/释放/reset；源码与手动 CI 入口已添加且仅编译，数据库联调按当前约束暂缓。
+
+UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对宽度时写入前 ErrUnsupported；相同宽度覆盖和追加可用。具体 NCLOB 服务端字符单位及 collation 仍待真实目标验证。
 
 ### D17 MySQL 表内 BLOB 模拟 locator
 

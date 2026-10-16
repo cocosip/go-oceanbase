@@ -18,6 +18,7 @@ const maxTextColumns = 4096
 type textRows struct {
 	conn                 *conn
 	ctx                  context.Context
+	iterationCtx         context.Context
 	columns              []wire.Column
 	done, more, released bool
 	items                int
@@ -33,6 +34,11 @@ type textRows struct {
 	outputs              *outputState
 	nativeTail           bool
 	hiddenOut            bool
+	captureLOB           bool
+	holdRelease          bool
+	buffered             []lobRowset
+	bufferRow            int
+	bufferBytes          int64
 }
 
 func (r *textRows) Columns() []string {
@@ -44,6 +50,10 @@ func (r *textRows) Columns() []string {
 }
 
 func (r *textRows) release() {
+	if r.holdRelease {
+		r.conn.responseActive = false
+		return
+	}
 	if !r.released {
 		if r.err == nil {
 			r.err = r.contextError()
@@ -64,6 +74,12 @@ func (r *textRows) release() {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
 			r.err = errors.Join(r.err, r.outputs.finishLocked(ctx, r.conn, r.err == nil))
 			cancel()
+			if !r.outputs.internal && r.err == nil {
+				r.err = r.conn.materializeLOBValuesLocked(r.ctx, r.outputs.columns, r.outputs.values, r.conn.cfg.Limits.MaxMessageBytes)
+				if r.err != nil {
+					r.conn.discard()
+				}
+			}
 		}
 		if !r.keepGate {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
@@ -74,7 +90,7 @@ func (r *textRows) release() {
 			r.err = errors.Join(r.err, cause)
 			r.conn.discard()
 		}
-		if r.outputs != nil && r.err == nil {
+		if r.outputs != nil && !r.outputs.internal && r.err == nil {
 			r.err = r.conn.assignOutputs(r.outputs.bindings, r.outputs.values)
 		}
 		if r.stopTx != nil {
@@ -206,6 +222,17 @@ func (r *textRows) Next(dest []driver.Value) error {
 	if r.err != nil {
 		return r.err
 	}
+	if r.buffered != nil {
+		if err := r.iterationCtx.Err(); err != nil {
+			return err
+		}
+		if r.bufferRow >= len(r.buffered[0].rows) {
+			return io.EOF
+		}
+		copy(dest, r.buffered[0].rows[r.bufferRow])
+		r.bufferRow++
+		return nil
+	}
 	if r.done {
 		return io.EOF
 	}
@@ -219,6 +246,12 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 	data, err := r.conn.session.packets.ReadMessage(ctx)
 	if err != nil {
 		return r.fail(err, true)
+	}
+	if r.holdRelease {
+		r.bufferBytes += int64(len(data))
+		if r.bufferBytes > r.conn.cfg.Limits.MaxMessageBytes {
+			return r.fail(wire.ErrMessageTooLarge, true)
+		}
 	}
 	if len(data) == 0 {
 		return r.fail(wire.ErrMalformed, true)
@@ -264,6 +297,12 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 	}
 	if dest != nil {
 		for i, field := range fields {
+			if (r.captureLOB || r.hiddenOut) && r.conn.session.mode == ModeOracle {
+				if value, ok := captureLOBValue(r.columns[i], field); ok {
+					dest[i] = value
+					continue
+				}
+			}
 			if typ := r.columns[i].Type; typ >= 249 && typ <= 252 && int64(len(field)) > r.conn.cfg.Limits.MaxLOBBytes {
 				return r.fail(wire.ErrMessageTooLarge, true)
 			}
@@ -310,6 +349,10 @@ func (r *textRows) drainAll(ctx context.Context) error {
 }
 
 func (r *textRows) Close() error {
+	if r.buffered != nil {
+		r.buffered = nil
+		return r.err
+	}
 	if r.released {
 		return r.err
 	}
@@ -321,10 +364,27 @@ func (r *textRows) Close() error {
 	return r.drainAll(ctx)
 }
 
-func (r *textRows) HasNextResultSet() bool { return !r.released && (r.more || !r.done) }
+func (r *textRows) HasNextResultSet() bool {
+	if r.buffered != nil {
+		return len(r.buffered) > 1
+	}
+	return !r.released && (r.more || !r.done)
+}
 func (r *textRows) NextResultSet() error {
 	if r.err != nil {
 		return r.err
+	}
+	if r.buffered != nil {
+		if err := r.iterationCtx.Err(); err != nil {
+			return err
+		}
+		if len(r.buffered) <= 1 {
+			return io.EOF
+		}
+		r.buffered[0] = lobRowset{}
+		r.buffered = r.buffered[1:]
+		r.bufferRow, r.columns = 0, r.buffered[0].columns
+		return nil
 	}
 	if r.released {
 		return io.EOF
@@ -340,6 +400,9 @@ func (r *textRows) NextResultSet() error {
 	}
 	if r.released {
 		return io.EOF
+	}
+	if err := r.bufferLOBResponse(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -370,7 +433,7 @@ func columnLength(c wire.Column, mode Mode) (int64, bool) {
 			return int64(c.Length), true
 		}
 		name, ok := charset.Collation(c.Charset)
-		width := map[string]uint32{"binary": 1, "ascii": 1, "latin1": 1, "gbk": 2, "utf8mb3": 3, "utf8mb4": 4, "utf16": 4, "gb18030": 4}[name]
+		width := map[string]uint32{"binary": 1, "ascii": 1, "latin1": 1, "gbk": 2, "utf8mb3": 3, "utf8mb4": 4, charsetUTF16: 4, "gb18030": 4}[name]
 		if !ok || width == 0 || c.Length%width != 0 {
 			return 0, false
 		}
@@ -406,6 +469,9 @@ func columnPrecisionScale(c wire.Column, mode Mode) (int64, int64, bool) {
 }
 func (r *textRows) ColumnTypeScanType(index int) reflect.Type {
 	c := r.columns[index]
+	if c.Type == 210 && r.conn.session.mode == ModeOracle {
+		return reflect.TypeFor[[]byte]()
+	}
 	if r.conn.cfg.Session.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type == 202 && r.conn.session.mode == ModeOracle) {
 		return reflect.TypeFor[time.Time]()
 	}

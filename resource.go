@@ -29,6 +29,7 @@ type resourceRecord struct {
 	key       resourceKey
 	parent    *stmt
 	published bool
+	lob       *nativeLOBResource
 }
 
 type resourceState struct {
@@ -132,13 +133,17 @@ func (c *conn) execResource(ctx context.Context, request resourceRequest) (drive
 
 func (c *conn) releaseResourceLocked(ctx context.Context, id *resourceEpoch, record *resourceRecord) error {
 	delete(c.resources.records, id)
+	var err error
+	if record.lob != nil {
+		err = c.freeLOBLocked(ctx, record.lob)
+	}
 	if s := record.parent; s != nil {
 		s.leases--
 		if s.leases == 0 && s.closeRequested {
-			return s.closeLocked(ctx)
+			return errors.Join(err, s.closeLocked(ctx))
 		}
 	}
-	return nil
+	return err
 }
 
 // Only complete response boundaries may release server resources.

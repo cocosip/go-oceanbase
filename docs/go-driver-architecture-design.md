@@ -630,6 +630,14 @@ Oracle 的“保持游标并在同连接执行 LOB 操作”需要真实服务�
 
 复杂类型描述读取同样只在命令边界执行。需要补充描述时先完成当前响应，并由根包的内部调度执行字典查询/LOB 读取。即使响应已完整，驱动 QueryContext/Rows.Next 仍可能持有 database/sql 的连接锁；禁止从这些调用内部再进入公开 Metadata、Session 或 sql.DB/Conn/Tx 方法。内部直接使用当前物理会话的命令执行器，不重新取得标准库连接锁；调度器只持有一次会话操作所有权，不递归获取自己的操作锁。只共享查询计划、类型描述和缓存，见 §16.1。
 
+D16 已实现上述原生入口和 `Blob.Reader(ctx)` / `Blob.Writer(ctx)`，适配器各自持有顺序偏移和本次传入的 context，不借用 Open 的 context，也不拥有 locator。`Blob.Truncate` 只缩短；短读返回已读字节及 io.EOF，分块写失败返回已完成的前缀，失败块不自动重放。普通查询和标量 `sql.Out` / `Out` 中的 LOB 返回内容，默认每值 16 MiB；显式句柄可分块处理超出该上限的对象。
+
+当前实现使用已有 Oracle COM_STMT_PREPARE_EXECUTE 内核调用 DBMS_LOB.READ/WRITE/TRIM/FREETEMPORARY，要求已确认的实际 ob_version >= 2.2.76。读取数量同时接受原生整数和无损整数 NUMBER，拒绝小数、溢出及数量/内容不匹配。每块受 DBMS_LOB 的 32767 字节和 MaxMessageBytes 双重约束。V2 临时标记驱动服务端释放，V1 通过同会话 ISTEMPORARY 判定；持久 locator 只释放本地记录。清理失败淘汰物理连接，不结束调用方事务。
+
+D19 的服务器游标到位前，首次遇到原生 LOB 的结果集会有界缓冲本次响应剩余的所有行集、命令结果和隐藏 OUT；读到完整响应边界后才物化内容。累计计入列信息、行容器、字段和物化后内容，受 MaxMessageBytes / MaxResultItems / MaxLOBBytes 限制。内部命令保留现有 gate，不进入公开 Session 或 Metadata，不换辅助连接；已缓冲行使用原调用方 context，与网络操作结束时的内部取消分开。Open 也先结束整个 locator 查询，再原子发布；基数不合要求时清理已取得的临时对象。
+
+字符 API 的 off/count/返回计数均为 Unicode 码点。已知 UTF16 collation 的服务端偏移按 UTF-16 单位转换，其他受支持字符集按码点转换；out-row 路径从起点分块扫描，校验服务端数量和编码长度，不能把 UTF-8 字节当字符。UTF-16 覆盖要求已有位置与新字符的代理对宽度相同，宽度改变时在任何写入前返回 ErrUnsupported；追加和相同宽度覆盖可用。不能表示的文本、非法代理对或不匹配的服务端字符单位明确失败。目标服务端 NCLOB 字符单位和 collation 行为仍须由 TestNativeLOB 取证。
+
 ### 14.4 表内 BLOB 与 MySQL 模拟 locator
 
 采用显式目标描述取得可靠行身份，不从任意查询、列别名或 BLOB 内容推测表和主键。这是本方案的 API 选择，返回的仍是同一个 Blob 类型：

@@ -105,6 +105,7 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 		return nil, err
 	}
 	response := wire.HandshakeResponse{Capabilities: s.capabilities, MaxPacketBytes: uint32(min(c.cfg.Limits.MaxMessageBytes, math.MaxUint32)), Charset: charset, Database: c.cfg.Database}
+	response.Attributes = map[string]string{"__ob_client_attribute_capability_flag": "1"}
 	if c.cfg.TLSConfig != nil {
 		if err = c.upgradeTLS(ctx, s, response); err != nil {
 			return nil, err
@@ -143,7 +144,7 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	if server&required != required {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
-	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF
+	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF | wire.ClientConnectAttrs
 	if c.cfg.AllowMultiStatements {
 		wanted |= wire.ClientMultiStatements
 	}
@@ -163,7 +164,7 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 		wanted |= wire.ClientSSL
 	}
 	// OceanBase requires this declaration even when absent from the server greeting.
-	return wanted&server | wire.ClientSupportOracle, nil
+	return wanted&server | wire.ClientSupportOracle | wire.ClientSupportLOBLocator, nil
 }
 
 func handshakeCharset(name string) (byte, error) {

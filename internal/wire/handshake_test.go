@@ -57,6 +57,20 @@ func TestHandshakeEncode(t *testing.T) {
 	}
 }
 
+func TestLOBHandshakeAttribute(t *testing.T) {
+	h := HandshakeResponse{Capabilities: ClientConnectAttrs, Attributes: map[string]string{"__ob_client_attribute_capability_flag": "1"}}
+	data, err := EncodeHandshakeResponse(h)
+	want := []byte("\x28\x25__ob_client_attribute_capability_flag\x01" + "1")
+	if err != nil || !bytes.HasSuffix(data, want) {
+		t.Fatalf("attribute encoding: %x %v", data, err)
+	}
+	h.Capabilities = 0
+	data, err = EncodeHandshakeResponse(h)
+	if err != nil || bytes.Contains(data, []byte("__ob_client")) {
+		t.Fatal("unnegotiated attributes sent", err)
+	}
+}
+
 func TestAuthOK(t *testing.T) {
 	ok, err := DecodeOK([]byte{0, 0, 0, 6, 0, 0, 0}, ClientProtocol41)
 	if err != nil || ok.Status != 6 || ok.AffectedRows != 0 || ok.InsertID != 0 {

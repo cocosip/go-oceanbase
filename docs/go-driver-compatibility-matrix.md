@@ -27,7 +27,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
 | PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 通用策略未实现；真实版本待联调 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19；未实现 |
-| LOB locator V2 / array binding / OB20 / reset | 需分别补协商位、连接变量、精确版本及执行条件；不从上述两个版本门槛外推 | D09 Full 已实现淘汰旧物理会话；原生 reset 及 D16/D22/D23 待取证/未实现 |
+| LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后只声明 V2 属性位 1；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset 及 D22/D23 待实现 |
 
 ## 3. 真实目标
 
@@ -71,4 +71,17 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 
 ## 6. 固定资源生命周期（D15）
 
-已实现包内资源记录、物理连接/会话/事务代次、父 statement 租约和标准 Session 私有关闭分派；没有公开 ResourceManager，也不保留 Raw 取得的 driverConn。Close 不结束调用方事务；代次失效返回 ErrResource，标准库可先返回 Conn/Tx 已结束错误。事务与 reset 清理受 CleanupTimeout 约束；分派前取消允许再次关闭。合成对端验证身份、租约、未发布记录、取消、超时与池复用。具体 LOB/游标释放协议属于后续任务；当前没有真实服务器资源验收结论。
+已实现包内资源记录、物理连接/会话/事务代次、父 statement 租约和标准 Session 私有关闭分派；没有公开 ResourceManager，也不保留 Raw 取得的 driverConn。Close 不结束调用方事务；代次失效返回 ErrResource，标准库可先返回 Conn/Tx 已结束错误。事务与 reset 清理受 CleanupTimeout 约束；分派前取消允许再次关闭。合成对端验证身份、租约、未发布记录、取消、超时与池复用。D16 已接入具体临时 LOB 释放；游标协议归 D19/D20，当前没有真实服务器资源验收结论。
+## 7. 原生 LOB（D16）
+
+| 能力 | Go 行为 | 验证状态 |
+| --- | --- | --- |
+| BLOB/CLOB/NCLOB | Oracle 模式的 OpenBlob/OpenClob，只接受固定 Conn/Tx；NULL 返回 nil，空值保持有效句柄 | locator V1/V2、内联/外联、NULL/空、失效与基数失败清理本地通过 |
+| 原生分块操作 | 实际 ob_version >=2.2.76；同会话 DBMS_LOB；字节随机读写、字符读写/长度、缩短和临时释放 | 短读、NUMBER 数量、前缀写入失败、更新 locator、CLOB/NCLOB 偏移本地通过；实际 SQL/版本待联调 |
+| 普通查询 / 标量 OUT | 返回受限物化内容；完成主响应及尾部后再插入内部命令；剩余响应累计有界 | QueryContext / Rows.NextResultSet / Oracle 隐藏 OUT、多结果、事务 context 回归本地通过；真实原事务可见性待联调 |
+| 大对象 / Reader/Writer | 每块限制与普通 16 MiB 物化限制分开；适配器使用显式 context | 超过 16 MiB 的显式 Reader、打开 context 结束后的独立读取本地通过 |
+| 字符边界 | Unicode 码点 API；UTF16 偏移转换；改变已有字符代理对宽度的覆盖在写前 ErrUnsupported | BMP/补充字符、等宽覆盖/截断及非等宽拒绝本地通过；NCLOB 真实字符单位仍待验证 |
+| 资源释放 | V2 临时 locator 释放服务端对象；V1 用 ISTEMPORARY；持久对象释放本地记录；无隐式事务结束 | 幂等 Close、基数错误下多个临时对象清理、事务/reset 代次基础已覆盖；实际资源/锁行为待联调 |
+| MySQL 模式 | 原生 OpenBlob/OpenClob 返回 ErrUnsupported；表内模拟入口归 D17 | 原生入口拒绝已验证；不把 BLOB 内容当 locator |
+
+`TestNativeLOB` 源码已覆盖原事务未提交读写、普通物化、NCLOB、取消、临时释放、事务结束与 Full reset 后复用；本阶段仅编译。没有数据库、Linux、远程 CI 或成功的 race 运行证据。

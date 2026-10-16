@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"strings"
 )
 
@@ -12,22 +13,23 @@ var ErrMalformed = errors.New("wire: malformed protocol message")
 
 // Client capability flags used by the handshake and result terminators.
 const (
-	ClientLongPassword     uint64 = 1
-	ClientFoundRows        uint64 = 1 << 1
-	ClientConnectWithDB    uint64 = 1 << 3
-	ClientProtocol41       uint64 = 1 << 9
-	ClientSSL              uint64 = 1 << 11
-	ClientTransactions     uint64 = 1 << 13
-	ClientSecureConnection uint64 = 1 << 15
-	ClientMultiStatements  uint64 = 1 << 16
-	ClientMultiResults     uint64 = 1 << 17
-	ClientPSMultiResults   uint64 = 1 << 18
-	ClientPluginAuth       uint64 = 1 << 19
-	ClientConnectAttrs     uint64 = 1 << 20
-	ClientPluginAuthLenEnc uint64 = 1 << 21
-	ClientSessionTrack     uint64 = 1 << 23
-	ClientDeprecateEOF     uint64 = 1 << 24
-	ClientSupportOracle    uint64 = 1 << 27
+	ClientLongPassword      uint64 = 1
+	ClientFoundRows         uint64 = 1 << 1
+	ClientConnectWithDB     uint64 = 1 << 3
+	ClientProtocol41        uint64 = 1 << 9
+	ClientSSL               uint64 = 1 << 11
+	ClientTransactions      uint64 = 1 << 13
+	ClientSecureConnection  uint64 = 1 << 15
+	ClientMultiStatements   uint64 = 1 << 16
+	ClientMultiResults      uint64 = 1 << 17
+	ClientPSMultiResults    uint64 = 1 << 18
+	ClientPluginAuth        uint64 = 1 << 19
+	ClientConnectAttrs      uint64 = 1 << 20
+	ClientPluginAuthLenEnc  uint64 = 1 << 21
+	ClientSessionTrack      uint64 = 1 << 23
+	ClientDeprecateEOF      uint64 = 1 << 24
+	ClientSupportOracle     uint64 = 1 << 27
+	ClientSupportLOBLocator uint64 = 1 << 29
 )
 
 // Handshake contains wire values; mode and effective feature policy belong to the driver.
@@ -48,6 +50,7 @@ type HandshakeResponse struct {
 	Charset                byte
 	User, Database, Plugin string
 	Auth                   []byte
+	Attributes             map[string]string
 }
 
 // OK contains a command's counts, status and optional session tracking data.
@@ -150,7 +153,21 @@ func EncodeHandshakeResponse(h HandshakeResponse) ([]byte, error) {
 		data = append(data, 0)
 	}
 	if h.Capabilities&ClientConnectAttrs != 0 {
-		data = append(data, 0)
+		var attributes []byte
+		keys := make([]string, 0, len(h.Attributes))
+		for key := range h.Attributes {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		for _, key := range keys {
+			attributes = appendLenEnc(attributes, uint64(len(key)))
+			attributes = append(attributes, key...)
+			value := h.Attributes[key]
+			attributes = appendLenEnc(attributes, uint64(len(value)))
+			attributes = append(attributes, value...)
+		}
+		data = appendLenEnc(data, uint64(len(attributes)))
+		data = append(data, attributes...)
 	}
 	return data, nil
 }

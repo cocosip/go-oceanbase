@@ -14,6 +14,8 @@ import (
 )
 
 type outputState struct {
+	internal bool
+	columns  []wire.Column
 	bindings []*outBinding
 	physical []int
 	values   []driver.Value
@@ -174,6 +176,12 @@ func (r *textRows) readOutputs(ctx context.Context) error {
 			break
 		}
 		r.outputs.capture(values, true)
+		if r.outputs.seen && r.outputs.err == nil {
+			r.outputs.columns = make([]wire.Column, len(r.outputs.bindings))
+			for i, column := range r.columns {
+				r.outputs.columns[r.outputs.physical[i]] = column
+			}
+		}
 	}
 	r.hiddenOut = false
 	return nil

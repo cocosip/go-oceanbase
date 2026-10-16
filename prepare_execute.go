@@ -77,7 +77,11 @@ func (c *conn) outputPrepareExecute(plan bindPlan, values []boundValue, prepared
 func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, plan bindPlan, outputs *outputState, prepared *stmt) (*textRows, error) {
 	r := c.startRows(ctx, true, nil)
 	r.outputs = outputs
-	r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
+	if outputs.internal {
+		r.keepGate, r.captureLOB = true, true
+	} else {
+		r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
+	}
 	ctx = r.ctx
 	p := c.session.packets
 	p.ResetSequence()
@@ -124,6 +128,9 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 			return nil, r.fail(err, true)
 		}
 		if !r.hiddenOut {
+			if err = r.bufferLOBResponse(); err != nil {
+				return nil, err
+			}
 			return r, nil
 		}
 		if err = r.readOutputs(ctx); err != nil {
@@ -132,6 +139,9 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 	}
 	if err = r.advance(ctx); err != nil {
 		return nil, r.fail(err, true)
+	}
+	if err = r.bufferLOBResponse(); err != nil {
+		return nil, err
 	}
 	return r, r.err
 }
