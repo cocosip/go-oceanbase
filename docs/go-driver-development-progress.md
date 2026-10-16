@@ -4,11 +4,11 @@
 
 ## 1. 当前状态
 
-- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期及 D16 原生 LOB 已实现；继续 D17。
-- 实现完成：**16 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
-- 下一执行任务：**D17 MySQL 表内 BLOB 模拟 locator**。
+- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB 及 D17 表内 BLOB 已实现；继续 D18。
+- 实现完成：**17 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
+- 下一执行任务：**D18 OBJECT/ARRAY 与类型描述**。
 - 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄与同会话有界物化；表内 BLOB 模拟、复杂类型、游标及 D17–D32 的其他能力仍需实现。
+- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；复杂类型、游标及 D18–D32 的其他能力仍需实现。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -66,7 +66,7 @@
 | D14 | 标量 OUT/INOUT/RETURNING | D11、D12 | 已实现 | 本地通过 | 无（待联调） | §5.6 D14 |
 | D15 | 固定会话资源、代次与租约 | D09、D11 | 已实现 | 本地通过 | 无 | §5.6 D15 |
 | D16 | 原生 BLOB/CLOB/NCLOB | D12、D13、D15 | 已实现 | 本地通过 | 无（待联调） | 本地协议、双版本/386/lint/fuzz；真实原事务/NCLOB/锁行为待联调 |
-| D17 | MySQL 表内 BLOB 模拟 locator | D13、D16 | 未开始 | 未验证 | 无 | — |
+| D17 | MySQL 表内 BLOB 模拟 locator | D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D17 |
 | D18 | OBJECT/ARRAY、类型描述 | D12、D13、D16 | 未开始 | 未验证 | 无 | — |
 | D19 | 游标、滚动、刷新和更新 | D13、D15、D16 | 未开始 | 未验证 | 无 | — |
 | D20 | REF CURSOR/流式 LOB 输出 | D14、D16、D19 | 未开始 | 未验证 | 无 | — |
@@ -89,7 +89,7 @@
 | --- | --- | --- | --- | --- |
 | G1 | 建连与标准查询，D01–D05 | 5/5 | 0/5 | 进行中 |
 | G2 | 执行与会话正确性，D06–D12 | 7/7 | 0/7 | 待验收 |
-| G3 | 完整扩展数据能力，D13–D22 | 2/10 | 0/10 | 进行中 |
+| G3 | 完整扩展数据能力，D13–D22 | 5/10 | 0/10 | 进行中 |
 | G4 | 协议与运行能力，D23–D30 | 0/8 | 0/8 | 未开始 |
 | G5 | 分布式事务，D31 | 0/1 | 0/1 | 未开始 |
 | G6 | 完整交付，D32 | 0/1 | 0/1 | 未开始 |
@@ -160,7 +160,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 | D14 | V01、V02、V05、V06、V10 | OUT/INOUT/RETURNING 逐能力，含必要合并基础协议；两模式支持及拒绝 |
 | D15 | V01、V02、V03、V05、V06 | 资源身份、代次、父租约及幂等清理 |
 | D16 | V01、V02、V03、V07 | LOB 正向；Query/Next 内物化无锁重入、原事务可见性 |
-| D17 | V01、V02、V03、V07、V08 | 原生/模拟后端分别验收，表锁/主键/无变化 UPDATE |
+| D17 | V01、V02、V03、V04、V07、V08 | 原生/模拟后端分别验收，表锁/主键/无变化 UPDATE |
 | D18 | V01、V02、V04、V07、V10 | 描述缓存未命中 Query/Next 无锁重入；复杂/嵌套 LOB 往返 |
 | D19 | V01、V02、V03、V05、V06、V07 | static/sensitive/update 分条，含刷新和行定位 |
 | D20 | V01、V02、V03、V07 | REF CURSOR/流式 LOB OUT、输出发布及父 statement 寿命 |
@@ -350,7 +350,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包运行通过；普通/integration 两套 golangci-lint 均 0 issues；`TestResource*` 各重复 20 次通过，既有集成源码仅编译。文档路径/链接/围栏、155 项 option 表与 15 项实现计数检查通过。
 - 具体 locator/游标协议及公开句柄仍由 D16/D19/D20 实现。未连接真实数据库；Linux/远程 CI/race 仍未验证，当前 Windows race 运行条件未恢复。实现 15/32，验收保持 0/32。
 
-### D16 原生 BLOB/CLOB/NCLOB
+#### D16 原生 BLOB/CLOB/NCLOB
 
 - 已实现 OpenBlob/OpenClob，Blob 字节随机读写/长度/缩短、显式 context Reader/Writer，Clob 码点读写/长度/缩短。只保存标准 Session 和不透明资源身份；原生解析留在 wire，调度/物化在根包，无新包依赖环。
 - Locator V1/V2、内联/外联、临时/持久、NULL/空值分别处理；原生 DBMS_LOB 复用 D14 合并执行内核，实际 ob_version >=2.2.76。读取数量无损接受整数/NUMBER；分块和清理有界；写失败返回已完成前缀，不重放。协商 CONNECT_ATTRS 后只声明已实现的 V2 属性位。
@@ -359,6 +359,16 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - RED→GREEN 覆盖 out-row 短读、QueryContext 原会话物化、临时多对象清理、标量 LOB OUT，以及走查发现的缓冲事务 context、NUMBER 数量、UTF16 覆盖和 OUT 后首个普通 LOB 行集。补充超过16MiB Reader、混合结果、部分写错误、CLOB/NCLOB 等宽覆盖/截断和发送前取消。
 - Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包运行通过；LOB/Clob 各重复10次通过；普通/integration golangci-lint 均 0 issues。Locator fuzz 各30秒通过（1.25: 2248880，1.26: 2524672 次）。TestNativeLOB 已加入手动集成入口，仅编译，未连接数据库。
 - 实现 16/32，验收仍为 0/32。Linux/远程 CI/race 未验证；当前 Windows race 运行条件未恢复。不保存独立走查报告。
+
+#### D17 表内 BLOB 与 MySQL 分块后端
+
+- 开发：已实现；验证：本地通过。负责人 Codex；开始/完成日期 2026-10-17。新增 `lob_target.go`、`lob_mysql.go`、对应普通/故障/fuzz 测试及仅编译的 `tests/integration/table_blob_test.go`；复用 Blob、标准 Session 私有分派与现有资源代次，无新增公开包或横向依赖。
+- 目标由当前模式字典确认基表、二进制非生成 BLOB 列和完整主键。Schema 在原会话解析后固定，标识符逐部分引用，Key 与字节值复制，自定义 Valuer 只求值一次。打开只读取元数据、存在性/NULL/长度或原生 locator，不整体读取内容；无行/NULL/非 NULL 空值分别处理。
+- MySQL OCTET_LENGTH/SUBSTRING 逐次重新按键访问；每块最多 32767 字节并缩小到消息/单块预算，句柄内容可超过物化上限。WriteAt/Truncate 仅允许调用方可写 Tx 和已知 InnoDB 锁语义，每次先 FOR UPDATE 确认身份及长度；不填稀疏空洞，ChangedRows=0 不误报缺行。四种 BLOB 容量在首次修改前预检；UPDATE 有 warning 时 ErrLOB，失败块可能已产生影响，回滚由调用方负责。
+- Oracle 相同目标解析原生 Blob，可写 Tx 打开时 FOR UPDATE；只读 Tx/Conn 不加该锁。公开名字使用字典精确拼写，MySQL 列名忽略大小写解析。内部命令始终保留原 gate/物理会话并消费完整响应；关闭模拟句柄只释放本地记录，事务结束/reset 使句柄失效。
+- `TestBlobTarget*`、`TestTableBlob*` 覆盖复合主键/特殊标识符、Valuer 一次及修改隔离、缺行/NULL/空、大于物化上限的跨块读取、最大偏移/追加/相同值/空写/缩短、只读和未知引擎、锁错误、断线/取消不重放及完成前缀。Oracle CHAR/DATE 主键、默认表达式与生成列区分、原生事务行锁、容量和 warning 问题均由 RED→GREEN 回归验证；独立走查未留下可操作问题，不另存报告。
+- 最终在 Go 1.25.0/1.26.0 Windows amd64 运行 `go test ./... -count=1`、`go vet ./...` 和目标用例重复 10 次通过；两版本实际 Windows/386 全包测试通过。普通与 `--build-tags=integration` 的 golangci-lint 均 0 issues；集成源码使用 `-run '^$'` 仅编译。`FuzzBlobIdentifiers` 两版本各 30 秒通过，分别 554034 / 642929 次；CI 定义已加入。
+- 实现 17/32，验收仍为 0/32。`TestTableBlob` 四目标源码覆盖大对象、ChangedRows、并发锁/回滚、截断和资源结束；未连接数据库，实际 SQL/字典/锁/Oracle locator/非严格模式仍待联调。Linux、远程 CI 和成功 race 尚无证据。
 
 ## 6. 待取证条件与推进方式
 
@@ -376,7 +386,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 ## 7. 下一步工作
 
-1. 推进 D17：显式表/列/完整主键定位、MySQL 表内 BLOB 分块和修改事务约束。
+1. 推进 D18：OBJECT/ARRAY、同会话类型描述/缓存、复杂类型绑定及嵌套 LOB。
 2. 继续用故障对端验证标准 database/sql 查询，不连接真实数据库。
 3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
 

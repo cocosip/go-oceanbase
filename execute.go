@@ -44,6 +44,9 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 		if request, ok := args[0].Value.(lobOpenRequest); ok {
 			return c.execOpenLOB(ctx, request)
 		}
+		if request, ok := args[0].Value.(tableBlobOpenRequest); ok {
+			return c.execOpenTableBlob(ctx, request)
+		}
 		if request, ok := args[0].Value.(lobRequest); ok {
 			return c.execLOB(ctx, request)
 		}
@@ -194,8 +197,11 @@ func (c *conn) queryCommandOwnedLocked(ctx context.Context, payload []byte, bina
 func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool, outputs *outputState) (*textRows, error) {
 	r := c.startRows(ctx, binary, auto)
 	r.keepGate = keepGate
-	if state, _ := ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil && !keepGate {
-		state.gate, r.keepGate, r.captureLOB = true, true, true
+	if state, _ := ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil {
+		r.captureLOB = true
+		if !keepGate {
+			state.gate, r.keepGate = true, true
+		}
 	}
 	r.outputs = outputs
 	ctx = r.ctx

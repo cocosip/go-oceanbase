@@ -119,7 +119,7 @@ func (b *Blob) ReadAtContext(ctx context.Context, p []byte, off int64) (int, err
 	return r.n, err
 }
 
-// Size returns the current locator's byte length.
+// Size returns the BLOB's byte length; table targets query the owning session each time.
 func (b *Blob) Size(ctx context.Context) (int64, error) {
 	if b == nil {
 		return 0, ErrResource

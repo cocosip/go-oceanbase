@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	typeNameInteger      = "INTEGER"
+	typeNameTime         = "TIME"
 	typeNameBoolean      = "BOOLEAN"
 	typeNameVarbinary    = "VARBINARY"
 	typeNameDecimal      = "DECIMAL"
@@ -124,7 +126,7 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 2:
 		return "SMALLINT"
 	case 3:
-		return "INTEGER"
+		return typeNameInteger
 	case 4:
 		return typeNameFloat
 	case 5:
@@ -140,7 +142,7 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 10, 14:
 		return typeNameDate
 	case 11:
-		return "TIME"
+		return typeNameTime
 	case 12:
 		return typeNameDateTime
 	case 13:

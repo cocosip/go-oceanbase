@@ -414,14 +414,17 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D13、D16。对应：M10；架构 §14.4。
 
-文件：新增 `lob_mysql.go`、`lob_mysql_test.go`，实现 BlobTarget/OpenTableBlob；新增 `tests/integration/table_blob_test.go`。
+文件：新增 `lob_target.go`、`lob_mysql.go` 和相应测试，实现 BlobTarget/OpenTableBlob；新增 `tests/integration/table_blob_test.go`。目标解析与两种后端共处根包，无新依赖边。
 
 交付：显式表/列/完整主键身份、OCTET_LENGTH/SUBSTRING 分块读取、Tx 内锁定后的 WriteAt/Truncate；Oracle 对应目标可解析原生 locator。
 
-- [ ] 测试 `TestBlobTarget`、`TestTableBlobBounds`、`TestTableBlobTx`：复合主键、标识符、Valuer 一次、Key 修改隔离；缺行/NULL/空；off+len 溢出、追加/相同值/空写、Conn 修改前拒绝。
-- [ ] 执行 `go test . -run 'Test(BlobTarget|TableBlob)' -count=1`，确认失败。
-- [ ] 按架构 §14.4 实现锁定存在性、参数化分块 SQL 和代次；不把 ChangedRows=0 当缺行，不自动扩展稀疏空洞。
-- [ ] 同命令通过；`TestTableBlob` 验证大于物化上限、并发修改/回滚、Truncate、断线不重发；使用真实 SQL/锁证据验收。
+- [x] 测试 `TestBlobTarget`、`TestTableBlobBounds`、`TestTableBlobTx`：复合主键、标识符、Valuer 一次、Key 修改隔离；缺行/NULL/空；off+len 溢出、追加/相同值/空写、Conn 修改前拒绝。
+- [x] 执行 `go test . -run 'Test(BlobTarget|TableBlob)' -count=1`，确认失败。
+- [x] 按架构 §14.4 实现锁定存在性、参数化分块 SQL 和代次；不把 ChangedRows=0 当缺行，不自动扩展稀疏空洞。
+- [x] 同命令通过；故障对端补齐跨块、取消/断线前缀、不重放、只读/未知引擎、容量/警告、Oracle 原生事务行锁和最大偏移空操作。
+- [ ] `TestTableBlob` 的大于物化上限、并发锁/回滚、Truncate 等真实 SQL/锁证据验收；源码和手动 CI 入口已提供，本阶段按要求仅编译。
+
+本地实现状态与验证证据见开发进度 D17；真实数据库行为不计入本地通过。
 
 ### D18 OBJECT、ARRAY 与类型描述
 

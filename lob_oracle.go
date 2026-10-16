@@ -70,12 +70,17 @@ func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (_ drive
 	if r.err != nil {
 		return nil, r.err
 	}
-	handles, err := c.registerLOBRowsLocked(request.session, sets)
+	selected, err = c.selectLOBRowsLocked(request.session, request.typ, sets)
+	return result{known: true}, err
+}
+
+func (c *conn) selectLOBRowsLocked(session Session, typ byte, sets []lobRowset) (*resourceHandle, error) {
+	handles, err := c.registerLOBRowsLocked(session, sets)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(sets) != 1 || len(sets[0].columns) != 1 || sets[0].columns[0].Type != request.typ {
+	if len(sets) != 1 || len(sets[0].columns) != 1 || sets[0].columns[0].Type != typ {
 		return nil, ErrLOB
 	}
 	if len(sets[0].rows) == 0 {
@@ -85,12 +90,12 @@ func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (_ drive
 		return nil, ErrLOB
 	}
 	if sets[0].rows[0][0] != nil {
-		selected = handles[0]
-		if err = c.publishResourceLocked(selected); err != nil {
+		if err = c.publishResourceLocked(handles[0]); err != nil {
 			return nil, err
 		}
+		return handles[0], nil
 	}
-	return result{known: true}, nil
+	return nil, nil
 }
 
 func (c *conn) execLOB(ctx context.Context, request lobRequest) (driver.Result, error) {
@@ -105,7 +110,13 @@ func (c *conn) execLOB(ctx context.Context, request lobRequest) (driver.Result, 
 	if err != nil {
 		return nil, err
 	}
-	if !record.published || record.lob == nil {
+	if !record.published {
+		return nil, ErrResource
+	}
+	if record.tableBlob != nil {
+		return c.execTableBlobLocked(ctx, record.tableBlob, request)
+	}
+	if record.lob == nil {
 		return nil, ErrResource
 	}
 	lob := record.lob

@@ -62,6 +62,7 @@ jobs:
       - run: go test . -run '^$' -fuzz FuzzJDBCEscapes -fuzztime 30s -parallel 2
       - run: go test . -run '^$' -fuzz FuzzScalars -fuzztime 30s -parallel 2
       - run: go test . -run '^$' -fuzz FuzzMetadataFilters -fuzztime 30s -parallel 2
+      - run: go test . -run '^$' -fuzz FuzzBlobIdentifiers -fuzztime 30s -parallel 2
       - run: go test ./internal/charset -run '^$' -fuzz FuzzCharset -fuzztime 30s -parallel 2
 
   integration:
@@ -85,4 +86,4 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB)$' -count=1
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob)$' -count=1

@@ -30,6 +30,7 @@ type resourceRecord struct {
 	parent    *stmt
 	published bool
 	lob       *nativeLOBResource
+	tableBlob *tableBlobResource
 }
 
 type resourceState struct {

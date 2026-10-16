@@ -654,15 +654,16 @@ func OpenTableBlob(ctx context.Context, session Session,
     target BlobTarget) (*Blob, error)
 ```
 
-- 固定会话条件与 OpenBlob 相同。Schema 为空时在当前会话解析实际 schema，随后固定对象身份；Table/Column 必填，各字段表示一个标识符组成部分，不接收 SQL 片段。
+- 固定会话条件与 OpenBlob 相同。Schema 为空时在当前会话解析实际 schema，随后固定对象身份；Table/Column 必填，各字段表示一个标识符组成部分，不接收 SQL 片段。Oracle 使用字典中的精确拼写；MySQL 列名按字典忽略大小写解析，schema/table 遵守服务端字典比较规则。
 - 通过实际模式的元数据确认单个基表、可读的二进制 BLOB 列和完整主键。拒绝视图/联表、缺失或多余主键字段、NULL 主键和不支持的类型；作为目标的 BLOB 列不得同时是主键或生成列。列名按字典解析后引用，主键值全部绑定，不拼接成 SQL。
 - 输入在打开时完成参数校验；Valuer 只求值一次，复制 map、切片和可变字节值，保存规范化后的不可变身份。后续修改调用方 Key 不改变句柄目标，不使用全局 token 注册表。
 - Open 只取得所需元数据、存在性、NULL/长度或原生 locator，不读取整个 BLOB。无该行返回 sql.ErrNoRows；该列为 SQL NULL 返回 nil、nil；空的非 NULL BLOB 返回长度为 0 的有效句柄。初始化 NULL 使用普通显式 SQL。
-- MySQL 后端按主键生成受限分块 SQL：长度使用 OCTET_LENGTH，读取使用 SUBSTRING；Oracle 可由相同目标查询取得原生 BLOB locator。MySQL 后端不是 LONG_DATA，也不承诺查询得到的任意 BLOB 都能转成持久句柄。[J14][J15]
-- Blob 字节偏移采用 Go 的 0 起点；转换为 SQL 的 1 起点和计算 off+len 时检查溢出。每块同时受逻辑消息和 LOB 块大小限制；不得在后端不支持分块时偷偷整体物化超大对象。
+- MySQL 后端按主键生成受限分块 SQL：长度使用 OCTET_LENGTH，读取使用 SUBSTRING；Oracle 可由相同目标查询取得原生 BLOB locator；调用方传入可写 Tx 时，目标查询使用 FOR UPDATE 取得持久 locator 所需行锁，只读 Tx/Conn 的打开不加该锁。MySQL 后端不是 LONG_DATA，也不承诺查询得到的任意 BLOB 都能转成持久句柄。[J14][J15]
+- Blob 字节偏移采用 Go 的 0 起点；转换为 SQL 的 1 起点和计算 off+len 时检查溢出。每块同时受逻辑消息和 LOB 块大小限制；不得在后端不支持分块时偷偷整体物化超大对象。当前每块最多 32767 字节，按消息预算进一步缩小；配置 MaxLOBBytes 更小时使用更小块，整个句柄内容不受单值物化上限约束。
 - MySQL ReadAt/长度查询在每次调用时重新按主键访问。使用 `*sql.Conn` 时不承诺跨块快照；需要稳定读取时由调用方使用合适隔离级别的 `*sql.Tx`，必要时显式加锁。事务外也不承诺识别同一主键被删除后重新插入的另一行。
-- MySQL 模拟句柄的 WriteAt/Truncate 必须运行在调用方的 `*sql.Tx` 内；否则在修改前返回错误，不隐式 Begin/Commit。每次修改先在该事务中按主键 SELECT ... FOR UPDATE，确认行和非 NULL 内容、锁定后读取当前长度，再执行参数化 UPDATE；只读事务或不支持所需锁语义时拒绝修改。
+- MySQL 模拟句柄的 WriteAt/Truncate 必须运行在调用方的 `*sql.Tx` 内；否则在修改前返回错误，不隐式 Begin/Commit。每次修改先在该事务中按主键 SELECT ... FOR UPDATE，确认行和非 NULL 内容、锁定后读取当前长度，再执行参数化 UPDATE；只读事务或不支持所需锁语义时拒绝修改；当前仅对字典 ENGINE=InnoDB 的 MySQL 基表开放修改，未知引擎保留读取能力。
 - WriteAt 只允许 `0 <= off <= 当前字节长度`，可在末尾追加，不自动填充稀疏空洞。例如二进制列的替换可使用 `CONCAT(LEFT(col, off), ?, SUBSTRING(col, off+len(p)+1))`；col 安全引用，其余值绑定。Truncate 仅缩短到 `0..当前长度`，不扩展。空写入或写入相同值，在锁定存在性已确认后可以成功；ChangedRows 返回 0 不等于行不存在。
+- MySQL 写入前检查完整写入计划的目标容量：TINYBLOB 255、BLOB 65535、MEDIUMBLOB 16777215、LONGBLOB 4294967295 字节，超出时在首条 UPDATE 前 ErrLOB。UPDATE 的完整响应若带 warning，也返回 ErrLOB，不把该块计入完成前缀；服务器可能已截断或把 CONCAT 结果置为 NULL，调用方应回滚现有事务。不能把非严格 SQL 模式下带 warning 的 OK 当作完整写入成功。
 - 不同块是多条 SQL，原子性和失败后的回滚由已有 Tx 控制。每条完整响应消费后才能发下一条；网络失败后不自动重发。表 DDL、权限或类型变化返回原错误/资源失效，不重新猜测目标。
 - 表目标句柄遵守相同连接、会话和事务代次；Close 幂等，不关闭 Conn/Tx，也不替调用方提交。模拟后端没有可释放的原生 locator，Close 只清理本地身份与占用；原生后端继续释放相应服务器资源。
 

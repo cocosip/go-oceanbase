@@ -258,7 +258,7 @@ func mysqlConvertType(typ string) string {
 	case "date":
 		return typeNameDate
 	case "time":
-		return "TIME"
+		return typeNameTime
 	case "timestamp":
 		return typeNameDateTime
 	}

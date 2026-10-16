@@ -18,9 +18,10 @@ var ErrCommitUnknown = errors.New("oceanbase: commit outcome unknown")
 var ErrTxCleanup = errors.New("oceanbase: transaction completed but session restoration failed")
 
 type tx struct {
-	conn *conn
-	ctx  context.Context
-	done bool
+	conn     *conn
+	ctx      context.Context
+	done     bool
+	readOnly bool
 }
 
 func (c *conn) Begin() (driver.Tx, error) { return c.BeginTx(context.Background(), driver.TxOptions{}) }
@@ -49,7 +50,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 			return nil, err
 		}
 	}
-	t := &tx{conn: c, ctx: ctx}
+	t := &tx{conn: c, ctx: ctx, readOnly: opts.ReadOnly}
 	c.activeTx = t
 	return t, nil
 }

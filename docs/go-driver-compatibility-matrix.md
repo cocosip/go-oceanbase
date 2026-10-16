@@ -82,6 +82,18 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 大对象 / Reader/Writer | 每块限制与普通 16 MiB 物化限制分开；适配器使用显式 context | 超过 16 MiB 的显式 Reader、打开 context 结束后的独立读取本地通过 |
 | 字符边界 | Unicode 码点 API；UTF16 偏移转换；改变已有字符代理对宽度的覆盖在写前 ErrUnsupported | BMP/补充字符、等宽覆盖/截断及非等宽拒绝本地通过；NCLOB 真实字符单位仍待验证 |
 | 资源释放 | V2 临时 locator 释放服务端对象；V1 用 ISTEMPORARY；持久对象释放本地记录；无隐式事务结束 | 幂等 Close、基数错误下多个临时对象清理、事务/reset 代次基础已覆盖；实际资源/锁行为待联调 |
-| MySQL 模式 | 原生 OpenBlob/OpenClob 返回 ErrUnsupported；表内模拟入口归 D17 | 原生入口拒绝已验证；不把 BLOB 内容当 locator |
+| MySQL 模式 | 原生 OpenBlob/OpenClob 返回 ErrUnsupported；OpenTableBlob 表内分块已实现（D17） | 原生入口拒绝已验证；不把 BLOB 内容当 locator |
 
 `TestNativeLOB` 源码已覆盖原事务未提交读写、普通物化、NCLOB、取消、临时释放、事务结束与 Full reset 后复用；本阶段仅编译。没有数据库、Linux、远程 CI 或成功的 race 运行证据。
+
+## 8. 表内 BLOB（D17）
+
+| 能力 | Go 行为 | 验证状态 |
+| --- | --- | --- |
+| 显式目标 | 标准 Conn/Tx，schema 解析后固定，基表/非生成 BLOB 列/完整主键；复制 Key 和字节值，自定义 Valuer 只求值一次 | 复合主键、特殊标识符、NULL/缺行/空值、非法目标及参数本地通过 |
+| MySQL 读取 | OCTET_LENGTH/SUBSTRING；每块有界，句柄内容可超过物化上限；Conn 不承诺跨块快照 | database/sql 对端跨块、重新按键取长度、取消/失效本地通过；服务端 SQL 待联调 |
+| MySQL 修改 | 调用方可写 Tx，ENGINE=InnoDB；每次先 FOR UPDATE 确认行/非 NULL/长度；无稀疏扩展，ChangedRows=0 可成功 | 追加/覆盖/缩短/空写、只读/未知引擎拒绝、丢行/NULL/锁错误本地通过；真实锁/隔离待联调 |
+| 容量与失败 | 四种 BLOB 容量在首条 UPDATE 前预检；有 warning 的 UPDATE 返回 ErrLOB；失败块不计完成前缀，调用方回滚 | 容量边界/警告 OK/断线/取消回归通过；真实非严格模式与 max_allowed_packet 仍待验证 |
+| Oracle 后端 | 相同目标查询复用原生 Blob；可写 Tx 打开时 FOR UPDATE，只读不加锁 | 原生捕获、CHAR/DATE/NUMBER 主键和事务锁 SQL 本地通过；实际 locator/权限待联调 |
+
+`TestTableBlob` 四目标源码及手动 CI 入口已加入，本阶段仅编译。未连接数据库，未把本地协议测试计为真实 SQL/锁/事务验收。

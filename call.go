@@ -97,7 +97,7 @@ func makeOutput(out Out) (*outBinding, error) {
 
 func validOutputType(name string) bool {
 	switch name {
-	case typeNameNumber, typeNameDecimal, "INTEGER", typeNameBigInt, "BIGINT UNSIGNED", typeNameBoolean, typeNameFloat, typeNameDouble, typeNameBinaryFloat, typeNameBinaryDouble,
+	case typeNameNumber, typeNameDecimal, typeNameInteger, typeNameBigInt, "BIGINT UNSIGNED", typeNameBoolean, typeNameFloat, typeNameDouble, typeNameBinaryFloat, typeNameBinaryDouble,
 		typeNameVarchar, typeNameVarchar2, typeNameChar, typeNameNChar, typeNameNVarchar2, typeNameRaw, typeNameRowID, typeNameVarbinary, typeNameDate, typeNameDateTime, typeNameTimestamp,
 		typeNameTimestampTZ, typeNameTimestampLTZ, typeNameIntervalYM, typeNameIntervalDS, typeNameBlob, typeNameClob, typeNameNClob:
 		return true
