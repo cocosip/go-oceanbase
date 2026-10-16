@@ -103,7 +103,7 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 5:
 		return "DOUBLE"
 	case 6:
-		return "NULL"
+		return sqlNullLiteral
 	case 7:
 		return typeNameTimestamp
 	case 8:

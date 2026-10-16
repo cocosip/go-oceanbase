@@ -24,7 +24,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |
 | --- | --- | --- |
-| INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13；未实现，目标环境待确认 |
+| INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
 | PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 最小 RETURNING 路径、D24 通用策略；未实现 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19；未实现 |
 | LOB locator V2 / array binding / OB20 / reset | 需分别补协商位、连接变量、精确版本及执行条件；不从上述两个版本门槛外推 | D09 Full 已实现淘汰旧物理会话；原生 reset 及 D16/D22/D23 待取证/未实现 |
@@ -55,3 +55,5 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | 未知 collation / GB18030-2022 | 明确拒绝；不把 GB18030-2022 冒充为旧 GB18030 表 | 拒绝测试通过；新版本映射须经目标条件与向量补充后才能声明支持 |
 
 现有 collations 按固定映射解析；未取证的新编号不猜测字符集。`TestAllScalarTypes` 已建立四目标、文本/服务端/客户端三路径的真实测试源码与显式 CI 入口，仅完成编译；本阶段没有连接数据库。本地协议对端验证驱动转换和字节布局，不能证明目标服务端 SQL/时区表或字符集组合兼容。
+
+D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查询：MySQL information_schema 与 Oracle ALL_* 分开实现，Oracle catalog 不存在时返回空行集，MySQL 无 UDT/同义词字典时返回 ErrUnsupported；权限错误保留服务端代码。StatementParameters 总是服务端 prepare 后关闭，保留逻辑/物理映射和原始协议方向码。公开与内部字典执行共用计划，内部只在完整响应边界保持原 gate 与物理连接。以上为本地对端验证，真实字典字段及 OBProxy 兼容未验证。

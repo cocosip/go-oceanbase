@@ -10,11 +10,12 @@ import (
 )
 
 type conn struct {
-	mu       chan struct{}
-	session  *handshakeSession
-	cfg      Config
-	closed   atomic.Bool
-	activeTx *tx
+	mu             chan struct{}
+	session        *handshakeSession
+	cfg            Config
+	closed         atomic.Bool
+	activeTx       *tx
+	responseActive bool // guarded by mu; internal commands require a complete response boundary
 }
 
 func (c *conn) Close() error {

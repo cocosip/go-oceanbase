@@ -676,6 +676,62 @@ func (c *Cursor) Close() error
 
 D13 固定内外查询边界；D16/D18 必须用真实 database/sql 入口配合协议故障对端验证缓存未命中路径：在 QueryContext 与 Rows.Next 内需要字典/LOB 读取时均能在限定时间结束，业务和内部命令落在同一物理会话，未发生锁重入或未读响应插入命令。真实服务端另验证未提交事务可见性；模拟对端不能替代该证据。
 
+### 16.1.1 D13 已实现的 Go 元数据契约
+
+公开入口只有 `Metadata(ctx context.Context, session Session, filter MetadataFilter) (*sql.Rows, error)`，接受非 nil 的 `*sql.Conn` / `*sql.Tx`；`*sql.DB`、包装会话及 typed nil 拒绝。`MetadataKind` 是封闭枚举。普通业务结果仍使用 `Rows.ColumnTypes()`，不引入 JDBC 风格的 DatabaseMetaData 对象。
+
+```go
+pinned, err := db.Conn(ctx)
+if err != nil {
+    return err
+}
+defer pinned.Close()
+rows, err := oceanbase.Metadata(ctx, pinned, oceanbase.MetadataFilter{
+    Kind:          oceanbase.MetadataColumns,
+    SchemaPattern: "APP",
+    NamePattern:   "ORDER/_%", // '/' 转义 '_'，末尾 '%' 是通配符
+})
+if err != nil {
+    return err
+}
+defer rows.Close()
+// 按下表的固定列顺序 Scan；可空值使用 sql.Null[T]。
+```
+
+`MetadataFilter` 字段为 `Kind`、`Catalog`、`SchemaPattern`、`NamePattern`、`ColumnPattern`、`ReferencedSchemaPattern`、`ReferencedNamePattern`、`TableTypes []string`、`Query`。Catalog 为精确匹配；其他 Pattern 保留调用方大小写，使用 LIKE，`/` 为转义符，空值选择所有可访问对象。下划线等普通名字需要调用方按 LIKE 规则转义。SchemaPattern 过滤 schema/owner；NamePattern 过滤表、例程或类型名；ColumnPattern 过滤列、参数或属性名。Referenced 两字段只用于外键，TableTypes 只用于表查询，值限定 `TABLE` / `VIEW` / `SYNONYM` / `MATERIALIZED VIEW`；不适用的非空字段明确拒绝。Query 只供 StatementParameters 使用。
+
+下表列顺序固定。以 `#` 标记的列为 `int64`，其余为 `string`；`#` 不是列名的一部分。所有列允许 SQL NULL，缺失数据保留 NULL。字典 Rows 的 DatabaseTypeName 统一为 `BIGINT` / `VARCHAR`，ScanType 对应 `int64` / `string`，不暴露两种字典内部 NUMBER/VARCHAR2 的差异。
+
+| MetadataKind 后缀 | 返回列（按顺序） |
+| --- | --- |
+| Catalogs | catalog |
+| Schemas | catalog, schema |
+| Tables | catalog, schema, name, type, remarks |
+| Synonyms | catalog, schema, name, target_schema, target_name, database_link |
+| Columns | catalog, schema, table_name, name, #ordinal_position, data_type, #length, #precision, #scale, #nullable, default_value, remarks, type_owner |
+| PrimaryKeys | catalog, schema, table_name, name, column_name, #ordinal_position |
+| ForeignKeys | catalog, schema, table_name, name, column_name, #ordinal_position, referenced_catalog, referenced_schema, referenced_table, referenced_column, update_rule, delete_rule, deferrable, initially_deferred |
+| Indexes | catalog, schema, table_name, name, #non_unique, column_name, #ordinal_position, ordering, #cardinality, type |
+| TablePrivileges | catalog, schema, table_name, grantor, grantee, privilege, #grantable |
+| ColumnPrivileges | catalog, schema, table_name, column_name, grantor, grantee, privilege, #grantable |
+| Routines | catalog, schema, name, specific_name, package_name, type, return_type |
+| RoutineParameters | catalog, schema, routine_name, specific_name, package_name, name, #ordinal_position, direction, data_type, #length, #precision, #scale, type_owner, type_name, #data_level |
+| Types | catalog, schema, name, type, #attribute_count, #final, #instantiable |
+| TypeAttributes | catalog, schema, type_name, name, #ordinal_position, data_type, type_owner, #length, #precision, #scale |
+| CollectionElements | catalog, schema, name, collection_type, #upper_bound, element_type, element_owner, #length, #precision, #scale |
+| ServerInfo | oceanbase_version, compatibility_mode, #parameter_dictionary, #type_dictionary |
+| StatementParameters | #physical_ordinal, #logical_ordinal, name, direction, data_type, #nullable, #length, #precision, #scale, #protocol_type, #protocol_direction |
+
+- MySQL 兼容模式使用 information_schema，catalog 为 `def`，database 对应 schema；Synonyms、Types、TypeAttributes、CollectionElements 返回 ErrUnsupported，不合成服务端类型字典。Oracle 使用 ALL_*，catalog 查询为空行集，其余查询的 catalog 为 NULL。视图/物化视图经 Tables 的 TableTypes 选择，同义词另有目标描述；Columns 不隐式展开同义词。
+- 例程与参数的 specific_name 是同一字典身份；Oracle 由 object_id/subprogram_id 组成，保留 package_name、data_level 和返回位置 0。direction 统一 `IN` / `OUT` / `INOUT` / `RETURN`。未知 update_rule、默认属性、grantor 等保持 NULL。主外键及索引的列位置从 1 开始；索引 ordering 为 ASC / DESC 或 NULL。
+- MySQL PARAMETERS 只在建连读取的 `ob_version()` 确认 OceanBase >= 4.1 时启用，不能使用 greeting 中的 MySQL 5.7/8.0 版本。未知或旧版本明确 ErrUnsupported，权限及字典 SQL 错误保留服务端 Error。ServerInfo 的字典能力位描述当前驱动开放的查询路径，不证明当前用户拥有字典权限。
+- StatementParameters 对 Query 执行一次服务端 prepare，保存参数列描述，关闭临时 statement 后返回独立的内存 Rows，绝不执行 Query；即使 Config.PrepareMode=PrepareClient 也遵循此规则。物理位置与逻辑位置均从 1 开始，Oracle 重复命名参数共享逻辑位置，name 为规范化绑定名。protocol_type/protocol_direction 保留协议字节，不能把未取证的 direction 字节猜成 IN/OUT；该入口的 direction 为 NULL，例程方向请查询 RoutineParameters。MySQL 参数可空性未知，参数类型和尺寸仅为 prepare 回报的信息，不承诺推断出的业务列定义。
+- Columns.length：MySQL 为 CHARACTER_MAXIMUM_LENGTH；Oracle 字符语义为 CHAR_LENGTH，其余为 DATA_LENGTH（字节），需结合 data_type 使用。RoutineParameters/TypeAttributes/CollectionElements 的 length 保留字典原始单位；未知不补默认长度。普通结果 ColumnTypes 的长度按协议及已知字符集报告字符数/二进制字节数；未知字符集或不可解释的尺寸返回 ok=false。DECIMAL 的精度去掉符号和小数点，Oracle NUMBER 使用显式 precision 和带符号 scale；未指定/超出合法范围返回 ok=false。Oracle FLOAT 的二进制 precision 与 -127 浮动 scale 不作为十进制精度报告。
+- `metadataLocked` 在已拥有连接 gate 且响应已完整结束时执行，复用同一参数化计划和现有字符集/安全字面量编码；返回 Rows 只关闭自身取消回调，不释放外层 gate。未读响应直接拒绝；内部查询不会经 Metadata/Session 或另开物理连接。公开入口把锁所有权交给返回 Rows。描述缓存待 D18 随类型描述实现，D13 不缓存任意字典行集。
+- UDT 属性与集合元素投影使用 OceanBase 的 NUMBER_PRECISION 字段，输出别名仍为 precision；依据固定 [v4.3.5_CE 属性视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25001_25050.cpp) 与 [集合视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25051_25100.cpp)，不套用不一致的字典字段。
+
+以上路径已由协议对端覆盖，真实数据库字典字段、版本差异及权限仍需集成验证；D16/D18 的 Query/Next 缓存未命中场景仍由各自任务验证。
+
 ### 16.2 XA
 
 提供 `XID` 值和 Start/End/Prepare/Commit/Rollback/Recover/Forget 等显式操作，参数包含固定 `*sql.Conn`、XID 和标准 XA flags。XA 入口不接受 `*sql.Tx`；开启 XA 的会话不得同时 BeginTx。

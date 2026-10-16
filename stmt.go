@@ -10,10 +10,11 @@ import (
 )
 
 type stmt struct {
-	conn   *conn
-	id     uint32
-	plan   bindPlan
-	closed bool // guarded by the owning connection's gate
+	conn       *conn
+	id         uint32
+	plan       bindPlan
+	closed     bool // guarded by the owning connection's gate
+	parameters []wire.Column
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
@@ -23,6 +24,10 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if c.cfg.PrepareMode == PrepareClient {
 		return c.prepareClient(ctx, query)
 	}
+	return c.prepareServer(ctx, query)
+}
+
+func (c *conn) prepareServer(ctx context.Context, query string) (*stmt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -72,8 +77,9 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		return nil, r.fail(wire.ErrMessageTooLarge, true)
 	}
 	budget := int64(len(data))
-	if err = c.prepareMetadata(ctx, int(header.Parameters), &budget); err == nil {
-		err = c.prepareMetadata(ctx, int(header.Columns), &budget)
+	parameters, err := c.prepareMetadata(ctx, int(header.Parameters), &budget)
+	if err == nil {
+		_, err = c.prepareMetadata(ctx, int(header.Columns), &budget)
 	}
 	if err != nil {
 		return nil, r.fail(err, true)
@@ -88,7 +94,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	} else if int(header.Parameters) != len(plan.slots) {
 		return nil, r.fail(fmt.Errorf("%w: server parameter count", ErrBind), true)
 	}
-	prepared := &stmt{conn: c, id: header.ID, plan: plan}
+	prepared := &stmt{conn: c, id: header.ID, plan: plan, parameters: parameters}
 	err = ctx.Err()
 	r.release()
 	if err == nil {
@@ -101,32 +107,35 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	return prepared, nil
 }
 
-func (c *conn) prepareMetadata(ctx context.Context, count int, budget *int64) error {
+func (c *conn) prepareMetadata(ctx context.Context, count int, budget *int64) ([]wire.Column, error) {
+	columns := make([]wire.Column, 0, min(count, 64))
 	for i := 0; i < count; i++ {
 		data, err := c.session.packets.ReadMessage(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if int64(len(data)) > c.cfg.Limits.MaxMessageBytes-*budget {
-			return wire.ErrMessageTooLarge
+			return nil, wire.ErrMessageTooLarge
 		}
 		*budget += int64(len(data))
-		if _, err = c.decodeColumn(data); err != nil {
-			return err
+		column, err := c.decodeColumn(data)
+		if err != nil {
+			return nil, err
 		}
+		columns = append(columns, column)
 	}
 	if count > 0 && c.session.capabilities&wire.ClientDeprecateEOF == 0 {
 		data, err := c.session.packets.ReadMessage(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		eof, err := wire.DecodeEOF(data)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		c.session.ok.Status, c.session.ok.Warnings = eof.Status, eof.Warnings
 	}
-	return nil
+	return columns, nil
 }
 
 func (s *stmt) NumInput() int { return s.plan.numInput }

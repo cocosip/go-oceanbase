@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -28,6 +29,7 @@ type textRows struct {
 	binary               bool
 	autoStmt             *stmt
 	execution            *Execution
+	keepGate             bool
 }
 
 func (r *textRows) Columns() []string {
@@ -44,6 +46,7 @@ func (r *textRows) release() {
 			r.err = r.contextError()
 		}
 		r.released = true
+		r.conn.responseActive = false
 		if r.stopCancel != nil && !r.stopCancel() {
 			<-r.cancelDone
 		}
@@ -58,7 +61,9 @@ func (r *textRows) release() {
 			cancel()
 		}
 		r.execution.finish(r.err)
-		r.conn.unlock()
+		if !r.keepGate {
+			r.conn.unlock()
+		}
 	}
 }
 func (r *textRows) fail(err error, broken bool) error {
@@ -314,6 +319,60 @@ func (r *textRows) ColumnTypeDatabaseTypeName(index int) string {
 func (r *textRows) ColumnTypeNullable(index int) (bool, bool) {
 	return r.columns[index].Flags&1 == 0, true
 }
+func (r *textRows) ColumnTypeLength(index int) (int64, bool) {
+	return columnLength(r.columns[index], r.conn.session.mode)
+}
+func (r *textRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
+	return columnPrecisionScale(r.columns[index], r.conn.session.mode)
+}
+
+func columnLength(c wire.Column, mode Mode) (int64, bool) {
+	if c.Length == 0 {
+		return 0, false
+	}
+	if c.Type == 203 || c.Type == 16 || c.Type >= 249 && c.Type <= 254 && c.Charset == 63 {
+		return int64(c.Length), true
+	}
+	switch c.Type {
+	case 15, 253, 254, 207, 208, 249, 250, 251, 252:
+		if mode == ModeOracle && (c.Type == 15 || c.Type == 253 || c.Type == 254) {
+			return int64(c.Length), true
+		}
+		name, ok := charset.Collation(c.Charset)
+		width := map[string]uint32{"binary": 1, "ascii": 1, "latin1": 1, "gbk": 2, "utf8mb3": 3, "utf8mb4": 4, "utf16": 4, "gb18030": 4}[name]
+		if !ok || width == 0 || c.Length%width != 0 {
+			return 0, false
+		}
+		return int64(c.Length / width), true
+	}
+	return 0, false
+}
+
+func columnPrecisionScale(c wire.Column, mode Mode) (int64, int64, bool) {
+	if c.Type != 0 && c.Type != 246 && (mode != ModeOracle || c.Type != 3) {
+		return 0, 0, false
+	}
+	if mode == ModeOracle {
+		if c.Precision == 0 || c.Precision > 38 || int8(c.Decimals) < -84 {
+			return 0, 0, false
+		}
+		return int64(c.Precision), int64(int8(c.Decimals)), true
+	}
+	if c.Decimals > 30 {
+		return 0, 0, false
+	}
+	p := int64(c.Length)
+	if c.Flags&32 == 0 {
+		p--
+	}
+	if c.Decimals > 0 {
+		p--
+	}
+	if p <= 0 || p > 65 || p < int64(c.Decimals) {
+		return 0, 0, false
+	}
+	return p, int64(c.Decimals), true
+}
 func (r *textRows) ColumnTypeScanType(index int) reflect.Type {
 	c := r.columns[index]
 	if r.conn.cfg.Session.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type == 202 && r.conn.session.mode == ModeOracle) {
@@ -341,4 +400,6 @@ var (
 	_ driver.RowsColumnTypeDatabaseTypeName = (*textRows)(nil)
 	_ driver.RowsColumnTypeNullable         = (*textRows)(nil)
 	_ driver.RowsColumnTypeScanType         = (*textRows)(nil)
+	_ driver.RowsColumnTypeLength           = (*textRows)(nil)
+	_ driver.RowsColumnTypePrecisionScale   = (*textRows)(nil)
 )

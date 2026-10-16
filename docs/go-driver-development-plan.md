@@ -342,10 +342,12 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：ColumnTypes、参数计划/服务端参数元数据、catalog/schema/表/视图/同义词/列/主外键/索引/权限/过程函数/类型查询。公开入口采用 `Metadata(ctx context.Context, session Session, filter MetadataFilter) (*sql.Rows, error)`；filter 的 Kind 是封闭枚举，每类结果有固定列名/类型。
 
-- [ ] 测试 `TestMetadataFilters`、`TestColumnTypes`、`TestMetadataInternalBoundary`：过滤值参数化、模式固定、未知长度/精度 ok=false、标识符引用、schema 大小写与同义词，不伪造不可得数据；公开与内部入口复用查询计划，内部不重入标准库会话。
-- [ ] 执行 `go test . -run 'Test(Metadata|ColumnTypes)' -count=1`，确认失败。
-- [ ] 先用调用示例固定 MetadataFilter 的明确字段及各类列模式，再实现模式 SQL 和同物理会话的内部字典执行器；与复杂类型共享隔离会话权限/模式/schema/类型版本的缓存，不让 codec 调用公开 Metadata。校验命令边界和一次操作锁所有权。
+- [x] 测试 `TestMetadataFilters`、`TestColumnTypes`、`TestMetadataInternalBoundary`：过滤值参数化、模式固定、未知长度/精度 ok=false、标识符引用、schema 大小写与同义词，不伪造不可得数据；公开与内部入口复用查询计划，内部不重入标准库会话。
+- [x] 执行 `go test . -run 'Test(Metadata|ColumnTypes)' -count=1`，确认失败。
+- [x] 调用示例、MetadataFilter 与 17 类列模式见架构 §16.1.1；两模式 SQL 及同物理会话执行器已实现，不重入公开 Metadata。响应与 gate 所有权已测试；描述缓存随 D18 类型描述建立，共享 D13 查询计划，不缓存任意字典 Rows。
 - [ ] 同命令通过；`TestMetadataCatalog` 与已创建对象真实字典比较，记录权限不足和版本不支持的明确错误。
+
+本地完成：两工具链全包 test/vet/386、普通/integration lint、目标重复与 FuzzMetadataFilters 通过。TestMetadataCatalog 仅编译，最后一项真实对照仍未勾选；详见进度 D13。
 
 ### D14 标量 OUT、INOUT 与 RETURNING
 
