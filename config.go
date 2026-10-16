@@ -63,6 +63,8 @@ type Limits struct {
 
 // SessionOptions describes the initial session baseline.
 type SessionOptions struct {
+	// ParseTime converts unzoned dates and timestamps using Location; invalid or ambiguous times fail.
+	ParseTime bool
 	Charset   string
 	NCharset  string
 	Location  *time.Location

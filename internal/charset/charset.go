@@ -2,11 +2,16 @@
 package charset
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"strings"
 	"unicode/utf8"
 
+	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/unicode"
 )
 
 // ErrEncoding means an encoding is unknown, invalid or cannot represent a value.
@@ -33,8 +38,25 @@ func Encode(name, text string) ([]byte, error) {
 			return nil, ErrEncoding
 		}
 		return []byte(b), nil
+	case "binary":
+		return []byte(text), nil
+	case "ascii":
+		for _, r := range text {
+			if r > 127 {
+				return nil, ErrEncoding
+			}
+		}
+		return []byte(text), nil
 	default:
-		return nil, ErrEncoding
+		enc := textEncoding(name)
+		if enc == nil {
+			return nil, ErrEncoding
+		}
+		data, err := enc.NewEncoder().String(text)
+		if err != nil {
+			return nil, ErrEncoding
+		}
+		return []byte(data), nil
 	}
 }
 
@@ -42,14 +64,109 @@ func Encode(name, text string) ([]byte, error) {
 func Decode(name string, data []byte) (string, error) {
 	if strings.EqualFold(name, "latin1") {
 		s, err := charmap.Windows1252.NewDecoder().Bytes(data)
-		if err != nil {
+		if err != nil || bytes.Contains(s, []byte("�")) {
 			return "", ErrEncoding
 		}
 		return string(s), nil
+	}
+	if enc := textEncoding(name); enc != nil {
+		if strings.EqualFold(name, "utf16") && !validUTF16(data) {
+			return "", ErrEncoding
+		}
+		decoded, err := enc.NewDecoder().Bytes(data)
+		if err != nil {
+			return "", ErrEncoding
+		}
+		if strings.ContainsRune(string(decoded), utf8.RuneError) && !strings.EqualFold(name, "utf16") && !validReplacement(enc, data) {
+			return "", ErrEncoding
+		}
+		return string(decoded), nil
 	}
 	text := string(data)
 	if _, err := Encode(name, text); err != nil {
 		return "", err
 	}
 	return text, nil
+}
+
+func textEncoding(name string) encoding.Encoding {
+	switch strings.ToLower(name) {
+	case "gbk":
+		return simplifiedchinese.GBK
+	case "gb18030":
+		return simplifiedchinese.GB18030
+	case "utf16":
+		return unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM)
+	}
+	return nil
+}
+
+func validUTF16(data []byte) bool {
+	if len(data)%2 != 0 {
+		return false
+	}
+	for i := 0; i < len(data); i += 2 {
+		n := binary.BigEndian.Uint16(data[i:])
+		if n < 0xd800 || n > 0xdfff {
+			continue
+		}
+		if n > 0xdbff || i+4 > len(data) {
+			return false
+		}
+		next := binary.BigEndian.Uint16(data[i+2:])
+		if next < 0xdc00 || next > 0xdfff {
+			return false
+		}
+		i += 2
+	}
+	return true
+}
+
+// Check only replacement-bearing input so valid legacy aliases remain readable.
+func validReplacement(enc encoding.Encoding, data []byte) bool {
+	replacement, _ := enc.NewEncoder().String("�")
+	for len(data) > 0 {
+		n := 1
+		if data[0] > 0x80 {
+			n = 2
+			if len(data) > 1 && data[1] >= 0x30 && data[1] <= 0x39 {
+				n = 4
+			}
+		}
+		if n > len(data) {
+			return false
+		}
+		decoded, err := enc.NewDecoder().Bytes(data[:n])
+		if err != nil {
+			return false
+		}
+		if bytes.Contains(decoded, []byte("�")) && !bytes.Equal(data[:n], []byte(replacement)) {
+			return false
+		}
+		data = data[n:]
+	}
+	return true
+}
+
+// Collation identifies supported OceanBase result encodings; unknown IDs are rejected.
+func Collation(id uint16) (string, bool) {
+	switch {
+	case id == 63:
+		return "binary", true
+	case id == 8 || id == 15 || id == 31 || id >= 47 && id <= 49 || id == 94:
+		return "latin1", true
+	case id == 11 || id == 65:
+		return "ascii", true
+	case id == 28 || id == 87:
+		return "gbk", true
+	case id == 54 || id == 55 || id >= 101 && id <= 124:
+		return "utf16", true
+	case id >= 248 && id <= 250:
+		return "gb18030", true
+	case id == 33 || id == 76 || id == 83 || id >= 192 && id <= 215:
+		return "utf8mb3", true
+	case id == 45 || id == 46 || id >= 224 && id <= 247 || id == 255:
+		return "utf8mb4", true
+	}
+	return "", false
 }

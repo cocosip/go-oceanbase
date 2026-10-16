@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -99,8 +102,9 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
-		return nil, wire.ErrMessageTooLarge
+	encoded, err := c.encodeSQL(query)
+	if err != nil {
+		return nil, err
 	}
 	if err := c.lock(ctx); err != nil {
 		return nil, err
@@ -109,7 +113,28 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 		c.unlock()
 		return nil, driver.ErrBadConn
 	}
-	return c.queryCommandLocked(ctx, append([]byte{3}, query...), false, nil)
+	return c.queryCommandLocked(ctx, append([]byte{3}, encoded...), false, nil)
+}
+
+func (c *conn) encodeSQL(query string) ([]byte, error) {
+	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+		return nil, wire.ErrMessageTooLarge
+	}
+	if !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
+		return nil, fmt.Errorf("%w: invalid SQL text", ErrBind)
+	}
+	name := c.cfg.Session.Charset
+	if name == "" {
+		name = charsetUTF8MB4
+	}
+	data, err := charset.Encode(name, query)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) >= c.cfg.Limits.MaxMessageBytes {
+		return nil, wire.ErrMessageTooLarge
+	}
+	return data, nil
 }
 
 func (c *conn) startRows(ctx context.Context, binary bool, auto *stmt) *textRows {

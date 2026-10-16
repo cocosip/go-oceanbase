@@ -314,6 +314,9 @@ func TestConnectQueryInitialization(t *testing.T) {
 		if !sendPackets(ctx, t, p, []byte{1}, textColumn("v", 3, 63, 0), []byte{254, 0, 0, 2, 0}, []byte{1, '1'}, []byte{254, 0, 0, 2, 0}) {
 			return
 		}
+		if !serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), 2) || !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), 2) {
+			return
+		}
 		if !serveOK(context.Background(), t, p, []byte{14}, 2) {
 			return
 		}

@@ -15,6 +15,7 @@ func TestDSNStrict(t *testing.T) {
 		"oceanbase://app:private@localhost/db#private", "oceanbase://app:private@localhost/a/b", "oceanbase://app:private@localhost:99999/db",
 		"oceanbase://app:private@localhost/db?location=not-a-zone", "oceanbase://app:private@localhost/db?maxMessageBytes=9223372036854775808",
 		"oceanbase://app:private@localhost/db?mode=%zz", "oceanbase://app:private@localhost/db?mode", "oceanbase://app:private@localhost:/db",
+		"oceanbase://app:private@localhost/db?parseTime=1", "oceanbase://app:private@localhost/db?ncharset=binary",
 	} {
 		_, err := ParseDSN(dsn)
 		if err == nil {
@@ -24,6 +25,17 @@ func TestDSNStrict(t *testing.T) {
 		if strings.Contains(err.Error(), "private") || strings.Contains(err.Error(), "oceanbase://") {
 			t.Fatalf("DSN error exposed credentials: %v", err)
 		}
+	}
+}
+
+func TestDSNScalarOptions(t *testing.T) {
+	cfg, err := ParseDSN("oceanbase://app@localhost/db?parseTime=true&charset=GBK&ncharset=UTF16&location=UTC")
+	if err != nil || !cfg.Session.ParseTime || cfg.Session.Charset != "gbk" || cfg.Session.NCharset != testCharsetUTF16 || cfg.Session.Location != time.UTC {
+		t.Fatal("scalar options ignored", err)
+	}
+	cfg, err = ParseDSN("oceanbase://app@localhost/db?parseTime=false")
+	if err != nil || cfg.Session.ParseTime {
+		t.Fatal("cannot retain textual time", err)
 	}
 }
 

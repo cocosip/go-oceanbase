@@ -8,13 +8,34 @@ import (
 	"strconv"
 	"unicode/utf8"
 
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 const (
-	typeNameDate = "DATE"
-	typeNameChar = "CHAR"
+	typeNameDate      = "DATE"
+	typeNameNumber    = "NUMBER"
+	typeNameTimestamp = "TIMESTAMP"
+	typeNameChar      = "CHAR"
 )
+
+func (c *conn) decodeColumn(data []byte) (wire.Column, error) {
+	column, err := wire.DecodeColumn(data)
+	if err != nil {
+		return column, err
+	}
+	name := c.cfg.Session.Charset
+	if name == "" {
+		name = charsetUTF8MB4
+	}
+	for _, field := range []*string{&column.Catalog, &column.Schema, &column.Table, &column.OriginalTable, &column.Name, &column.OriginalName} {
+		*field, err = charset.Decode(name, []byte(*field))
+		if err != nil {
+			return wire.Column{}, err
+		}
+	}
+	return column, nil
+}
 
 // UnsupportedTypeError identifies a type whose decoding is not implemented for this mode.
 type UnsupportedTypeError struct {
@@ -31,7 +52,7 @@ func textTypeName(c wire.Column, mode Mode) string {
 	if mode == ModeOracle {
 		switch c.Type {
 		case 3:
-			return "NUMBER"
+			return typeNameNumber
 		case 4:
 			return "BINARY_FLOAT"
 		case 5:
@@ -40,6 +61,26 @@ func textTypeName(c wire.Column, mode Mode) string {
 			return "VARCHAR2"
 		case 203:
 			return "RAW"
+		case 200:
+			return "TIMESTAMP WITH TIME ZONE"
+		case 201:
+			return "TIMESTAMP WITH LOCAL TIME ZONE"
+		case 202:
+			return typeNameTimestamp
+		case 204:
+			return "INTERVAL YEAR TO MONTH"
+		case 205:
+			return "INTERVAL DAY TO SECOND"
+		case 206:
+			return typeNameNumber
+		case 207:
+			return "NVARCHAR2"
+		case 208:
+			return "NCHAR"
+		case 209:
+			return "ROWID"
+		case 246:
+			return typeNameNumber
 		case 7, 10, 11, 13, 14, 245, 249, 250, 251, 252, 255:
 			return ""
 		}
@@ -64,7 +105,7 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 6:
 		return "NULL"
 	case 7:
-		return "TIMESTAMP"
+		return typeNameTimestamp
 	case 8:
 		return "BIGINT"
 	case 9:
@@ -110,6 +151,11 @@ func decodeTextValue(c wire.Column, mode Mode, data []byte) (driver.Value, error
 	switch c.Type {
 	case 0, 246:
 		return string(data), nil
+	case 206:
+		if _, _, err := decimalParts(string(data)); err != nil {
+			return nil, err
+		}
+		return string(data), nil
 	case 1, 2, 3, 8, 9, 13:
 		if mode == ModeOracle && c.Type == 3 {
 			return string(data), nil
@@ -154,15 +200,9 @@ func decodeTextValue(c wire.Column, mode Mode, data []byte) (driver.Value, error
 	if c.Charset == 63 {
 		return slices.Clone(data), nil
 	}
-	if !utf8Collation(c.Charset) {
+	name, known := charset.Collation(c.Charset)
+	if !known {
 		return nil, fmt.Errorf("%w: result character set", ErrUnsupported)
 	}
-	if !utf8.Valid(data) {
-		return nil, fmt.Errorf("oceanbase: invalid UTF-8 result")
-	}
-	return string(data), nil
-}
-
-func utf8Collation(id uint16) bool {
-	return id == 33 || id == 45 || id == 46 || id == 83 || (id >= 192 && id <= 215) || (id >= 224 && id <= 247) || id == 255
+	return charset.Decode(name, data)
 }

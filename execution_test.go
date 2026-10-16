@@ -326,7 +326,7 @@ func TestExecutionCancellation(t *testing.T) {
 
 func TestExecutionParameters(t *testing.T) {
 	for _, strategy := range []PrepareMode{PrepareServer, PrepareClient} {
-		t.Run(map[PrepareMode]string{PrepareServer: "server", PrepareClient: "client"}[strategy], func(t *testing.T) {
+		t.Run(map[PrepareMode]string{PrepareServer: testServerStrategy, PrepareClient: testClientStrategy}[strategy], func(t *testing.T) {
 			connector, err := NewConnector(Config{User: testUser, PrepareMode: strategy, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) {
 					return

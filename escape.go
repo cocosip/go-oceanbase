@@ -249,7 +249,7 @@ func mysqlConvertType(typ string) string {
 		return "SIGNED INTEGER"
 	case "bit":
 		return "UNSIGNED INTEGER"
-	case "binary", "varbinary", "longvarbinary", "blob", "rowid":
+	case charsetBinary, "varbinary", "longvarbinary", "blob", "rowid":
 		return "BINARY"
 	case "char", "varchar", "longvarchar", "nchar", "nvarchar", "longnvarchar", "clob", "nclob", "sqlxml":
 		return typeNameChar
@@ -275,7 +275,7 @@ func oracleConvertType(typ string) string {
 	case "tinyint":
 		return "NUMBER(3)"
 	case "numeric", "decimal":
-		return "NUMBER"
+		return typeNameNumber
 	case "float", "double":
 		return "BINARY_DOUBLE"
 	case "real":
@@ -291,7 +291,7 @@ func oracleConvertType(typ string) string {
 	case "date":
 		return typeNameDate
 	case "timestamp":
-		return "TIMESTAMP"
+		return typeNameTimestamp
 	}
 	return ""
 }

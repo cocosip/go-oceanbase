@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -133,6 +134,13 @@ func (c *conn) interpolate(query string, args []driver.NamedValue) (string, erro
 func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 	var s string
 	switch v := v.(type) {
+	case Number:
+		return plainNumber(string(v), limit)
+	case NString, Raw, RowID, TimestampTZ, TimestampLTZ, IntervalYM, IntervalDS:
+		if c.session.mode != ModeOracle {
+			return "", ErrUnsupported
+		}
+		return c.scalarLiteral(v, limit)
 	case nil:
 		s = sqlNullLiteral
 	case int64:
@@ -184,13 +192,10 @@ func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 		}
 		s = prefix + hex.EncodeToString(v) + suffix
 	case time.Time:
-		v = v.In(c.cfg.Session.Location)
-		if v.Year() < 1 || v.Year() > 9999 || v.Nanosecond()%1000 != 0 {
-			return "", fmt.Errorf("%w: datetime precision or range", ErrBind)
-		}
-		s = "'" + v.Format("2006-01-02 15:04:05.000000") + "'"
-		if c.session.mode == ModeOracle {
-			s = "TIMESTAMP " + s
+		var err error
+		s, err = c.clientTimeLiteral(v)
+		if err != nil {
+			return "", err
 		}
 	default:
 		return "", fmt.Errorf("%w: client parameter type", ErrBind)
@@ -199,6 +204,87 @@ func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 		return "", wire.ErrMessageTooLarge
 	}
 	return s, nil
+}
+
+func (c *conn) clientTimeLiteral(v time.Time) (string, error) {
+	var s string
+	v = v.In(c.cfg.Session.Location)
+	if v.Year() < 1 || v.Year() > 9999 || c.session.mode != ModeOracle && v.Nanosecond()%1000 != 0 {
+		return "", fmt.Errorf("%w: datetime precision or range", ErrBind)
+	}
+	s = "'" + v.Format("2006-01-02 15:04:05.000000") + "'"
+	if v.Nanosecond()%1000 != 0 {
+		s = "'" + v.Format(timestampLayout+".000000000") + "'"
+	}
+	if c.session.mode == ModeOracle {
+		s = "TIMESTAMP " + s
+	}
+	return s, nil
+}
+
+func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
+	if _, err := value.(driver.Valuer).Value(); err != nil {
+		return "", err
+	}
+	var text string
+	switch v := value.(type) {
+	case Raw:
+		return c.clientLiteral([]byte(v), limit)
+	case RowID:
+		if int64(len(v)) > limit-15 {
+			return "", wire.ErrMessageTooLarge
+		}
+		text = "CHARTOROWID('" + string(v) + "')"
+	case NString:
+		if int64(len(v)) > limit {
+			return "", wire.ErrMessageTooLarge
+		}
+		units := utf16.Encode([]rune(v))
+		if limit < 10 || int64(len(units)) > (limit-10)/5 {
+			return "", wire.ErrMessageTooLarge
+		}
+		var b strings.Builder
+		b.WriteString("UNISTR('")
+		for _, unit := range units {
+			fmt.Fprintf(&b, "\\%04X", unit)
+		}
+		b.WriteString("')")
+		text = b.String()
+	case IntervalYM:
+		text = "INTERVAL '" + string(v) + "' YEAR(9) TO MONTH"
+	case IntervalDS:
+		text = "INTERVAL '" + string(v) + "' DAY(9) TO SECOND(9)"
+	case TimestampTZ:
+		parts, _ := parseTimestamp(string(v))
+		text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + " " + parts.instant.Format("-07:00") + "'"
+		if parts.region != "" {
+			text = "(" + text + " AT TIME ZONE '" + parts.region + "')"
+		}
+	case TimestampLTZ:
+		parts, _ := parseLTZ(string(v))
+		if parts.local {
+			if c.cfg.Session.Location == nil || parts.region != c.cfg.Session.Location.String() {
+				return "", ErrType
+			}
+			text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + "'"
+		} else {
+			text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + " " + parts.instant.Format("-07:00") + "'"
+		}
+		text = "CAST(" + text + " AS TIMESTAMP WITH LOCAL TIME ZONE)"
+	}
+	if int64(len(text)) > limit {
+		return "", wire.ErrMessageTooLarge
+	}
+	return text, nil
+}
+
+func formatTimestamp(t time.Time, scale int) string {
+	text := t.Format(timestampLayout)
+	if scale > 0 {
+		fraction := fmt.Sprintf("%09d", t.Nanosecond())
+		text += "." + fraction[:scale]
+	}
+	return text
 }
 
 func clientFloat(v float64, mode Mode) (string, error) {

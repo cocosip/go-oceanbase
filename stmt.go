@@ -5,8 +5,6 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"fmt"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -31,9 +29,6 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return nil, wire.ErrMessageTooLarge
 	}
-	if !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
-		return nil, fmt.Errorf("%w: invalid SQL text", ErrBind)
-	}
 	plan := bindPlan{query: query, sql: query, mode: c.session.mode}
 	if plan.mode == ModeOracle {
 		var err error
@@ -41,6 +36,10 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 		if err != nil {
 			return nil, err
 		}
+	}
+	encoded, err := c.encodeSQL(plan.sql)
+	if err != nil {
+		return nil, err
 	}
 	if err := c.lock(ctx); err != nil {
 		return nil, err
@@ -54,7 +53,7 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	defer r.release()
 	p := c.session.packets
 	p.ResetSequence()
-	if err := p.WriteMessage(ctx, append([]byte{22}, plan.sql...)); err != nil {
+	if err := p.WriteMessage(ctx, append([]byte{22}, encoded...)); err != nil {
 		return nil, r.fail(err, !errorsPreSend(err))
 	}
 	data, err := p.ReadMessage(ctx)
@@ -112,7 +111,7 @@ func (c *conn) prepareMetadata(ctx context.Context, count int, budget *int64) er
 			return wire.ErrMessageTooLarge
 		}
 		*budget += int64(len(data))
-		if _, err = wire.DecodeColumn(data); err != nil {
+		if _, err = c.decodeColumn(data); err != nil {
 			return err
 		}
 	}
@@ -202,7 +201,12 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 		return nil, wire.ErrMessageTooLarge
 	}
 	for i, v := range values {
-		params[i], err = encodeParameter(v.value, s.plan.mode, s.conn.cfg.Session.Location, budget)
+		limit := budget
+		switch v.value.(type) {
+		case Raw, []byte:
+			limit = min(limit, s.conn.cfg.Limits.MaxLOBBytes)
+		}
+		params[i], err = encodeParameter(v.value, s.plan.mode, s.conn.cfg.Session, limit)
 		if err != nil {
 			return nil, err
 		}

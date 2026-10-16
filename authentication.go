@@ -168,12 +168,20 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 
 func handshakeCharset(name string) (byte, error) {
 	switch strings.ToLower(name) {
-	case "utf8mb4":
+	case charsetUTF8MB4:
 		return 45, nil
 	case charsetUTF8, charsetUTF8MB3Alias:
 		return 33, nil
 	case "latin1":
 		return 8, nil
+	case "gbk":
+		return 28, nil
+	case "gb18030":
+		return 248, nil
+	case "ascii":
+		return 11, nil
+	case charsetBinary:
+		return 63, nil
 	default:
 		return 0, fmt.Errorf("%w: handshake charset", ErrUnsupported)
 	}

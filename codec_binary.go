@@ -9,10 +9,15 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-func encodeParameter(v any, mode Mode, location *time.Location, limit int64) (wire.Parameter, error) {
+func encodeParameter(v any, mode Mode, options SessionOptions, limit int64) (wire.Parameter, error) {
+	switch v.(type) {
+	case Number, NString, Raw, RowID, TimestampTZ, TimestampLTZ, IntervalYM, IntervalDS:
+		return encodeScalarParameter(v, mode, options, limit)
+	}
 	p := wire.Parameter{}
 	switch v := v.(type) {
 	case nil:
@@ -53,11 +58,28 @@ func encodeParameter(v any, mode Mode, location *time.Location, limit int64) (wi
 		if !utf8.ValidString(v) {
 			return p, fmt.Errorf("%w: invalid UTF-8 parameter", ErrBind)
 		}
+		name := options.Charset
+		if name == "" {
+			name = charsetUTF8MB4
+		}
+		data, err := charset.Encode(name, v)
+		if err != nil {
+			return p, err
+		}
+		if int64(len(data)) > limit {
+			return p, wire.ErrMessageTooLarge
+		}
 		p.Type = 253
-		p.Data = []byte(v)
+		p.Data = data
 		p.LengthEncoded = true
 	case time.Time:
-		v = v.In(location)
+		if mode == ModeOracle {
+			return encodeTemporal(v, options)
+		}
+		if options.Location == nil {
+			options.Location = time.UTC
+		}
+		v = v.In(options.Location)
 		if v.Year() < 1 || v.Year() > 9999 || v.Nanosecond()%1000 != 0 {
 			return p, fmt.Errorf("%w: datetime precision or range", ErrBind)
 		}
@@ -66,6 +88,69 @@ func encodeParameter(v any, mode Mode, location *time.Location, limit int64) (wi
 		p.Data = binary.LittleEndian.AppendUint32(p.Data, uint32(v.Nanosecond()/1000))
 	default:
 		return p, fmt.Errorf("%w: binary parameter type", ErrBind)
+	}
+	return p, nil
+}
+
+func encodeScalarParameter(v any, mode Mode, options SessionOptions, limit int64) (wire.Parameter, error) {
+	p := wire.Parameter{}
+	switch v := v.(type) {
+	case TimestampTZ, TimestampLTZ, IntervalYM, IntervalDS:
+		if mode != ModeOracle {
+			return p, ErrUnsupported
+		}
+		var err error
+		p, err = encodeTemporal(v, options)
+		if err != nil {
+			return p, err
+		}
+		if int64(len(p.Data)) > limit {
+			return wire.Parameter{}, wire.ErrMessageTooLarge
+		}
+	case Number:
+		text, err := plainNumber(string(v), limit)
+		if err != nil {
+			return p, err
+		}
+		p.Type, p.LengthEncoded, p.Data = 246, true, []byte(text)
+	case NString, Raw, RowID:
+		if mode != ModeOracle {
+			return p, ErrUnsupported
+		}
+		p.LengthEncoded = true
+		switch v := v.(type) {
+		case NString:
+			if int64(len(v)) > limit {
+				return p, wire.ErrMessageTooLarge
+			}
+			name := options.NCharset
+			if name == "" {
+				name = options.Charset
+			}
+			if name == "" {
+				name = charsetUTF8MB4
+			}
+			data, err := charset.Encode(name, string(v))
+			if err != nil {
+				return p, err
+			}
+			p.Type, p.Data = 208, data
+		case Raw:
+			p.Type, p.Data = 203, []byte(v)
+			if v == nil {
+				p.Type = 6
+			}
+		case RowID:
+			if _, err := v.Value(); err != nil {
+				return p, err
+			}
+			p.Type, p.Data = 253, []byte(v)
+		}
+		if int64(len(p.Data)) > limit {
+			return wire.Parameter{}, wire.ErrMessageTooLarge
+		}
+	default:
+		return p, ErrType
 	}
 	return p, nil
 }

@@ -75,7 +75,7 @@ func serveOK(ctx context.Context, t *testing.T, p *wire.PacketIO, want []byte, s
 }
 
 func serveBaseline(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, deprecate ...bool) bool {
-	return serveOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && serveOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status) && serveVersion(ctx, t, p, status, len(deprecate) > 0 && deprecate[0])
+	return serveOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && serveOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status) && serveVersion(ctx, t, p, status, len(deprecate) > 0 && deprecate[0]) && serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status)
 }
 
 func serveVersion(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, deprecate bool) bool {
@@ -220,6 +220,10 @@ func TestConnectorModePinning(t *testing.T) {
 			}
 			return
 		}
+		if !serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), status) || !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status) {
+			return
+		}
+		p.ResetSequence()
 		serveQuit(t, p)
 	})})
 	if err != nil {
@@ -268,6 +272,9 @@ func TestConnectorConcurrentModes(t *testing.T) {
 			return
 		}
 		if !serveVersion(ctx, t, p, status, false) {
+			return
+		}
+		if !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status) {
 			return
 		}
 		p.ResetSequence()
@@ -354,7 +361,7 @@ func TestConnectInitializationAndPing(t *testing.T) {
 		if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) {
 			return
 		}
-		for _, sql := range []string{"SET SESSION time_zone = '+00:00'", readySQL} {
+		for _, sql := range []string{"SET SESSION time_zone = '+00:00'", readySQL, "SET NAMES utf8mb4", "SET SESSION time_zone = '+00:00'"} {
 			if !serveOK(ctx, t, p, append([]byte{3}, sql...), 2) {
 				return
 			}

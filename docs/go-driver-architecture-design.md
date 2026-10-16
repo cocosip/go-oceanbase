@@ -334,6 +334,20 @@ Oracle RETURNING 所需的 COM_STMT_PREPARE_EXECUTE 基础编码、输出解码�
 
 输入 Object/Array 保留明确的类型名和字段顺序；不将任意 struct 反射成数据库对象，不将任意 slice 自动当作 Oracle 集合。类型描述缓存以会话模式、schema、type 名称及可得版本为键；DDL 或类型失配后刷新描述，业务执行不盲目重放。
 
+### 11.2.1 已实现的标量约定（D12）
+
+公开类型使用轻量值：`Number`、`NString`、`RowID`、`TimestampTZ`、`TimestampLTZ`、`IntervalYM`、`IntervalDS` 的底层为 string，`Raw` 为 []byte；均实现 Scanner/Valuer。NULL 使用 `sql.Null[T]` 或 nil 指针；Raw 的 nil 表示 NULL，非 nil 空切片表示空值。驱动在通用 Valuer 之前识别这些具体类型及其 `sql.Null[T]`，保留输入协议身份；普通 Scan 仍只输出标准 driver.Value。Oracle 是否将空字符串/空 RAW 归为 NULL 由服务端决定，驱动不伪造空值。
+
+Number 验证十进制与指数文本，不接收 float64 来重建精确值，也不实现运算。输入按精确 DECIMAL/NUMBER 编码；指数仅在有界展开后发送，避免 MySQL 将其当作 DOUBLE。超界、非法编码或无法无损表达的转换返回错误，不截断或替换。RowID 保留行标识文本，Oracle 输入沿用字符串参数；客户端显式构造 CHARTOROWID。
+
+时间默认保留文本；`Session.ParseTime`（DSN `parseTime`）默认 false，启用后仅将无时区 DATE/DATETIME/TIMESTAMP 解析为 time.Time，依据明确的 `Session.Location`。默认 UTC，建连实际设置会话 time_zone；Variables/InitSQL 完成后重新应用连接字符集、时区及 NCHAR 基线，使编解码一致。业务执行期间如自行修改这些设置，必须保证与 Config 一致；Managed reset 不解析任意用户 SQL 来追踪这些变化。零日期、DST 缺口/重叠在解析为瞬间时返回 ErrType，TIME 和 YEAR 保留原有持续时间文本/整数语义。
+
+带时区值的文本例为 `2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT`。偏移必需，region/缩写可选；已知 region 与偏移不一致时拒绝。未知 region 原文和显式偏移保留，Time() 使用该偏移，不猜测 region。LTZ 原生字段只有会话墙上时间；固定偏移会话追加偏移，具转换规则的会话追加 region，例如 `2024-11-03 01:30:00.000000001 America/New_York`。其 Time() 在歧义时拒绝；同会话 region 可原样绑定，本机瞬间转换到歧义 LTZ 墙上时间也拒绝，防止丢失 fold。需要指定 fold 时使用 TimestampTZ 绑定，由服务端转换到 LTZ 列。
+
+Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用原生 TIMESTAMP(9)，MySQL 协议只支持微秒，超过精度明确报错。IntervalYM/DS 保留符号、最高九位年/日与最高九位秒小数，不换算成 time.Duration。二进制和文本行中的 Oracle 扩展时间均按原生字段体解码，不能把它误当成字符文本。
+
+字符集叶包使用 x/text v0.31.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。
+
 ### 11.3 错误
 
 ```go

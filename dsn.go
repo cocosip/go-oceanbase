@@ -65,6 +65,15 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		cfg.Session.NCharset = value
 	case "location":
 		cfg.Session.Location, err = time.LoadLocation(value)
+	case "parseTime":
+		switch value {
+		case "true":
+			cfg.Session.ParseTime = true
+		case "false":
+			cfg.Session.ParseTime = false
+		default:
+			err = &ConfigError{Field: "parseTime"}
+		}
 	case "rowsAffectedMode":
 		switch value {
 		case "matched":

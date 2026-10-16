@@ -1,6 +1,7 @@
 package oceanbase
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
@@ -52,6 +53,36 @@ func bindArguments(plan bindPlan, args []driver.NamedValue) ([]boundValue, error
 }
 
 func convertArgument(value any) (any, error) {
+	switch value.(type) {
+	case sql.Null[Number], sql.Null[NString], sql.Null[Raw], sql.Null[RowID],
+		sql.Null[TimestampTZ], sql.Null[TimestampLTZ], sql.Null[IntervalYM], sql.Null[IntervalDS],
+		*sql.Null[Number], *sql.Null[NString], *sql.Null[Raw], *sql.Null[RowID],
+		*sql.Null[TimestampTZ], *sql.Null[TimestampLTZ], *sql.Null[IntervalYM], *sql.Null[IntervalDS]:
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Pointer {
+			if rv.IsNil() {
+				return nil, nil
+			}
+			rv = rv.Elem()
+		}
+		if !rv.FieldByName("Valid").Bool() {
+			return nil, nil
+		}
+		return convertArgument(rv.FieldByName("V").Interface())
+	}
+	switch value.(type) {
+	case Number, NString, Raw, RowID, *Number, *NString, *Raw, *RowID,
+		TimestampTZ, TimestampLTZ, IntervalYM, IntervalDS, *TimestampTZ, *TimestampLTZ, *IntervalYM, *IntervalDS:
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Pointer {
+			if rv.IsNil() {
+				return nil, nil
+			}
+			return convertArgument(rv.Elem().Interface())
+		}
+		_, err := value.(driver.Valuer).Value()
+		return value, err
+	}
 	if value == nil || driver.IsValue(value) {
 		return value, nil
 	}

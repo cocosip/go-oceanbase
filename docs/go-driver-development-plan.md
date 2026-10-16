@@ -327,7 +327,7 @@ go test -tags=integration ./tests/integration -count=1
 
 文件：新增 `types.go`、`number.go`、`temporal.go`、`internal/charset/`、对应测试；扩充 `codec*.go` 和 `tests/integration/types_test.go`。
 
-交付：Number、NString、ROWID/RAW、TimestampTZ/LTZ、IntervalYM/DS 的无损 Scanner/Valuer；字符集/collation、NCHAR 和会话时区；普通 Scan 来源保持标准值。
+交付：Number、NString、RowID/Raw、TimestampTZ/LTZ、IntervalYM/DS 的无损 Scanner/Valuer；具体类型及 sql.Null[T] 保留绑定身份；字符集/collation、NCHAR 和实际会话时区；Session.ParseTime 默认保留文本，显式解析无时区日期/时间戳时拒绝非法/DST 歧义；普通 Scan 来源保持标准值。
 
 - [ ] 测试 `TestTypeBoundaries`、`TestTemporalLossless`、`TestCharsetRoundTrip`：最大/最小/越界数、负/超24小时 TIME、零日期、纳秒/region/DST、月间隔、非法编码、NULL/空字符串/空字节；不把 NUMBER 转成 float64。
 - [ ] 执行 `go test . ./internal/charset -count=1`，确认新增断言失败。

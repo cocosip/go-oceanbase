@@ -110,15 +110,15 @@ func TestBinaryTimeAndScalars(t *testing.T) {
 	}
 	local := time.FixedZone("test", 8*3600)
 	value := time.Date(2025, 10, 17, 4, 34, 56, 123456000, time.UTC)
-	p, err := encodeParameter(value, ModeMySQL, local, 1024)
+	p, err := encodeParameter(value, ModeMySQL, SessionOptions{Location: local}, 1024)
 	want := []byte{11, 233, 7, 10, 17, 12, 34, 56, 64, 226, 1, 0}
 	if err != nil || p.Type != 12 || !reflect.DeepEqual(p.Data, want) {
 		t.Fatal(p, err)
 	}
-	if _, err = encodeParameter(value.Add(time.Nanosecond), ModeMySQL, local, 1024); !errors.Is(err, ErrBind) {
+	if _, err = encodeParameter(value.Add(time.Nanosecond), ModeMySQL, SessionOptions{Location: local}, 1024); !errors.Is(err, ErrBind) {
 		t.Fatal("unrepresentable precision silently truncated", err)
 	}
-	if _, err = encodeParameter("oversized", ModeMySQL, local, 3); !errors.Is(err, wire.ErrMessageTooLarge) {
+	if _, err = encodeParameter("oversized", ModeMySQL, SessionOptions{Location: local}, 3); !errors.Is(err, wire.ErrMessageTooLarge) {
 		t.Fatal(err)
 	}
 }

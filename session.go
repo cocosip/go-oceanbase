@@ -3,27 +3,43 @@ package oceanbase
 import (
 	"context"
 	"database/sql/driver"
+	"fmt"
 	"io"
 	"maps"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/cocosip/go-oceanbase/internal/charset"
 )
 
 const (
 	charsetUTF8         = "utf8"
+	charsetUTF8MB4      = "utf8mb4"
+	charsetBinary       = "binary"
+	fieldNCharset       = "Session.NCharset"
 	charsetUTF8MB3Alias = "utf8mb3"
 )
 
 func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
 	if options.Charset == "" {
-		options.Charset = "utf8mb4"
+		options.Charset = charsetUTF8MB4
 	}
 	if options.Location == nil {
 		options.Location = time.UTC
 	}
 	if strings.ContainsRune(options.NCharset, 0) {
-		return SessionOptions{}, &ConfigError{Field: "Session.NCharset"}
+		return SessionOptions{}, &ConfigError{Field: fieldNCharset}
+	}
+	options.Charset = strings.ToLower(options.Charset)
+	options.NCharset = strings.ToLower(options.NCharset)
+	if options.NCharset != "" {
+		if _, err := charset.Encode(options.NCharset, ""); err != nil || options.NCharset == charsetBinary {
+			return SessionOptions{}, &ConfigError{Field: fieldNCharset}
+		}
+	}
+	if _, err := sessionTimeZone(options.Location); err != nil {
+		return SessionOptions{}, err
 	}
 	options.Variables = maps.Clone(options.Variables)
 	options.InitSQL = slices.Clone(options.InitSQL)
@@ -54,9 +70,16 @@ func (c *conn) initialize(ctx context.Context) error {
 	if err := c.readOceanBaseVersion(ctx); err != nil {
 		return err
 	}
+	zone, err := sessionTimeZone(c.cfg.Session.Location)
+	if err != nil {
+		return err
+	}
+	if err = c.initSQL(ctx, "SET SESSION time_zone = "+c.quoteSessionValue(zone)); err != nil {
+		return err
+	}
 	if name := c.cfg.Session.NCharset; name != "" {
 		if c.session.mode != ModeOracle {
-			return &ConfigError{Field: "Session.NCharset"}
+			return &ConfigError{Field: fieldNCharset}
 		}
 		if err := c.initSQL(ctx, "SET NCHARACTER_SET_CONNECTION = "+c.quoteSessionValue(name)); err != nil {
 			return err
@@ -81,10 +104,47 @@ func (c *conn) initialize(ctx context.Context) error {
 			return err
 		}
 	}
+	if len(names) != 0 || len(c.cfg.Session.InitSQL) != 0 {
+		// Decoding must use the same encoding and zone as the published session.
+		for _, query := range []string{"SET NAMES " + charset, "SET SESSION time_zone = " + c.quoteSessionValue(zone)} {
+			if err := c.initSQL(ctx, query); err != nil {
+				return err
+			}
+		}
+		if name := c.cfg.Session.NCharset; name != "" {
+			if err := c.initSQL(ctx, "SET NCHARACTER_SET_CONNECTION = "+c.quoteSessionValue(name)); err != nil {
+				return err
+			}
+		}
+	}
 	if c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 {
 		return &ConfigError{Field: "Session.InitSQL transaction state"}
 	}
 	return nil
+}
+
+func sessionTimeZone(loc *time.Location) (string, error) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	t := time.Unix(0, 0).In(loc)
+	start, end := t.ZoneBounds()
+	if start.IsZero() && end.IsZero() {
+		_, offset := t.Zone()
+		if offset%60 != 0 || offset < -12*3600 || offset > 14*3600 {
+			return "", &ConfigError{Field: "Session.Location"}
+		}
+		sign := "+"
+		if offset < 0 {
+			sign = "-"
+			offset = -offset
+		}
+		return fmt.Sprintf("%s%02d:%02d", sign, offset/3600, offset%3600/60), nil
+	}
+	if loc == time.Local || !zoneToken(loc.String(), 128) {
+		return "", &ConfigError{Field: "Session.Location"}
+	}
+	return loc.String(), nil
 }
 
 func (c *conn) readOceanBaseVersion(ctx context.Context) error {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"time"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -146,7 +147,7 @@ func (r *textRows) advance(ctx context.Context) error {
 				return wire.ErrMessageTooLarge
 			}
 			metadataBytes += int64(len(data))
-			if r.columns[i], err = wire.DecodeColumn(data); err != nil {
+			if r.columns[i], err = r.conn.decodeColumn(data); err != nil {
 				return err
 			}
 			if textTypeName(r.columns[i], r.conn.session.mode) == "" {
@@ -230,11 +231,7 @@ func (r *textRows) next(ctx context.Context, dest []driver.Value) error {
 			if typ := r.columns[i].Type; typ >= 249 && typ <= 252 && int64(len(field)) > r.conn.cfg.Limits.MaxLOBBytes {
 				return r.fail(wire.ErrMessageTooLarge, true)
 			}
-			if r.binary {
-				dest[i], err = decodeBinaryValue(r.columns[i], r.conn.session.mode, field)
-			} else {
-				dest[i], err = decodeTextValue(r.columns[i], r.conn.session.mode, field)
-			}
+			dest[i], err = r.conn.decodeRowValue(r.columns[i], r.binary, field)
 			if err != nil {
 				return r.fail(err, true)
 			}
@@ -319,6 +316,9 @@ func (r *textRows) ColumnTypeNullable(index int) (bool, bool) {
 }
 func (r *textRows) ColumnTypeScanType(index int) reflect.Type {
 	c := r.columns[index]
+	if r.conn.cfg.Session.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type == 202 && r.conn.session.mode == ModeOracle) {
+		return reflect.TypeFor[time.Time]()
+	}
 	if c.Charset == 63 && (c.Type == 15 || c.Type >= 249) || c.Type == 16 || c.Type == 203 {
 		return reflect.TypeFor[[]byte]()
 	}
