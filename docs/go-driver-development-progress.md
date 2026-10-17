@@ -806,6 +806,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增 [TestCommitCanceledAfterWrite、TestCommitDeadlineAfterWrite、TestCommitServerRejection](../tx_commit_test.go)，覆盖两种兼容模式，经真实 database/sql 与本地协议对端检查写出后的取消/超时、明确拒绝、单次提交/拨号、底层关闭、池中无遗留连接及结束后不能回滚。旧 tx.go 的 Go overlay 使取消/超时四场景均按预期因缺少 ErrCommitUnknown 失败；修正后的目标通过。对端仅确认收到 COMMIT，不证明真实提交或回滚结果。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标在 Go1.25 各10轮及实际 Windows/386 通过。初次 lint 的重复模式名称改为复用既有测试常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，不另存报告；架构和使用指南已同步，文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，真实平台、远程 CI 和成功 race 的缺口不变，D28/D30/D31/D32 继续进行中。
 
+#### D09/D12 保存点命令的会话字符集
+
+- 修复保存点命令绕过 Session.Charset、直接发送 Go UTF-8 字节的问题；模式引用完成后复用 encodeSQL 严格编码，不可表示的名称在发送前拒绝，不新增公开 API、包或依赖。
+- 新增 [TestSavepointCharset、TestSavepointUnrepresentable](../savepoint_charset_test.go)：两模式 × utf8mb4/GBK × 标准/压缩/OB20 共12个正向场景，以独立固定 GBK 字节 D6 D0 检查含引号的中文名称，覆盖创建、回滚到保存点和 MySQL 释放；Oracle 释放明确拒绝且不发送。两模式检查 GBK 无法表示的名称在发送前失败，后续合法保存点及事务回滚仍成功；同时检查原物理会话所有权和关闭。旧实现的六个 GBK 正向场景发送 UTF-8 字节、两个不可编码场景实际发送名称，均按预期失败；修正后目标通过。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标两版本各10轮及 Go1.25 实际 Windows/386 通过，两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，不另存报告。本地对端仅证明字节、拒绝边界及资源所有权，不证明真实服务端的保存点、回滚或标识符支持；未连接数据库，D28/D30/D31/D32及28/32实现、0/32验收保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

@@ -81,6 +81,10 @@ func (c *conn) execSavepoint(ctx context.Context, request savepointRequest) (dri
 		return nil, ErrUnsupported
 	}
 	command += quote + strings.ReplaceAll(name, quote, quote+quote) + quote
+	encoded, err := c.encodeSQL(command)
+	if err != nil {
+		return nil, err
+	}
 	if err := c.lock(ctx); err != nil {
 		return nil, err
 	}
@@ -91,7 +95,7 @@ func (c *conn) execSavepoint(ctx context.Context, request savepointRequest) (dri
 	if c.activeTx == nil {
 		return nil, fmt.Errorf("oceanbase: savepoint requires active transaction")
 	}
-	if err := c.commandOK(ctx, append([]byte{3}, command...)); err != nil {
+	if err := c.commandOK(ctx, append([]byte{3}, encoded...)); err != nil {
 		return nil, err
 	}
 	return result{known: true}, nil
