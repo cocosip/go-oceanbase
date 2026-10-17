@@ -23,6 +23,7 @@ type textRows struct {
 	done, more, released bool
 	items                int
 	last                 result
+	lastRowStatus        uint16
 	err                  error
 	stopCancel           func() bool
 	cancelDone           chan struct{}
@@ -290,6 +291,7 @@ func (r *textRows) rowPacket(ctx context.Context) ([]byte, error) {
 		r.conn.observeResourceStatus(ok.Status)
 		r.conn.session.ok = ok
 		r.done = true
+		r.lastRowStatus = ok.Status
 		if !r.hiddenOut {
 			r.execution.rowDone()
 		}

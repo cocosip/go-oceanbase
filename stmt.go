@@ -30,6 +30,14 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 }
 
 func (c *conn) prepareServer(ctx context.Context, query string) (*stmt, error) {
+	if err := c.lock(ctx); err != nil {
+		return nil, err
+	}
+	defer c.unlock()
+	return c.prepareServerLocked(ctx, query)
+}
+
+func (c *conn) prepareServerLocked(ctx context.Context, query string) (*stmt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -48,14 +56,11 @@ func (c *conn) prepareServer(ctx context.Context, query string) (*stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.lock(ctx); err != nil {
-		return nil, err
-	}
 	if c.closed.Load() {
-		c.unlock()
 		return nil, driver.ErrBadConn
 	}
 	r := c.startRows(ctx, false, nil)
+	r.keepGate = true
 	ctx = r.ctx
 	defer r.release()
 	p := c.session.packets
@@ -103,7 +108,9 @@ func (c *conn) prepareServer(ctx context.Context, query string) (*stmt, error) {
 		err = r.err
 	}
 	if err != nil {
-		_ = prepared.Close()
+		cleanup, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
+		_ = prepared.closeLocked(cleanup)
+		cancel()
 		return nil, err
 	}
 	return prepared, nil

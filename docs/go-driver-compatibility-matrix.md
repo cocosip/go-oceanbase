@@ -26,7 +26,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | --- | --- | --- |
 | INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
 | PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 通用策略未实现；真实版本待联调 |
-| 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19；未实现 |
+| 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19 已实现 Oracle 已知 >=2.2.5 的 offset/尾 OK；旧/未知版本向前 fetch，真实版本待联调 |
 | LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后只声明 V2 属性位 1；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset 及 D22/D23 待实现 |
 
 ## 3. 真实目标
@@ -111,3 +111,16 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 协议依据为同一 Java 基线的 [对象参数](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBStructParameter.java)、[集合参数](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBArrayParameter.java) 和 [二进制行解析](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/rowprotocol/BinaryRowProtocol.java)。Java 文本复杂读取没有可用表示；Go 明确拒绝该路径。当前实现未证明所有目标版本或所有字段类型兼容。
 
 `TestComplexTypes` 只做 integration 标签编译，未连接数据库。四目标真实对象/集合/嵌套 LOB/事务/复杂 OUT、同义词权限及实际版本仍待联调；不计入验收完成。
+
+
+## 10. 游标、滚动与可更新结果（D19）
+
+| 能力 | Go 当前行为 | 验证状态 |
+| --- | --- | --- |
+| 向前批次 | Conn/Tx 固定会话；COM_STMT_EXECUTE flag1，COM_STMT_FETCH；完整批次返回标准 sql.Rows；有活动批次即 ErrCursorBusy | 两模式原生包、提前关闭、独立 context、空游标、失败失效、本地通过；实际服务器待联调 |
+| Static | 原生 fetch 建立有界快照，绝对/相对定位；0 为首行前，负/溢出拒绝；修改不更改原快照 | 滚动/预算/边界测试及位置 fuzz；实际大结果待验证 |
+| Sensitive | Oracle 已知 >=2.2.76，命令161 + scrollable mode8 + 绝对 offset fetch；不复用 static 行；其他组合明确拒绝 | 重复定位返回变化、尾 OK 位置与旧版本拒绝本地通过；跨会话敏感性/隔离待联调 |
+| 可更新与刷新 | 可写 Tx、单基表/完整投影 PK；MySQL InnoDB；安全标识符/原生绑定 DML；Update/Delete 先同事务 FOR UPDATE；Refresh 按 PK 读取基表投影 | 两模式 SQL/绑定、no-op0、缺行/警告、NULL 主键、prepare/锁后代次复核通过；真实锁/权限/并发待联调 |
+| 批次值与寿命 | 完整响应后原 gate 解码复杂值/物化 LOB；批次受 MaxMessageBytes/MaxLOBBytes，Close/事务/reset 释放父 statement 租约 | Oracle LOB fetch、EOF 两路径、旧版9字节及新版19字节、事务/reset 生命周期本地通过 |
+
+具体公开契约和限制见架构 §15。当前没有仅 ROWID 的可更新后端；完整 PK 不可靠时拒绝。Refresh 随 Updatable 开放，返回当前基表行，不重跑原过滤条件。修改 warning/未知结果由调用方回滚；缺行能安全关闭游标并保留事务。`TestCursorModes`、`TestCursorUpdates` 覆盖直连/代理两模式的源码已加入 CI 手动入口，本阶段仅编译，未连接数据库。

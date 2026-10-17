@@ -12,7 +12,9 @@ import (
 
 var prepareExecuteVersion = regexp.MustCompile(`(?:^|[^0-9.])([0-9]+)\.([0-9]+)\.([0-9]+)(?:\.[0-9]+)*(?:[^0-9.]|$)`)
 
-func supportsPrepareExecute(version string) bool {
+func supportsPrepareExecute(version string) bool { return supportsVersion(version, 2, 2, 76) }
+
+func supportsVersion(version string, major, minor, patch uint32) bool {
 	parts := prepareExecuteVersion.FindStringSubmatch(version)
 	if parts == nil {
 		return false
@@ -25,7 +27,7 @@ func supportsPrepareExecute(version string) bool {
 		}
 		numbers[i] = uint32(n)
 	}
-	return slices.Compare(numbers[:], []uint32{2, 2, 76}) >= 0
+	return slices.Compare(numbers[:], []uint32{major, minor, patch}) >= 0
 }
 
 func (c *conn) outputPrepareExecute(ctx context.Context, plan bindPlan, values []boundValue, prepared *stmt) ([]byte, error) {

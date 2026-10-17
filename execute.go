@@ -13,6 +13,12 @@ import (
 
 func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(cursorMutationRequest); ok {
+			return c.queryCursorRefresh(ctx, request)
+		}
+		if request, ok := args[0].Value.(cursorFetchRequest); ok {
+			return c.queryCursorFetch(ctx, request)
+		}
 		if request, ok := args[0].Value.(metadataRequest); ok {
 			return c.queryMetadata(ctx, request.filter)
 		}
@@ -41,6 +47,12 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(cursorMutationRequest); ok {
+			return c.execCursorMutation(ctx, request)
+		}
+		if request, ok := args[0].Value.(cursorOpenRequest); ok {
+			return c.execOpenCursor(ctx, request)
+		}
 		if request, ok := args[0].Value.(lobOpenRequest); ok {
 			return c.execOpenLOB(ctx, request)
 		}

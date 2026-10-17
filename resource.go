@@ -31,6 +31,7 @@ type resourceRecord struct {
 	published bool
 	lob       *nativeLOBResource
 	tableBlob *tableBlobResource
+	cursor    *cursorResource
 }
 
 type resourceState struct {

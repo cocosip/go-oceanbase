@@ -719,6 +719,12 @@ func OpenCursor(ctx context.Context, session Session, query string,
 
 func (c *Cursor) Fetch(ctx context.Context, pos CursorPosition, count int) (*sql.Rows, error)
 func (c *Cursor) Close() error
+
+type ColumnChange struct { Name string; Value any }
+func (c *Cursor) Update(ctx context.Context, key map[string]any, changes ...ColumnChange) error
+func (c *Cursor) Delete(ctx context.Context, key map[string]any) error
+func (c *Cursor) Insert(ctx context.Context, changes ...ColumnChange) error
+func (c *Cursor) Refresh(ctx context.Context, key map[string]any) (*sql.Rows, error)
 ```
 
 设计规则：
@@ -731,6 +737,21 @@ func (c *Cursor) Close() error
 - Update/Delete/Insert/Refresh 接受明确的列变更和行身份；参数化值，安全引用标识符，不拼接业务值。不对 join、聚合或缺失行标识的结果猜测更新目标。
 - 定位预期为一行，检查匹配语义下的计数及行身份；零或多行时给出明确并发变化/定位错误。ChangedRows 下的 UPDATE=0 不能证明记录不存在：使用同一事务内的锁定存在性检查等可靠条件区分“无变化”和“未匹配”。无法提供该保证时在开放可更新能力/发送修改前报能力错误，不用自动提交之后的另一次查询猜测，也不无条件报告更新成功。
 - 执行失败、关闭、事务结束、会话 reset 都使相应游标状态失效；服务端不支持的游标类型返回能力错误。
+
+D19 当前实现边界：
+
+- `CursorOptions.Mode` 为 CursorForward（默认）、CursorStatic 或 CursorSensitive；`Updatable` 显式开放修改/Refresh。`MaxCacheBytes` 只控制 static 快照，0 使用 MaxMessageBytes。没有第二个连接池或公开资源管理器；所有新文件仍属于根包。
+- `CursorPosition{Origin, Offset}`：Next 要求 offset=0；Absolute 从 1 起，0 返回空批次并回到首行前，负数拒绝；Relative 相对于上一批最后获取的行，提前关闭未扫描完的批次也按已获取行定位。计数要求正数且可用 uint32 表示。越过 static 末尾返回空批次；再 Next 不从头开始。位置加减检查 int64 溢出。
+- Forward 使用原生 COM_STMT_EXECUTE cursor flag=1 / COM_STMT_FETCH；只接受 Next。Oracle 版本已知 >=2.2.5 时使用 19 字节 offset 扩展并消费尾 OK；更旧或未知版本保留 9 字节向前 fetch，不猜测 offset 支持。MySQL fetch 使用保留列描述；Oracle fetch 重新读取列描述。
+- Static 在打开期间通过实际原生 fetch 建立有界快照，缓存包含列、行、值开销；超限报错并释放未发布资源。快照不因 Update/Delete/Insert/Refresh 改变，后续修改可通过 Refresh 显式读取。
+- Sensitive 仅开放 Oracle 且已知 OceanBase >=2.2.76；使用真实合并命令161、cursor flag=1、scrollable executeMode=8，完整消费初次响应。每个非零定位均向服务端发 ABSOLUTE32 fetch，位置受 int32 限制，尾 OK 提供末行位置；重复定位也重新请求服务器。MySQL、未知/旧版本直接 ErrUnsupported。是否看见其他事务的变更仍受服务器游标与隔离语义约束，待真实环境验证。
+- Fetch/Refresh 将一个批次完整接收、解码及物化后返回标准 sql.Rows；整批、单 LOB、复杂值与描述均沿用既有限制。复杂描述和 LOB 辅助命令必须在完整响应之后、原连接 gate 内执行。新批次不继承 Open 的 context；每次公开命令清空描述缓存。
+- Updatable 当前要求调用方可写 `*sql.Tx`、单基表简单投影、元数据中一致的 schema/original table/original column、完整主键均在投影中；MySQL 另要求字典 ENGINE=InnoDB。使用 PK 方案，未增加仅 ROWID 方案；缺少完整主键时拒绝。join、子查询、DISTINCT/聚合/集合运算、重复或派生列不猜测目标，生成列可以读取但不能修改。支持范围由可靠行身份决定，不按 SQL 字符串猜字段。
+- `key` 是完整主键值；`ColumnChange.Name` 使用投影基列的字典名，不接受别名或任意 SQL 表达式。标识符按实际模式引用；DML 与 Refresh 使用 COM_STMT_PREPARE/EXECUTE 的真实参数。Insert 必须显式提供全部非 NULL 主键，不隐式取生成键。更新前的同事务 SELECT 1 ... FOR UPDATE 复用既有内部类型化查询路径，完整收完后才执行 DML；Update=0 可成功，Delete/Insert 要求1，超过1或 warning 均返回错误。缺行通过 errors.Is(err, sql.ErrNoRows) 识别。
+- Refresh 按完整主键读取当前基表投影，不重新应用最初 WHERE/ORDER，也不改变 static 快照或游标位置；当前随 Updatable 开放，因此同样要求可写 Tx。修改失败不替调用方提交或回滚；warning/未知执行结果后调用方应回滚。业务执行失败释放游标，位置/参数等发送前校验错误保留句柄。prepare、存在性锁与发送 DML 之间复核资源代次，事务结束后不能继续修改；Refresh 缺行只关闭游标，保留调用方事务以便回滚。
+- 前一批次未关闭时，Fetch/Refresh/修改/Close 立即 ErrCursorBusy，避免进入 database/sql 后自锁。Close 幂等；事务结束、会话 reset 或物理关闭按既有代次和父 statement 租约释放。普通查询 Rows 的向前读取行为不变。
+
+以上为本地协议实现，不代表真实 OceanBase/OBProxy 游标、锁与敏感性已验收。`TestCursorModes`、`TestCursorUpdates` 已提供四目标源码，本阶段只编译，不连接数据库。
 
 这是真正需要的扩展对象：标准库没有相同的滚动操作面。其查询数据仍通过标准 Rows.Scan 读取。[J10]
 

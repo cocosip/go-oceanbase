@@ -29,6 +29,10 @@ func readCommand(ctx context.Context, t *testing.T, p *wire.PacketIO, want []byt
 }
 func servePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, id uint32, params int, columns [][]byte) bool {
 	t.Helper()
+	return servePrepareStatus(ctx, t, p, query, id, params, columns, 2)
+}
+func servePrepareStatus(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, id uint32, params int, columns [][]byte, status byte) bool {
+	t.Helper()
 	if !readCommand(ctx, t, p, append([]byte{22}, query...)) {
 		return false
 	}
@@ -44,7 +48,7 @@ func servePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, query str
 			return false
 		}
 	}
-	if params > 0 && !sendPackets(ctx, t, p, []byte{254, 0, 0, 2, 0}) {
+	if params > 0 && !sendPackets(ctx, t, p, []byte{254, 0, 0, status, 0}) {
 		return false
 	}
 	for _, c := range columns {
@@ -52,7 +56,7 @@ func servePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, query str
 			return false
 		}
 	}
-	return len(columns) == 0 || sendPackets(ctx, t, p, []byte{254, 0, 0, 2, 0})
+	return len(columns) == 0 || sendPackets(ctx, t, p, []byte{254, 0, 0, status, 0})
 }
 func stmtPacket(cmd byte, id uint32) []byte { return binary.LittleEndian.AppendUint32([]byte{cmd}, id) }
 func executeHeader(id uint32) []byte        { return append(stmtPacket(23, id), 0, 1, 0, 0, 0) }

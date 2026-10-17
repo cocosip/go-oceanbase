@@ -446,14 +446,16 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D13、D15、D16。对应：M08；架构 §15。
 
-文件：新增 `cursor.go`、`cursor_test.go`、`cursor_update.go`、`cursor_update_test.go`；新增 `tests/integration/cursor_test.go`。
+文件：新增根包 `cursor.go`、`cursor_protocol.go`、`cursor_test.go`、`cursor_update.go`、`cursor_update_test.go`；新增 `tests/integration/cursor_test.go`；复用 statement 原连接 gate 内的 prepare，不新增子包或反向依赖。
 
 交付：OpenCursor/Fetch/Close、CursorOptions/CursorPosition；position 明确 next/absolute/relative；Update/Delete/Insert/Refresh 用封闭操作面、列变更和可靠行身份，不提供任意操作命令 map。
 
-- [ ] 测试 `TestCursorFetch`、`TestCursorUpdateIdentity`：批次先关闭、0/负/越界位置、有界 static 缓存、sensitive 不以缓存冒充；join/聚合/无行标识拒绝更新；no-op 更新不误报并发删除。
-- [ ] 执行 `go test . -run 'TestCursor' -count=1`，确认失败。
-- [ ] 实现实际支持的 offset fetch/定位及参数化 DML；ChangedRows 仅在可靠锁定存在性下支持可更新能力，否则发送前拒绝。
-- [ ] 同命令通过；`TestCursorModes`、`TestCursorUpdates` 覆盖两模式支持条件、LOB fetch、并发变化及事务结束失效。
+- [x] 测试 `TestCursorFetch`、`TestCursorUpdateIdentity`：批次先关闭、0/负/越界位置、有界 static 缓存、sensitive 不以缓存冒充；join/聚合/无行标识拒绝更新；no-op 更新不误报并发删除。
+- [x] 执行 `go test . -run 'TestCursor' -count=1`，确认失败。
+- [x] 实现实际支持的 offset fetch/定位及参数化 DML；ChangedRows 仅在可靠锁定存在性下支持可更新能力，否则发送前拒绝。
+- [x] 同命令通过；`TestCursorModes`、`TestCursorUpdates` 覆盖两模式支持条件、LOB fetch、并发变化及事务结束失效。
+
+当前本地实现的具体位置、版本、主键/事务及刷新边界见架构 §15；集成场景已提供源码并仅编译，真实环境验收不勾选为通过。
 
 ### D20 REF CURSOR 和流式 LOB 输出
 

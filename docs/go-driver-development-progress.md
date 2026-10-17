@@ -4,11 +4,11 @@
 
 ## 1. 当前状态
 
-- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB、D17 表内 BLOB 及 D18 OBJECT/ARRAY 已有本地实现；继续 D19，复杂类型支持边界见架构 §11.2.2。
-- 实现完成：**18 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
-- 下一执行任务：**D19 游标、滚动、刷新和更新**。
+- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB、D17 表内 BLOB、D18 OBJECT/ARRAY 及 D19 游标/滚动/更新已有本地实现；继续 D20，具体支持边界见架构 §11.2.2 与 §15。
+- 实现完成：**19 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
+- 下一执行任务：**D20 REF CURSOR/流式 LOB 输出**。
 - 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；游标及 D19–D32 的其他能力仍需实现。
+- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新已实现；REF CURSOR/LOB 输出及 D20–D32 的其他能力仍需实现。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -68,7 +68,7 @@
 | D16 | 原生 BLOB/CLOB/NCLOB | D12、D13、D15 | 已实现 | 本地通过 | 无（待联调） | 本地协议、双版本/386/lint/fuzz；真实原事务/NCLOB/锁行为待联调 |
 | D17 | MySQL 表内 BLOB 模拟 locator | D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D17 |
 | D18 | OBJECT/ARRAY、类型描述 | D12、D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D18，支持边界见架构 §11.2.2 |
-| D19 | 游标、滚动、刷新和更新 | D13、D15、D16 | 未开始 | 未验证 | 无 | — |
+| D19 | 游标、滚动、刷新和更新 | D13、D15、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D19，支持边界见架构 §15 |
 | D20 | REF CURSOR/流式 LOB 输出 | D14、D16、D19 | 未开始 | 未验证 | 无 | — |
 | D21 | 长参数、分段上传 | D08、D12、D15 | 未开始 | 未验证 | 无 | — |
 | D22 | 批量、bulk、array binding | D11、D14、D18、D21 | 未开始 | 未验证 | 无 | — |
@@ -89,7 +89,7 @@
 | --- | --- | --- | --- | --- |
 | G1 | 建连与标准查询，D01–D05 | 5/5 | 0/5 | 进行中 |
 | G2 | 执行与会话正确性，D06–D12 | 7/7 | 0/7 | 待验收 |
-| G3 | 完整扩展数据能力，D13–D22 | 6/10 | 0/10 | 进行中 |
+| G3 | 完整扩展数据能力，D13–D22 | 7/10 | 0/10 | 进行中 |
 | G4 | 协议与运行能力，D23–D30 | 0/8 | 0/8 | 未开始 |
 | G5 | 分布式事务，D31 | 0/1 | 0/1 | 未开始 |
 | G6 | 完整交付，D32 | 0/1 | 0/1 | 未开始 |
@@ -380,6 +380,16 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go 1.25.0/1.26.0 Windows amd64 全包 `go test ./... -count=1` / `go vet ./...`、复杂/描述用例重复 10 次、实际 Windows/386 全包运行均通过；普通及 `--build-tags=integration` 的 golangci-lint 两版本均 0 issues。`FuzzComplex` 两版本各 30 秒通过，分别 203745 / 266653 次，CI 已加入。integration 使用 `-run '^$'` 仅编译，没有数据库连接。
 - 实现 18/32、G3 6/10，验收仍为 0/32。`TestComplexTypes` 已提供四目标对象/集合、精度/RAW/DATE、NULL、嵌套 LOB、原事务及复杂 OUT 源码；实际类型/权限/版本/OBProxy 行为仍未联调。Linux、远程 CI 和成功 race 仍无运行证据。
 
+#### D19 原生游标、滚动、刷新与可更新结果
+
+- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增根包 cursor.go/cursor_protocol.go/cursor_update.go、协议/边界/更新测试及仅编译的 integration 游标源码；未增加包、依赖或循环引用。server prepare 提取同 gate 内部入口供 Refresh/DML 复用，公开 Prepare 路径继续持有原 gate 并保持有界清理。
+- Forward 使用原生 cursor execute/fetch；Static 使用受 MaxCacheBytes 约束的真实 fetch 快照；Sensitive 通过 Oracle >=2.2.76 的命令161/scrollable mode8/绝对 offset fetch，每次定位向服务器请求，不用缓存冒充。旧/未知 Oracle offset 版本使用普通9字节向前 fetch；EOF 两路径均消费正确响应，row EOF 状态在尾 OK 前保留。
+- 标准 Conn/Tx + sql.Rows 批次，独立 Fetch context、批次未关闭即 ErrCursorBusy；所有值有界缓冲，复杂描述/LOB 在完整响应后原 gate 内处理。Close/事务/reset 释放既有 statement 租约，不开辅助会话、不重放业务 SQL。
+- 修改/Refresh 要求可写 Tx、单基表投影和完整 PK；MySQL 要求 InnoDB。修改列显式、安全引用，DML/Refresh 用原生参数；Update/Delete 先同事务 FOR UPDATE，ChangedRows=0 不误报缺行。Insert 拒绝 NULL/缺失 PK；生成列拒绝写入；Refresh 读取基表投影，static 保留原快照。具体位置/主键/模式/版本边界见架构 §15。
+- `TestCursorFetch`、`TestCursorStatic`、`TestCursorSensitive`、`TestCursorUpdateIdentity`、`TestCursorInsertRefresh`、Oracle LOB/修改、两种 EOF、旧版本、事务/reset/context 等本地通过。回归先复现再修复了空游标重复 fetch、失败 fetch 后复用、NULL 字节主键、原生参数契约差异、prepare/存在性锁后事务代次变化继续修改、Refresh 缺行误淘汰调用方事务，以及损坏错误包复用连接；相应场景通过。独立只读走查未发现遗留 Important/Critical；没有另存走查报告。
+- 最终 Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、游标重复10次、实际 Windows/386 全包测试通过；两版本普通及 integration 标签 golangci-lint 各0 issues。`FuzzCursorPosition` 两版本各30秒通过，分别295037 / 588323次；CI 已加入。integration 均以 `-run '^$'` 仅编译。
+- 当前实现19/32，G3 7/10，验收仍0/32。`TestCursorModes`、`TestCursorUpdates` 已有直连/代理两模式的原生 fetch、LOB、滚动/敏感变化、PK 增删改刷新、并发缺行及事务失效源码；真实服务器/锁/版本/权限/敏感性与隔离尚未联调。Linux、远程 CI 和成功 race 仍无运行证据。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
@@ -396,7 +406,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 ## 7. 下一步工作
 
-1. 推进 D19：同会话服务器游标、Fetch/Close、滚动、刷新与可更新结果；沿用已有 gate/资源代次/完整响应边界。
+1. 推进 D20：REF CURSOR/流式 LOB 输出，复用已有 Cursor/Blob/Clob、父 statement 租约、资源发布和完整响应边界。
 2. 继续用故障对端验证标准 database/sql 查询，不连接真实数据库。
 3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
 
