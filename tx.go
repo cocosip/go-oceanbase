@@ -26,6 +26,9 @@ type tx struct {
 
 func (c *conn) Begin() (driver.Tx, error) { return c.BeginTx(context.Background(), driver.TxOptions{}) }
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	if c.cfg.Routing.Role == RoleReadOnly && !opts.ReadOnly {
+		return nil, fmt.Errorf("%w: read-write transaction on read-only service", ErrUnsupported)
+	}
 	commands, err := transactionCommands(c.session.mode, opts)
 	if err != nil {
 		return nil, err

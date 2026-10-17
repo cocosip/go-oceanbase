@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -20,6 +21,7 @@ type conn struct {
 	descriptors     map[descriptorKey]*typeDescriptor // guarded by mu; one command lifetime
 	descriptorBytes int64
 	statements      statementCache
+	lastUsed        time.Time // guarded by mu; last completed operation, including Rows consumption
 }
 
 func (c *conn) Close() error {
@@ -80,6 +82,7 @@ func (c *conn) lock(ctx context.Context) error {
 
 func (c *conn) unlock() {
 	records, dropped := c.diagnosticSnapshots()
+	c.lastUsed = time.Now()
 	<-c.mu
 	c.emitDiagnostics(records, dropped)
 }

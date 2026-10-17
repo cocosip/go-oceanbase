@@ -8,11 +8,11 @@ import (
 	"maps"
 	"math/big"
 	"net"
-	"net/netip"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cocosip/go-oceanbase/internal/routing"
 )
 
 // Mode is an OceanBase compatibility mode. Auto is pinned after initialization.
@@ -89,6 +89,7 @@ type Config struct {
 	Session              SessionOptions
 	Protocol             ProtocolOptions
 	Execution            ExecutionOptions
+	Routing              RoutingOptions
 	Limits               Limits
 	RowsAffectedMode     RowsAffectedMode
 	ResetMode            ResetMode
@@ -132,6 +133,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 	var err error
 	cfg.Addr, err = normalizeAddress(cfg.Addr)
 	if err != nil {
+		return Config{}, err
+	}
+	if err = cfg.normalizeRouting(); err != nil {
 		return Config{}, err
 	}
 	if cfg.Limits.MaxMessageBytes < 0 || cfg.Limits.MaxLOBBytes < 0 || cfg.Limits.FetchSize < 0 || cfg.Limits.MaxResultItems < 0 || cfg.Limits.CleanupTimeout < 0 {
@@ -196,36 +200,11 @@ func cloneAuthOptions(options AuthOptions) (AuthOptions, error) {
 }
 
 func normalizeAddress(addr string) (string, error) {
-	invalid := &ConfigError{Field: "Addr"}
-	if addr == "" {
-		return "127.0.0.1:2881", nil
-	}
-	host, port, err := net.SplitHostPort(addr)
+	value, err := routing.NormalizeAddress(addr)
 	if err != nil {
-		host = addr
-		if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-			host = host[1 : len(host)-1]
-		}
-		if strings.Contains(host, ":") {
-			if _, parseErr := netip.ParseAddr(host); parseErr != nil {
-				return "", invalid
-			}
-		}
-		port = "2881"
+		return "", &ConfigError{Field: "Addr"}
 	}
-	if host == "" || strings.ContainsAny(host, " \t\r\n/\\?#@[],") {
-		return "", invalid
-	}
-	if strings.Contains(host, ":") {
-		if _, err = netip.ParseAddr(host); err != nil {
-			return "", invalid
-		}
-	}
-	portNum, err := strconv.ParseUint(port, 10, 16)
-	if err != nil || portNum == 0 {
-		return "", invalid
-	}
-	return net.JoinHostPort(host, strconv.FormatUint(portNum, 10)), nil
+	return value, nil
 }
 
 //nolint:staticcheck // Snapshot the caller legacy certificate map without changing TLS selection.

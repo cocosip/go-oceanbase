@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"fmt"
-	"net"
 	"sync"
 	"time"
+
+	"github.com/cocosip/go-oceanbase/internal/routing"
 )
 
 // ErrUnsupported indicates that a requested capability is unavailable.
@@ -17,6 +17,7 @@ type connector struct {
 	cfg    Config
 	modeMu sync.Mutex
 	mode   Mode
+	routes *routing.Selector
 }
 
 // NewConnector validates and snapshots cfg without opening a connection.
@@ -25,7 +26,11 @@ func NewConnector(cfg Config) (driver.Connector, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &connector{cfg: cfg}, nil
+	routes, err := cfg.Routing.selector()
+	if err != nil {
+		return nil, &ConfigError{Field: "Routing"}
+	}
+	return &connector{cfg: cfg, routes: routes}, nil
 }
 
 func (c *connector) Connect(ctx context.Context) (result driver.Conn, err error) {
@@ -46,43 +51,11 @@ func (c *connector) Connect(ctx context.Context) (result driver.Conn, err error)
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.ConnectTimeout)
 	defer cancel()
-	dial := c.cfg.DialContext
-	if dial == nil {
-		dial = (&net.Dialer{}).DialContext
-	}
-	raw, err := dial(ctx, "tcp", c.cfg.Addr)
-	if err != nil {
-		if raw != nil {
-			_ = raw.Close()
-		}
-		return nil, err
-	}
-	if raw == nil {
-		return nil, fmt.Errorf("oceanbase: dialer returned a nil connection")
-	}
-	if err = ctx.Err(); err != nil {
-		_ = raw.Close()
-		return nil, err
-	}
-	session, err := c.authenticate(ctx, raw)
+	connected, err := c.connectCandidate(ctx)
 	if err != nil {
 		return nil, err
 	}
-	conn := &conn{session: session, cfg: c.cfg, mu: make(chan struct{}, 1)}
-	if err = c.checkMode(session.mode, false); err == nil {
-		err = conn.initialize(ctx)
-	}
-	if err == nil {
-		err = ctx.Err()
-	}
-	if err == nil {
-		err = c.checkMode(session.mode, true)
-	}
-	if err != nil {
-		conn.discard()
-		return nil, err
-	}
-	return conn, nil
+	return connected, nil
 }
 
 func (c *connector) checkMode(actual Mode, pin bool) error {

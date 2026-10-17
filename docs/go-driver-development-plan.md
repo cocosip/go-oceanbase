@@ -550,14 +550,17 @@ D25 实现契约见架构 §18.3.1：诊断仅元数据/指纹；有界同步交
 
 依赖：D06、D09。对应：M12；架构 §17.1。
 
-文件：新增 `internal/routing/address.go`、`selector.go`、`health.go` 及测试；修改 connector。
+文件：根包 routing.go/failover.go、配置/DSN/connector/reset/tx；internal/routing/address.go、selector.go、health.go 及测试；集成源码与 CI。
 
 交付：静态候选列表、随机/轮转/亲和/组、共享有界健康/黑名单；角色固定于 Connector；重试只发生在新建连接总预算内。
 
-- [ ] 测试 `TestAddressSelection`、`TestFailoverBudget`、`TestRoleIsolation`：退避/过期/并发、跨租户隔离、认证/模式拒绝不无限循环；事务及已发送查询始终不换 Socket。
-- [ ] 执行 `go test ./internal/routing . -run 'Test(Address|Failover|Role)' -count=1`，确认失败。
-- [ ] 实现地址选择和建连重试；读写两角色使用两个标准 sql.DB，BeginTx 不换线。
-- [ ] 同命令/race 通过；`TestConnectionFailover` 用多个真实入口验证新连接选址、故障后恢复与零业务重放。
+- [x] 测试 `TestAddressSelection`、`TestFailoverBudget`、`TestRoleIsolation`：退避/过期/并发、跨租户隔离、认证/模式拒绝不无限循环；事务及已发送查询始终不换 Socket。
+- [x] 执行 `go test ./internal/routing . -run 'Test(Address|Failover|Role)' -count=1`，确认失败。
+- [x] 实现地址选择和建连重试；读写两角色使用两个标准 sql.DB，BeginTx 不换线。
+- [x] 本地双工具链/实际386/test/vet/lint、目标重复回归及地址 fuzz 已通过，进度同步到 D26。
+- [ ] race/Linux/真实入口保持待验收。TestConnectionFailover 源码与 CI 已加入，本阶段仅编译；每个 profile 至少配置两个同租户/模式真实入口，再验证新连接切换/恢复和活动事务不重拨。业务丢响应不重放先由协议对端验证。
+
+API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1.1；不允许切换现有 Socket。
 
 ### D27 TNS、OCP 与拓扑发现
 

@@ -3,6 +3,7 @@ package oceanbase
 import (
 	"context"
 	"database/sql/driver"
+	"time"
 )
 
 func (c *conn) ResetSession(ctx context.Context) error {
@@ -16,6 +17,12 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	c.clearDescriptors()
 	if c.closed.Load() {
 		return driver.ErrBadConn
+	}
+	if interval := c.cfg.Routing.ValidationInterval; interval > 0 && time.Since(c.lastUsed) >= interval {
+		if err := c.commandOK(ctx, []byte{14}); err != nil {
+			c.discard()
+			return driver.ErrBadConn
+		}
 	}
 	if err := c.invalidateResourcesLocked(ctx, true); err != nil {
 		c.discard()

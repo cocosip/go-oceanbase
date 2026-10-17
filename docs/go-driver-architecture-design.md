@@ -184,7 +184,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | 执行 | 自动选用服务端预处理；显式支持客户端预处理、合并执行、缓存和批量策略；`AllowMultiStatements` 默认 false；`RowsAffectedMode` 默认 `MatchedRows`，见 §11.4 |
 | 会话 | 字符集、NCHAR 字符集、Location、会话初始化设置、Managed/Full 两种 reset 策略 |
 | 资源 | 最大逻辑消息、LOB 物化上限、FetchSize、`MaxResultItems`、关闭/清理时间上限、缓存容量 |
-| HA | 地址来源、随机/轮转/亲和/组策略、失败退避与黑名单；在新建连接时生效 |
+| HA | Config.Routing：静态地址、固定角色、组内策略、单次/总建连预算、有界黑名单；ValidationInterval 可选复用前探活；见 §17.1.1 |
 | 诊断 | 慢请求阈值、受限包追踪回调、完整链路追踪；日志开关由 Logger 是否为 nil 决定 |
 
 建议初始资源默认值：逻辑消息上限 64 MiB、单个 LOB 自动物化上限 16 MiB、游标 fetch 128 行、一次 Execute 的结果摘要上限 `MaxResultItems=1024`、清理时间上限 1 秒。具体限制可以配置；超过限制返回明确错误，不截断后宣称成功；大对象提示使用流式入口。物理分包长度和逻辑消息上限是两个不同概念。
@@ -980,6 +980,51 @@ warnings 作为结构化结果诊断暴露，不能把成功带 warning 的操�
 - Refresh 使用 Connector 生命周期 context；实现 io.Closer 供 sql.DB.Close 停止共享刷新设施。TNS/OCP 未启用时不启动对应 goroutine。
 - Connector 关闭后仍需允许已获得的活动连接有界完成/关闭；不会因取消发现刷新 context 而直接取消正在执行的业务查询。
 - 成功建立的物理会话内部不故障换线。坏连接退出，由数据库池获取新连接；会话迁移、事务和执行结果未知不能靠恢复几个变量掩盖。
+
+### 17.1.1 D26 静态多地址实现契约
+
+当前公开 API 为根包 `Config.Routing RoutingOptions`：
+
+```go
+type Endpoint struct {
+    Addr string
+    Role EndpointRole
+    Group, Weight uint16
+}
+type RoutingOptions struct {
+    Endpoints []Endpoint
+    Role EndpointRole
+    Strategy BalanceStrategy
+    MaxAttempts int
+    AttemptTimeout time.Duration
+    RetryDelay time.Duration
+    BlacklistTimeout time.Duration
+    ValidationInterval time.Duration
+}
+```
+
+| 配置 | 语义、默认值和边界 |
+| --- | --- |
+| Endpoints | 非空时替代单个 Addr 作为候选；否则由 Addr 生成一个带当前 Role 的候选。最多1024项，按 DNS 小写、IPv6 和十进制端口规范化后拒绝重复/空地址；省略端口为2881。Config.Addr 仍须合法。列表在 NewConnector 时复制 |
+| Role | RoleAny 为零值；RoleReadWrite / RoleReadOnly 只选相同显式标签，不回退到未标记或相反角色；无候选时配置失败。标签是调用方声明的逻辑服务，不能证明实际主从状态或 SQL 权限 |
+| Group / Strategy | Group 从小到大尝试；组内 BalanceOrdered 保持输入顺序，BalanceRandom 随机排列，BalanceRoundRobin 在共享 Connector 内轮转，BalanceAffinity 按 Weight 加权排列且不重复。Weight=0 按1处理；不会在业务 SQL 中重新选址 |
+| MaxAttempts | 零值为可用角色候选数，最多4096；只计实际拨号次数，冷却等待不消耗次数；默认单地址仍只拨一次 |
+| AttemptTimeout | 覆盖一次拨号、TLS、认证和初始化，零值为 ConnectTimeout / min(候选数, MaxAttempts)，至少1ns。每次及重试等待都受同一 ConnectTimeout/context 更早期限约束；初始化超时终止，不能重放 |
+| RetryDelay | 零值50ms；暂时失败后可取消的固定退避，不重新开始总计时；MaxAttempts 限制后不再等待 |
+| BlacklistTimeout | 零值1秒；暂时连接失败才进入冷却，成功完整初始化后清除；全部冷却时等待最早到期或 context 取消。状态只含配置地址，按 Connector 隔离，不使用全局租户黑名单 |
+| ValidationInterval | 零值关闭；从上次完成操作（含 Rows 消费）起，空闲达到间隔才在 ResetSession 持锁发送同 Socket 的 PING14；仍受 CleanupTimeout/context 约束。失败返回 ErrBadConn，由标准连接池申请新会话，驱动不就地换线 |
+
+仅新建会话中的暂时拨号错误、握手断线/超时允许切换；不可恢复 DNS 错误、自定义拨号器普通错误、认证拒绝、TLS 证书/协议拒绝、模式不符、配置/凭据回调及初始化失败立即返回。错误保留原 errors.Is/As 链。TLS 使用实际选中地址推导 ServerName，显式 ServerName 保持调用方值；即使 TLS alert 被包装进 net.OpError/wire.IOError，也不能按网络故障重试。只收到 TCP 断线而未收到协议拒绝时，驱动只能按传输故障判断。
+
+初始化和模式锁定均在当前候选和单次预算内完成；任何初始化失败都不回到候选循环，因为 InitSQL 可能产生副作用。已建立会话的查询、事务、statement、LOB、游标失败不调用选址器，也不重放业务。
+
+RoleReadOnly 的 Connector 在发送前拒绝 ReadOnly=false 的 BeginTx；ReadOnly=true 使用现有 Socket。普通 SELECT 不分析/路由，普通写语句权限由服务端负责。读写服务分别使用两个标准 sql.DB，同一个 Connector 固定角色；RoleReadWrite 的会话也能按标准事务接口开启只读事务。
+
+DSN 支持 `addresses`（逗号分隔 DNS/IPv4/带括号 IPv6，端口可省略）、`role=any/readwrite/readonly`、`balance=ordered/random/roundrobin/affinity`、`maxAttempts` 及四个同名 duration 参数 `attemptTimeout/retryDelay/blacklistTimeout/validationInterval`。addresses 中所有条目统一标记 role，参数遍历顺序不影响结果；混合角色、Group 和 Weight 使用 typed Config。未知/重复参数和非法值报错，不透传 Java 参数。
+
+例如 `oceanbase://app@fallback/?addresses=entry-a:2881,entry-b:2881&role=readwrite&balance=roundrobin`；地址/权重由调用方配置，TNS/OCP 刷新和拓扑证明仍归 D27。Java 的多组 retry/maxReconnects 选项合并成有界 MaxAttempts/总预算，黑名单默认值不照搬 Java 的全局状态和长重试次数；allowMasterDownConnection 不允许跨角色降级；galeraAllowedState 属于外部产品能力，不伪造 OceanBase 状态 SQL。
+
+根包 routing.go/failover.go 组合配置、拨号、认证及初始化；internal/routing 只处理自有 Address/Options、排序和健康，依赖标准库，不导入根包或 wire/auth/charset；无新增公共子包、池或后台 goroutine。
 
 ### 17.2 认证、TLS 和扩展点
 

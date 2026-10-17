@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net"
 	"slices"
@@ -216,6 +217,9 @@ func (c *connector) upgradeTLS(ctx context.Context, s *handshakeSession, respons
 	}
 	secure := tls.Client(s.conn, cfg)
 	if err = secure.HandshakeContext(ctx); err != nil {
+		if retryDialError(err) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.ErrClosedPipe) {
+			return &handshakeTransportError{err}
+		}
 		return err
 	}
 	state := secure.ConnectionState()

@@ -35,6 +35,9 @@ func ParseDSN(dsn string) (Config, error) {
 			return Config{}, err
 		}
 	}
+	for i := range cfg.Routing.Endpoints {
+		cfg.Routing.Endpoints[i].Role = cfg.Routing.Role
+	}
 	return normalizeConfig(cfg)
 }
 
@@ -44,6 +47,8 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		return cfg.Protocol.applyDSNOption(name, value)
 	case "prepareExecute", "statementCacheSize", "statementCacheSQLLimit", "reuseParameterTypes", "statementChecksum":
 		return cfg.Execution.applyDSNOption(name, value)
+	case "addresses", "role", "balance", "maxAttempts", "attemptTimeout", "retryDelay", "blacklistTimeout", "validationInterval":
+		return cfg.Routing.applyDSNOption(name, value)
 	default:
 		return applyConnectionDSNOption(cfg, name, value)
 	}
