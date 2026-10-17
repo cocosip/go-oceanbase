@@ -146,6 +146,9 @@ type batchAttempt struct {
 type batchExec func(context.Context, []any, *batchAttempt) (sql.Result, error)
 
 func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Result, error) {
+	if handled, err := c.tryBatchArray(ctx, request); handled {
+		return result{}, err
+	}
 	if handled, err := c.tryBatchRewrite(ctx, request); handled {
 		return result{}, err
 	}
@@ -166,7 +169,7 @@ func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Resu
 		}
 		c.unlock()
 	}
-	// shortcut: bulk/array and unsafe rewrites stay sequential until per-item effects are verified.
+	// shortcut: bulk and unsupported array/rewrite requests retain sequential execution.
 	err := runBatchSequential(ctx, request.rows, request.options, request.result, func(ctx context.Context, args []any, attempt *batchAttempt) (sql.Result, error) {
 		attempt.native = true
 		if prepareErr != nil {

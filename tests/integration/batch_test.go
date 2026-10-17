@@ -134,3 +134,65 @@ func testBatchDatabase(t *testing.T, p profile, db *sql.DB, rewrite bool) {
 		t.Fatal("batch changed caller transaction boundary")
 	}
 }
+
+func TestBatchArrayBindingExecution(t *testing.T) {
+	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range selected {
+		t.Run(p.name, func(t *testing.T) { testBatchArrayBindingProfile(t, p) })
+	}
+}
+
+func testBatchArrayBindingProfile(t *testing.T, p profile) {
+	t.Helper()
+	db := openProfile(t, p)
+	table := fmt.Sprintf("OBGARRAY_%d", time.Now().UnixNano())
+	suffix := integrationInnoDBSuffix
+	if p.mode == oceanbase.ModeOracle {
+		suffix = ""
+	}
+	if _, err := db.ExecContext(testContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(100))"+suffix); err != nil {
+		failOperation(t, "create array binding table", err)
+	}
+	defer func() {
+		if _, err := db.ExecContext(testContext(t), "DROP TABLE "+table); err != nil {
+			failOperation(t, "drop array binding table", err)
+		}
+	}()
+	tx, err := db.BeginTx(testContext(t), nil)
+	if err != nil {
+		failOperation(t, "begin array binding transaction", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	r, err := oceanbase.ExecBatch(testContext(t), tx, "INSERT INTO "+table+" VALUES (?,?)",
+		[][]any{{1, "一"}, {1, "duplicate"}, {2, "二🙂"}},
+		oceanbase.BatchOptions{Strategy: oceanbase.BatchArrayBinding, ContinueOnError: true, ChunkRows: 3, ChunkParameters: 6})
+	want := oceanbase.BatchSequential
+	if p.mode == oceanbase.ModeOracle {
+		// This native-path fixture requires a known OceanBase version >= 4.2.1.
+		want = oceanbase.BatchArrayBinding
+	}
+	var batch *oceanbase.BatchError
+	var server *oceanbase.Error
+	if r.Strategy != want || !errors.As(err, &batch) || batch.Index != 1 || batch.Completed != 2 || !errors.As(err, &server) || server.Code == 0 {
+		t.Fatal("array binding strategy or error attribution differs")
+	}
+	if r.Items[0].Status != oceanbase.BatchSucceeded || r.Items[1].Status != oceanbase.BatchFailed || r.Items[2].Status != oceanbase.BatchSucceeded {
+		t.Fatal("array binding omitted a successful input")
+	}
+	if p.mode == oceanbase.ModeOracle && (r.Items[0].RowsAffectedKnown || r.Items[2].RowsAffectedKnown || server.SQLState != "") {
+		t.Fatal("array binding fabricated per-input counts or SQLSTATE")
+	}
+	if err = tx.Rollback(); err != nil {
+		failOperation(t, "rollback array binding transaction", err)
+	}
+	var remaining int
+	if err = db.QueryRowContext(testContext(t), "SELECT COUNT(*) FROM "+table).Scan(&remaining); err != nil {
+		failOperation(t, "count rolled back array binding rows", err)
+	}
+	if remaining != 0 {
+		t.Fatal("array binding changed the caller's transaction boundary")
+	}
+}

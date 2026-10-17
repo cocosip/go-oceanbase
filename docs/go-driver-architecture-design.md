@@ -916,7 +916,7 @@ type BatchError struct {
 }
 ```
 
-- Strategy 是偏好：BatchAuto（零值）、BatchSequential、BatchMultiSend、BatchRewrite、BatchBulk、BatchArrayBinding；结果报告实际策略。BatchRewrite 的受限多语句路径见下文；Bulk/ArrayBinding 及不满足改写门禁的请求回退 BatchSequential。ContinueOnError 默认 false，确保失败后不再发后项；true 也必须在取消、损坏响应、断线或结果不确定时停止。
+- Strategy 是偏好：BatchAuto（零值）、BatchSequential、BatchMultiSend、BatchRewrite、BatchBulk、BatchArrayBinding；结果报告实际策略。BatchRewrite 的受限多语句路径及 BatchArrayBinding 的 Oracle 原生路径见下文；Bulk 及不满足对应门禁的请求回退 BatchSequential。ContinueOnError 默认 false，确保失败后不再发后项；true 也必须在取消、损坏响应、断线或结果不确定时停止。
 - ChunkRows=0 使用 128，ChunkParameters=0 使用 65535；负值和非法策略发送前拒绝。multi-send 同时限制块行数、展开后的物理参数位总数及编码内容总字节数，单命令受 MaxMessageBytes 和既有值上限约束；逐项路径逐行限制输入参数，不聚合数据包。
 - *sql.DB 在整个批次固定一个 *sql.Conn；原生 Conn/Tx 用一次标准 ExecContext 私有分派持有标准库连接锁。没有隐藏事务、提交、辅助会话或整批重试。自定义 Execer 逐项调用，物理会话和事务由其实现负责；未知错误保守记为 BatchUnknown 并停止。
 - Status 为 BatchNotExecuted、BatchSucceeded、BatchFailed、BatchUnknown。Started 只表示业务命令可能开始发送，辅助 prepare/上传/能力探测不算。多语句改写的同一命令已提交后，服务端 ERR 确认未执行的后项为 NotExecuted 且 Started=true；未提交的后续块仍为 NotExecuted/false。BatchFailed 记录已知错误，不保证没有数据库副作用；BatchSucceeded 同样不代表事务已提交。已读完整成功响应后发生清理/取消错误，保留成功状态和已知计数，并通过 Err 返回错误；不将确认成功改成未知。
@@ -924,7 +924,7 @@ type BatchError struct {
 - Auto/MultiSend 仅在 ContinueOnError=true、至少两行、PrepareServer、全部显式标量输入和单条 INSERT/UPDATE/DELETE/REPLACE 时启用；共享 prepare 前复用普通参数校验，本地非法项或 Oracle 物理参数位超过单块限制时整批回退逐项；共享 prepare 失败按首项错误处理，后项仍遵循逐项继续策略；SQL 在两种引号解释下均通过词法检查，排除分号、可执行注释、RETURNING、CALL/查询/会话 SQL。OUT、长参数、复杂值、自定义 Valuer 等回退逐项，继续复用既有绑定/输出/一次消费规则；资源句柄输出仍只接受 Execute。
 - multi-send 只 prepare 一次，将独立 COM_STMT_EXECUTE 命令并行写入/按序读响应，双向背压不产生先写完再读的死锁。每条命令独立重置序号；收齐 OK/ERR 才确认该项。服务端 ERR 可继续；断线/取消/损坏或额外结果淘汰连接，保留已确认前缀，仅可能发出且未确认的项标 Unknown，未发的后续块保留 NotExecuted；结束前等待写协程退出。
 
-原生优化证据与保守选择：固定 Java 基线的 [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) 明确记录 OceanBase 不支持 COM_STMT_BULK_EXECUTE；其中 MariaDB 风格的版本判断不能作为 OceanBase 支持证据。[ComStmtExecute](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtExecute.java#L165) 存在 Oracle array flag/列式参数布局，但 [JDBC4ServerPreparedStatement](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/JDBC4ServerPreparedStatement.java#L665) 的事务/PrepareExecute 条件及特殊错误计数，尚不足以证明全部参数类型与逐项停止/继续等价。SQL 多行改写也可能改变自动提交的部分成功、触发器和错误边界。因此多 VALUES、bulk、array binding 仍选择逐项，不猜测版本门槛；取得真实目标及逐项语义证据后才增加这些优化，正确执行能力不依赖它们。
+原生优化证据与保守选择：固定 Java 基线的 [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) 明确记录 OceanBase 不支持 COM_STMT_BULK_EXECUTE；其中 MariaDB 风格的版本判断不能作为 OceanBase 支持证据。多 VALUES 合并也可能改变部分成功、触发器和错误边界，这两类优化仍逐项。Oracle array binding 的列式布局和保存异常响应已按固定 Java 与 OceanBase 服务端源码补证，采用下述独立路径；源码和本地协议测试不代替真实服务器/代理验收。
 
 受限多语句改写已实现：仅显式 BatchRewrite、ContinueOnError=false、至少两行、ChunkRows>=2、MySQL 兼容模式、AllowMultiStatements=true 且实际协商 CLIENT_MULTI_STATEMENTS 时进入。仅接受现有标量白名单和单条 INSERT/UPDATE/DELETE/REPLACE；词法验证拒绝分号、可执行注释及 RETURNING，自定义 Valuer、OUT、流和复杂对象继续逐项。该显式策略使用既有客户端字面量编码，不改变普通 SQL 的 PrepareMode；不隐式开启多语句权限。Oracle 及 ContinueOnError=true 仍逐项。
 
@@ -933,6 +933,16 @@ type BatchError struct {
 - 复用安全插值，字符串/二进制用既有字面量编码；SQL 只按会话字符集编码一次。语句之间加换行、分号、换行，避免尾部行注释吞掉后项。每块探测后按最新 SQL mode 重新验证边界和占位符；任何新增语句边界在业务发送前拒绝。按 ChunkRows、ChunkParameters、MaxResultItems 和编码后的 MaxMessageBytes（包括 COM_QUERY 字节和分隔符）切块。
 - 本地非法参数不会遮蔽前项服务器错误：先发送有效前缀，只有前缀成功才报告后项的本地错误。逐项读取严格 OK/ERR 和 MORE_RESULTS，保持实际影响行数；溢出为计数未知。服务端 ERR 保留成功前缀、失败项和确认未执行尾部；缺失/多余响应、损坏、断线及取消淘汰连接，仅未确认的已提交项为 Unknown。后续块不发送、不重放；清理/取消错误保留已确认结果和完整错误链。
 - 标准/压缩/OB20 复用串行消息流，不用 pipeline；原 sql.Tx 的提交/回滚仍由调用方控制。合并多个独立 DML 不保证所有项原子成功；需要整批原子性时显式使用事务。该路径额外有逐块探测往返，不能把本地编码测试当成吞吐收益。
+
+Oracle 原生 array binding 已本地实现：
+
+- 仅显式 BatchArrayBinding、ContinueOnError=true、至少两行、PrepareServer、Oracle 兼容模式、已知 OceanBase >=4.2.1、已有可写 sql.Tx 且自动提交关闭时进入。沿用单条 DML 词法检查和标量白名单；无参数 SQL、MySQL、只读/事务外、未知/旧版本、自定义 Valuer、OUT、长参数和复杂值继续逐项。uint/uint64 因匿名数组元素头没有 unsigned 标志位也逐项，避免改变其精确值；小位宽无符号整数仍经既有安全标量转换。
+- [固定 Java ComStmtExecute](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtExecute.java#L165) 给出匿名数组的 COMPLEX 类型头、空 schema/name/version、元素类型、列式行数和从 bit0 开始的 NULL bitmap。[OceanBase v4.2.1 固定源码](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L529) 明确标准 COM_STMT_EXECUTE 的 array=8、save-exceptions=16，合并为 flag24；这不是合并 PrepareExecute 的其他批量标志。版本门槛取自已核对实现，不外推更旧版本。
+- 同会话 prepare 一次，每块发送标准 COM_STMT_EXECUTE；始终声明完整类型，不污染普通标量类型复用/statement 缓存。按实际物理参数位、ChunkRows、MaxResultItems、MaxMessageBytes 及65535行上限分块，类型变化（含 NULL 类型）另起一块；标量值继续用既有字符集、精确数值、时间与值大小校验。大小累计为线性计算，每块只编码一次完整消息。checksum 仍用既有 SQL checksum 策略。
+- [服务端前置条件](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L255) 要求可写 DML、自动提交关闭和匿名数组参数；[普通执行的聚合优化门禁](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L1593) 排除这条标准协议路径，因此不探测/修改 ob_enable_batched_multi_statement，也不隐式 Begin/Commit。
+- [保存异常响应](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L369) 是零起点 sql_no、error_code、error_message 三列二进制结果，加 MORE_RESULTS 的原生 legacy EOF，再加最终汇总 OK；原生元数据也发送 legacy EOF，即使普通结果协商了 EOF deprecation。严格校验列类型/名称、禁止 OUT、位置范围/重复、错误码、NULL、字符集、EOF 和最终状态；累计元数据、明细及最终 OK 的整个响应受 MaxMessageBytes 限制。
+- 收到最终 OK 后才发布该块所有逐项成功/失败，可继续下一块。错误明细没有 SQLSTATE，Error.SQLState 为空；多项成功的汇总影响行数不能分摊，RowsAffectedKnown=false，单项块且计数可表示时保留实际计数。ContinueOnError=false 仍逐项，避免第一处错误时丢失成功前缀或发送后项。
+- 顶层 ERR 也不能说明哪些输入完成：保留服务端错误链，已提交整块记 Unknown，淘汰连接，后续块保持 NotExecuted；缺失/损坏/额外结果、断线、取消同样不重发。完整 OK 后才发生取消/清理失败时保留已确认逐项状态。原 statement 有界关闭，原事务由调用方处理。
 
 本地故障对端已覆盖状态、计数、原事务、OUT/流、分块、多发包、取消和不重放。`TestBatchExecution` 提供四目标部分成功、策略和原事务回滚源码，本阶段仅编译，真实 SQL/服务器/OBProxy 行为未验收。
 

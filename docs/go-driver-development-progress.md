@@ -8,7 +8,7 @@
 - 实现完成：**28 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
 - 下一执行任务：**D28 平台传输取证与 D32 收口；D30/D31 的本地子项已补齐，平台依赖尚未闭环**。
 - 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；改写/bulk/array binding 当前按证据回退逐项，原生优化未启用；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量/详情/清除、ChangeUser 和显式取消已有本地实现；D31 XA 两模式本地实现、恢复/故障测试与集成源码已补；D28 Windows Shared Memory 与 VC 独立宿主已有本地实现，VC 真实 Linux 平台验证及 D32 收口待完成，D30/D31 依赖闭环待完成。
+- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；受限 MySQL 多语句改写和 Oracle 事务内原生 array binding 已本地实现；bulk 及不满足对应门禁的请求逐项；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量/详情/清除、ChangeUser 和显式取消已有本地实现；D31 XA 两模式本地实现、恢复/故障测试与集成源码已补；D28 Windows Shared Memory 与 VC 独立宿主已有本地实现，VC 真实 Linux 平台验证及 D32 收口待完成，D30/D31 依赖闭环待完成。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -71,7 +71,7 @@
 | D19 | 游标、滚动、刷新和更新 | D13、D15、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D19，支持边界见架构 §15 |
 | D20 | REF CURSOR/流式 LOB 输出 | D14、D16、D19 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D20 |
 | D21 | 长参数、分段上传 | D08、D12、D15 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D21 |
-| D22 | 批量、bulk、array binding | D11、D14、D18、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D22，三类原生优化回退边界见架构 §13.4 |
+| D22 | 批量、bulk、array binding | D11、D14、D18、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D22，改写/原生 array 及 bulk 回退边界见架构 §13.4 |
 | D23 | 压缩、OB20、新元数据、校验 | D06、D08 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D23，边界见架构 §9.1 |
 | D24 | PrepareExecute、缓存、优化 | D08、D11、D14、D21、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D24，架构 §10.1.1 |
 | D25 | 诊断、profiling、FLT | D11、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D25，架构 §18.3.1 |
@@ -413,7 +413,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增根包 batch.go/batch_protocol.go、internal/wire/pipeline.go 及测试、integration 批量源码；复用普通参数校验、绑定、Rows 最终化与标准库分派，无新增包、依赖或循环引用。
 - ExecBatch 保持输入顺序、已知/未知计数、Started 与四种状态；默认停止，显式继续仍在不确定/取消/损坏时停止。DB 全批次固定连接，Conn/Tx 一次标准库锁定；不改变事务边界，不重放业务。确认成功后清理失败保留成功和计数，并返回错误。
 - Auto/MultiSend 只在 server prepare、显式继续、简单 DML 和显式标量条件下提前发送独立命令；并发写/按序读、独立序号、行/物理参数位/总字节限制，失败关闭连接并等待写协程。Oracle 重复具名参数超出单块物理位限制回退逐项。OUT/流/复杂值/自定义 Valuer 回退普通逐项；句柄输出仍只接受 Execute。
-- 改写、bulk、array binding 偏好已接入，但三类原生优化未启用。Java 有 OceanBase bulk 不支持说明；array 的特殊错误计数及事务门禁未形成完整等价证据；改写可改变部分成功/触发器/错误边界，均按架构 §13.4 回退逐项，不猜测服务器版本支持。
+- 改写、bulk、array binding 偏好已接入；后续 D22/D32 子项已补受限 MySQL 多语句改写和 Oracle 事务内原生 array binding，具体门禁及取证见架构 §13.4。Java 明确不支持的 bulk 和不满足对应门禁的请求继续逐项，真实目标等价性仍待联调。
 - TestBatchResults/Atomicity/Strategies/TxBoundary/LongAndOutputs、断线单次拨号、取消、损坏与额外响应、typed-nil、分块及 Pipeline 提前发包/背压/续包用例通过。回归先失败再修复了确认响应后清理状态、既有 SQL 错误下最终取消丢失、迟到写错覆盖 SQL 错误、共享 prepare 失败停止继续批次及非法参数归因顺序、具名多位置分块不等价；没有独立走查报告。
 - 独立只读复核未发现遗留 Critical/Important。最终 Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、批量及流水线重复10次、实际 Windows/386 全包测试均通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。FuzzStmt 两版本各30秒通过，分别997617 / 1885852次；六份文档结构/链接/本地路径、32任务/22实现/0验收/155选项检查通过。`TestBatchExecution` 四目标源码覆盖全部策略偏好、重复键部分成功与原事务回滚，仅编译，不连接数据库；真实 SQL、版本、代理缓冲和事务仍待联调。Linux、远程 CI 和成功 race 仍无运行证据。当前实现22/32、G3 10/10，验收保持0/32。
 
@@ -655,7 +655,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 #### D22/D32 受限批量多语句改写
 
-- 显式 BatchRewrite 在 MySQL 兼容模式、遇错停止、允许且实际协商多语句时，以独立 INSERT/UPDATE/DELETE/REPLACE 合并请求；复用现有标量和客户端字面量编码。每个合并块前读取同会话 ob_enable_batched_multi_statement，仅明确关闭才合并；不修改服务端开关。Oracle、继续执行策略和其他不满足条件的请求仍逐项；多 VALUES、bulk、array binding 未启用，契约见架构 §13.4。
+- 显式 BatchRewrite 在 MySQL 兼容模式、遇错停止、允许且实际协商多语句时，以独立 INSERT/UPDATE/DELETE/REPLACE 合并请求；复用现有标量和客户端字面量编码。每个合并块前读取同会话 ob_enable_batched_multi_statement，仅明确关闭才合并；不修改服务端开关。Oracle、继续执行策略和其他不满足条件的请求仍逐项；多 VALUES、bulk 未启用；array binding 由下述独立子项推进，契约见架构 §13.4。
 - 按行数、参数位、结果项和编码后消息字节分块，换行分隔语句以结束尾部注释；探测后重新验证 SQL mode 和绑定边界。本地非法后项先等待有效前缀执行，不能遮蔽更早的服务器错误。严格匹配逐项 OK/ERR 和 MORE_RESULTS；保留确认成功，已提交但未确认项标 Unknown 并淘汰连接，不重放、不引入事务边界；完整 ERR 确认跳过的同命令尾项为 NotExecuted/Started=true。
 - 固定 Connector/J 分号拼接实现和固定 OceanBase ObMPQuery 的遇错停止/服务端聚合开关已取证并链接到架构；不将该源码证据推广为任意历史服务器或代理的验收。增加外部 slog 示例、TestBatchRewriteExecution 四目标源码及手动 CI 选择器，集成仅编译，未连接数据库。
 - TestBatchRewrite* 覆盖标准/压缩/OB20、分块/字节限制、计数溢出、有效前缀与本地错误顺序、门禁回退、断线/损坏/额外或缺失响应、尾部注释/字面量、GBK、事务及取消。首次执行路径、探测后的 SQL mode 边界变化、完整服务器 ERR 与取消错误链均已验证失败后修复通过；两版本目标测试各20次通过。独立只读走查未发现已确认的严重问题，不保存独立报告。
@@ -668,6 +668,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestDriverResourceGuard 注入借用、事务、未读响应、资源、缓存不一致/未释放租约、关闭及描述超限，验证检查器确实报错。独立只读走查未发现已确认重要问题，不保存独立报告。
 - 两工具链 Windows amd64 扩展运行各4096次×8轮×16场景（另含各场景预热，共524416次场景操作），分别111.101/114.024秒通过；GC 后9个采样点 goroutine 均为2，原始堆字节/对象数见[本地基准 §6](go-driver-benchmarks.md#6-离线资源稳定性检查)。堆和对象仍有增长，不宣称零增长或生产无泄漏；未覆盖真实 OS 句柄、长寿命会话、全部并发/故障及数据库组合，D32 保持进行中，实现28/32、验收0/32不变。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、两版本普通/integration 标签 golangci-lint2.14.0 各0 issues 通过；实际 Go1.25 Windows/386 的资源/基准夹具目标通过。八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项选项集合、32任务/28实现/0验收、CI YAML/独立资源矩阵和 Go 格式/diff 检查通过。未连接数据库；Linux 实际运行、远程 CI 和成功 race 仍未验证。
+
+#### D22/D32 Oracle 原生 array binding
+
+- 显式 BatchArrayBinding 在 Oracle、已知 OceanBase >=4.2.1、PrepareServer、已有可写 sql.Tx/自动提交关闭、ContinueOnError=true 及标量 DML 门禁下，使用标准 COM_STMT_EXECUTE flag24。默认策略、遇错停止及其他不满足条件的请求继续既有路径；不隐式启用事务、提交、多语句权限或服务端批量开关。具体参数/版本和错误契约见架构 §13.4。
+- 复用既有绑定、字符集/时间/精确数值、SQL checksum 和包流；匿名数组元数据不携带 unsigned 标志，uint/uint64 继续逐项。物理参数展开、类型变化、NULL、行数、结果项及完整编码大小控制分块；线性累计大小，每块编码一次，statement 独立关闭，不污染标量类型缓存。
+- 三列二进制错误明细的零起点位置/唯一性、错误码、字符集、非 NULL、OUT 拒绝、legacy EOF 和最终 OK 严格解析；统一读包入口累计完整响应预算，保留元数据、EOF、明细及最终阶段的服务端 ERR 错误链。没有最终 OK 不发布逐项成功；ERR/损坏/断线/取消对已提交整块记 Unknown 并停止，不重放。多项汇总计数不分摊，错误明细不编造 SQLSTATE。
+- TestStmtArray 黄金包、NULL bitmap/长度编码/大小边界和 FuzzStmtArray，以及 TestBatchArray* 的三包流、checksum、成功/错误与后块、类型/字节/行数/物理参数位限制、本地非法输入、回退、Valuer 一次消费、预算、取消和原事务回滚已加入。错误明细伪装 OUT 的测试先失败后补齐拒绝；EOF deprecation 下仍核对原生 legacy EOF。外部 slog 示例、TestBatchArrayBindingExecution 四目标源码及手动 CI 选择器已加入，集成仅编译，不连接数据库；Oracle 原生集成要求目标版本>=4.2.1。
+- 固定 Connector/J 与 OceanBase v4.2.1 服务端源码已取证并链接到架构。真实服务器/OBProxy 的逐项语义、类型支持及吞吐未验收；D32 继续进行，实现28/32、验收0/32保持，不保存独立走查报告。
+- 最终只读走查未发现可确认问题；中途 ERR 丢失服务端错误的回归先失败后修复。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TestBatchArray 各20轮、集成源码仅编译，以及两版本普通/integration 标签 golangci-lint 各0 issues 通过。TestStmtArray 两版本各20轮及 FuzzStmtArray 各15秒通过，分别746362/285088次执行；Go1.25 Windows/386 的 BatchArray/StmtArray 目标测试通过。九文件文档/链接/160项选项/32任务计数、CI YAML、Go 格式与 diff 检查通过。未连接数据库，Linux、远程 CI 和成功 race 仍无验证证据。
 
 ## 6. 待取证条件与推进方式
 
