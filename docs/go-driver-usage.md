@@ -57,6 +57,8 @@ TCP 源接口、keep-alive、缓冲和 NODELAY 使用标准 `net.Dialer` / `net.
 
 `Credentials` 回调返回的 `User`、`Password`、`ProxyUser` **完整替换**静态身份。Oracle 代理登录使用独立 `ProxyUser` 字段，认证用户和代理目标分开；不支持括号用户名语法，普通连接属性不能覆盖代理目标。结构体建议使用命名字段，避免新增字段破坏位置字面量。完整契约见[架构 §6.3](go-driver-architecture-design.md#63-d32-已实现的代理用户登录)。
 
+凭据来源和固定 RSA 公钥使用现有配置，见[应用示例](../auth_example_test.go)：Credentials 按每次物理认证读取应用来源，出错不回退静态身份；示例要求 OB_USER/OB_PASSWORD 存在，允许显式空密码，OB_PROXY_USER 可选。来源回调必须响应 context 并支持并发，环境变量不是每连接隔离存储。Auth.RSAKey 接收应用已加载的预置 *rsa.PublicKey，公钥在 NewConnector 时复制，轮换时创建新 Connector；加载失败应直接返回。RSA 只保护 SHA 认证密码，不替代 TLS 的会话加密或服务器身份验证；不支持自动取服务端公钥。示例只解析单个 PKIX PUBLIC KEY，其他格式由应用使用对应标准解析器处理。默认及边界见[架构 §17.2.2](go-driver-architecture-design.md#1722-d32-凭据来源与固定-rsa-公钥)。
+
 `Session.Collation` 只适用于 MySQL 兼容模式，且必须与 `Session.Charset` 匹配；Oracle 显式拒绝。`Interactive` 请求服务端交互超时策略，不是客户端保活。`ConnectionAttributes` 只能传应用元数据，不得注入协议保留键。
 
 初始 MySQL 数据库需要由连接显式创建时，设置 `Config.CreateDatabaseIfMissing=true` 或 DSN `createDatabaseIfMissing=true`，并指定非空 Database。默认关闭，Oracle 拒绝。驱动认证后在同一连接执行 IF NOT EXISTS 并选库，随后才运行 InitSQL；需账户具备相应权限，初始化失败也可能已经留下数据库，不会自动删除或重试建库。池替换连接会再次创建/选择；ChangeUser 和取消查询辅助连接不执行创建。详见[架构 §6.4](go-driver-architecture-design.md#64-d32-已实现的初始数据库创建)。

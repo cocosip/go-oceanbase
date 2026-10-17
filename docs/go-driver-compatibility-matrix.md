@@ -20,6 +20,9 @@
 
 D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化；完整 uint64 ID 保留文本。Snapshot 仅观察驱动状态，Close 在停止迭代后协调标准库取消错误。MySQL MatchedRows/ChangedRows 通过 CLIENT_FOUND_ROWS 控制；Oracle 拒绝 ChangedRows。合成包流通过，真实混合结果及无变化 UPDATE/upsert 待联调。
 
+D32 凭据来源与固定公钥补充：应用回调/PEM 解析示例和两模式初始/切换/ChangeUser 对端解密、同 Connector 新连接来源刷新、失败不回退及公钥快照测试已补；缺少密钥、服务器私自供钥、超长密码和 Java DSN 参数均明确拒绝。RSA 不证明 TLS 或后续 SQL 保密；实际插件/权限、密钥来源及轮换未验证。契约见[架构 §17.2.2](go-driver-architecture-design.md#1722-d32-凭据来源与固定-rsa-公钥)，D32 保持进行中。
+
+
 ### 1.1 D32 连接声明首批
 
 | 能力 | Go 当前行为 | 本地证据 / 真实验证边界 |

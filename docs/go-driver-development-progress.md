@@ -589,6 +589,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各30次及普通/integration 标签 golangci-lint2.14.0 各0 issues 通过；实际 Windows/386 全包测试和16场景1x基准通过。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。文档 UTF-8/链接/锚点/围栏/无机器路径、32任务及160选项和 Go 格式/diff 检查通过。
 - 未连接数据库；真实 SQL/网络/代理性能、LOB 远端流式、全部优化及并发组合、长期资源曲线均未完成，Linux 实际运行、远程 CI 与成功 race 仍缺。D32 保持进行中，实现28/32、验收0/32不变，Shared Memory/VC 和其他配置继续按原范围推进。
 
+
+#### D32 凭据来源与固定 RSA 公钥
+
+- 核对固定 Java credentialType、serverRsaPublicKeyFile、allowPublicKeyRetrieval 及 ENV/PROPERTY 来源行为，按现有 Config.Credentials、Auth.RSAKey 和 Go 标准库承载；不增加类名、文件选项、全局注册表、生产 API、包或依赖。新增 auth_example_test.go：应用自定环境来源及单个 PKIX RSA 公钥解析，配置/轮换/错误边界见架构 §17.2.2，逐项映射和使用指南同步。
+- TestAuthExampleCredentials/RSAFile 覆盖缺来源、显式空密码、代理字段、取消、缺文件、垃圾/多块/headers/畸形/非 RSA/私钥拒绝；缺示例函数时先编译失败，再实现通过。新增“畸形前块后接有效公钥”回归先失败，补充单块检查后通过，不让 pem.Decode 跳过错误输入。
+- TestAuthNativeRSAPaths 在两模式 × SHA256/caching SHA2 × 初始/切换/ChangeUser 共12场景实际解密，核对原始密码、不同 nonce 与显式切换身份；原公钥 N/E 后续修改不影响 Connector。临时移除模数深复制时，新协议测试明确失败，按字节恢复。TestAuthNativeCredentialRotation/Failure 检查同 Connector 新物理连接刷新来源、普通 Ping 不刷新、来源错误不回退静态配置；TestAuthNativeRSARejection/JavaDSNRejected 覆盖缺钥、服务端私自供钥、OAEP 超长密码及旧参数拒绝。独立只读走查无已确认遗留问题，不保存独立报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、Go 格式与 diff 检查通过。首次 lint 的重复字符串及测试 helper 复杂度提示已整理，无生产逻辑变动。
+- 文档仍为八份及 README；修正认证章节与 TLS 章节的重复编号，新增凭据来源/RSA 契约。固定 Java 的160项枚举与映射集合完全一致，32任务/28实现/0验收不变。本地协议及示例验证不等于真实插件/权限、外部来源服务、公钥发布轮换或 TLS 身份验收；未连接数据库，D28/D32 整项继续进行，Linux 实际运行、远程 CI 和成功 race 仍待验证。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

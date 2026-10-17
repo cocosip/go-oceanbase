@@ -1299,7 +1299,7 @@ Java replication 的主/从地址映射为显式角色快照及两个标准 sql.
 
 门禁覆盖初始认证、每次 auth switch、多阶段认证及 ChangeUser；服务器临时改换算法同样重验。拒绝后不调用敏感阶段的凭据编码/发送，关闭未完成认证的连接；不能先发送密码再检测 TLS。已通过挑战应答发送的摘要不等于允许后续 full-auth 明文。日志和包诊断始终过滤密码、认证内容及相关密钥。[J16]
 
-#### 17.2.1 D28 认证扩展的当前实现
+#### D28 认证扩展的当前实现
 
 `AuthOptions.AllowOldPassword` 默认为 false，控制 `mysql_old_password`，包括同名自定义工厂；显式开启才允许八字节旧挑战应答及单字节旧式切换。它不降低 TLS 门禁。`client_ed25519` 使用严格 32 字节挑战和密码派生签名；采用纯 Go `filippo.io/edwards25519 v1.1.0` 的标量/曲线运算，标准 `crypto/ed25519.Sign` 的种子再哈希不适用于此协议。算法向量和本地协议对端通过不代表 OceanBase 服务端已安装相应插件。
 
@@ -1344,6 +1344,20 @@ NewConnector 快照 TLS 配置的证书字节、证书池及可变切片/map；�
 TestTLSNativePolicy 覆盖两模式、TLS1.2/1.3、静态/动态客户端证书、服务端验证的完整客户端链及加密认证；TestTLSNativeRejection 覆盖 TLS1.2 的验证/选证书回调错误、无共同版本/套件，均在获取数据库凭据前拒绝。TestTLSNativeSnapshot 经完整初始化/Ping/QUIT 验证原配置后续变更不污染会话；TestTLSNativeCancellation 验证选证书回调的 context 取消。原有 TestTLSVerifiedAuthentication、TestTLSRequired、TestFailoverTLS、TestFailoverClientCertificateReject、TestAuthRejectsForgedTLS 与 ReadTimeout TLS 用例继续覆盖链/名称/降级/路由/缺失客户端身份及读取预算。
 
 12个同名 Java DSN 参数、禁用校验开关及 DefaultOptions 注释列出的5个历史别名均明确拒绝；不通过 URL 读取证书/私钥文件。固定证据为 DefaultOptions（L188、L263、L385–L434、L682–L693、L740）、AbstractConnectProtocol（L350–L404、L673–L716）、DefaultTlsSocketPlugin 和 OceanBaseX509TrustManager；Java provider 注册清单只有默认实现。这里的本地 TLS 证据不代表真实 OceanBase/OBProxy 的证书部署、双向身份映射、系统信任源或 Java store 转换已经验收。
+
+### 17.2.2 D32 凭据来源与固定 RSA 公钥
+
+Java 的 `credentialType`、`serverRsaPublicKeyFile` 默认均为 null，分别由凭据 SPI 与应用指定的公钥文件承载。Go 使用现有 `Config.Credentials` 和 `Auth.RSAKey`，不增加类名、文件名或全局凭据注册表；两种 OceanBase 兼容模式共用认证状态机。固定 Java 的 [ENV 插件](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/credential/env/EnvCredentialPlugin.java#L59)、[PROPERTY 插件](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/credential/system/PropertiesCredentialPlugin.java#L91)与 [RSA 文件解析](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/authentication/Sha256PasswordPlugin.java#L87)为映射依据。
+
+Credentials=nil 时使用静态 User/Password/ProxyUser；非 nil 时返回值完整替换三项，不与静态字段合并。NewConnector 不调用来源回调；每次新物理认证取得新凭据，包括重连/切换候选和显式取消的辅助连接，不缓存为全局身份，普通 SQL/Ping/事务不会主动刷新凭据。ChangeUser 使用其显式 Credentials 参数，忽略原来源回调；之后原 Connector 新建连接仍用原来源，见 §16.3.2。配置 TLS 时先完成握手验证，再读取来源；回调得到的 context 受建连预算约束，必须响应取消并支持多连接并发，不能重入正等待认证/取消的同一受限连接。错误原样返回且不回退静态身份；应用须避免在回调错误中放入密码/token。
+
+[应用示例](../auth_example_test.go)从 OB_USER、OB_PASSWORD 和可选 OB_PROXY_USER 读取完整身份；前两项必须存在，用户名非空，显式空密码有效。OB_ADDR 由应用选择，未设置则沿用驱动默认地址。示例不隐式读取 MARIADB_USER/MARIADB_PWD，也不按 Java 的 userKey/pwdKey 动态选择变量或回退静态用户名；需要这些策略时由业务回调明确实现。环境变量是进程状态，不能用并发 os.Setenv 为每条连接切换不同身份。其他来源使用相同回调读取应用配置/密钥服务；Java system properties 和 SPI 类名没有 Go 运行时对应物，不解析 PROPERTY 或导入 Java 类。
+
+Auth.RSAKey=nil 是默认值，不自动读取文件或向未认证服务端请求密钥。应用通过 os.ReadFile、pem.Decode、x509.ParsePKIXPublicKey 加载受信任渠道预置的公钥，再传入 *rsa.PublicKey；文件加载/格式错误应在调用 NewConnector 前返回，不转成 nil 公钥继续连接。示例只接收单个无 PEM headers 的 PKIX PUBLIC KEY（Java 原格式），拒绝前后垃圾、多块、可被 pem.Decode 跳过的畸形前块、非 RSA、私钥或证书；应用使用 PKCS1 等其他格式时可自行使用对应标准解析器，驱动只接收解析后的公钥，不声称支持任何文件容器。NewConnector 校验模数至少2048位、指数为大于等于3的奇数，并复制 RSAKey 及 N；调用方后续修改原对象不影响 Connector。轮换固定公钥需要建立新 Connector/DB；已有 Connector 不监视文件。
+
+sha256_password 在无已验证 TLS 时使用固定公钥，caching_sha2_password 的完整认证也使用相同 RSA OAEP-SHA1 与 nonce 掩码路径；后者缓存命中阶段仍使用原生挑战应答。启用且完成验证的 TLS 下仍按插件协议发送受 TLS 保护的密码，RSAKey 不替代证书/名称验证。初始、插件切换和 ChangeUser 复用相同快照与门禁。缺少密钥时需要已验证 TLS；服务端额外提供公钥不能替换固定密钥，不自动请求/采信，也不在失败后重试其他认证方式。RSA 仅保护认证密码，不能证明完整会话加密、服务端身份或后续 SQL/结果保密；部署所需 TLS 必须独立配置。过长密码的 OAEP 错误保留，不能截断密码。
+
+TestAuthExampleCredentials/RSAFile、TestAuthNativeRSAPaths、TestAuthNativeCredentialRotation/Failure、TestAuthNativeRSARejection 和 TestAuthJavaDSNRejected 提供本地证据：两模式初始/切换/ChangeUser 对端解密、不同 nonce/显式身份、公钥变更隔离、同 Connector 来源刷新及失败拒绝。只验证本地协议和应用示例；真实服务的插件启用、用户权限、公钥发布/轮换及密钥服务可用性仍待联调，不关闭 D28/D32 的其余范围。
 
 ### 17.3 LOCAL INFILE
 
