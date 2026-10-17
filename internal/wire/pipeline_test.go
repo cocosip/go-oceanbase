@@ -83,6 +83,7 @@ func TestPipelineFailureJoinsWriter(t *testing.T) {
 		done <- err
 	}()
 	p := NewPacketIO(client, 64)
+	p.EnableDiagnostics(2, 1)
 	writes, err := p.Pipeline(ctx, [][]byte{{1}, {2}, {3}}, func(int) error {
 		_, e := p.ReadMessage(ctx)
 		if e != nil {
@@ -98,6 +99,15 @@ func TestPipelineFailureJoinsWriter(t *testing.T) {
 	}
 	if e := <-done; e != nil {
 		t.Fatal(e)
+	}
+	records, _ := p.TakeDiagnostics()
+	if len(records) < 1 || len(records) > 2 || records[0].WriteBytes != 5 {
+		t.Fatal(records)
+	}
+	for _, r := range records {
+		if !r.Failed || r.WriteBytes < 0 || len(r.Packets) > 1 {
+			t.Fatal(r)
+		}
 	}
 }
 

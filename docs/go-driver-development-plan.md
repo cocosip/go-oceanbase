@@ -539,10 +539,12 @@ D24 已本地实现，真实验收未完成；配置、缓存及句柄边界见�
 
 交付：结构化慢请求、受限 SQL/包诊断回调、OB20 FLT；请求级 `WithTraceInfo(ctx context.Context, info TraceInfo) context.Context`；可选 OTel 桥接不强制 exporter。
 
-- [ ] 测试 `TestDiagnosticRedaction`、`TestTraceIsolation`：nil logger、handler 重入不在网络锁内死锁、凭据/LOB/参数不出日志；复用连接无 trace 串扰；slog 关闭不阻断协议 FLT。
-- [ ] 执行 `go test . -run 'Test(Diagnostic|Trace)' -count=1`，确认失败。
-- [ ] 定义 TraceInfo 的 module/action/client 信息字段和长度上限；为 query/fetch/LOB/batch/建连指定独立请求边界。
-- [ ] 同命令通过；`TestFullLinkTrace` 对照真实 OBProxy/服务端可观察信息；没有服务端追踪证据时只记客户端实现完成。
+- [x] 测试 `TestDiagnosticRedaction`、`TestTraceIsolation`：nil logger、handler 重入不在网络锁内死锁、凭据/LOB/参数不出日志；复用连接无 trace 串扰；slog 关闭不阻断协议 FLT。
+- [x] 执行 `go test . -run 'Test(Diagnostic|Trace)' -count=1`，确认失败。
+- [x] 定义 TraceInfo 的 module/action/client 信息字段和长度上限；为 query/fetch/LOB/batch/建连指定独立请求边界。
+- [x] 同命令通过；客户端协议已实现，集成源码仅编译，真实可见性仍待验证；`TestFullLinkTrace` 对照真实 OBProxy/服务端可观察信息；没有服务端追踪证据时只记客户端实现完成。
+
+D25 实现契约见架构 §18.3.1：诊断仅元数据/指纹；有界同步交付；每命令 app 清空；server-controlled 采样和一次性延后 span 上报；无强制 exporter。真实服务端可见性不计本地完成。
 
 ### D26 静态多地址、负载与建连故障切换
 

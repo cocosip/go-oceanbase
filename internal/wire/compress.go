@@ -16,6 +16,8 @@ type frameIO struct {
 	ob        *OB20Options
 	requestID uint32
 	readBytes int64
+	trace     *fullTraceState
+	outExtra  []byte
 }
 
 // EnableCompression selects zlib framing after the uncompressed authentication completes.
@@ -29,6 +31,9 @@ func (p *PacketIO) enableFrames(ob *OB20Options) error {
 		return ErrMalformed
 	}
 	p.frames = &frameIO{conn: p.conn, ob: ob}
+	if ob != nil && ob.FullLinkTrace {
+		p.frames.trace = &fullTraceState{}
+	}
 	return nil
 }
 
@@ -132,7 +137,14 @@ func (p *PacketIO) writeFramed(payload []byte) (int64, error) {
 			frameLimit = min(frameLimit, maxFrame-28)
 		}
 		for len(raw) > 0 {
-			width := min(len(raw), frameLimit)
+			limit := frameLimit
+			if len(p.frames.outExtra) > 0 {
+				limit -= 4 + len(p.frames.outExtra)
+			}
+			if limit < 1 {
+				return transferred, ErrMessageTooLarge
+			}
+			width := min(len(raw), limit)
 			var frame []byte
 			var err error
 			if p.frames.ob != nil {

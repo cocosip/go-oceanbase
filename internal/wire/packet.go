@@ -36,6 +36,7 @@ type PacketIO struct {
 	sequence        byte
 	failed          bool
 	frames          *frameIO
+	diagnostics     *diagnosticRecorder
 }
 
 // NewPacketIO uses a 64 MiB limit when maxMessageBytes is zero.
@@ -48,6 +49,8 @@ func NewPacketIO(conn net.Conn, maxMessageBytes int64) *PacketIO {
 
 // ResetSequence begins a new command; it never revives a failed stream.
 func (p *PacketIO) ResetSequence() {
+	p.finishTrace()
+	p.finishDiagnostic()
 	p.sequence = 0
 	if p.frames != nil && p.frames.reset() != nil {
 		p.failed = true
@@ -71,6 +74,9 @@ func (p *PacketIO) ReplaceConn(conn net.Conn) error {
 
 // ReadMessage consumes one complete logical message, including continuation packets.
 func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) {
+	var transferred int64
+	sequence := p.sequence
+	defer func() { p.notePacket(false, sequence, transferred, message, err) }()
 	if err = p.check(ctx); err != nil {
 		return nil, err
 	}
@@ -78,7 +84,6 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 	if err != nil {
 		return nil, p.fail(ctx, "read", 0, err)
 	}
-	var transferred int64
 	defer finish()
 	var reader io.Reader = p.conn
 	if p.frames != nil {
@@ -122,17 +127,27 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 
 // WriteMessage sends one logical message without retrying failed I/O.
 func (p *PacketIO) WriteMessage(ctx context.Context, payload []byte) (err error) {
+	var transferred int64
+	sequence := p.sequence
+	defer func() { p.notePacket(true, sequence, transferred, nil, err) }()
 	if err = p.check(ctx); err != nil {
 		return err
 	}
 	if _, err = messageSize(0, len(payload), p.maxMessageBytes); err != nil {
 		return err
 	}
+	if sequence == 0 {
+		p.finishTrace()
+		p.finishDiagnostic()
+		if err = p.beginTrace(ctx); err != nil {
+			return err
+		}
+		p.beginDiagnostic(ctx, payload)
+	}
 	finish, err := p.prepareIO(ctx)
 	if err != nil {
 		return p.fail(ctx, "write", 0, err)
 	}
-	var transferred int64
 	defer finish()
 	if p.frames != nil {
 		transferred, err = p.writeFramed(payload)

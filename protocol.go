@@ -26,11 +26,13 @@ type ProtocolOptions struct {
 	NewMetadata FeatureMode
 	// ProxyChecksum requests the legacy proxy checksum capabilities, independently of OB20 CRC.
 	ProxyChecksum FeatureMode
+	// FullLinkTrace negotiates OB20 trace extras independently of logging.
+	FullLinkTrace FeatureMode
 }
 
 func validateProtocolOptions(p ProtocolOptions) error {
-	if p.Compression > FeatureRequired || p.OB20 > FeatureRequired || p.Checksum > FeatureRequired || p.NewMetadata > FeatureRequired || p.ProxyChecksum > FeatureRequired ||
-		p.Compression == FeatureRequired && (p.OB20 == FeatureRequired || p.Checksum == FeatureRequired) || p.OB20 == FeatureOff && p.Checksum == FeatureRequired {
+	if p.Compression > FeatureRequired || p.OB20 > FeatureRequired || p.Checksum > FeatureRequired || p.NewMetadata > FeatureRequired || p.ProxyChecksum > FeatureRequired || p.FullLinkTrace > FeatureRequired ||
+		p.Compression == FeatureRequired && (p.OB20 == FeatureRequired || p.Checksum == FeatureRequired || p.FullLinkTrace == FeatureRequired) || p.OB20 == FeatureOff && (p.Checksum == FeatureRequired || p.FullLinkTrace == FeatureRequired) {
 		return &ConfigError{Field: "Protocol"}
 	}
 	return nil
@@ -62,6 +64,9 @@ func (c *connector) protocolAttributes() map[string]string {
 	if c.cfg.Protocol.OB20 != FeatureOff && c.cfg.Protocol.Compression != FeatureRequired {
 		// Do not request extra-OK, session synchronization or routing capabilities not yet implemented.
 		proxy |= 1<<8 | 1<<15
+		if c.cfg.Protocol.FullLinkTrace != FeatureOff {
+			proxy |= 1<<14 | 1<<18
+		}
 	}
 	if proxy != 0 {
 		attrs["__proxy_capability_flag"] = strconv.FormatUint(proxy, 10)
@@ -101,15 +106,28 @@ func (c *connector) selectProtocol(s *handshakeSession) error {
 	metadata := client&2 != 0
 	requestedOB := c.cfg.Protocol.OB20 != FeatureOff && c.cfg.Protocol.Compression != FeatureRequired && s.capabilities&wire.ClientConnectAttrs != 0
 	requestedMeta := c.cfg.Protocol.NewMetadata != FeatureOff && s.capabilities&wire.ClientConnectAttrs != 0
+	trace, err := c.validateTraceNegotiation(proxy, requestedOB)
+	if err != nil {
+		return err
+	}
 	if ob && !requestedOB || metadata && !requestedMeta || !ob && (c.cfg.Protocol.OB20 == FeatureRequired || c.cfg.Protocol.Checksum == FeatureRequired) || !metadata && c.cfg.Protocol.NewMetadata == FeatureRequired {
 		return fmt.Errorf("%w: negotiated packet or metadata policy", ErrUnsupported)
 	}
 	s.newMetadata = metadata
 	if ob {
-		return s.packets.EnableOB20(wire.OB20Options{ConnectionID: s.hello.ConnectionID, Checksum: c.cfg.Protocol.Checksum != FeatureOff, RequireChecksum: c.cfg.Protocol.Checksum == FeatureRequired, NewExtra: proxy&(1<<15) != 0})
+		return s.packets.EnableOB20(wire.OB20Options{ConnectionID: s.hello.ConnectionID, Checksum: c.cfg.Protocol.Checksum != FeatureOff, RequireChecksum: c.cfg.Protocol.Checksum == FeatureRequired, NewExtra: proxy&(1<<15) != 0, FullLinkTrace: trace})
 	}
 	if s.capabilities&wire.ClientCompress != 0 {
 		return s.packets.EnableCompression()
 	}
 	return nil
+}
+
+func (c *connector) validateTraceNegotiation(proxy uint64, requestedOB bool) (bool, error) {
+	trace := proxy&(1<<14) != 0
+	requested := requestedOB && c.cfg.Protocol.FullLinkTrace != FeatureOff
+	if trace && (proxy&(1<<8) == 0 || !requested) || !trace && c.cfg.Protocol.FullLinkTrace == FeatureRequired || proxy&(1<<18) != 0 && !trace {
+		return false, fmt.Errorf("%w: negotiated full link trace policy", ErrUnsupported)
+	}
+	return trace, nil
 }

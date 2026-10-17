@@ -53,6 +53,7 @@ jobs:
           GOARCH: '386'
       - run: go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzFrames -fuzztime 30s -parallel 2
+      - run: go test ./internal/wire -run '^$' -fuzz FuzzFullTrace -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzHandshake -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzText -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzStmt -fuzztime 30s -parallel 2
@@ -90,4 +91,4 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies)$' -count=1
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace)$' -count=1

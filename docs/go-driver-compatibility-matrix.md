@@ -166,7 +166,7 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 
 | 能力 | Go 当前行为 | 验证状态 |
 | --- | --- | --- |
-| 协商和策略 | ProtocolOptions 五项独立三态；标准认证 OK 后固定包流；required 缺失/off 被启用直接拒绝 | 两模式三包流、非法组合及能力回显本地通过；真实版本未验证 |
+| 协商和策略 | ProtocolOptions 六项独立三态（含 D25 FLT）；标准认证 OK 后固定包流；required 缺失/off 被启用直接拒绝 | 两模式三包流、非法组合及能力回显本地通过；真实版本未验证 |
 | 压缩 | CLIENT_COMPRESS，7 字节头，zlib/raw，跨帧重组与内层逐消息预算 | 聚合小消息、跨头/16MiB 续包、膨胀/尾随数据/序号错误本地通过 |
 | OB20 | 7+24 字节头、4 字节尾，身份/序号/标志/CRC 校验，新 TLV 与旧 extra 按边界跳过 | 独立 CRC 向量、损坏/长度、ID 回绕、部分写/取消/未读拒绝复用本地通过 |
 | 两类 checksum | Checksum 是 OB20 CRC；ProxyChecksum 是 Java useObChecksum 的能力位 3/6，请求和确认独立处理 | 组合策略本地验证；代理到后端的实际校验没有本地证明 |
@@ -186,3 +186,14 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 有界缓存 | StatementCacheSize > 0、SQL UTF-8 字节数 <= StatementCacheSQLLimit、可缓存普通 SQL | 两模式 LRU、错误驱逐、SQL 长度、会话 SQL 失效和 Full reset 物理淘汰本地通过；显式 statement/过程/连接资源按架构 §10.1.1 管理 |
 
 `TestExecuteStrategies` 对 mysql/oracle/proxy-mysql/proxy-oracle 各定义普通及优化配置，对照返回值、NULL/类型变化、OUT、重复键错误、计数与资源关闭。Oracle 优化目标需固定 >= 4.1.2 的实际服务端以覆盖两项门禁；MySQL 保持标准命令并覆盖缓存及类型头复用。当前仅编译集成源码，没有运行数据库联调，也没有服务端吞吐结论。
+
+## 16. D25 诊断与 Full Link Trace
+
+| 能力 | 本地实现与证据 | 真实验收边界 |
+| --- | --- | --- |
+| 注入日志/元数据回调 | nil 静默、Debug/Warn、脱敏、回调/handler 解锁重入、请求/消息上限与丢弃计数 | 不采集原始 SQL/包；调用方管理 handler 并发与池重入 |
+| FLT 协商和 extra | off/auto/required、OB20/FLT 能力组合、新 TLV 与旧 varchar、CRC/16MiB 分片/畸形字段 | 目标版本和代理配置待确认；直连 off、代理 required 登记正向 |
+| 请求隔离与控制 | 每命令清空 app、16字节 ID、服务端采样/打印/慢请求/ShowTrace，query 时间清空；无 logger 仍运行 | TestFullLinkTrace 仅编译；需对照服务端 app 清空及 trace/span ID，不以客户端事件宣称服务端追踪成功 |
+| 边界和归因 | Rows 包含消费时间；每 fetch/长数据片段/LOB SQL/批量项独立命令，multi-send 合并真实收发统计；畸形 OK 记录失败 | 建连总时长为本地事件；最后一条完成 span 可能无后续命令上传；不额外发 SQL 或重放 |
+
+详细 API、限制和延后上传策略见架构 §18.3.1。数据库/OBProxy、Linux、远程 CI 与成功 race 仍未验证，不计入验收。

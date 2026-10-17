@@ -5,9 +5,9 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"sync"
+	"time"
 )
 
 // ErrUnsupported indicates that a requested capability is unavailable.
@@ -28,11 +28,22 @@ func NewConnector(cfg Config) (driver.Connector, error) {
 	return &connector{cfg: cfg}, nil
 }
 
-func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
+func (c *connector) Connect(ctx context.Context) (result driver.Conn, err error) {
+	started := time.Now()
+	requestCtx := ctx
+	defer func() {
+		d := RequestDiagnostic{Operation: "connect", Mode: c.cfg.Mode, Duration: time.Since(started), Failed: err != nil}
+		if connected, ok := result.(*conn); ok {
+			d.Mode, d.ConnectionID = connected.session.mode, connected.session.hello.ConnectionID
+		}
+		emitDiagnostic(requestCtx, c.cfg, d)
+	}()
+	if err := validateTraceContext(ctx); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	logOperation(ctx, c.cfg.Logger, slog.LevelDebug, "connect")
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.ConnectTimeout)
 	defer cancel()
 	dial := c.cfg.DialContext

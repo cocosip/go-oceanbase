@@ -73,6 +73,10 @@ func TestPacketNegotiation(t *testing.T) {
 		{name: "checksum-missing", options: ProtocolOptions{Checksum: FeatureRequired}, unsupported: true},
 		{name: "checksum-required", options: ProtocolOptions{Checksum: FeatureRequired}, vars: map[string]string{testProxyCapability: "256"}, framed: true},
 		{name: "off-unsolicited", options: ProtocolOptions{OB20: FeatureOff}, vars: map[string]string{testProxyCapability: "256"}, unsupported: true},
+		{name: "trace-required", options: ProtocolOptions{FullLinkTrace: FeatureRequired}, vars: map[string]string{testProxyCapability: "16640"}, framed: true},
+		{name: "trace-missing", options: ProtocolOptions{FullLinkTrace: FeatureRequired}, vars: map[string]string{testProxyCapability: "256"}, unsupported: true},
+		{name: "trace-off", options: ProtocolOptions{FullLinkTrace: FeatureOff}, vars: map[string]string{testProxyCapability: "16640"}, unsupported: true},
+		{name: "trace-without-ob20", vars: map[string]string{testProxyCapability: "16384"}, unsupported: true},
 		{name: "invalid-ack", vars: map[string]string{testProxyCapability: "not-a-number"}, unsupported: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,6 +119,26 @@ func TestPacketOptions(t *testing.T) {
 		t.Fatal(cfg.Protocol, err)
 	}
 	if _, err = ParseDSN("oceanbase://u@localhost/?ob20=true"); err == nil {
+		t.Fatal("non-policy accepted")
+	}
+}
+
+func TestTraceOptions(t *testing.T) {
+	for _, options := range []ProtocolOptions{{FullLinkTrace: 255}, {FullLinkTrace: FeatureRequired, OB20: FeatureOff}, {FullLinkTrace: FeatureRequired, Compression: FeatureRequired}} {
+		if _, err := NewConnector(Config{User: testUser, Protocol: options}); err == nil {
+			t.Fatal("invalid trace policy accepted", options)
+		}
+	}
+	for _, options := range []DiagnosticOptions{{SlowThreshold: -1}, {MaxRequests: -1}, {MaxRequests: 1025}, {MaxPackets: -1}, {MaxPackets: 1025}} {
+		if _, err := NewConnector(Config{User: testUser, Diagnostics: options}); err == nil {
+			t.Fatal("invalid diagnostic limits accepted")
+		}
+	}
+	cfg, err := ParseDSN("oceanbase://u@localhost/?fullLinkTrace=required")
+	if err != nil || cfg.Protocol.FullLinkTrace != FeatureRequired {
+		t.Fatal(cfg, err)
+	}
+	if _, err = ParseDSN("oceanbase://u@localhost/?fullLinkTrace=true"); err == nil {
 		t.Fatal("non-policy accepted")
 	}
 }

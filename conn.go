@@ -59,6 +59,9 @@ func (c *conn) IsValid() bool {
 }
 
 func (c *conn) lock(ctx context.Context) error {
+	if err := validateTraceContext(ctx); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -68,13 +71,18 @@ func (c *conn) lock(ctx context.Context) error {
 			c.unlock()
 			return err
 		}
+		c.enableDiagnostics()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-func (c *conn) unlock() { <-c.mu }
+func (c *conn) unlock() {
+	records, dropped := c.diagnosticSnapshots()
+	<-c.mu
+	c.emitDiagnostics(records, dropped)
+}
 
 // discard may run from cancellation while the operation still owns protocol state.
 func (c *conn) discard() {

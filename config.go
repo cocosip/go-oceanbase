@@ -80,6 +80,7 @@ type Config struct {
 	Database             string
 	Mode                 Mode
 	Logger               *slog.Logger
+	Diagnostics          DiagnosticOptions
 	TLSConfig            *tls.Config
 	ConnectTimeout       time.Duration
 	DialContext          func(context.Context, string, string) (net.Conn, error)
@@ -119,10 +120,7 @@ func normalizeConfig(cfg Config) (Config, error) {
 	if cfg.PrepareMode > PrepareClient {
 		return Config{}, &ConfigError{Field: "PrepareMode"}
 	}
-	if err := validateProtocolOptions(cfg.Protocol); err != nil {
-		return Config{}, err
-	}
-	if err := cfg.Execution.normalize(); err != nil {
+	if err := cfg.validateDriverOptions(); err != nil {
 		return Config{}, err
 	}
 	if cfg.ConnectTimeout < 0 {
@@ -169,6 +167,16 @@ func normalizeConfig(cfg Config) (Config, error) {
 		cfg.TLSConfig = cloneTLSConfig(cfg.TLSConfig)
 	}
 	return cfg, nil
+}
+
+func (cfg *Config) validateDriverOptions() error {
+	if err := cfg.Diagnostics.validate(); err != nil {
+		return err
+	}
+	if err := validateProtocolOptions(cfg.Protocol); err != nil {
+		return err
+	}
+	return cfg.Execution.normalize()
 }
 
 func cloneAuthOptions(options AuthOptions) (AuthOptions, error) {

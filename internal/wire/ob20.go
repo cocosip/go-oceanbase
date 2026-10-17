@@ -10,6 +10,7 @@ type OB20Options struct {
 	Checksum        bool
 	RequireChecksum bool
 	NewExtra        bool
+	FullLinkTrace   bool
 }
 
 // EnableOB20 selects uncompressed OB20 envelopes after authentication.
@@ -61,19 +62,9 @@ func (f *frameIO) readOB20() error {
 			return ErrMalformed
 		}
 		extra := data[4 : 4+int(width)]
-		if flags&8 != 0 {
-			for len(extra) > 0 {
-				if len(extra) < 6 {
-					return ErrMalformed
-				}
-				length := binary.LittleEndian.Uint32(extra[2:])
-				if uint64(length) > uint64(len(extra)-6) {
-					return ErrMalformed
-				}
-				extra = extra[6+int(length):]
-			}
+		if err := f.decodeTraceExtra(extra, flags&8 != 0); err != nil {
+			return err
 		}
-		// Legacy object extras have a known outer length and can be skipped as one opaque field.
 		data = data[4+int(width):]
 	}
 	f.buffer = data
@@ -81,6 +72,14 @@ func (f *frameIO) readOB20() error {
 }
 
 func (f *frameIO) encodeOB20(data []byte, last bool) ([]byte, error) {
+	var extraFlag uint32
+	if len(f.outExtra) > 0 {
+		payload := binary.LittleEndian.AppendUint32(nil, uint32(len(f.outExtra)))
+		payload = append(payload, f.outExtra...)
+		data = append(payload, data...)
+		f.outExtra = nil // never resend after partial transport failure
+		extraFlag = 1
+	}
 	if len(data) > maxFrame-28 {
 		return nil, ErrMessageTooLarge
 	}
@@ -94,7 +93,7 @@ func (f *frameIO) encodeOB20(data []byte, last bool) ([]byte, error) {
 	put3(h[15:], f.requestID)
 	h[18] = f.sequence
 	binary.LittleEndian.PutUint32(h[19:], uint32(len(data)))
-	var flags uint32
+	flags := extraFlag
 	if last {
 		flags |= 2
 	}

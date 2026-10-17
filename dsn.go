@@ -40,7 +40,7 @@ func ParseDSN(dsn string) (Config, error) {
 
 func applyDSNOption(cfg *Config, name, value string) error {
 	switch name {
-	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum":
+	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum", "fullLinkTrace":
 		return cfg.Protocol.applyDSNOption(name, value)
 	case "prepareExecute", "statementCacheSize", "statementCacheSQLLimit", "reuseParameterTypes", "statementChecksum":
 		return cfg.Execution.applyDSNOption(name, value)
@@ -151,6 +151,8 @@ func (p *ProtocolOptions) applyDSNOption(name, value string) error {
 		p.NewMetadata = policy
 	case "proxyChecksum":
 		p.ProxyChecksum = policy
+	case "fullLinkTrace":
+		p.FullLinkTrace = policy
 	}
 	return nil
 }

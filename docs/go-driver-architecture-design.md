@@ -258,7 +258,7 @@ const (
 
 ### 9.1 已实现的包流与协商（D23）
 
-`ProtocolOptions` 的五项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
+`ProtocolOptions` 的六项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata`、`fullLinkTrace` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
 
 | 能力 | 选择和行为 |
 | --- | --- |
@@ -267,8 +267,9 @@ const (
 | Checksum | OB20 CRC16 头与零初始、无取反 CRC32C 负载校验；auto 发校验并验证收到的非零校验；off 不发校验，但收到非零校验仍验证；required 要求 OB20 且对零校验同样比较实际值 |
 | ProxyChecksum | 对应 Java `useObChecksum` 的代理能力位 3/6，与 OB20 CRC 独立；auto 请求，required 必须确认两位，off 不声明且拒绝非零回显；驱动不因此宣称已验证代理到后端的校验 |
 | NewMetadata | 客户端属性位 1（数值 2）请求，`__ob_client_capability_flag` 确认；列包布局不变；Oracle NCHAR/NVARCHAR2 长度为字符数，RAW/ROWID 长度来自 precision，LOB 长度未知；不照搬 JDBC 的 Java 类和显示宽度规则 |
+| FullLinkTrace | D25；OB20 + FLT 位14，支持新 extra 位15及 ShowTrace 位18；日志独立，详见 §18.3.1 |
 
-未确认的 auto 能力保持标准行为；required 缺失、off 却被启用及非法能力回显均使建连失败。CompressionRequired 与 OB20Required/ChecksumRequired 冲突；OB20Off 与 ChecksumRequired 冲突。新属性保留已实现的 locator-v2 位，不请求尚未实现的 extra-OK、session sync、路由或 FLT。
+未确认的 auto 能力保持标准行为；required 缺失、off 却被启用及非法能力回显均使建连失败。CompressionRequired 与 OB20Required/ChecksumRequired/FullLinkTraceRequired 冲突；OB20Off 与 ChecksumRequired/FullLinkTraceRequired 冲突。新属性保留已实现的 locator-v2 位，不请求尚未实现的 extra-OK、session sync 或路由；D25 FLT 协商见 §18.3.1。
 
 两层大小独立：外层长度及 zlib 解压长度均由 24 位字段约束，最多 `0xffffff` 字节；OB20 外层体另含 28 字节开销。一个外层帧可包含多个逻辑消息；每个逻辑消息继续单独执行 `Limits.MaxMessageBytes` 检查，不能将聚合帧误算作一条消息。解压输出最多读取声明长度加一，并拒绝长度不符、损坏流和尾随压缩数据；内层跨帧头、跨 16 MiB 续包及空终止包共用原逻辑消息状态机。
 
@@ -1043,6 +1044,22 @@ OB20 Full Link Trace 与 slog 是两项能力：
 - 请求级 trace/app info 使用类型明确的 context helper，包含 module/action/client info 等，不保存为全局可变状态。
 - 对接 OpenTelemetry 采用可选桥接或由调用方提供信息，不让基础驱动强制启动 exporter。
 - query、fetch、LOB piece、批量和建连分别有明确的 span/请求边界；不能借复用连接把上一个请求的 trace 带给下一个请求。[J12]
+
+### 18.3.1 D25 已实现的诊断与追踪契约
+
+公开入口集中在根包 `DiagnosticOptions`、`RequestDiagnostic`、`PacketDiagnostic`、`TraceInfo` 和 `WithTraceInfo`；wire 叶包只做协议、采样和受限快照，不调用根包或外部 handler。没有新增依赖、全局追踪器、exporter 或后台日志队列。
+
+- `Config.Diagnostics` 的 Request/Packet 回调显式启用元数据诊断；SQL 只提供 SHA-256 指纹与编码后字节数，包只提供方向、字节数、逻辑消息起始序号及错误标记。始终排除认证包、原始 SQL、参数、LOB 和服务端错误文本。Debug 不会扩大数据范围，也不自动执行额外数据库诊断 SQL。
+- 普通事件为 Debug；`SlowThreshold > 0` 且达到阈值时为 Warn。零阈值不启用慢请求升级。`MaxRequests`/`MaxPackets` 为每次持锁区间的请求上限和每请求消息上限，零各取64，合法范围0–1024；达到上限只丢诊断，事件携带丢弃计数，不中断业务。无 logger/回调时不收集诊断。
+- 请求边界为实际协议命令：prepare、execute/161、fetch、每个长参数片段、LOB 辅助 SQL、批量各项和清理命令独立计时；multi-send 合并各自写/读快照并等待写协程后交付。Rows 持有连接期间包含消费时间；这是连接占用时长，不宣称纯服务端执行时长。建连额外提供一次总耗时事件，覆盖拨号、认证和初始化，认证内容仍不采集。
+- `Enabled`/handler/Request/Packet 均在驱动锁释放后同步调用；调用方须自行处理并发，避免递归访问同一受限 sql 连接池。回调内部可观察其他请求，跨回调的全局顺序没有保证。
+- `Protocol.FullLinkTrace` / DSN `fullLinkTrace=auto|off|required` 默认 auto；请求 OB20 位8、FLT 位14、新 extra 位15、ShowTrace 位18。FLT 必须同时确认 OB20，缺少 required 或非法回显在业务前拒绝。日志关闭不关闭 FLT；未确认时保持普通行为。
+- 新 extra 的 FULL_TRC key=2003；旧 extra 使用 `full_trc` ObObj varchar 对。64KiB 内校验嵌套 TLV、控制字段长度/概率/时间范围，未知新字段按长度跳过；FLT 开启时旧对象仅接受已实现的 null/varchar，其他类型明确拒绝。每命令首个外层帧发送 app/span，续帧不重复，长度预算预留 extra，仍保留 CRC、身份、序号和真实发送字节证据。
+- app 字段 ClientIdentifier/Module/Action/ClientInfo 的 UTF-8 字节上限分别为64/64/64/256；拒绝 NUL、非法 UTF-8 和超长值，不截断。信息来自当前 context，每命令发送四个字段（含空值）清除池化残留；不把 app 内容写进日志。TraceID/ParentSpanID 为16字节 OceanBase 原始线序；调用方桥接其他追踪系统时负责转换其 ID 规范。
+- 服务端控制按物理连接保存，部分更新原子合并；level、sample、record policy（1全量/2慢请求/3采样及慢请求/4关闭）、print sample、slow threshold、ShowTrace 决定采样/输出。首次控制到达前不擅自采样；ShowTrace 可强制采样。每个被采样命令生成新的 span；有调用方 TraceID 则沿用，否则新建；ParentSpanID 仅用于该 span 的 parent。反馈的 query 起止微秒值与诊断 ID 可由 Request 回调对接外部追踪，下一命令清空 query 时间。
+- 完成 span 的 JSON driver log（group1/field1）和 ShowTrace（group2005/field2050）只包含 ID、固定驱动名和时间。每连接最多保留一个完成 span，在下一命令 extra 中发送一次，保留原 ID；不额外发 SQL、不在失败后重放。连接关闭或丢弃前的最后一个完成 span 可能没有后续命令上传，建连认证阶段只有本地总耗时事件，不冒充服务端 span。
+
+协议夹具、nil logger、回调/handler 重入、采样更新/关闭、池化清空、片段/CRC、畸形数据及 fuzz 在本地验证；`TestFullLinkTrace` 集成源码对四目标登记直连 off、代理 required，必须另核对服务端 trace 中的 app 清空及 ID，客户端事件不能替代服务端可见性证据。当前没有数据库/代理联调结果，不计为真实兼容验收。
 
 ## 19. Java 全功能到 Go 的覆盖矩阵
 
