@@ -769,7 +769,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增 TestChangeUserConversation，以本地协议对端经完整 database/sql 建连与初始化，覆盖两种兼容模式 × 8条路径，共16场景。每场景在同一物理会话先由 native 切换到多轮插件，再以缓存插件名及完整含 NUL seed 创建新实例、轮换显式密码；每次成功都重建基线并完成 Ping。核对原凭据提供方仅调用一次、总拨号一次、每个插件独立且只关闭一次，成功后不保留密码或原回调，最终物理连接不回池。
 - 原始令牌包含0x00/0xfe/0xff前缀，区分 nil 与非 nil 空响应；覆盖缺少最终 OK、额外令牌、服务端 ERR、后续阶段 TLS 拒绝及插件 Close 错误。发送后失败检查原连接关闭且不可复用；本地对端等待有界并在测试退出前结束。复用既有 scriptedConversation、握手及基线夹具，不新增生产 API、包或依赖，也未修改生产认证逻辑。
 - Go overlay 故障注入分别截掉令牌首字节、漏发空响应、误用旧凭据提供方、失败后保留连接及忽略 Close 错误，新测试分别在16/2/16/10/2个预期场景失败；没有将夹具编译错误当作检出。恢复原源码后 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译及新目标各50轮通过，普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。
-- 独立只读走查无确认问题，不保存独立报告；文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过。以上是自定义多轮插件的本地协议证据，不替代原生 SSPI/GSSAPI 或真实服务端验收；本机原生 SSPI 因无可用身份凭据仍跳过。未连接数据库，真实 Linux VC、Linux/macOS、远程 CI 与成功 race 仍未取证，D28/D30/D31/D32及28/32实现、0/32验收保持。
+- 独立只读走查无确认问题，不保存独立报告；文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过。以上是自定义多轮插件的本地协议证据，不替代原生 SSPI/GSSAPI 或真实服务端验收；该轮沙箱内原生 SSPI 因无可用身份凭据跳过，当前 Windows 身份的正向复核见下节。未连接数据库，真实 Linux VC、Linux/macOS、远程 CI 与成功 race 仍未取证，D28/D30/D31/D32及28/32实现、0/32验收保持。
+
+#### D28/D30 原生 SSPI 的完整会话与重新认证
+
+- 新增 TestAuthPluginGSSNativeSessions，在当前 Windows 用户身份下使用默认内置 gssAuth、系统 NTLM 与真实本地 TCP/TLS 对端，覆盖两模式 × 最终接受/拒绝，共4场景。每场景完成初始 native-password 到 GSS 切换、完整 database/sql 初始化/Ping，以及同一物理会话连续两次 ChangeUser；每次认证均由新的系统 SSPI 服务端上下文实际校验，成功后重建完整基线并 Ping。数据库用户名轮换不改变当前 Windows 身份，也不证明真实服务端授权。
+- 原生首轮 token 从 COM_CHANGE_USER 中独立解析，核对命令、用户、长度、NTLM 标识、两模式默认库/schema及缓存插件；核对完整含 NUL seed、实际模式、TLS 验证状态和密码清除。最后一轮可在原生上下文完成后返回1045/28000，驱动必须保留错误、关闭原物理会话且无法继续 Ping。成功退出检查 QUIT/EOF；所有场景检查原 raw.SetDeadline 返回 net.ErrClosed、池连接数归零及总拨号一次。复用原 SSPI 握手夹具，无生产逻辑/API/包/依赖变更；新认证断言不输出原生 token。
+- 沙箱内 SEC_E_NO_CREDENTIALS 仍明确 skip；使用当前 Windows 身份运行正向目标，并解析测试事件拒绝任何 skip。Go1.25.0/1.26.0 Windows amd64 原生初始 token、原握手与新目标各25轮通过；新目标合计200条完整会话、600次原生 NTLM 交换。Go1.25 Windows/386 三个原生目标实际通过。Go overlay 临时忽略 AuthConversation 分支、遗漏 raw.Close，两种故障分别在全部4场景被检出；原源码恢复后的最终双版本全包 test/vet、integration 仅编译和普通/integration 标签 golangci-lint 均通过且各0 issues。
+- 独立只读走查无确认问题，不另存报告；架构/计划/兼容矩阵同步标准包流范围，文档/链接/160配置、32任务/28实现/0验收和Go格式/diff检查通过。本地 NTLM 与TCP关闭证据不证明原生资源无泄漏；域 Kerberos/Negotiate、真实 Linux VC、Linux/macOS 系统库、远程 CI、成功 race 及真实数据库仍未验证，D28/D30/D31/D32和计数保持。
 
 ## 6. 待取证条件与推进方式
 

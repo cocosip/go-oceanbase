@@ -1482,7 +1482,7 @@ Unix 提供方通过 `-tags=gssapi` 显式启用，在 Linux amd64/arm64/386、m
 
 Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER_NAME 导入 SPN，指定 Kerberos OID 和 MUTUAL 标志；不使用数据库密码，不设置进程环境、不写票据、不请求委派。KRB5_CONFIG/KRB5CCNAME 等由部署环境在启动前配置；身份隔离由独立进程/凭据缓存负责，不能用每连接 os.Setenv 切换身份。原始令牌上限16MiB，输入内存只在原生调用期间固定，输出复制后立即释放；即使原生调用报错仍清理已返回的句柄与缓冲区。最终检查实际 mutual 标志；关闭依次删除上下文、释放凭据/名称及系统库引用，删除上下文不发送额外网络令牌。
 
-本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取正向证据。Unix 状态/清理单测和独立 C 库 ABI 用例已有 Windows amd64 本机运行证据；Linux/macOS 系统 GSSAPI 的运行及真实票据双向交换仍待验证，交叉编译不替代运行。SSPI/GSSAPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。GSS 状态错误仅报告操作和 major/minor 状态码，不拼接可能含身份、路径或票据细节的系统错误字符串。
+本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；TestAuthPluginGSSNativeSessions 进一步覆盖标准包流下两模式完整 database/sql 初始化、连续 ChangeUser、基线重建/Ping、最终拒绝及底层 TCP 关闭/池隔离。沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取无 skip 正向证据；数据库用户名切换不证明 Windows 身份切换或数据库授权。Unix 状态/清理单测和独立 C 库 ABI 用例已有 Windows amd64 本机运行证据；Linux/macOS 系统 GSSAPI 的运行及真实票据双向交换仍待验证，交叉编译不替代运行。SSPI/GSSAPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。GSS 状态错误仅报告操作和 major/minor 状态码，不拼接可能含身份、路径或票据细节的系统错误字符串。
 
 实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。D30 ChangeUser 已复用共享门禁和实例持有机制，见 §16.3.2。
 

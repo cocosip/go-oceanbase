@@ -599,6 +599,8 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 
 D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe/Shared Memory 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory 的无关联分配取消/软预算和单缓冲批量回退见 §9.0.5；OBProxy VC 独立宿主见 §9.0.6，真实平台待验证。D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
 
+TestAuthPluginGSSNativeSessions 在当前 Windows 身份下以系统 NTLM、本地 TCP 与已验证 TLS，覆盖两模式的完整 database/sql 初始化、连续两次 ChangeUser、每次基线重建/Ping、最终认证拒绝及原物理连接关闭/池隔离。复用既有原生 SSPI 对端，普通单测在缺少身份凭据时明确跳过；正向证据必须核对原生目标无 skip，不能用沙箱下的包级成功替代。该测试仅覆盖标准包流，不证明域认证、真实数据库授权或原生资源无泄漏。
+
 Named Pipe 地址校验同时覆盖 Config/DSN 的非法 UTF-8 主机/管道名拒绝，以及合法 Unicode 的保持与本机原生管道收发；对应 TestPlatformTransportPipeUTF8、TestPlatformTransportNamedPipeUTF8，避免 Windows UTF-16 转换造成端点别名。
 
 TestPlatformTransportUnixMixedSessions / TestPlatformTransportNamedPipeMixedSessions 复用既有混合会话夹具，在真实系统 IPC 端点核对两模式/三包流、原连接复用、预处理/Rows/事务/错误恢复及 QUIT/关闭；Windows AF_UNIX 的 EOF 边界与原连接关闭断言见架构 §9.0.1。默认单测和现有 CI 自动执行；Unix 目标平台须分别留存实际运行证据，不能用 Windows 的 AF_UNIX 通过代替 Linux/macOS。
