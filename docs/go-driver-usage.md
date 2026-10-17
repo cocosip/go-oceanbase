@@ -152,7 +152,9 @@ go test -run '^Example' .
 
 全包测试会编译两个 main 示例，但不会执行 `main`；`Example` 只有含 `Output` 注释的函数才运行，其他只编译。`ExampleNewConnector_proxyUser` 和 `ExampleSessionOptions_collation` 为不联网的配置演示。integration 的 `-run '^$'` 也只是编译。
 
-尚未闭环：Shared Memory/VC 平台适配、全部 Java 配置的行为/默认差异核对、完整 CRUD/prepare/cache/batch/LOB/fetch 基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
+本地性能采样使用不联网的协议对端，见[本地基准](go-driver-benchmarks.md)；普通单测会检查同一组操作与结果。
+
+尚未闭环：Shared Memory/VC 平台适配、全部 Java 配置的行为/默认差异核对、真实数据库完整基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
 
 手动集成入口 `TestCreateDatabaseSessions` 的 MySQL 两个 profile 另需 `OB_MYSQL_CREATE_DATABASE_DSN` / `OBPROXY_MYSQL_CREATE_DATABASE_DSN` 专用凭据，允许创建/删除临时数据库、查询 information_schema.SCHEMATA 并读写其中的表。用例生成随机名称，确认不存在后创建，验证新建/既有库和 InitSQL，再关闭业务会话并尝试删除；权限不足、清理失败必须报告。`OB_TEST_REQUIRE=1` 时缺少 fixture 直接失败。该用例本阶段仅编译，未连接数据库。
 

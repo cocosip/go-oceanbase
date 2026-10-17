@@ -342,3 +342,7 @@ TestCancelQuerySessions 四目标源码/手动 CI 已补，每个 DSN 前缀对�
 | 明确未支持 | Forget/RM timeout 不伪造成功，协调日志与恢复决策归应用 | Java 本身未实现的服务器契约；context 不是 RM timeout |
 
 TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手动 CI，包含 DML、1PC/2PC/rollback、join/resume/suspend、准备后断开并用新连接恢复及提交可见性；本阶段只编译。标准/压缩/OB20 两模式本地覆盖不代替服务端 SQL、权限、版本、代理和 RM 恢复语义。D31 保持进行中，因 D30/D28 平台依赖未闭环，实现28/32、验收0/32；细节见架构 §16.2.1。
+
+## 23. D32 本地性能夹具
+
+两模式 CRUD、每次/复用预处理、缓存命中、逐项/multi-send 批量、16KiB BLOB 和32行 fetch 共16场景已有本地协议对端及普通单测正确性检查。Go1.25.0/1.26.0 Windows amd64 短样本与复现方式见[本地基准](go-driver-benchmarks.md)。进程内对端、断言和调度开销计入统计；没有真实 SQL/网络/服务端工作量，也不覆盖全部传输/优化组合。真实数据库性能、LOB 远端流式和长期资源稳定性仍未验证，不构成任何组合的性能验收，D32 保持进行中。

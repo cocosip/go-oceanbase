@@ -38,7 +38,7 @@ func peerDial(t *testing.T, serve func(context.Context, *wire.PacketIO)) func(co
 	}
 }
 
-func serveConnect(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte) bool {
+func serveConnect(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte) bool {
 	t.Helper()
 	if err := p.WriteMessage(ctx, authGreeting(authNative, false)); err != nil {
 		t.Error(err)
@@ -55,7 +55,7 @@ func serveConnect(ctx context.Context, t *testing.T, p *wire.PacketIO, status by
 	return true
 }
 
-func serveOK(ctx context.Context, t *testing.T, p *wire.PacketIO, want []byte, status byte) bool {
+func serveOK(ctx context.Context, t testing.TB, p *wire.PacketIO, want []byte, status byte) bool {
 	t.Helper()
 	p.ResetSequence()
 	data, err := p.ReadMessage(ctx)
@@ -74,11 +74,11 @@ func serveOK(ctx context.Context, t *testing.T, p *wire.PacketIO, want []byte, s
 	return true
 }
 
-func serveBaseline(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, deprecate ...bool) bool {
+func serveBaseline(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, deprecate ...bool) bool {
 	return serveOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && serveOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status) && serveVersion(ctx, t, p, status, len(deprecate) > 0 && deprecate[0]) && serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status)
 }
 
-func serveVersion(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, deprecate bool) bool {
+func serveVersion(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, deprecate bool) bool {
 	query := "SELECT ob_version()"
 	if status&4 != 0 {
 		query += " FROM dual"
@@ -99,7 +99,7 @@ func serveVersion(ctx context.Context, t *testing.T, p *wire.PacketIO, status by
 	return sendPackets(ctx, t, p, []byte{7, '4', '.', '3', '.', '5', '.', '1'}, terminal)
 }
 
-func serveQuit(t *testing.T, p *wire.PacketIO) {
+func serveQuit(t testing.TB, p *wire.PacketIO) {
 	t.Helper()
 	data, err := p.ReadMessage(context.Background())
 	if err != nil || !bytes.Equal(data, []byte{1}) {

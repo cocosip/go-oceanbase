@@ -278,7 +278,7 @@ func TestTableBlobOpenTimeout(t *testing.T) {
 
 func (v *tableKeyValuer) Value() (driver.Value, error) { v.calls.Add(1); return v.value, nil }
 
-func readTableCommand(ctx context.Context, t *testing.T, p *wire.PacketIO) []byte {
+func readTableCommand(ctx context.Context, t testing.TB, p *wire.PacketIO) []byte {
 	t.Helper()
 	p.ResetSequence()
 	b, err := p.ReadMessage(ctx)
@@ -289,7 +289,7 @@ func readTableCommand(ctx context.Context, t *testing.T, p *wire.PacketIO) []byt
 	return b
 }
 
-func serveTableRows(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, contains []string, types []byte, rows ...[]any) bool {
+func serveTableRows(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, contains []string, types []byte, rows ...[]any) bool {
 	t.Helper()
 	command := readTableCommand(ctx, t, p)
 	if len(command) == 0 || command[0] != 3 {
@@ -339,7 +339,7 @@ func serveTableRows(ctx context.Context, t *testing.T, p *wire.PacketIO, status 
 	return sendPackets(ctx, t, p, []byte{254, 0, 0, status, 0})
 }
 
-func serveTableDictionary(ctx context.Context, t *testing.T, p *wire.PacketIO, status byte, rows ...[]any) bool {
+func serveTableDictionary(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, rows ...[]any) bool {
 	return serveTableRows(ctx, t, p, status, []string{"information_schema.TABLES", "information_schema.COLUMNS", "information_schema.KEY_COLUMN_USAGE"}, []byte{253, 253, 253, 253, 253, 253, 253, 253}, rows...)
 }
 func tableDictionary() [][]any {

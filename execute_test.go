@@ -32,7 +32,7 @@ func queryDB(t *testing.T, serve func(context.Context, *wire.PacketIO)) *sql.DB 
 	return sql.OpenDB(c)
 }
 
-func readQuery(ctx context.Context, t *testing.T, p *wire.PacketIO, want string) bool {
+func readQuery(ctx context.Context, t testing.TB, p *wire.PacketIO, want string) bool {
 	t.Helper()
 	p.ResetSequence()
 	b, err := p.ReadMessage(ctx)
@@ -43,7 +43,7 @@ func readQuery(ctx context.Context, t *testing.T, p *wire.PacketIO, want string)
 	return true
 }
 
-func sendPackets(ctx context.Context, t *testing.T, p *wire.PacketIO, packets ...[]byte) bool {
+func sendPackets(ctx context.Context, t testing.TB, p *wire.PacketIO, packets ...[]byte) bool {
 	t.Helper()
 	for _, b := range packets {
 		if err := p.WriteMessage(ctx, b); err != nil {

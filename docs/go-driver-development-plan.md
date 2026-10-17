@@ -588,7 +588,7 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 - [ ] 在协议明确的适配上实现；认证/传输依赖使用平台文件隔离，不让基础包强制加载本地库。维持 §3.1 的单向包依赖，平台认证算法不反向引用根包配置或 wire。
 - [ ] 同命令通过；按进度 §5.4 将每个算法及传输单列到目标平台和服务端组合，分别记录正向认证/收发、拒绝、切换和清理证据；全部必需条目满足后才验收，只有交叉编译不能标记该平台验收完成。
 
-D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2.1。Shared Memory/OBProxy VC 继续实现；D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
+D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory/OBProxy VC 继续实现；D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
 
 ### D29 LOCAL INFILE 受控导入
 
@@ -681,6 +681,8 @@ D32 网络读取预算子项已补 Config.ReadTimeout / DSN readTimeout，默认
 D32 TCP 配置已核对七个 Java 选项，使用现有 DialContext 与标准 net.Dialer/net.TCPConn 承载，保持单一公开 Config 和默认行为；不新增重复 TCP 配置或同名 DSN 开关。可编译示例及本地真实 TCP 对端的协议/取消/认证门禁/显式关闭测试已补，默认差异和边界见架构 §9.0.2。远端网络及数据库部署未验证，D32 整项继续进行中。
 
 D32 TLS 配置已核对12个 Java 选项，以 TLSConfig/crypto/tls/crypto/x509 原生承载；证书文件/Java store 的解锁转换由应用管理，不新增驱动配置层。双向认证与文件示例、两模式/TLS1.2/1.3、回调/拒绝/取消和快照本地测试已补，默认和边界见架构 §17.2.1。真实数据库的证书部署/身份映射未验证，D32 整项继续进行中。
+
+D32 本地性能子项已补 `BenchmarkDriver` 的两模式 CRUD、预处理、缓存、批量、LOB 和 fetch 共16场景，普通单测共用结果/协议断言。范围、计时、复现命令及双版本短样本见[本地基准](go-driver-benchmarks.md)；对端开销计入统计，真实数据库性能与长期资源曲线仍待验证，D32 整项不勾选完成。
 
 ## 7. 首个开发批次
 

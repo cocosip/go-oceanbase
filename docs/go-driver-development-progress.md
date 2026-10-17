@@ -580,6 +580,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TLS/路由证书拒绝/伪造 TLS/读取超时目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。首次 lint 曾误用全局缓存产生权限警告，改用仓库缓存后最终检查通过。
 - 七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合及 Go 格式/diff 检查通过。示例通过临时 PEM 文件执行加载测试，Example 本身只编译；未读取项目外证书或连接数据库。真实数据库/代理的证书部署、双向身份映射、系统信任源和 store 转换未验收，Linux 运行、远程 CI 与成功 race 仍待验证。D32 保持进行中，实现28/32、验收0/32；D28 Shared Memory/VC、其他配置及完整基准/资源曲线未闭环。
 
+
+#### D32 本地性能基准
+
+- 新增 BenchmarkDriver，两种兼容模式各8个场景：CRUD、每次/复用预处理、缓存命中、逐项/multi-send 批量、16KiB BLOB 和32行 fetch。普通 TestDriverBenchmarkFixtures 共用同一操作与协议/结果断言，默认 CI 自动执行；复用既有测试 helper，仅将13个签名拓宽为 testing.TB。没有修改生产逻辑、公开 API、包依赖或 go.mod。
+- 预热、连接初始化和最终清理在计时外；测量包含进程内协议对端、断言及调度开销，不能作为纯驱动分配或真实数据库吞吐。Go1.25.0/1.26.0 各16场景×3个100次短样本，完整通过；各指标中位数、命令和模式/协议限制见[本地基准](go-driver-benchmarks.md)。文档增为八份，README 同步链接；修正开发计划中 Unix GSSAPI 的过时章节引用。
+- 重复检查复现并修复 TB.Context 在 Cleanup 前取消引起的缓存语句关闭竞态，改为独立2分钟预算并在 DB.Close/传输回收后取消。独立只读走查发现 fetch 内容断言失败前未关闭 Rows，已补；临时改变期望值使断言故意失败，清理在5.24秒内返回（包含编译），按字节恢复后验证，不保存独立走查报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各30次及普通/integration 标签 golangci-lint2.14.0 各0 issues 通过；实际 Windows/386 全包测试和16场景1x基准通过。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。文档 UTF-8/链接/锚点/围栏/无机器路径、32任务及160选项和 Go 格式/diff 检查通过。
+- 未连接数据库；真实 SQL/网络/代理性能、LOB 远端流式、全部优化及并发组合、长期资源曲线均未完成，Linux 实际运行、远程 CI 与成功 race 仍缺。D32 保持进行中，实现28/32、验收0/32不变，Shared Memory/VC 和其他配置继续按原范围推进。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

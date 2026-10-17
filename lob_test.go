@@ -42,7 +42,7 @@ func serveLOBQuery(ctx context.Context, t *testing.T, p *wire.PacketIO, query st
 	return serveLOBQueryStatus(ctx, t, p, query, typ, 6, values...)
 }
 
-func serveLOBQueryStatus(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, typ, status byte, values ...[]byte) bool {
+func serveLOBQueryStatus(ctx context.Context, t testing.TB, p *wire.PacketIO, query string, typ, status byte, values ...[]byte) bool {
 	t.Helper()
 	if !readQuery(ctx, t, p, query) || !sendPackets(ctx, t, p, []byte{1}, textColumn("lob", typ, 45, 0), []byte{254, 0, 0, status, 0}) {
 		return false

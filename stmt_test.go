@@ -17,7 +17,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-func readCommand(ctx context.Context, t *testing.T, p *wire.PacketIO, want []byte) bool {
+func readCommand(ctx context.Context, t testing.TB, p *wire.PacketIO, want []byte) bool {
 	t.Helper()
 	p.ResetSequence()
 	b, err := p.ReadMessage(ctx)
@@ -31,7 +31,7 @@ func servePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, query str
 	t.Helper()
 	return servePrepareStatus(ctx, t, p, query, id, params, columns, 2)
 }
-func servePrepareStatus(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, id uint32, params int, columns [][]byte, status byte) bool {
+func servePrepareStatus(ctx context.Context, t testing.TB, p *wire.PacketIO, query string, id uint32, params int, columns [][]byte, status byte) bool {
 	t.Helper()
 	if !readCommand(ctx, t, p, append([]byte{22}, query...)) {
 		return false
