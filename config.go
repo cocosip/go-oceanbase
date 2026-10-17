@@ -117,6 +117,9 @@ type Config struct {
 	// CreateDatabaseIfMissing creates and selects Database on new MySQL-mode connections.
 	// It is opt-in, requires a nonempty Database, and never applies to ChangeUser or CancelQuery.
 	CreateDatabaseIfMissing bool
+	// ReadTimeout bounds each underlying network read; zero disables it.
+	// Earlier context deadlines still apply. A timeout makes the connection unusable.
+	ReadTimeout time.Duration
 }
 
 // ConfigError identifies an invalid field without retaining its sensitive value.
@@ -148,6 +151,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.ConnectTimeout < 0 {
 		return Config{}, &ConfigError{Field: "ConnectTimeout"}
+	}
+	if cfg.ReadTimeout < 0 {
+		return Config{}, &ConfigError{Field: "ReadTimeout"}
 	}
 	if cfg.ConnectTimeout == 0 {
 		cfg.ConnectTimeout = 10 * time.Second

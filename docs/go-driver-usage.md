@@ -31,6 +31,8 @@ cfg.Logger = logger
 
 应用设置 `db.SetMaxOpenConns`、`SetMaxIdleConns`、`SetConnMaxLifetime` 等标准池参数。每次调用传入业务 `context`，不要用共享的无限期 context 替代调用超时。连接失效或提交失败时，应先判断业务状态，不能无条件重放非幂等写入。
 
+如需独立限制网络读取等待，可设置 `Config.ReadTimeout = 5 * time.Second` 或 DSN `readTimeout=5s`；默认0关闭，两种兼容模式都适用。它按每次底层 Read 重新计时，context 的较早期限仍生效；持续收到数据的长结果仍需业务 context 限制总时长。超时会关闭连接并保留网络错误（errors.As 到 net.Error 检查 Timeout），不自动重放已写出的业务。详见[架构 §12.5.1](go-driver-architecture-design.md#1251-d32-已实现的网络读取超时)。
+
 ## 2. TLS 与认证配置
 
 需要 TLS 的应用通过 `Config.TLSConfig` 传入 `*tls.Config`，设置可信 CA 和服务端名称。下面假设 `caPEM` 已由应用读入：
@@ -149,3 +151,5 @@ go test -run '^Example' .
 尚未闭环：Shared Memory/VC 平台适配、全部 Java 配置的行为/默认差异核对、完整 CRUD/prepare/cache/batch/LOB/fetch 基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
 
 手动集成入口 `TestCreateDatabaseSessions` 的 MySQL 两个 profile 另需 `OB_MYSQL_CREATE_DATABASE_DSN` / `OBPROXY_MYSQL_CREATE_DATABASE_DSN` 专用凭据，允许创建/删除临时数据库、查询 information_schema.SCHEMATA 并读写其中的表。用例生成随机名称，确认不存在后创建，验证新建/既有库和 InitSQL，再关闭业务会话并尝试删除；权限不足、清理失败必须报告。`OB_TEST_REQUIRE=1` 时缺少 fixture 直接失败。该用例本阶段仅编译，未连接数据库。
+
+手动入口 `TestReadTimeoutSessions` 的四个 profile 分别需要 `OB_MYSQL_READ_TIMEOUT_SQL`、`OB_ORACLE_READ_TIMEOUT_SQL`、`OBPROXY_MYSQL_READ_TIMEOUT_SQL`、`OBPROXY_ORACLE_READ_TIMEOUT_SQL`：必须是首个响应前等待至少3秒的专用只读 SQL。测试用1秒读取预算验证网络超时、淘汰和新物理连接；建连/普通 Ping 应在该预算内完成。缺 fixture 在 require 模式下失败。本阶段仅编译，未执行；连接关闭不保证服务端慢查询已经停止，不得提供有业务副作用的 SQL。

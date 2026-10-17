@@ -98,6 +98,8 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 		}
 	case "connectTimeout":
 		cfg.ConnectTimeout, err = time.ParseDuration(value)
+	case "readTimeout":
+		cfg.ReadTimeout, err = time.ParseDuration(value)
 	case "cleanupTimeout":
 		cfg.Limits.CleanupTimeout, err = time.ParseDuration(value)
 	case "maxMessageBytes":

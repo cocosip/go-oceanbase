@@ -61,6 +61,15 @@ TestProxyUserSessions 已接手动 CI，仅编译。Oracle 两目标使用 OB_OR
 
 TestCreateDatabaseSessions 已加入手动 CI，MySQL 直连/代理需要专用 CREATE/DROP DATABASE fixture，验证缺失库、既有库、InitSQL 和物理替换；Oracle 只验证配置拒绝。本阶段仅编译，没有执行真实 DDL。完整契约与 Java 对照见架构 §6.4。
 
+### 1.5 D32 网络读取超时
+
+| 能力 | Go 当前行为 | 本地证据 / 待验证 |
+| --- | --- | --- |
+| 两模式读取预算 | Config.ReadTimeout / DSN readTimeout；默认0关闭；每次底层 Read 与 context 取较早期限，写方向保留原预算 | 握手、初始化、TLS、普通/压缩/OB20、响应等待和 Rows 本地覆盖；真实服务延迟/代理缓冲待联调 |
+| 生命周期/流水线 | 每次读取重新计时，空闲不消耗下次预算；并发 deadline 刷新不延长阻塞读；超时淘汰，不重放 | context 优先、旧 deadline、逐项/流水线批量未知结果，以及网络错误分类本地覆盖；并发刷新回归先失败再通过 |
+
+TestReadTimeoutSessions 四目标要求显式只读慢 SQL fixture，验证独立网络超时和物理替换；仅编译，未执行。它不保证服务端查询已停止，完整命令时限仍使用调用 context。契约见架构 §12.5.1。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

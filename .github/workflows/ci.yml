@@ -96,6 +96,10 @@ jobs:
       OB_ORACLE_DSN: ${{ secrets.OB_ORACLE_DSN }}
       OBPROXY_MYSQL_DSN: ${{ secrets.OBPROXY_MYSQL_DSN }}
       OBPROXY_ORACLE_DSN: ${{ secrets.OBPROXY_ORACLE_DSN }}
+      OB_MYSQL_READ_TIMEOUT_SQL: ${{ secrets.OB_MYSQL_READ_TIMEOUT_SQL }}
+      OB_ORACLE_READ_TIMEOUT_SQL: ${{ secrets.OB_ORACLE_READ_TIMEOUT_SQL }}
+      OBPROXY_MYSQL_READ_TIMEOUT_SQL: ${{ secrets.OBPROXY_MYSQL_READ_TIMEOUT_SQL }}
+      OBPROXY_ORACLE_READ_TIMEOUT_SQL: ${{ secrets.OBPROXY_ORACLE_READ_TIMEOUT_SQL }}
       OB_MYSQL_CREATE_DATABASE_DSN: ${{ secrets.OB_MYSQL_CREATE_DATABASE_DSN }}
       OBPROXY_MYSQL_CREATE_DATABASE_DSN: ${{ secrets.OBPROXY_MYSQL_CREATE_DATABASE_DSN }}
       OB_MYSQL_CHANGE_USER_DSN: ${{ secrets.OB_MYSQL_CHANGE_USER_DSN }}
@@ -150,4 +154,4 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|ReadTimeoutSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1

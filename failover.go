@@ -76,6 +76,9 @@ func (c *connector) dialCandidate(ctx context.Context, addr string) (*conn, bool
 		_ = raw.Close()
 		return nil, true, err
 	}
+	if c.cfg.ReadTimeout > 0 {
+		raw = &readTimeoutConn{Conn: raw, timeout: c.cfg.ReadTimeout}
+	}
 	// A new value avoids copying the shared mode mutex; TLS verifies the selected host.
 	cfg := c.cfg
 	cfg.Addr = addr

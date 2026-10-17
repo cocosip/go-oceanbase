@@ -4,7 +4,7 @@
 
 当前已进入 D32 逐项收口，D28 平台缺口及 D30/D31 的依赖未闭环；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。后续能力落地时补实际 Go 字段、默认差异、测试及验证组合。
 
-Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。基础选项：mode、prepareMode、connectTimeout、charset、collation、ncharset、location、parseTime、rowsAffectedMode、resetMode、allowMultiStatements、interactive、proxyUser、createDatabaseIfMissing、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout；认证新增 allowOldPassword、passwordCharset。后续协议/执行/路由/发现选项见对应章节及白名单。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。凭据只放 userinfo；logger/TLS/回调和 ConnectionAttributes map 只能程序化注入。
+Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。基础选项：mode、prepareMode、connectTimeout、readTimeout、charset、collation、ncharset、location、parseTime、rowsAffectedMode、resetMode、allowMultiStatements、interactive、proxyUser、createDatabaseIfMissing、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout；认证新增 allowOldPassword、passwordCharset。后续协议/执行/路由/发现选项见对应章节及白名单。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。凭据只放 userinfo；logger/TLS/回调和 ConnectionAttributes map 只能程序化注入。
 
 Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 128 行，摘要 1024 项，清理 1 秒；零值选默认，负值拒绝。TLS 配置克隆其证书字节、证书池、切片/map；回调、私钥、已解析 Leaf 及 logger 仍为调用方共享的不可变/并发安全对象。
 
@@ -20,7 +20,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `tcpNoDelay` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L100) | D04 | 初始化会话 / DialContext / 连接属性 | 待迁移/验证 |
 | `tcpAbortiveClose` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L106) | D04 | 初始化会话 / DialContext / 连接属性 | 待迁移/验证 |
 | `localSocketAddress` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L112) | D04 | 初始化会话 / DialContext / 连接属性 | 待迁移/验证 |
-| `socketTimeout` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L117) | D06 | context / 有界 I/O / 不确定结果 | 待迁移/验证 |
+| `socketTimeout` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L117) | D06/D32 | Config.ReadTimeout / DSN readTimeout；Go duration，默认0关闭；每次底层 Read 与 context 取较早期限 | 本地两模式/TLS/三包流/Rows/批量/并发 deadline 已补；Java Aurora 默认10秒不沿用；TestReadTimeoutSessions 仅编译，见架构 §12.5.1 |
 | `interactiveClient` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L129) | D04/D32 | Config.Interactive；DSN interactive；默认 false，与 Java 相同 | 客户端请求位已本地实现；TestInteractiveCapability/ConnectionAttributesHandshake/DSNInteractive；真实空闲超时待联调 |
 | `dumpQueriesOnException` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L137) | D25 | Diagnostics.Request 的 SQL 指纹/字节数/安全错误码；不输出原始 SQL 或错误文本 | D25 已本地实现/Go 语义适配；真实追踪/兼容待联调 |
 | `useOldAliasMetadataBehavior` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L144) | D13 | Metadata / ColumnTypes / 字典查询 | 待迁移/验证 |

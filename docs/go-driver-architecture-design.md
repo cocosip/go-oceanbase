@@ -179,6 +179,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | 连接 | `Addr` 默认 `127.0.0.1:2881`；静态 User 或 Credentials 回调必填；连接建立总预算默认 10 秒，受调用 context 更早期限约束 |
 | 连接声明 | `Interactive` 默认 false；`ConnectionAttributes` 默认 nil，仅显式提供应用元数据；见 §6.1 |
 | 初始数据库 | `CreateDatabaseIfMissing` 默认 false；仅新 MySQL 模式物理连接可显式创建并选择非空 Database，见 §6.4 |
+| 读取预算 | `ReadTimeout` 默认0，关闭独立读取超时；正值限制每次底层网络 Read，context 的较早期限仍生效，见 §12.5.1 |
 | 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
 | 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
 | 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password/ProxyUser；代理登录见 §6.3 |
@@ -639,6 +640,18 @@ Full 策略在池复用边界执行经验证的服务端 reset，并恢复初始
 - QueryContext 的操作 context 生命周期延续到 Rows 读取/关闭结束；Connect 和 Prepare 的 context 不存入长期连接/statement。
 - Rows.Close、Stmt.Close 和 Conn.Close 的网络清理均有上限。清理不了就关闭会话，不无限 drain，也不使用无界 Background 网络请求。
 - 需要主动服务端 `KILL QUERY` 的场景提供显式 CancelQuery 能力，目标由先前取得的连接信息和会话代次确定；辅助通道由调用方已配置的 Connector 建立，使用同一认证/TLS策略。该能力与默认 context 取消分开，不将 KILL 成功当作原操作未执行的证明。
+
+### 12.5.1 D32 已实现的网络读取超时
+
+`Config.ReadTimeout` / DSN `readTimeout` 使用 Go duration，零值关闭，负值/无效值拒绝；例如 `readTimeout=5s`。对应固定 Java `socketTimeout` 的 SO_TIMEOUT 语义，不接受毫秒数字或同名历史别名。Java 标准默认0、Aurora 模式默认10000ms；Go 所有路由/兼容模式统一默认关闭，ConnectTimeout 与业务 context 继续独立生效。
+
+内置或外部 DialContext 成功返回 net.Conn 后、认证/TLS 之前，在底层传输接入读取预算；因此握手、TLS、初始化、普通/压缩/OB20、预处理、Rows、LOB、ChangeUser 和取消辅助通道均使用同一机制。每次底层 Read 开始时，以“当前时间 + ReadTimeout”和当前请求 deadline 的较早者设置 read deadline。完成读取后，下次读取重新计时，连接空闲、调用方处理 Rows 的时间不消耗下次预算；TLS 或解压缓存的读取不产生新的底层网络等待。并发流水线写入刷新 deadline 不得延长正在阻塞的读取预算，清除外部 deadline 也不能清除该上限。
+
+它不是总查询/总逻辑消息期限：持续有字节到达时可多次重置，完整命令仍需调用方 context 限时。写入、拨号、发现源、凭据/认证回调与调用方 Reader 不受该读取值约束，继续使用各自 context/已有预算；TLS 内部写控制记录也保留写方向预算。默认0不创建额外传输包装，不新增包、依赖或后台协程；取消继续复用已有 AfterFunc/关闭协调。
+
+独立读取超时保留原网络错误，可用 errors.As 到 net.Error 并检查 Timeout；调用 context 未到期时不伪装成 context.DeadlineExceeded。context 更早到期或取消时保留其原错误。失败淘汰当前物理会话，不能返回池或把已经写出的业务映射为 ErrBadConn 触发重放；写出后的执行结果未知，批量保留已知/未知状态。新建连接的握手传输失败仍遵循原有有限切换规则，初始化失败不切换，均受同一总建连预算限制。
+
+固定 Java 依据：DefaultOptions SOCKET_TIMEOUT（L117–L127）及 AbstractConnectProtocol.createSocket 的 setSoTimeout（L255–L257）。TestReadTimeout* / TestDSNReadTimeout 与外部离线 Example 覆盖两模式、三种包流、握手/初始化/TLS、Rows、批量、逐次重置、context 优先和并发刷新。TestReadTimeoutSessions 四目标源码要求只读慢 SQL fixture，本阶段仅编译，真实服务端执行、代理缓冲与断连后后台查询是否继续运行仍待联调。
 
 ## 13. 批量、过程、OUT 和 RETURNING
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/cocosip/go-oceanbase"
 )
@@ -44,6 +45,14 @@ func ExampleNewConnector_createDatabase() {
 		CreateDatabaseIfMissing: true,
 	})
 	// Creating a Connector validates the policy; it does not create a database.
+	fmt.Println(connector != nil, err == nil)
+	// Output: true true
+}
+
+func ExampleNewConnector_readTimeout() {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{
+		User: "timeout_app", ReadTimeout: 5 * time.Second,
+	})
 	fmt.Println(connector != nil, err == nil)
 	// Output: true true
 }

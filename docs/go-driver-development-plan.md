@@ -676,6 +676,8 @@ D32 交付入口已补 README、[使用指南](go-driver-usage.md)和 `examples/
 
 D32 初始建库子项已补 Config.CreateDatabaseIfMissing / DSN createDatabaseIfMissing，默认关闭；仅 MySQL 新物理连接延后握手选库，认证后创建并选择，再运行 InitSQL。Oracle 显式拒绝，ChangeUser/CancelQuery 清除派生配置中的创建选项；失败不重试且不删除可能已创建的库，契约见架构 §6.4。TestCreateDatabaseSessions 专用 fixture 仅编译，未执行联网步骤；D32 整项继续进行中。
 
+D32 网络读取预算子项已补 Config.ReadTimeout / DSN readTimeout，默认0关闭；两模式复用底层 net.Conn 的独立读取上限，兼容 TLS、三种包流、Rows 与批量流水线。context 较早期限生效，写后超时不重放，具体契约见架构 §12.5.1。TestReadTimeoutSessions 四目标入口仅编译，真实慢 SQL/代理缓冲与断连后的执行状态待联调；D32 整项继续进行中。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。
