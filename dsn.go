@@ -34,6 +34,15 @@ func ParseDSN(dsn string) (Config, error) {
 }
 
 func applyDSNOption(cfg *Config, name, value string) error {
+	switch name {
+	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum":
+		return cfg.Protocol.applyDSNOption(name, value)
+	default:
+		return applyConnectionDSNOption(cfg, name, value)
+	}
+}
+
+func applyConnectionDSNOption(cfg *Config, name, value string) error {
 	var err error
 	switch name {
 	case "mode":
@@ -115,6 +124,26 @@ func applyDSNOption(cfg *Config, name, value string) error {
 	}
 	if err != nil {
 		return &ConfigError{Field: name}
+	}
+	return nil
+}
+
+func (p *ProtocolOptions) applyDSNOption(name, value string) error {
+	policy, err := parseFeatureMode(value)
+	if err != nil {
+		return &ConfigError{Field: name}
+	}
+	switch name {
+	case "compression":
+		p.Compression = policy
+	case "ob20":
+		p.OB20 = policy
+	case "checksum":
+		p.Checksum = policy
+	case "newMetadata":
+		p.NewMetadata = policy
+	case "proxyChecksum":
+		p.ProxyChecksum = policy
 	}
 	return nil
 }

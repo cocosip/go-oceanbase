@@ -14,6 +14,9 @@ func (p *PacketIO) Pipeline(ctx context.Context, commands [][]byte, receive func
 	if err := p.check(ctx); err != nil {
 		return nil, err
 	}
+	if p.Framed() {
+		return nil, ErrMalformed
+	}
 	if receive == nil {
 		return nil, ErrMalformed
 	}

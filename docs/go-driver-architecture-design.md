@@ -180,7 +180,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
 | 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
 | 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password |
-| 协议 | OB20、压缩、校验、新元数据等采用 auto/off/required 等有意义策略；auto 以协商结果为准 |
+| 协议 | `Config.Protocol`：Compression、OB20、Checksum、ProxyChecksum、NewMetadata；零值 FeatureAuto，另有 FeatureOff/FeatureRequired；以建连协商结果为准 |
 | 执行 | 自动选用服务端预处理；显式支持客户端预处理、合并执行、缓存和批量策略；`AllowMultiStatements` 默认 false；`RowsAffectedMode` 默认 `MatchedRows`，见 §11.4 |
 | 会话 | 字符集、NCHAR 字符集、Location、会话初始化设置、Managed/Full 两种 reset 策略 |
 | 资源 | 最大逻辑消息、LOB 物化上限、FetchSize、`MaxResultItems`、关闭/清理时间上限、缓存容量 |
@@ -255,6 +255,28 @@ const (
 - 包长度、列数、嵌套深度、压缩解开后的大小都在分配前检查；各 int 转换在 32 位平台做溢出检查。
 - 未知字段若可按长度安全跳过，则保留连接同步；无法确定边界的未知协议结构使该连接失效。
 - 不采用未识别类型一律当作 BLOB 的隐式兜底；Java 中存在此路径，Go 版改为明确的 UnsupportedType 错误，避免把类型解释错误传播给业务。[J03]
+
+### 9.1 已实现的包流与协商（D23）
+
+`ProtocolOptions` 的五项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
+
+| 能力 | 选择和行为 |
+| --- | --- |
+| Compression | greeting 中 CLIENT_COMPRESS 与客户端策略的交集；认证最终 OK 后使用 zlib 外层 7 字节头；压缩无收益则发送未压缩帧 |
+| OB20 | CONNECT_ATTRS 声明代理位 8/15，最终认证 OK 的 session tracking `ob_capability_flag` 位 8 确认；优先于可选压缩；CompressionRequired 不请求 OB20 |
+| Checksum | OB20 CRC16 头与零初始、无取反 CRC32C 负载校验；auto 发校验并验证收到的非零校验；off 不发校验，但收到非零校验仍验证；required 要求 OB20 且对零校验同样比较实际值 |
+| ProxyChecksum | 对应 Java `useObChecksum` 的代理能力位 3/6，与 OB20 CRC 独立；auto 请求，required 必须确认两位，off 不声明且拒绝非零回显；驱动不因此宣称已验证代理到后端的校验 |
+| NewMetadata | 客户端属性位 1（数值 2）请求，`__ob_client_capability_flag` 确认；列包布局不变；Oracle NCHAR/NVARCHAR2 长度为字符数，RAW/ROWID 长度来自 precision，LOB 长度未知；不照搬 JDBC 的 Java 类和显示宽度规则 |
+
+未确认的 auto 能力保持标准行为；required 缺失、off 却被启用及非法能力回显均使建连失败。CompressionRequired 与 OB20Required/ChecksumRequired 冲突；OB20Off 与 ChecksumRequired 冲突。新属性保留已实现的 locator-v2 位，不请求尚未实现的 extra-OK、session sync、路由或 FLT。
+
+两层大小独立：外层长度及 zlib 解压长度均由 24 位字段约束，最多 `0xffffff` 字节；OB20 外层体另含 28 字节开销。一个外层帧可包含多个逻辑消息；每个逻辑消息继续单独执行 `Limits.MaxMessageBytes` 检查，不能将聚合帧误算作一条消息。解压输出最多读取声明长度加一，并拒绝长度不符、损坏流和尾随压缩数据；内层跨帧头、跨 16 MiB 续包及空终止包共用原逻辑消息状态机。
+
+OB20 每条命令重置双层序号，24 位 request ID 递增并回绕；接收校验 connection ID、request ID、序号、标志及新 extra 的 TLV 长度。未知有界 extra 安全跳过；旧 extra 按总长度跳过，不假称已处理其业务字段。所有损坏、部分写或 I/O 中取消使连接失效；错误保留实际网络读写字节数。已有未消费帧数据时不能通过重置开始另一条命令。外层 last 标志不替代内层完整响应边界。
+
+当前 compression/OB20 下批量 multi-send 在发送前回退逐项，`BatchResult.Strategy` 报告 Sequential。未来只有为各在途命令维护独立包流身份并验证等价性后才启用流水线。
+
+源码依据：[握手与两类 checksum 属性](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L361)、[最终 OK 及包流切换](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823)、[OB20 布局](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/flt/OceanBaseProtocolV20.java)、[新元数据解释](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L443)。本地协议验证与真实兼容验收分开，见兼容矩阵 §14。
 
 ## 10. 执行内核与绑定
 

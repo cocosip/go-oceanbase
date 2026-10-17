@@ -50,6 +50,7 @@ func (c *conn) decodeColumn(data []byte) (wire.Column, error) {
 	if err != nil {
 		return column, err
 	}
+	column.NewMetadata = c.session.newMetadata
 	name := c.cfg.Session.Charset
 	if name == "" {
 		name = charsetUTF8MB4

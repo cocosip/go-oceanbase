@@ -15,6 +15,7 @@ type Column struct {
 	ElementSchema, ElementName                                string
 	ElementVersion                                            uint64
 	ComplexShape                                              *ComplexShape
+	NewMetadata                                               bool
 }
 
 // DecodeColumn parses a complete column definition, preserving optional extension bytes.

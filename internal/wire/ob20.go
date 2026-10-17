@@ -1,0 +1,113 @@
+package wire
+
+import (
+	"encoding/binary"
+)
+
+// OB20Options describes framing already negotiated on this physical connection.
+type OB20Options struct {
+	ConnectionID    uint32
+	Checksum        bool
+	RequireChecksum bool
+	NewExtra        bool
+}
+
+// EnableOB20 selects uncompressed OB20 envelopes after authentication.
+func (p *PacketIO) EnableOB20(options OB20Options) error { return p.enableFrames(&options) }
+
+func (f *frameIO) readOB20() error {
+	var h [31]byte
+	if err := f.readFull(h[:]); err != nil {
+		return err
+	}
+	n := int3(h[:3])
+	payload := binary.LittleEndian.Uint32(h[19:])
+	if n < 28 || payload != uint32(n-28) {
+		return ErrMessageTooLarge
+	}
+	if int3(h[4:]) != 0 || binary.LittleEndian.Uint16(h[7:]) != 0x20ab || binary.LittleEndian.Uint16(h[9:]) != 20 || binary.LittleEndian.Uint32(h[11:]) != f.ob.ConnectionID || uint32(int3(h[15:])) != f.requestID {
+		return ErrMalformed
+	}
+	if h[3] != f.sequence || h[18] != f.sequence {
+		return ErrSequence
+	}
+	checksum := binary.LittleEndian.Uint16(h[29:])
+	if (checksum != 0 || f.ob.RequireChecksum) && checksum != obCRC16(h[:29]) {
+		return ErrChecksum
+	}
+	flags := binary.LittleEndian.Uint32(h[23:])
+	if flags & ^uint32(15) != 0 {
+		return ErrMalformed
+	}
+	f.sequence++
+	data := make([]byte, int(payload))
+	if err := f.readFull(data); err != nil {
+		return err
+	}
+	var tail [4]byte
+	if err := f.readFull(tail[:]); err != nil {
+		return err
+	}
+	sum := binary.LittleEndian.Uint32(tail[:])
+	if (sum != 0 || f.ob.RequireChecksum) && sum != obCRC32(data) {
+		return ErrChecksum
+	}
+	if flags&1 != 0 {
+		if len(data) < 4 {
+			return ErrMalformed
+		}
+		width := binary.LittleEndian.Uint32(data)
+		if uint64(width) > uint64(len(data)-4) {
+			return ErrMalformed
+		}
+		extra := data[4 : 4+int(width)]
+		if flags&8 != 0 {
+			for len(extra) > 0 {
+				if len(extra) < 6 {
+					return ErrMalformed
+				}
+				length := binary.LittleEndian.Uint32(extra[2:])
+				if uint64(length) > uint64(len(extra)-6) {
+					return ErrMalformed
+				}
+				extra = extra[6+int(length):]
+			}
+		}
+		// Legacy object extras have a known outer length and can be skipped as one opaque field.
+		data = data[4+int(width):]
+	}
+	f.buffer = data
+	return nil
+}
+
+func (f *frameIO) encodeOB20(data []byte, last bool) ([]byte, error) {
+	if len(data) > maxFrame-28 {
+		return nil, ErrMessageTooLarge
+	}
+	size := uint32(len(data) + 28)
+	h := make([]byte, 31, 31+len(data)+4)
+	put3(h, size)
+	h[3] = f.sequence
+	binary.LittleEndian.PutUint16(h[7:], 0x20ab)
+	binary.LittleEndian.PutUint16(h[9:], 20)
+	binary.LittleEndian.PutUint32(h[11:], f.ob.ConnectionID)
+	put3(h[15:], f.requestID)
+	h[18] = f.sequence
+	binary.LittleEndian.PutUint32(h[19:], uint32(len(data)))
+	var flags uint32
+	if last {
+		flags |= 2
+	}
+	if f.ob.NewExtra {
+		flags |= 8
+	}
+	binary.LittleEndian.PutUint32(h[23:], flags)
+	var tail uint32
+	if f.ob.Checksum || f.ob.RequireChecksum {
+		binary.LittleEndian.PutUint16(h[29:], obCRC16(h[:29]))
+		tail = obCRC32(data)
+	}
+	h = append(h, data...)
+	f.sequence++
+	return binary.LittleEndian.AppendUint32(h, tail), nil
+}

@@ -86,6 +86,7 @@ type Config struct {
 	Credentials          func(context.Context) (Credentials, error)
 	Auth                 AuthOptions
 	Session              SessionOptions
+	Protocol             ProtocolOptions
 	Limits               Limits
 	RowsAffectedMode     RowsAffectedMode
 	ResetMode            ResetMode
@@ -116,6 +117,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.PrepareMode > PrepareClient {
 		return Config{}, &ConfigError{Field: "PrepareMode"}
+	}
+	if err := validateProtocolOptions(cfg.Protocol); err != nil {
+		return Config{}, err
 	}
 	if cfg.ConnectTimeout < 0 {
 		return Config{}, &ConfigError{Field: "ConnectTimeout"}

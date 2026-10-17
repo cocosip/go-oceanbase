@@ -35,6 +35,7 @@ type PacketIO struct {
 	maxMessageBytes int64
 	sequence        byte
 	failed          bool
+	frames          *frameIO
 }
 
 // NewPacketIO uses a 64 MiB limit when maxMessageBytes is zero.
@@ -46,7 +47,12 @@ func NewPacketIO(conn net.Conn, maxMessageBytes int64) *PacketIO {
 }
 
 // ResetSequence begins a new command; it never revives a failed stream.
-func (p *PacketIO) ResetSequence() { p.sequence = 0 }
+func (p *PacketIO) ResetSequence() {
+	p.sequence = 0
+	if p.frames != nil && p.frames.reset() != nil {
+		p.failed = true
+	}
+}
 
 // ReplaceConn switches a transport at a completed message boundary, preserving sequence.
 func (p *PacketIO) ReplaceConn(conn net.Conn) error {
@@ -57,6 +63,9 @@ func (p *PacketIO) ReplaceConn(conn net.Conn) error {
 		return errors.New("wire: nil replacement connection")
 	}
 	p.conn = conn
+	if p.frames != nil {
+		p.frames.conn = conn
+	}
 	return nil
 }
 
@@ -71,10 +80,18 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 	}
 	var transferred int64
 	defer finish()
+	var reader io.Reader = p.conn
+	if p.frames != nil {
+		reader = p.frames
+		p.frames.readBytes = 0
+	}
 	for {
 		var header [4]byte
-		n, readErr := io.ReadFull(p.conn, header[:])
+		n, readErr := io.ReadFull(reader, header[:])
 		transferred += int64(n)
+		if p.frames != nil {
+			transferred = p.frames.readBytes
+		}
 		if readErr != nil {
 			return nil, p.fail(ctx, "read", transferred, readErr)
 		}
@@ -88,8 +105,11 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 		}
 		previous := len(message)
 		message = append(message, make([]byte, total-previous)...)
-		n, readErr = io.ReadFull(p.conn, message[previous:])
+		n, readErr = io.ReadFull(reader, message[previous:])
 		transferred += int64(n)
+		if p.frames != nil {
+			transferred = p.frames.readBytes
+		}
 		if readErr != nil {
 			return nil, p.fail(ctx, "read", transferred, readErr)
 		}
@@ -114,6 +134,13 @@ func (p *PacketIO) WriteMessage(ctx context.Context, payload []byte) (err error)
 	}
 	var transferred int64
 	defer finish()
+	if p.frames != nil {
+		transferred, err = p.writeFramed(payload)
+		if err != nil {
+			return p.fail(ctx, "write", transferred, err)
+		}
+		return nil
+	}
 	for {
 		length := min(len(payload), 0xffffff)
 		header := [4]byte{byte(length), byte(length >> 8), byte(length >> 16), p.sequence}

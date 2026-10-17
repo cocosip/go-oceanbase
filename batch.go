@@ -150,7 +150,7 @@ func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Resu
 		if err := c.lock(ctx); err != nil {
 			return nil, err
 		}
-		if batchDML(request.query, c.session.mode, c.session.ok.Status&512 != 0) && c.batchParametersValid(request) {
+		if !c.session.packets.Framed() && batchDML(request.query, c.session.mode, c.session.ok.Status&512 != 0) && c.batchParametersValid(request) {
 			var prepared *stmt
 			prepared, prepareErr = c.prepareServerLocked(ctx, request.query)
 			if prepareErr == nil {

@@ -27,7 +27,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
 | PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 通用策略未实现；真实版本待联调 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19 已实现 Oracle 已知 >=2.2.5 的 offset/尾 OK；旧/未知版本向前 fetch，真实版本待联调 |
-| LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后只声明 V2 属性位 1；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset、原生 array binding 与 D23 OB20 未实现；D22 当前按 §13 回退逐项 |
+| LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后声明 locator-v2 掩码 1；D23 新元数据掩码 2 另行协商；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset、原生 array binding 未实现；D23 OB20 已本地实现，见 §14；D22 当前按 §13 回退逐项 |
 
 ## 3. 真实目标
 
@@ -161,3 +161,16 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 不确定性与取消 | 不重放；保留确认项，只将可能已发出且未确认的项标 Unknown；淘汰损坏连接并等待写协程；保留 SQL/context/清理错误链 | 单次拨号、部分发送、损坏/额外结果、Tx/操作取消及最终响应后取消本地通过 |
 
 具体接口、默认值及 Java 源码证据见架构 §13.4。`TestBatchExecution` 与手动 CI 四目标入口已加入，本阶段仅编译，不连接数据库，不计入验收。
+
+## 14. 包流、校验与新元数据（D23）
+
+| 能力 | Go 当前行为 | 验证状态 |
+| --- | --- | --- |
+| 协商和策略 | ProtocolOptions 五项独立三态；标准认证 OK 后固定包流；required 缺失/off 被启用直接拒绝 | 两模式三包流、非法组合及能力回显本地通过；真实版本未验证 |
+| 压缩 | CLIENT_COMPRESS，7 字节头，zlib/raw，跨帧重组与内层逐消息预算 | 聚合小消息、跨头/16MiB 续包、膨胀/尾随数据/序号错误本地通过 |
+| OB20 | 7+24 字节头、4 字节尾，身份/序号/标志/CRC 校验，新 TLV 与旧 extra 按边界跳过 | 独立 CRC 向量、损坏/长度、ID 回绕、部分写/取消/未读拒绝复用本地通过 |
+| 两类 checksum | Checksum 是 OB20 CRC；ProxyChecksum 是 Java useObChecksum 的能力位 3/6，请求和确认独立处理 | 组合策略本地验证；代理到后端的实际校验没有本地证明 |
+| 新元数据 | 复用列布局，Oracle 国字符长度直接使用 Length，RAW/ROWID 使用 Precision，LOB 长度未知 | 解码标记与长度测试本地通过；真实列描述未验证 |
+| 批量与错误 | framed multi-send 发送前回退逐项；不因协议错误重试业务，错误保留实际网络字节数 | 两模式/两类 framing 批量预处理及清理、取消与损坏测试通过 |
+
+完整策略/位号/源码见架构 §9.1。`TestPacketModes` 四目标集成源码及 CI 已加入，仅完成编译；标准/auto/压缩登记为四目标正向，OB20/OB20 CRC/代理 checksum 登记为两代理目标正向，新元数据登记 Oracle 两目标正向；其他目标允许明确能力拒绝并记录。执行前必须固定支持这些条件的服务端与代理版本，不能以全为拒绝宣告兼容。当前所有真实目标均未验证，FLT 业务字段归 D25。

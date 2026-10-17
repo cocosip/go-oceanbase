@@ -76,6 +76,7 @@ type handshakeSession struct {
 	tlsVerified  bool
 	user         string
 	obVersion    string
+	newMetadata  bool
 }
 
 func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *handshakeSession, err error) {
@@ -105,7 +106,7 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 		return nil, err
 	}
 	response := wire.HandshakeResponse{Capabilities: s.capabilities, MaxPacketBytes: uint32(min(c.cfg.Limits.MaxMessageBytes, math.MaxUint32)), Charset: charset, Database: c.cfg.Database}
-	response.Attributes = map[string]string{"__ob_client_attribute_capability_flag": "1"}
+	response.Attributes = c.protocolAttributes()
 	if c.cfg.TLSConfig != nil {
 		if err = c.upgradeTLS(ctx, s, response); err != nil {
 			return nil, err
@@ -135,6 +136,9 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 	if err = c.finishAuthentication(ctx, s, credentials, response.Plugin, plugin, challenge); err != nil {
 		return nil, err
 	}
+	if err = c.selectProtocol(s); err != nil {
+		return nil, err
+	}
 	s.user = credentials.User
 	return s, nil
 }
@@ -145,6 +149,12 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
 	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF | wire.ClientConnectAttrs
+	if c.cfg.Protocol.Compression != FeatureOff {
+		if c.cfg.Protocol.Compression == FeatureRequired && server&wire.ClientCompress == 0 {
+			return 0, fmt.Errorf("%w: compression", ErrUnsupported)
+		}
+		wanted |= wire.ClientCompress
+	}
 	if c.cfg.AllowMultiStatements {
 		wanted |= wire.ClientMultiStatements
 	}

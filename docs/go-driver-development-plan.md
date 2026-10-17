@@ -502,14 +502,17 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D06、D08。对应：M03、M04、M15；架构 §9。
 
-文件：新增 `internal/wire/compress.go`、`ob20.go`、`checksum.go` 及测试；修改 capability/包流选择。
+文件：新增 `internal/wire/compress.go`、`ob20.go`、`checksum.go` 及测试；新增根包 `protocol.go`、session tracking 解码与 fuzz，修改 capability/包流选择、列解释及批量策略门禁。
 
 交付：标准/压缩/OB20 包流共享命令编解码，request ID、序号、扩展字段和校验；auto/off/required 三态以实际协商为准。
 
-- [ ] 测试 `TestCompressedPackets`、`TestOB20Frames`：跨包边界、校验失败、未知可跳过字段、错误序号、压缩膨胀上限；required 不支持时建连失败，不能发业务后换协议。
-- [ ] 执行 `go test ./internal/wire -run 'Test(Compressed|OB20)' -count=1`，确认失败。
-- [ ] 实现包流变体及新的列元数据解析，保持同一响应状态机；解压/分配前检查大小。
-- [ ] 同命令和包流 fuzz 通过；两模式直连/OBProxy 的 `TestPacketModes` 验证标准、压缩、OB20 路径。
+- [x] 测试 `TestCompressedPackets`、`TestOB20Frames`：跨包边界、校验失败、未知可跳过字段、错误序号、压缩膨胀上限；required 不支持时建连失败，不能发业务后换协议。
+- [x] 执行 `go test ./internal/wire -run 'Test(Compressed|OB20)' -count=1`，确认失败。
+- [x] 实现包流变体及新的列元数据解析，保持同一响应状态机；解压/分配前检查大小。
+- [x] 同命令和 `FuzzFrames` 本地通过；两模式三包流、逐消息预算、字节证据、ID 回绕、取消与帧批量回退均有本地测试；四目标 `TestPacketModes` 源码仅编译。
+- [ ] 固定真实版本后执行四目标 `TestPacketModes`，验证已登记正向及拒绝；当前按用户要求不联调，不能据本地测试勾选真实验收。
+
+D23 已本地实现，验收未完成。独立五项配置及协议边界见架构 §9.1（五项配置均为三态）；代理 checksum 与 OB20 CRC 分别映射。进度和验证证据见开发进度 §5.6 D23。
 
 ### D24 PrepareExecute、缓存与执行优化
 

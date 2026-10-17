@@ -499,8 +499,19 @@ func (r *textRows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 }
 
 func columnLength(c wire.Column, mode Mode) (int64, bool) {
+	if c.NewMetadata && mode == ModeOracle {
+		switch c.Type {
+		case 203, 209:
+			return int64(c.Precision), c.Precision != 0
+		case 210, 211:
+			return 0, false
+		}
+	}
 	if c.Length == 0 {
 		return 0, false
+	}
+	if c.NewMetadata && mode == ModeOracle && (c.Type == 207 || c.Type == 208) {
+		return int64(c.Length), true
 	}
 	if c.Type == 203 || c.Type == 16 || c.Type >= 249 && c.Type <= 254 && c.Charset == 63 {
 		return int64(c.Length), true
