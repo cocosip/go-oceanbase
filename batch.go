@@ -261,6 +261,7 @@ func (r *textRows) beginExecution() {
 	r.execution.begin()
 	if !r.keepGate {
 		r.conn.lastWarnings = WarningSummary{}
+		r.conn.warningsCleared = false
 		if batch, _ := r.ctx.Value(batchContextKey{}).(*batchAttempt); batch != nil {
 			batch.started = true
 		}

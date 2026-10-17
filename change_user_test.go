@@ -88,6 +88,11 @@ func testChangeUserIsolation(t *testing.T, mode Mode, prepare PrepareMode) {
 	if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
 		t.Fatal(err)
 	}
+	if mode == ModeMySQL {
+		if got, err := ReadWarnings(ctx, pinned); err != nil || len(got) != 0 {
+			t.Fatalf("identity change exposed old warning details: %+v %v", got, err)
+		}
+	}
 	if _, err = old.ExecContext(ctx, 1); !errors.Is(err, ErrResource) {
 		t.Fatalf("old statement survived identity change: %v", err)
 	}

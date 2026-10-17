@@ -339,6 +339,62 @@ func TestSessionOperationQuoting(t *testing.T) {
 	}
 }
 
+func TestSessionOperationNoRowset(t *testing.T) {
+	db := queryDB(t, func(ctx context.Context, p *wire.PacketIO) {
+		if !serveOK(ctx, t, p, []byte("\x03SELECT DATABASE()"), 2) {
+			return
+		}
+		if _, err := p.ReadMessage(ctx); err == nil {
+			t.Error("unexpected helper OK did not close transport")
+		}
+	})
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	pinned, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pinned.Close() }()
+	if _, err = CurrentSchema(ctx, pinned); !errors.Is(err, wire.ErrMalformed) {
+		t.Fatal(err)
+	}
+	if err = pinned.Raw(func(raw any) error {
+		if !raw.(*conn).closed.Load() {
+			return errors.New("unexpected helper OK left session reusable")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionOperationEmptyRowset(t *testing.T) {
+	db := queryDB(t, func(ctx context.Context, p *wire.PacketIO) {
+		if !readQuery(ctx, t, p, "SELECT DATABASE()") || !sendPackets(ctx, t, p, []byte{1}, textColumn("v", 253, 45, 0), []byte{254, 0, 0, 2, 0}, []byte{254, 0, 0, 2, 0}) {
+			return
+		}
+		_, _ = p.ReadMessage(ctx)
+	})
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	pinned, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pinned.Close() }()
+	if _, err = CurrentSchema(ctx, pinned); !errors.Is(err, wire.ErrMalformed) {
+		t.Fatal(err)
+	}
+	if err = pinned.Raw(func(raw any) error {
+		if !raw.(*conn).closed.Load() {
+			return errors.New("empty scalar helper response left session reusable")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionMutationStatementCache(t *testing.T) {
 	db := optimizationDB(t, ModeMySQL, ExecutionOptions{StatementCacheSize: 1}, func(ctx context.Context, p *wire.PacketIO) {
 		for id := uint32(7); id <= 8; id++ {

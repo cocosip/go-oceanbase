@@ -38,6 +38,8 @@ const (
 	sessionVariable
 	sessionSetVariable
 	sessionWarnings
+	sessionWarningDetails
+	sessionClearWarnings
 )
 
 type sessionOperationRequest struct {
@@ -47,6 +49,7 @@ type sessionOperationRequest struct {
 	info     ClientInfo
 	values   []sql.NullString
 	warnings WarningSummary
+	details  []Warning
 }
 
 // CurrentSchema reads the Oracle current schema or MySQL current database.
@@ -147,9 +150,17 @@ func (c *conn) execSessionOperation(ctx context.Context, r *sessionOperationRequ
 	if c.responseActive {
 		return nil, errResponseActive
 	}
-	if r.op == sessionWarnings {
+	switch r.op {
+	case sessionWarnings:
 		r.warnings = c.lastWarnings
 		return result{known: true}, nil
+	case sessionClearWarnings:
+		c.lastWarnings, c.warningsCleared = WarningSummary{Known: true}, true
+		return result{known: true}, nil
+	case sessionWarningDetails:
+		var err error
+		r.details, err = c.readWarningsLocked(ctx)
+		return result{known: true}, err
 	}
 	query, columns, mutate, err := c.sessionOperationSQL(r)
 	if err != nil {
@@ -238,14 +249,17 @@ func (c *conn) sessionValuesLocked(ctx context.Context, query []byte, columns in
 	if err != nil {
 		return nil, err
 	}
-	if len(rows.columns) != columns {
+	if len(rows.columns) != columns || rows.items != 1 {
+		c.discard()
 		return nil, rows.fail(wire.ErrMalformed, true)
 	}
 	values := make([]driver.Value, columns)
 	if err = rows.Next(values); err != nil {
+		c.discard()
 		return nil, rows.fail(wire.ErrMalformed, true)
 	}
 	if err = rows.Next(make([]driver.Value, columns)); err != io.EOF || rows.more {
+		c.discard()
 		return nil, rows.fail(wire.ErrMalformed, true)
 	}
 	out := make([]sql.NullString, columns)

@@ -110,6 +110,7 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	c.clearDescriptors()
 	c.sessionDirty, c.statementEpoch = true, new(resourceEpoch)
 	c.lastWarnings = WarningSummary{}
+	c.warningsCleared = true
 	attempted = true
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() { c.discard(); close(done) })
@@ -142,5 +143,6 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 		return err
 	}
 	c.lastWarnings = WarningSummary{}
+	c.warningsCleared = true
 	return ctx.Err()
 }

@@ -4,11 +4,11 @@
 
 ## 1. 当前状态
 
-- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB、D17 表内 BLOB、D18 OBJECT/ARRAY、D19 游标/滚动/更新、D20 连接相关输出、D21 一次性长参数、D22 批量策略、D23 包流/校验/新元数据、D24 合并执行/缓存优化、D25 诊断/FLT 、D26 静态选址/建连切换、D27 TNS/OCP/拓扑发现及 D29 LOCAL INFILE 已有本地实现；继续 D28/D30，D30 会话辅助、warning 数量快照及 ChangeUser 已有本地实现，具体支持边界见架构 §9.1、§11.2.2、§13.2、§13.4 与 §15。
+- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB、D17 表内 BLOB、D18 OBJECT/ARRAY、D19 游标/滚动/更新、D20 连接相关输出、D21 一次性长参数、D22 批量策略、D23 包流/校验/新元数据、D24 合并执行/缓存优化、D25 诊断/FLT 、D26 静态选址/建连切换、D27 TNS/OCP/拓扑发现及 D29 LOCAL INFILE 已有本地实现；继续 D28/D30，D30 会话辅助、warning 数量/详情/清除及 ChangeUser 已有本地实现，具体支持边界见架构 §9.1、§11.2.2、§13.2、§13.4 与 §15。
 - 实现完成：**28 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
 - 下一执行任务：**D28 平台传输取证与 D30 会话能力补齐**。
 - 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；改写/bulk/array binding 当前按证据回退逐项，原生优化未启用；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量快照和 ChangeUser 已有本地实现；D28 Shared Memory/VC、D30 warning 详情/显式取消、D31–D32 仍需实现。
+- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；改写/bulk/array binding 当前按证据回退逐项，原生优化未启用；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量/详情/清除和 ChangeUser 已有本地实现；D28 Shared Memory/VC、D30 显式取消、D31–D32 仍需实现。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -79,7 +79,7 @@
 | D27 | TNS/OCP/拓扑发现 | D26 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D27、架构 §17.1.2 |
 | D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | old/Ed25519/PAM、SSPI/Unix GSSAPI、Unix/Named Pipe 已补；其余继续 |
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
-| D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 未验证 | 无 | Codex；首批辅助函数/数量快照已补；ChangeUser 已补；详情、CancelQuery 继续；见 §5.6 D30 |
+| D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 未验证 | 无 | Codex；首批辅助函数/数量快照已补；ChangeUser、MySQL 详情/本地清除已补；CancelQuery 继续；见 §5.6 D30 |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 未开始 | 未验证 | 无 | — |
 | D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 未开始 | 未验证 | 无 | — |
 
@@ -488,8 +488,8 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 - 开发：进行中，尚不计入已实现项。新增根包 session_ops.go、单元测试与四目标 integration 源码，不增加包、第三方依赖或连接包装对象。普通 sql.Conn 上封闭函数承载 schema/catalog、客户端信息及系统变量；实际模式负责 SQL/名称/编码。
 - setter 在发送前拒绝活动事务/autocommit 关闭及受保护编码/时区变量，所有 setter 发送前清理自动 statement 和类型描述缓存（含 sql_mode 解析语义变更）；发送修改后关闭 pinned 连接时淘汰，避免原池状态泄漏，完整服务端错误也不恢复为可回池。校验失败保持原会话可复用。
-- Warnings 和每项 ResultInfo.Warnings 保留 OK/EOF 的数量及已知性；普通 SQL 发送后替换快照，helper/Ping/内部清理不覆盖，归还池后清空。没有把成功带 warning 改为错误，也不依赖 logger。warning 详情和 CancelQuery 尚未实现；ChangeUser 见本节后续子项，整项 D30 清单保持未完成。
-- TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 覆盖两模式、转义、事务/池隔离、服务端错误与额外结果拒绝、数量快照及 nil logger。TestSessionOperations 集成源码验证 schema/client info/变量回读、快照与新连接无属性泄漏；仅编译，未运行。真实 warning 详情及身份切换/取消仍需后续用例。
+- Warnings 和每项 ResultInfo.Warnings 保留 OK/EOF 的数量及已知性；普通 SQL 发送后替换快照，helper/Ping/内部清理不覆盖，归还池后清空。没有把成功带 warning 改为错误，也不依赖 logger。warning 详情/清除和 ChangeUser 见本节后续子项；CancelQuery 尚未实现，整项 D30 清单保持未完成。
+- TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 覆盖两模式、转义、事务/池隔离、服务端错误与额外结果拒绝、数量快照及 nil logger。TestSessionOperations 集成源码验证 schema/client info/变量回读、快照与新连接无属性泄漏；仅编译，未运行。真实 warning 和身份切换用例见后续子项，取消仍需补充。
 - 独立走查发现 sql_mode helper 可能复用旧解析语义的自动 statement，TestSessionMutationStatementCache 先失败后通过；所有 setter 统一清理自动 statement/类型描述缓存。修复后 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标重复10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，集成源码只编译。六文档链接/代码块/无机器路径、32任务/28实现/0验收/155选项及 CI YAML 检查通过。未连接数据库，未验证 Linux 运行、远程 CI 或成功 race；D28/D30 保持进行中。
 
 #### D30 ChangeUser 子项
@@ -497,8 +497,16 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 已补根包 ChangeUser(ctx, *sql.Conn, Credentials, database)，在原物理连接及原标准/压缩/OB20 包流内重新认证，沿用已验证 TLS 和认证插件策略，不重拨、不修改原 Connector。仅允许无事务且 autocommit 开启的固定连接；参数、字符集及初始认证安全门禁先校验，失败保留原身份。
 - 切换前清理自动 statement、类型描述及 LOB/Cursor；显式 server/client statement 通过会话代次失效，旧 Close 不关闭新身份可能复用的 statement ID。发送后认证、取消、模式或初始化失败均淘汰会话；成功重新执行 Config.Session 基线，固定连接关闭后退出原池，不保留新密码。不新增包、依赖或反向引用。
 - TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing 覆盖两模式、两种预处理、旧句柄失效、ID 复用、原池隔离、认证插件及关闭、安全拒绝、同连接 TLS、取消和三种包流。TestChangeUserSessions 四目标及手动 CI 输入已补，源码仅编译，未连接真实服务。
-- D30 仍进行中，warning 详情和显式取消尚未实现；实现28/32、验收0/32不变。
+- D30 仍进行中，warning 详情/清除见下一子项，显式取消尚未实现；实现28/32、验收0/32不变。
 - 本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、ChangeUser 各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 源码仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译通过，go mod tidy -diff 无差异。独立走查无遗留已确认问题；六文档编码/链接/代码块/无机器路径、32任务/28实现/0验收/155选项及 CI YAML 检查通过。未连接数据库，Linux 运行、远程 CI 和成功 race 仍未验证。
+
+#### D30 warning 详情与本地清除子项
+
+- 已补根包 Warning、ReadWarnings、ClearWarnings，复用封闭会话请求及持锁 Rows 内核，无新增包/依赖。MySQL 按需查询当前 SHOW WARNINGS；保留实际级别/码/字符集消息，不补造 SQLSTATE。Oracle 按 Java 实际能力保留数量并明确拒绝详情，未缩减既有协议能力。
+- 详情不是历史快照，helper/内部 SQL 可能改变服务端诊断区；本地数量及 Execution.Snapshot 独立保留。ClearWarnings 不发送 SQL，清数量并抑制 MySQL 详情至下一个普通 SQL；新建/reset/ChangeUser 不暴露旧详情。限行/累计字节有界，超限/畸形/取消不返回部分详情并淘汰连接，完整服务端错误可复用；不改变事务或原 SQL 成功语义。
+- TestWarningDetails、Clear/Modes/Response/Validation/Cancel/Framing/Transaction/RowError/PoolReset/Reenable 覆盖两模式、nil logger、计数/详情分离、清除再启用、GBK、三种包流、事务、取消、超限及服务端错误；ChangeUserIsolation 也验证新身份抑制旧详情。发现 warning 和旧 session helper 意外收到 OK 时未淘汰，两个回归先失败再修复通过。独立走查补充前置额外 OK 被跳过及旧 helper 空结果未淘汰，均先失败再修复；限制为单结果且标量恰好一行。TestWarningDetails 四目标集成源码和 WARNING_SQL 手动 CI 输入已补，只编译，不连接数据库。
+- D30 显式取消仍未实现；实现28/32、验收0/32不变。
+- 本地验证：修复走查问题后 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、warning/session helper/ChangeUserIsolation 目标各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。integration 源码只编译；两版本 Linux/amd64 CGO_ENABLED=0 全包构建/根包测试源码交叉编译通过，仅代表编译。go mod tidy -diff 无差异；六文档 UTF-8/代码块/相对链接/无机器路径、32任务/28实现/0验收/155选项、21矩阵章节、CI YAML 与改动 Go 格式检查通过。未连接数据库，Linux 运行、远程 CI 和成功 race 尚无新证据。
 
 ## 6. 待取证条件与推进方式
 
@@ -516,7 +524,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 ## 7. 下一步工作
 
-1. 继续 D28 Shared Memory/VC 取证及 D30 warning 详情、显式取消；保持单公开根包、池隔离与单向依赖，不把首批辅助函数计作整项完成。
+1. 继续 D28 Shared Memory/VC 取证及 D30 显式取消；保持单公开根包、池隔离与单向依赖，不把首批辅助函数计作整项完成。
 2. 继续用故障对端验证标准 database/sql 查询，不连接真实数据库。
 3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
 

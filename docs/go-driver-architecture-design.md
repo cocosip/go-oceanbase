@@ -998,7 +998,7 @@ func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
 - SessionVariable 只接受 ASCII 系统变量标识符，保留 SQL NULL；SetSessionVariable 的值是字符串，实际变量可写性/值域由服务端校验。time_zone、ncharacter_set_connection、character_set_*、collation_* 由 Config.Session 管理，运行时 setter 拒绝修改，防止解码配置与服务端状态不一致。两模式实际 SQL 支持仍需联调。
 - setter 只在无托管/服务端事务且 autocommit 开启时执行。发送修改前标记物理会话不可归还原池，成功或完整服务端错误后仍可在原 pinned 连接继续使用，关闭 sql.Conn 后淘汰；校验失败不标记。所有 setter 在发送前清理自动预处理缓存及类型描述缓存，覆盖 sql_mode 等解析语义变更；调用方显式持有的 sql.Stmt 仍遵循服务端原生绑定语义。此策略以重建连接代替不完整的变量恢复，不更改其他普通 SQL 的既有 reset 契约。
 - WarningSummary{Count uint16, Known bool} 保存协议 OK/EOF 数量；Known=false 表示尚无完整响应提供计数。Warnings 只读取最新普通 SQL 命令的最近完整结果快照，新的 SQL 清空并替换它，Ping/本节 helper/内部清理不覆盖；归还池后 reset 清空。Execute 的每项 ResultInfo.Warnings 独立保存各完整结果的数量，未完成结果保持未知。成功带 warning 仍是成功，nil logger 不影响快照。
-- 当前只公开数量，不编造警告码、SQLSTATE、消息或 Oracle SHOW WARNINGS 支持。warning 详情和显式 CancelQuery 仍是 D30 未完成项，ChangeUser 实现见 §16.3.2；本节不能作为整项完成依据。
+- 本节数量快照不编造警告码、SQLSTATE 或消息；详情/清除见 §16.3.3，ChangeUser 见 §16.3.2。显式 CancelQuery 仍未实现；本节不能作为整项完成依据。
 
 实现继续使用根包现有的封闭请求、操作锁、Rows/错误状态机和 wire 叶包，无新增包或依赖。四目标集成源码 TestSessionOperations 已提供，本阶段仅编译，尚未验证真实模式、代理或版本。
 
@@ -1018,6 +1018,27 @@ ChangeUser 在原物理连接、原 TLS 与原标准/压缩/OB20 包流上重新
 - 发送切换后认证拒绝、超时/取消、畸形响应、模式变化、插件关闭错误或初始化失败，一律淘汰物理会话；成功时原 pinned 连接继续可用，sql.Conn.Close 时退出原池。原连接池之后重新建连仍使用原 Connector 身份。本地校验或初始 TLS 门禁拒绝不更改身份。
 
 TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing 提供本地协议与真实 TLS 对端证据；TestChangeUserSessions 四目标源码检查实际身份、旧 statement 失效及原池身份隔离。集成测试需各 profile 的 CHANGE_USER_DSN 提供同服务上的另一个合法身份，仅使用其用户名/密码/数据库，TLS 和认证策略继承原连接；本阶段仅编译，未连接数据库。真实插件、LOB/游标清理、代理、权限及版本组合仍待联调。
+
+### 16.3.3 D30 warning 详情与本地清除
+
+```go
+type Warning struct {
+    Level string
+    Code uint32
+    Message string
+}
+func ReadWarnings(context.Context, *sql.Conn) ([]Warning, error)
+func ClearWarnings(context.Context, *sql.Conn) error
+```
+
+ReadWarnings 在固定连接上发送 MySQL 模式的 SHOW WARNINGS，按列字符集解码级别/码/消息；该 SQL 不提供 SQLSTATE，驱动不推测映射。消息可能包含 SQL 或敏感值，仅按请求返回，不自动写日志。Oracle 模式继续提供协议数量快照，ReadWarnings 明确返回 ErrUnsupported，不猜测 Oracle 详情 SQL。此边界与 [Connector/J getWarnings](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseStatement.java#L1263) 一致：MySQL 查询详情，Oracle 仅给出通用带 warning 提示；Go 以 WarningSummary.Count 表达后者。
+
+- 这是请求时读取的**当前服务端诊断区**，不是历史结果详情快照。应在消费/关闭 Rows 后立即调用，并串行使用 pinned 连接；其他服务端命令（包含 helper 和驱动内部 SQL）可能已替换诊断区。Warnings/ResultInfo 的本地数量快照仍独立保留，不能据此推断当前详情必与数量对应。
+- 不因数量为0而跳过 MySQL 查询；服务端诊断区和计数保留规则可能不同。max_error_count 等服务端限制可能使详情少于数量，驱动不补造缺项。读取不自动查询其他连接、不修改事务、不改变原 SQL 成功/失败语义，也不要求 logger。
+- Limits.MaxResultItems 同时限制一次详情的行数，MaxMessageBytes 限制解码后级别/消息/码的累计内容；超限返回 wire.ErrMessageTooLarge，不返回部分列表并淘汰连接。空结果有效；NULL/非法码/畸形列数/额外结果拒绝并淘汰，完整服务端 ERR 可复用，发送后取消淘汰。标准/压缩/OB20 共用既有包流和 Rows 内核。
+- ClearWarnings 只清除本地数量（Known=true、Count=0），在下一个普通 SQL 命令发送前抑制 MySQL ReadWarnings；不发送 SQL、不清除服务端自身诊断区。helper/Ping 不解除抑制，新普通 SQL（含执行失败的命令）解除；新建、reset 和 ChangeUser 后抑制旧详情。Oracle 可清数量，但详情 API 始终返回 ErrUnsupported。历史 Execution.Snapshot 不被清除函数修改。
+
+TestWarningDetails/Response/Clear/Modes/Validation/Cancel/Framing 和 TestSessionOperationNoRowset 覆盖本地行为。四目标 TestWarningDetails 集成源码需要对应 WARNING_SQL（成功且产生非零警告，MySQL 需实际保留详情）；仅编译，尚未连接真实模式或代理。D30 的显式取消仍需实现。
 
 ## 17. 选址、HA、认证与导入
 
@@ -1176,7 +1197,7 @@ Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER
 
 本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取正向证据。Unix 状态/清理单测和独立 C 库 ABI 用例已有 Windows amd64 本机运行证据；Linux/macOS 系统 GSSAPI 的运行及真实票据双向交换仍待验证，交叉编译不替代运行。SSPI/GSSAPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。GSS 状态错误仅报告操作和 major/minor 状态码，不拼接可能含身份、路径或票据细节的系统错误字符串。
 
-实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。共享门禁和实例持有机制供后续 D30 ChangeUser 复用；公开切用户能力尚未实现。
+实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。D30 ChangeUser 已复用共享门禁和实例持有机制，见 §16.3.2。
 
 当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI 及 §9.0.1 的 Unix/Named Pipe；Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 

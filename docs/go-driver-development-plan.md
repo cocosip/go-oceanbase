@@ -588,7 +588,7 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 - [ ] 在协议明确的适配上实现；认证/传输依赖使用平台文件隔离，不让基础包强制加载本地库。维持 §3.1 的单向包依赖，平台认证算法不反向引用根包配置或 wire。
 - [ ] 同命令通过；按进度 §5.4 将每个算法及传输单列到目标平台和服务端组合，分别记录正向认证/收发、拒绝、切换和清理证据；全部必需条目满足后才验收，只有交叉编译不能标记该平台验收完成。
 
-D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2.1。Shared Memory/OBProxy VC 和 D30 公开重新认证继续实现，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
+D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2.1。Shared Memory/OBProxy VC 继续实现；D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
 
 ### D29 LOCAL INFILE 受控导入
 
@@ -618,9 +618,11 @@ D29 本地实现：`Import` + 一次性 `LocalInfile`，精确名称 Reader/授�
 - [ ] 用封闭函数而非任意私有指令接口公开；ChangeUser 重走认证门禁并重建基线，KILL 成功不表示原查询未执行。
 - [ ] 同命令通过；`TestSessionOperations` 验证身份、警告、辅助通道 TLS 和池隔离；缺权限返回明确错误。
 
-D30 首批实现：session_ops.go 提供固定 sql.Conn 的 schema/catalog、客户端信息/变量，setter 拒绝活动事务并使物理会话关闭时淘汰，防止状态泄漏；缓存清理、实际模式转义/编码和封闭请求复用既有内核。Warnings 与 ResultInfo.Warnings 先提供独立于 logger 的 OK/EOF 数量快照，详情尚未实现；ChangeUser 已补，CancelQuery 尚未实现，故以上整项清单保持未勾选。TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 是本地测试；四目标集成同名源码只验证本批辅助函数及数量快照，TestChangeUserSessions 已补身份切换集成源码，后续仍需非零 warning 详情、取消与辅助通道 TLS。D28 尚未闭环的 Shared Memory/VC 不影响本批已支持连接上的辅助函数，不视为完成 D28 或 D30。
+D30 首批实现：session_ops.go 提供固定 sql.Conn 的 schema/catalog、客户端信息/变量，setter 拒绝活动事务并使物理会话关闭时淘汰，防止状态泄漏；缓存清理、实际模式转义/编码和封闭请求复用既有内核。Warnings 与 ResultInfo.Warnings 先提供独立于 logger 的 OK/EOF 数量快照，MySQL 详情及本地清除已补（架构 §16.3.3）；Oracle 保留数量并明确拒绝详情；ChangeUser 已补，CancelQuery 尚未实现，故以上整项清单保持未勾选。TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 是本地测试；四目标集成同名源码只验证本批辅助函数及数量快照，TestChangeUserSessions 已补身份切换集成源码，TestWarningDetails 已补非零 warning 集成源码，后续仍需取消与辅助通道 TLS。D28 尚未闭环的 Shared Memory/VC 不影响本批已支持连接上的辅助函数，不视为完成 D28 或 D30。
 
-D30 ChangeUser 子项：新增 change_user.go 与协议/TLS/分帧/生命周期测试，显式凭据和数据库、同连接重新认证、同模式约束、共用持锁初始化、server/client statement 身份代次与固定资源失效均已实现。旧 statement.Close 不发送可能复用的 ID，发送后失败关闭连接、成功关闭时退出原池；不修改 Connector 或调用旧凭据提供方。四目标 TestChangeUserSessions 源码和 CI 已补，尚未连接数据库；warning 详情和 CancelQuery 未完成，整项继续进行。详见架构 §16.3.2。
+D30 ChangeUser 子项：新增 change_user.go 与协议/TLS/分帧/生命周期测试，显式凭据和数据库、同连接重新认证、同模式约束、共用持锁初始化、server/client statement 身份代次与固定资源失效均已实现。旧 statement.Close 不发送可能复用的 ID，发送后失败关闭连接、成功关闭时退出原池；不修改 Connector 或调用旧凭据提供方。四目标 TestChangeUserSessions 源码和 CI 已补，尚未连接数据库；warning 详情/清除见 §16.3.3；CancelQuery 未完成，整项继续进行。详见架构 §16.3.2。
+
+D30 warning 子项：warnings.go 提供 Warning、ReadWarnings、ClearWarnings；MySQL 按需读取当前诊断区，Oracle 保留协议数量并拒绝详情，不补造 SQLSTATE。详情有行数/累计字节限额，读取失败不返回部分列表；本地清除抑制至下一个普通 SQL，池 reset 和切换身份不泄漏旧详情。TestWarningDetails 系列覆盖清除、模式、事务、reset、预处理/失败命令再启用、字符集、包流、取消及畸形/超限；TestWarningDetails 四目标集成源码要求非零警告 SQL，只编译未联调。详见架构 §16.3.3，CancelQuery 继续开发，整项不计完成。
 
 ### D31 XA 分支、状态与恢复
 
