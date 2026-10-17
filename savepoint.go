@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -95,8 +96,15 @@ func (c *conn) execSavepoint(ctx context.Context, request savepointRequest) (dri
 	if c.activeTx == nil {
 		return nil, fmt.Errorf("oceanbase: savepoint requires active transaction")
 	}
-	if err := c.commandOK(ctx, append([]byte{3}, encoded...)); err != nil {
-		return nil, err
+	txctx := c.activeTx.ctx
+	opctx, cancel := context.WithCancelCause(ctx)
+	stop := context.AfterFunc(txctx, func() { cancel(context.Cause(txctx)) })
+	defer func() { stop(); cancel(nil) }()
+	if txctx.Err() != nil {
+		cancel(context.Cause(txctx))
+	}
+	if err := c.commandOK(opctx, append([]byte{3}, encoded...)); err != nil {
+		return nil, errors.Join(err, context.Cause(opctx))
 	}
 	return result{known: true}, nil
 }

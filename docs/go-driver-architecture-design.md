@@ -752,7 +752,7 @@ Config.RowsAffectedMode 默认 MatchedRows。MySQL 兼容模式通过 CLIENT_FOU
 - 事务中的所有操作使用原物理会话；不在事务中透明换地址、换模式或重新建连。
 - Commit/Rollback 恢复驱动更改的事务设置；恢复失败时丢弃连接，事务结果与恢复错误分别保留。
 - `Savepoint`、`RollbackTo` 等函数操作调用方已有的 `*sql.Tx`，校验并按模式引用标识符，再经 `Session.Charset` 严格编码；不可表示的名称在发送前拒绝，原事务仍可使用。服务端没有 RELEASE 语义时返回明确能力错误。
-- 事务 context 被取消时配合标准库的 Rollback；网络已断时不伪称已完成服务端回滚。
+- 保存点操作同时监听调用和 BeginTx 的 context，事务取消或超时会中断阻塞响应并保留原因；可能已发送后淘汰会话，不补发回滚或重放。事务 context 被取消时配合标准库的 Rollback；网络已断时不伪称已完成服务端回滚。
 
 ### 12.3.1 D32 自动提交、只读事务和角色策略
 
