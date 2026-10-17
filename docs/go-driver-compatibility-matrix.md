@@ -85,6 +85,12 @@ TestReadTimeoutSessions 四目标要求显式只读慢 SQL fixture，验证独�
 
 JKS/PKCS12/加密私钥由应用或部署侧转换，不声明 Go 标准加载器可直接读取；替换整个 TLS 引擎不属于 tls.Config 回调能力。真实数据库/代理的双向身份映射、平台系统信任源和证书部署未验收；TLS1.3 套件也不能通过 CipherSuites 限制。D32 整项及 D28 平台缺口保持进行中。
 
+### 1.8 D32 自动提交与只读策略
+
+四项 Java 配置按架构 §12.3.1 映射到标准 sql.TxOptions、固定 sql.Conn 和严格 Routing.Role，不新增驱动开关。TestTransactionNative* 验证两模式只读事务命令和原始服务端错误、事务结束后的读写恢复、手动关闭自动提交期间不 reset、池复用先回滚后恢复、初始化关闭自动提交拒绝，以及失败时不选择未知/相反角色。Oracle 的 LevelRepeatableRead 和 ReadOnly+ReadCommitted 继续显式拒绝，不复制 Java 的只读重解释。
+
+测试对端按预定协议提供错误和状态，仅证明客户端的命令/生命周期；不证明真实服务端拒绝 DML、只读快照隔离或真实 HA。外部标准 API 示例仅编译，不执行联网。四项 Java 同名 DSN 严格拒绝；全任务实现/验收计数保持不变。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

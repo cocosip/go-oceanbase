@@ -642,6 +642,23 @@ Config.RowsAffectedMode 默认 MatchedRows。MySQL 兼容模式通过 CLIENT_FOU
 - `Savepoint`、`RollbackTo` 等函数操作调用方已有的 `*sql.Tx`，校验并按模式引用标识符。服务端没有 RELEASE 语义时返回明确能力错误。
 - 事务 context 被取消时配合标准库的 Rollback；网络已断时不伪称已完成服务端回滚。
 
+### 12.3.1 D32 自动提交、只读事务和角色策略
+
+Go 以标准 `sql.Tx` 管理事务，四个 Java 选项的功能按下表承载；不新增全局自动提交开关或连接级 `SetReadOnly`，同名 Java DSN 参数严格拒绝。
+
+| Java 选项及默认值 | Go 承载与行为差异 |
+| --- | --- |
+| autocommit=true | 新物理连接及 ChangeUser 初始化必须得到 autocommit 开启且无活动事务的最终状态；配置 Variables/InitSQL 关闭它会使初始化失败。普通事务使用 BeginTx；需要手动事务控制时先取得 sql.Conn，在同一 Conn 显式执行模式原生 SQL 并完成 COMMIT/ROLLBACK。不要在 sql.DB 上执行 SET autocommit=0 后依赖后续调用使用同一会话 |
+| assureReadOnly=true | `BeginTx(ctx, &sql.TxOptions{ReadOnly:true})` 在当前 Socket 设置服务端事务属性。MySQL 使用 START TRANSACTION READ ONLY，Oracle 关闭 autocommit 后使用 SET TRANSACTION READ ONLY；服务端拒绝写入的错误按原错误码/SQLSTATE 返回。不解析业务 SQL 判断是否只读，也不把端点角色标签当作权限证明 |
+| failOnReadOnly=false | Java 可在主库不可用时回退只读入口；Go 的显式 Routing.Role 始终严格过滤，失败不回退未知或相反角色。RoleAny 表示不限制候选角色，不证明可写。RoleReadOnly 本地拒绝 ReadOnly=false 的 BeginTx；该角色不会自动把普通 SQL 放进只读事务。读写服务由应用分别持有标准 sql.DB |
+| oracleChangeReadOnlyToRepeatableRead=false | Java 的可选 Connection.setReadOnly 到 RepeatableRead 重解释不迁移；Go ReadOnly 始终保留只读事务含义，Oracle 明确拒绝 LevelRepeatableRead。Oracle 支持默认、ReadCommitted、Serializable；ReadOnly+ReadCommitted 拒绝，ReadOnly+Serializable 使用 Oracle 的只读事务快照，实际隔离行为待真实目标验证 |
+
+MySQL 可用隔离级别为默认、ReadCommitted、RepeatableRead、Serializable；显式级别在 START TRANSACTION 前设置。Oracle 读写事务显式指定 ReadCommitted/Serializable 时发送相应 SET TRANSACTION ISOLATION LEVEL。未知/不支持的组合在事务设置 SQL 前拒绝。
+
+固定 Conn 的手动 autocommit=0 不会在相邻调用间被 reset，BeginTx 明确拒绝嵌套或自动提交已关闭的会话。Managed 池复用根据服务端状态先 ROLLBACK 未完成事务，再恢复 autocommit=1；不能反序执行以免提交待处理工作。标准事务结束也检查并恢复自动提交，失败使用 ErrTxCleanup 且淘汰会话；Full reset 继续使用物理替换。任意 SQL 改变的其他会话状态不在 Managed 的完整恢复承诺内。
+
+源码依据：[Java 四项默认值](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L287)、[setReadOnly 重解释](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseConnection.java#L1215)、[assureReadOnly 的会话设置](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L2068)。`TestTransactionNative*`、既有 Tx/Reset/Role 用例和外部 `ExampleNewConnector_readOnlyTransactions` 提供本地协议/编译证据，不代表数据库权限、快照隔离或真实主从故障验收。
+
 ### 12.4 Session reset
 
 默认 Managed 策略恢复驱动管理的设置，检查未完成事务、未清理响应和异常资源。它不承诺识别任意 SQL 引起的临时表、包状态和用户变量变化；依赖这些状态的业务使用 `sql.Conn` 或事务固定会话。

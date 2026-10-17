@@ -598,6 +598,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、Go 格式与 diff 检查通过。首次 lint 的重复字符串及测试 helper 复杂度提示已整理，无生产逻辑变动。
 - 文档仍为八份及 README；修正认证章节与 TLS 章节的重复编号，新增凭据来源/RSA 契约。固定 Java 的160项枚举与映射集合完全一致，32任务/28实现/0验收不变。本地协议及示例验证不等于真实插件/权限、外部来源服务、公钥发布轮换或 TLS 身份验收；未连接数据库，D28/D32 整项继续进行，Linux 实际运行、远程 CI 和成功 race 仍待验证。
 
+#### D32 自动提交与只读策略
+
+- 核对固定 Java autocommit、assureReadOnly、failOnReadOnly、oracleChangeReadOnlyToRepeatableRead 的默认值和调用语义，以既有 sql.TxOptions、固定 sql.Conn、Routing.Role 及池 reset 承载，不增加公开配置、生产逻辑、包或依赖。四项映射、使用指南及模式/故障策略差异见架构 §12.3.1；不是新增 Java 连接级 setter 或全局关闭自动提交。
+- 新增 TestTransactionNativeReadOnly/Autocommit/Initialization/RoleFailure 和 TestTransactionJavaDSNRejected，覆盖两模式原始只读错误/SQLSTATE、单次拨号与事务结束后读写恢复、手动 auto0 的固定会话及池复用先回滚后恢复、两种初始化来源残留 auto0 拒绝、失败重试不回退未知/相反角色与旧参数拒绝。外部 ExampleNewConnector_readOnlyTransactions 只使用公开根包/标准库，默认仅编译，不执行联网步骤。
+- 临时取消 tx.go 的只读角色门禁、将 reset.go 的 ROLLBACK 改为先开启自动提交时，新增测试均因错误命令明确失败；两份生产文件按字节恢复，最终没有生产代码差异。独立只读走查及 Go1.25 定向测试未发现遗留已确认问题，不保存独立报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10次及普通/integration 标签 golangci-lint2.14.0（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译、go mod tidy -diff 通过。初轮测试编译和 goconst 提示已整理，最终使用既有协议 helper 和文件内常量。
+- 八文档及 README 的 UTF-8、相对链接/锚点、围栏、无机器路径、160项固定 Java 选项集合与四项映射、Go 格式/diff 检查通过。未连接数据库；夹具状态与错误不证明真实权限、快照隔离、回滚效果或 HA。实现28/32、验收0/32保持，D28/D32 其余范围继续推进，Linux 实际运行、远程 CI 与成功 race 仍待验证。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

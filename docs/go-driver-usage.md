@@ -81,6 +81,10 @@ return tx.Commit()
 
 事务内所有操作使用 `tx`，不能混用 `db` 查询来观察未提交数据。`Commit` 失败可能意味着结果未知；`Rollback` 清理也不能证明远端已经回滚。示例中的延迟回滚只处理尚未结束的事务。
 
+只读事务使用 `db.BeginTx(ctx, &sql.TxOptions{ReadOnly:true})`，在已有物理连接上设置服务端事务属性。`Routing.Role` 约束新连接的入口，角色标签本身不保证 SQL 权限；显式角色失败时不会回退其他角色。RoleReadOnly 的 DB 必须使用 ReadOnly=true 开启事务，普通 Query/Exec 不会自动变成只读事务。完整示例见 `transaction_example_test.go` 的 ExampleNewConnector_readOnlyTransactions，默认测试只编译该联网示例。
+
+新会话的自动提交始终开启；通常用标准 BeginTx/Commit/Rollback。手动控制自动提交时，先取得并固定 `sql.Conn`，在其中完成全部模式原生事务 SQL，再归还连接；不能用 `db.Exec("SET autocommit=0")` 维持跨调用事务。初始化 Variables/InitSQL 不允许留下自动提交关闭或活动事务。Oracle 不支持 LevelRepeatableRead，ReadOnly+ReadCommitted 也明确拒绝；模式差异和 Java 选项对应见[架构 §12.3.1](go-driver-architecture-design.md#1231-d32-自动提交只读事务和角色策略)。
+
 金额及高精度数值使用 `Number` / `Decimal` 或字符串精确表示，不先转 `float64`。可空值使用标准 `sql.Null*`；Oracle `Object` / `Array` 用 `Null` 区分 SQL NULL，集合里的 `nil` 表示 NULL 元素。日期解析选项和时区应显式按业务选择，不假定所有日期自动返回 `time.Time`。
 
 `Rows` 必须及时关闭，迭代后检查 `Rows.Err()`；多结果还要循环 `NextResultSet()`。`sql.RawBytes` 按标准库契约只在下一次行操作前有效，需长期持有时复制。
