@@ -94,12 +94,13 @@ type Config struct {
 	Password string
 	// ProxyUser is an Oracle proxy-login target, separate from the authenticating User.
 	// Empty disables proxy login. Credentials callbacks replace all three identity fields.
-	ProxyUser            string
-	Database             string
-	Mode                 Mode
-	Logger               *slog.Logger
-	Diagnostics          DiagnosticOptions
-	TLSConfig            *tls.Config
+	ProxyUser   string
+	Database    string
+	Mode        Mode
+	Logger      *slog.Logger
+	Diagnostics DiagnosticOptions
+	TLSConfig   *tls.Config
+	// ConnectTimeout bounds connection setup; zero uses 10 seconds, negative values fail.
 	ConnectTimeout       time.Duration
 	DialContext          func(context.Context, string, string) (net.Conn, error)
 	Credentials          func(context.Context) (Credentials, error)

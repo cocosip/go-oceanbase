@@ -20,6 +20,8 @@ oceanbase://app%40tenant:password@127.0.0.1:2881/?mode=oracle
 
 密码中的 `@`、`#`、`/`、`?` 等必须按 URL 转义。应用优先使用 `Config`，或通过 `net/url.UserPassword` 构造 URL，不手拼含密码的 URL。DSN 不接受任意 JDBC 选项和未知键，实际支持项见[配置映射](go-driver-options-mapping.md)。不打印 DSN 或完整配置。
 
+从 Java 迁移时，createDB/useSSL/profileSQL 等历史别名及 DBNAME/port 不能直接放入 Go query。数据库与端口使用 URL 路径和 host:port，或 ParseDSN 后修改 Config 再 NewConnector；TLS 使用程序化 TLSConfig。时间必须明确按 Go 语义迁移：30秒写作 `connectTimeout=30s`，不能写30000；`connectTimeout=0`/`0s` 表示默认10秒，并非 Java 的不限时。布尔仅 true/false，不接受空值、1/0或引号包裹。完整别名、插件参数和初始化差异见[迁移边界](go-driver-options-mapping.md#2-历史别名)。
+
 日志只由调用方注入，`nil` 表示静默；驱动不调用 `slog.Default`、不注册全局 logger、不写日志文件：
 
 ```go

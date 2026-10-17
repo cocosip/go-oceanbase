@@ -270,6 +270,16 @@ CancelQuery 除原有入口、认证用户、模式、TLS 与连接 ID 检查外
 
 固定 Java 依据：AbstractConnectProtocol 的 CLIENT_CONNECT_WITH_DB 条件（L337–L342）和 additionalData 创建/USE 顺序（L1378–L1386）。本地 TestCreateDatabase* 覆盖握手、三种 framing、UTF-8/GBK、转义、初始化顺序、两模式拒绝、服务端失败/总预算与 ChangeUser/取消隔离。TestCreateDatabaseSessions 提供 MySQL 直连/代理的创建、既有库、InitSQL 和物理替换用例，要求专用 CREATE/DROP DATABASE 权限 fixture；Oracle 只验证配置拒绝，本阶段均不联网。
 
+### 6.5 D32 Java 配置迁移边界
+
+[配置映射](go-driver-options-mapping.md)逐项列出固定 Java 版本160个规范字段的初值，另列10个历史别名、DBNAME/port、驱动选择标记和插件专用参数；别名不增加规范项计数。默认值核对以 Options 字段初始化、DefaultOptions.parse、postOptionProcess 及 UrlParser 的实际分支为准，不能从选项说明直接推断最终行为。
+
+Go 保持一个 Config 与严格 URL 入口。历史别名、Properties、Java store/类名及任意未知项不进入 DSN；各能力由既有 Go 配置、标准库或应用闭包承载，具体入口见映射。需要覆盖已解析值时，先 ParseDSN，再修改 Config，最后 NewConnector；后者重新校验并复制，不存在两套参数合并优先级。所有 query 名称区分大小写、重复及空值拒绝；布尔仅 true/false，Java 的裸毫秒和带引号布尔不自动转换。
+
+尤其不能直接照抄 connectTimeout：Java 通常默认30000毫秒、受 DriverManager 登录超时影响，显式0表示不限时；Go 默认10秒，正值使用 duration。time.ParseDuration 接受的 `0` 与 `0s` 均沿用10秒默认，不关闭建连总预算。ReadTimeout 的零值则关闭独立读取超时；二者仍服从 context 的较早期限。JDBC 的 disableMariaDbDriver 子串规则不应用到 Go 密码或数据库内容，作为 query key 仍拒绝。
+
+本地 TestDSNJava* 覆盖别名/隐式入口拒绝、ParseDSN 与 sql.Open 的配置阶段错误、脱敏、单位/零值及选择标记字面值；未增加生产 API、包或全局配置。160项默认值有固定源码证据，不代替每项运行行为、真实平台或服务端验收。
+
 ## 7. 标准库接口实现表
 
 | 内部类型 | 必须实现的接口 | 关键规则 |
