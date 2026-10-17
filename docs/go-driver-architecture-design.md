@@ -343,6 +343,8 @@ const (
 
 Named Pipe 的 UNC 地址必须是有效 UTF-8，Config/DSN 在建连前统一拒绝无效字节，包括主机名和管道名；避免 Windows UTF-16 转换替换字节后访问不同的端点。合法中文、补充平面字符和实际的 U+FFFD 保留，不将有效替换字符本身判为错误。Unix socket 继续使用 Go/OS 的字面地址语义。
 
+原生 IPC 混合会话测试使用系统 Unix listener / Windows Named Pipe listener 和驱动内置拨号；两种兼容模式交叉标准/压缩/OB20，每条连接连续执行缓存预处理、提前关闭 Rows、提交/回滚和可恢复 SQL 错误。逐轮直接检查原物理会话与池，不借助重新借连接后的 reset 掩盖残留。退出时核对 QUIT，Unix 原连接关闭后 SetDeadline 必须返回 net.ErrClosed；Named Pipe 及非 Windows Unix 另检查对端 EOF。Windows AF_UNIX 曾出现 Close 成功后对端不报 EOF 的情况，纯标准库亦可复现，该组合以原连接确实关闭为判据；不为测试改动生产拨号/关闭策略。Windows 已运行两种传输；Linux/macOS Unix socket 仍需 CI 实际运行，测试对端不代替真实服务。
+
 IPC 是一个显式固定端点，拒绝与 Routing.Endpoints 或 Discovery 混用；次数、单次/总建连预算、初始化、空闲验证与后续命令继续使用既有流程。不会因 IPC 失败自动回退 TCP。TLSConfig 非 nil 时，IPC 必须显式指定证书 ServerName，不能把文件路径或管道名当证书主机名；nil TLS 不构成明文密码豁免。DialContext 收到实际 Network 和 Addr，并继续承担 context/失败资源所有权契约。
 
 DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，tcp/默认网络禁止 socket。URL authority 不再是 IPC 拨号地址；database path 仍是数据库名。程序化 Config 直接指定 Network/Addr，无需伪造 TCP 主机。解析后再次传入 NewConnector 的配置保持可用。

@@ -32,6 +32,21 @@ func TestPlatformTransportNamedPipeUTF8(t *testing.T) {
 	runPlatformPeer(t, listener, Config{Network: networkPipe, Addr: path, User: testUser})
 }
 
+func TestPlatformTransportNamedPipeMixedSessions(t *testing.T) {
+	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+		for _, framing := range []string{testStandard, testCompression, testOB20} {
+			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
+				path := fmt.Sprintf(`\\.\pipe\go-oceanbase-mixed-%d-%d`, os.Getpid(), time.Now().UnixNano())
+				listener, err := winio.ListenPipe(path, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				runPlatformMixedSession(t, listener, Config{Network: networkPipe, Addr: path, Mode: mode}, framing)
+			})
+		}
+	}
+}
+
 func TestPlatformTransportNamedPipeRetry(t *testing.T) {
 	path := fmt.Sprintf(`\\.\pipe\go-oceanbase-retry-%d-%d`, os.Getpid(), time.Now().UnixNano())
 	listener, err := winio.ListenPipe(path, nil)

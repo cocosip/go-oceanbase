@@ -601,6 +601,8 @@ D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、�
 
 Named Pipe 地址校验同时覆盖 Config/DSN 的非法 UTF-8 主机/管道名拒绝，以及合法 Unicode 的保持与本机原生管道收发；对应 TestPlatformTransportPipeUTF8、TestPlatformTransportNamedPipeUTF8，避免 Windows UTF-16 转换造成端点别名。
 
+TestPlatformTransportUnixMixedSessions / TestPlatformTransportNamedPipeMixedSessions 复用既有混合会话夹具，在真实系统 IPC 端点核对两模式/三包流、原连接复用、预处理/Rows/事务/错误恢复及 QUIT/关闭；Windows AF_UNIX 的 EOF 边界与原连接关闭断言见架构 §9.0.1。默认单测和现有 CI 自动执行；Unix 目标平台须分别留存实际运行证据，不能用 Windows 的 AF_UNIX 通过代替 Linux/macOS。
+
 D28 VC 子批次按架构 §9.0.6 实施：根包 obproxy.go 管理 DialContext 工厂、固定入口及初始化单例；obproxy_host.go 用标准 os/exec 和管道启动独立 C 宿主 tools/obproxy-host/main.c，按 build tags 限制生产支持平台。宿主绑定官方 init/close，将原生信号/locale/allocator 与 Go 隔离；Go 复用 Unix net.Conn。TestOBProxy* 验证配置拒绝、并发一次初始化/冲突/取消/失败缓存、两模式/三包流及 TLS 门禁；独立 C 共享库和宿主夹具验证 JSON/void**/返回码、临时句柄、坏握手/缺库/缺符号和父进程 EOF（含 init 卡住）。普通构建不要求 C 编译器；obproxytest 用本机 gcc 构建夹具。真实 Linux 库/版本/信号/生命周期及服务仍需运行验收，不能凭 Windows 合成 ABI 或交叉编译勾选 D28。
 
 ### D29 LOCAL INFILE 受控导入

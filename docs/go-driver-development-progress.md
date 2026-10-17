@@ -757,6 +757,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestPlatformTransportPipeUTF8 覆盖五种非法编码 × 主机/管道名，共10组，每组同时检查 NewConnector 和百分号编码 DSN；修复前20个入口断言失败，修复后通过。另检查合法中文、补充平面字符及实际 U+FFFD 的地址保持；TestPlatformTransportNamedPipeUTF8 使用本机原生 Unicode 管道完成实际 database/sql 握手、初始化、Ping 和 QUIT/关闭。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过，两版本普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。独立只读走查无确认问题，不另存报告；文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，远端 UNC 权限、真实 Linux VC、远程 CI 与成功 race 仍未取证，D28/D30/D31/D32及计数保持。
 
+#### D28 原生 IPC 混合会话验证
+
+- 新增 TestPlatformTransportUnixMixedSessions / TestPlatformTransportNamedPipeMixedSessions，经真实系统 Unix socket / Windows Named Pipe 和驱动内置拨号覆盖两模式 × 标准/压缩/OB20，共12组合。每个组合保持同一物理连接执行两轮：缓存预处理的正负参数与类型头复用、未读/部分读取 Rows 后关闭、事务 rollback/commit、Oracle autocommit 恢复，以及1062/23000错误后的 Ping。复用既有混合夹具和原连接/池/资源守卫，不新增生产 API、包或依赖。
+- 退出检查 QUIT、池清空和原 physical 关闭；Unix 额外核对原 raw.SetDeadline 返回 net.ErrClosed，Named Pipe 与非 Windows Unix 检查对端 EOF。重复测试发现本机 Windows AF_UNIX 已 Close 且收到末尾数据后仍偶发无 EOF，纯标准库1000轮亦复现，故只在该平台/传输用原连接关闭断言替代对端 EOF；没有修改生产关闭策略。新夹具使用短临时目录和有界协议 context，避免 socket 路径限制及失败后的无限等待。
+- 使用 Go overlay 暂时将 IPC 误拨为 TCP、跳过 Rows drain，两项各使12组合按预期失败；暂时仅置关闭标志而不关闭原 raw，6个 Unix 组合均检出泄漏。实际生产源码未改变，最终两工具链新目标各50轮通过，共1200条原生会话、2400轮混合操作；这不是长期稳定性或真实 SQL 语义验收。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。独立只读走查无确认问题，不另存报告；文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，Linux/macOS Unix、真实 Linux VC、远端 UNC、远程 CI 与成功 race 仍待取证，D28/D30/D31/D32及计数保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
