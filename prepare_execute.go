@@ -78,6 +78,9 @@ func (c *conn) outputPrepareExecute(ctx context.Context, plan bindPlan, values [
 
 func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, plan bindPlan, outputs *outputState, prepared *stmt) (*textRows, error) {
 	r := c.startRows(ctx, true, nil)
+	if outputs.temporary {
+		r.autoStmt = prepared
+	}
 	r.outputs = outputs
 	if outputs.internal {
 		r.keepGate, r.captureLOB = true, true

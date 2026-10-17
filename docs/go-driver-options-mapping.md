@@ -2,7 +2,7 @@
 
 基线：obconnector-j 2.4.14，提交 `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`。从 DefaultOptions 提取 **155 项**，每项保留固定源码链接与拥有任务；本表从 D01 起维护，D32 对照 Options/入口/测试再次核对隐式及历史别名。
 
-当前实现已推进至 D12；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。后续能力落地时补实际 Go 字段、默认差异、测试及验证组合。
+当前实现已推进至 D21；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。后续能力落地时补实际 Go 字段、默认差异、测试及验证组合。
 
 Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。当前选项：mode、prepareMode、connectTimeout、charset、ncharset、location、parseTime、rowsAffectedMode、resetMode、allowMultiStatements、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。敏感值只放 userinfo；logger/TLS/回调只能程序化注入。
 
@@ -119,15 +119,15 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `socksProxyHost` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L821) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
 | `socksProxyPort` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L827) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
 | `connectProxy` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L834) | D28 | 平台适配 / DialContext / 认证工厂 | 待迁移/验证 |
-| `pieceLength` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L840) | D21 | LongData / 分段上传 | 待迁移/验证 |
-| `usePieceData` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L847) | D21 | LongData / 分段上传 | 待迁移/验证 |
+| `pieceLength` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L840) | D21 | LongData 有界自动分块，受 MaxMessageBytes 限制；不暴露 Java 同名大小开关 | 本地实现/验证；真实目标待联调 |
+| `usePieceData` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L847) | D21 | *LongData 按模式选择 LONG_DATA/PIECE_DATA，Oracle 已知 >=2.2.76；不设全局开关 | 本地实现/验证；真实目标待联调 |
 | `useOraclePrepareExecute` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L853) | D14 | Out / 必要 PrepareExecute / D24 缓存 | 待迁移/验证 |
 | `autoDeserialize` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L859) | D18 | 显式 Object/Array/JSON 值；不自动恢复 Java 序列化对象 | Java 序列化不引入 Go；D18 显式 format=1 Scanner/Valuer 已实现，待联调 |
 | `maxBatchTotalParamsNum` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L865) | D22 | ExecBatch / 明确批量策略 | 待迁移/验证 |
 | `emulateUnsupportedPstmts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L872) | D10 | Config.PrepareMode / prepareMode DSN | 已实现显式 PrepareClient；不提供自动降级，只有调用方明确选择才插值 |
 | `enableQueryTimeouts` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L878) | D06 | context / 有界 I/O / 不确定结果 | 待迁移/验证 |
 | `useCursorOffset` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L884) | D19 | Limits.FetchSize / Cursor | D19 原生 Oracle offset fetch 已实现，按版本门禁；实际服务器待联调 |
-| `blobSendChunkSize` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L890) | D21 | LongData / 分段上传 | 待迁移/验证 |
+| `blobSendChunkSize` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L890) | D21 | LongData 有界自动分块，受 MaxMessageBytes 限制；不暴露 Java 同名大小开关 | 本地实现/验证；真实目标待联调 |
 | `tnsnamesPath` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L897) | D27 | TNS/OCP/拓扑源与刷新 | 待迁移/验证 |
 | `tnsnamesDetectionPeriod` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L903) | D27 | TNS/OCP/拓扑源与刷新 | 待迁移/验证 |
 | `loadBalanceStrategy` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L910) | D26 | Connector 新建连接选址 / 不重放业务 | 待迁移/验证 |

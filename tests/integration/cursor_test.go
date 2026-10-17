@@ -39,7 +39,7 @@ func cursorFixture(t *testing.T, p profile) (*sql.DB, string) {
 	db.SetMaxOpenConns(3)
 	t.Cleanup(func() { _ = db.Close() })
 	table := fmt.Sprintf("OBGCU_%d", time.Now().UnixNano())
-	typ, blob, suffix := "LONGBLOB", "X'616263'", " ENGINE=InnoDB"
+	typ, blob, suffix := integrationLongBlobType, "X'616263'", integrationInnoDBSuffix
 	if p.mode == oceanbase.ModeOracle {
 		typ, blob, suffix = integrationBlobType, "TO_BLOB(HEXTORAW('616263'))", ""
 	}

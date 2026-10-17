@@ -136,3 +136,15 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 普通子 Rows | 二进制 REF CURSOR 列在完整父响应后按共享消息预算缓存；标准父子 Rows 寿命，16 层/循环门禁 | 原会话/事务、嵌套/取消/元数据总预算本地通过；static 子快照跨批计量和回看独立性通过 |
 
 源码依据为同一 Java 基线的 [类型编号](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java)、[REF CURSOR](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/RefCursor.java)、[二进制读取](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/rowprotocol/BinaryRowProtocol.java) 和 [释放命令](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java)。`TestProcedureResources` 与 CI 手动入口已加入，本阶段只编译、不连接数据库；实际过程语法、临时 LOB、版本/权限及 OBProxy 行为仍待验证。
+
+
+## 12. 长参数与分段上传（D21）
+
+| 能力 | Go 当前行为 | 验证状态 |
+| --- | --- | --- |
+| 一次性输入 | *LongData；借用 Reader、精确 Length/-1、MaxBytes；同对象一次上传，具名多位置逐块分发 | 空/长度/边界/超限、无整流缓冲、错误 n+err 与无 rewind 对端测试 |
+| 两模式协议 | MySQL24 无逐包响应；Oracle162 逐包 OK、二进制 hex/文本会话编码、STRING254；execute 省略流值体 | 原生包与源码核验；Oracle 已知 >=2.2.76，旧版/未知拒绝；四目标未验证 |
+| 文本与入口 | UTF-8 增量严格转换；普通预处理/显式游标、Oracle OUT 和 MySQL OUT 同会话上传 | GB18030/UTF-8 跨块、OUT 发布、游标及命名重复本地覆盖；实际 NCLOB 转换待联调 |
+| 失败与取消 | Reader 不由驱动关闭；上传失败/取消淘汰连接；上传后 execute 前取消同样清理；无自动重放 | 部分写、服务端段错误/损坏、Reader 异常及取消回归；阻塞 Reader 需调用方协作返回 |
+
+详见架构 §13.5。普通 PrepareClient 拒绝流输入；OUT 延用其必要的原生协议。`TestLongParameters` 与四目标手动 CI 入口已加入，本阶段仅编译，未连接数据库；max_allowed_packet、空流存储、实际 LOB/事务和 OBProxy 行为仍待联调。

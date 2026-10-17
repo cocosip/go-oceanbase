@@ -440,6 +440,9 @@ func (c *conn) executeCursorOpenLocked(ctx context.Context, prepared *stmt, requ
 		}
 		payload[5] = 1
 		binary.LittleEndian.PutUint32(payload[len(payload)-16:], 8)
+		if err = c.uploadLongDataLocked(ctx, prepared.id, values); err != nil {
+			return nil, false, err
+		}
 		columns, err := c.openSensitiveCursorLocked(ctx, payload, prepared)
 		return columns, false, err
 	}
@@ -452,5 +455,12 @@ func (c *conn) executeCursorOpenLocked(ctx context.Context, prepared *stmt, requ
 		return nil, false, err
 	}
 	payload[5] = 1
+	values, err := bindArguments(prepared.plan, request.args)
+	if err != nil {
+		return nil, false, err
+	}
+	if err = c.uploadLongDataLocked(ctx, prepared.id, values); err != nil {
+		return nil, false, err
+	}
 	return c.openNativeCursorLocked(ctx, payload)
 }

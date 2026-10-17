@@ -60,8 +60,12 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 		return
 	}
 	if !r.released {
-		if r.err == nil {
-			r.err = r.contextError()
+		if cause := r.contextError(); cause != nil {
+			// A queued discard callback may be stopped below; canceled commands still poison state.
+			r.conn.discard()
+			if r.err == nil {
+				r.err = cause
+			}
 		}
 		r.released = true
 		r.conn.responseActive = false

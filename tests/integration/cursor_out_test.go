@@ -17,6 +17,8 @@ import (
 )
 
 const integrationBlobType = "BLOB"
+const integrationInnoDBSuffix = " ENGINE=InnoDB"
+const integrationLongBlobType = "LONGBLOB"
 
 func TestProcedureResources(t *testing.T) {
 	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))

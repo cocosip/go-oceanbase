@@ -25,11 +25,12 @@ type Parameter struct {
 	TypeMetadata  []byte
 	Data          []byte
 	LengthEncoded bool
+	LongData      bool // A separate upload supplies the body; bitmap and type remain present.
 }
 
 // EncodedSize returns the parameter body size, excluding bitmap and type header.
 func (p Parameter) EncodedSize() int64 {
-	if byte(p.Type) == 6 {
+	if byte(p.Type) == 6 || p.LongData {
 		return 0
 	}
 	n := int64(len(p.Data))
@@ -88,7 +89,7 @@ func EncodeStmtExecute(id uint32, params []Parameter, limit int64) ([]byte, erro
 		b = append(b, p.TypeMetadata...)
 	}
 	for _, p := range params {
-		if byte(p.Type) == 6 {
+		if byte(p.Type) == 6 || p.LongData {
 			continue
 		}
 		if p.LengthEncoded {

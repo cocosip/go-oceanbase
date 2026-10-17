@@ -9,9 +9,13 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/cocosip/go-oceanbase/internal/charset"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 type outputVariable string
+type longPlaceholder struct{}
 
 func (c *conn) mysqlOutputSQL(plan bindPlan, values []boundValue, s *outputState) ([]byte, []byte, error) {
 	var nonce [16]byte
@@ -47,9 +51,57 @@ func (c *conn) mysqlOutputSQL(plan bindPlan, values []boundValue, s *outputState
 		if b, ok := values[i].value.(*outBinding); ok {
 			values[i].value = outputVariable(s.vars[indices[b]])
 		}
+		if v, ok := values[i].value.(*LongData); ok {
+			if _, err = c.longDataParameter(v); err != nil {
+				return nil, nil, err
+			}
+			s.longArgs = append(s.longArgs, driver.NamedValue{Ordinal: len(s.longArgs) + 1, Value: v})
+			values[i].value = longPlaceholder{}
+		}
 	}
 	query, err := c.interpolatePlan(plan, values)
 	return initial, []byte(query), err
+}
+
+func (c *conn) queryMySQLLongOutputsLocked(ctx context.Context, query []byte, outputs *outputState) (_ *textRows, err error) {
+	owned := true
+	var prepared *stmt
+	defer func() {
+		if owned {
+			cleanup, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
+			defer cancel()
+			if prepared != nil {
+				err = errors.Join(err, prepared.closeLocked(cleanup))
+			}
+			err = errors.Join(err, outputs.finishLocked(cleanup, c, false))
+			c.unlock()
+		}
+	}()
+	text, err := charset.Decode(c.cfg.Session.Charset, query)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err = c.prepareServerLocked(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	params, err := c.cursorParametersLocked(ctx, prepared.plan, outputs.longArgs)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := wire.EncodeStmtExecute(prepared.id, params, c.cfg.Limits.MaxMessageBytes)
+	if err != nil {
+		return nil, err
+	}
+	values, err := bindArguments(prepared.plan, outputs.longArgs)
+	if err != nil {
+		return nil, err
+	}
+	if err = c.uploadLongDataLocked(ctx, prepared.id, values); err != nil {
+		return nil, err
+	}
+	owned = false
+	return c.queryCommandStateLocked(ctx, payload, true, prepared, false, outputs)
 }
 
 func (s *outputState) clearSQL() string {

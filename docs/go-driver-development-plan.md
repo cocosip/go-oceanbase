@@ -476,14 +476,14 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D08、D12、D15。对应：M07、M10；架构 §10.1、§13.4、§14.2。
 
-文件：新增 `long_data.go`、`long_data_test.go`；修改 stmt/bind；新增 `tests/integration/long_data_test.go`。
+文件：新增 `long_data.go`、`long_data_test.go`；修改 stmt/bind、wire 参数头、OUT/游标及共享 Rows 取消清理；新增 `tests/integration/long_data_test.go`。
 
-交付：显式长参数输入，Reader 的所有权/关闭规则在类型中固定；LONG_DATA/PIECE_DATA 按模式能力选择，长度未知时有总上限，不读取整个内容后再上传。
+交付：显式长参数输入，Reader 的所有权/关闭规则在类型中固定；LONG_DATA/PIECE_DATA 按模式能力选择，长度未知时有总上限，不读取整个内容后再上传。公开 *LongData 的 Length/MaxBytes/Text、借用 Reader 和一次消费规则见架构 §13.5；复用同一 gate，辅助上传失败淘汰连接，上传后 execute 前取消亦清理。普通 PrepareClient 明确拒绝，OUT 的必要原生路径保留。
 
-- [ ] 测试 `TestLongDataChunks`、`TestLongDataFailure`：空/未知长度、分块边界、Reader 报错/取消、部分写、限制超出；错误后没有 rewind/第二次执行。
-- [ ] 执行 `go test . -run 'TestLongData' -count=1`，确认失败。
-- [ ] 实现一次性长参数编码和失败资源清理；不把上传能力当作 MySQL 表内随机访问的替代。
-- [ ] 同命令通过；`TestLongParameters` 验证两模式大对象内容哈希及事务行为，无须日志输出对象内容。
+- [x] 测试 `TestLongDataChunks`、`TestLongDataFailure`：空/未知长度、分块边界、Reader 报错/取消、部分写、限制超出；错误后没有 rewind/第二次执行。
+- [x] 执行 `go test . -run 'TestLongData' -count=1`，确认失败。
+- [x] 实现一次性长参数编码和失败资源清理；不把上传能力当作 MySQL 表内随机访问的替代。
+- [x] 同命令通过；`TestLongParameters` 四目标源码覆盖两模式大对象内容哈希及提交/回滚，仅编译，真实语义待联调；无须日志输出对象内容。
 
 ### D22 批量、bulk、array binding 与改写策略
 

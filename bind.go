@@ -54,6 +54,8 @@ func bindArguments(plan bindPlan, args []driver.NamedValue) ([]boundValue, error
 
 func convertArgument(value any) (any, error) {
 	switch v := value.(type) {
+	case *LongData:
+		return v, v.validate()
 	case CursorOut:
 		return makeOutput(Out{Dest: v.Dest, Type: typeNameRefCursor})
 	case sql.Out:

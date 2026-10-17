@@ -13,6 +13,8 @@ import (
 
 func (c *conn) encodeParameterLocked(ctx context.Context, value any, limit int64) (wire.Parameter, error) {
 	switch v := value.(type) {
+	case *LongData:
+		return c.longDataParameter(v)
 	case Object:
 		return c.encodeComplexParameterLocked(ctx, v, v.Null, descriptorKey{c.session.mode, v.Schema, v.Type, v.Version}, limit)
 	case Array:

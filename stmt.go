@@ -268,6 +268,9 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	if err != nil {
 		return nil, err
 	}
+	if err = s.conn.uploadLongDataLocked(ctx, s.id, values); err != nil {
+		return nil, err
+	}
 	gateOwned = false
 	var owned *stmt
 	if auto {

@@ -143,6 +143,10 @@ func (c *conn) interpolatePlan(plan bindPlan, values []boundValue) (string, erro
 func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 	var s string
 	switch v := v.(type) {
+	case longPlaceholder:
+		return "?", nil
+	case *LongData:
+		return "", fmt.Errorf("%w: long data requires server preparation", ErrUnsupported)
 	case outputVariable:
 		if int64(len(v)) > limit {
 			return "", wire.ErrMessageTooLarge

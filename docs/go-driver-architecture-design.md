@@ -634,6 +634,28 @@ BatchResult 按输入索引返回影响行数或不可知状态；BatchError 标
 
 长数据 Reader 属于一次执行；报错后不自动 rewind 和重发。客户端改写需要完整词法验证，不把任意 INSERT 都当成可安全改写 SQL。[J09]
 
+### 13.5 一次性长参数（D21）
+
+公开入口使用 `*LongData`，直接作为标准 `ExecContext` / `QueryContext`、`Execute`、服务端 `Stmt` 或 `OpenCursor` 的 IN 参数；保留同一物理会话和事务。普通显式 PrepareClient 在读取 Reader 前返回 ErrUnsupported；OUT 本来就必须使用原生协议，混合长参数继续走该路径。
+
+```go
+input := &oceanbase.LongData{
+    Reader: file, Length: -1, MaxBytes: 256 << 20,
+}
+_, err := tx.ExecContext(ctx, "INSERT INTO files(id, content) VALUES (?, ?)", id, input)
+```
+
+- Reader 始终由调用方关闭；Length 是源字节精确长度，-1 表示到 EOF，0 要求空流。已知长度同样探测至多一个额外字节以发现超长；不足返回 io.ErrUnexpectedEOF，不截断冒充成功。
+- MaxBytes 为每个输入的源字节和转换后字节分别设上限；0 采用 Limits.MaxLOBBytes。显式增大允许流超过普通 LOB 物化上限；每块仍受 MaxMessageBytes 限制。Oracle hex 的协议膨胀不计入内容长度，每包仍受限。
+- Text=false 发送二进制；Text=true 接受 UTF-8，按 Session.Charset 增量转换，拒绝非法/不可表示字符，跨块保留不完整码点；不把 NCharset 字节混入普通文本流。目标 CLOB/NCLOB 的服务端类型转换仍须真实环境验证。
+- 首次开始上传即原子消费该对象；成功或中途失败均不能再次使用，也不复制、seek 或 rewind Reader。Oracle 同一具名参数的多个位置逐块分发同一数据，不再次读取来源；调用方重新构造对象不代表驱动拥有重放授权。
+- MySQL 使用 COM_STMT_SEND_LONG_DATA(24)，每段无响应；Oracle 已知版本 >=2.2.76 使用 COM_STMT_SEND_PIECE_DATA(162)，逐段读取 OK。Oracle 二进制先 hex，文本按会话字符集，execute 参数头为 STRING(254)；两种模式均省略 execute 中对应的值体。Oracle 的已知版本下限复用现有能力门禁，不把 Java 选项首次出现的驱动版本当作服务端最低版本。
+- 普通执行、向前/敏感游标、Oracle OUT 的预先 prepare + command161，以及 MySQL OUT 的会话变量 + 带流占位的服务端 CALL，均在同一 gate 内上传并执行。辅助 prepare/上传不冒充已执行业务语句的 Execution 结果。
+- Reader 报错、超限、非法字符、段响应错误、网络部分写或取消使上传连接失效，清除无法确认的服务端长数据；上传后、execute 发送前的取消也淘汰连接。Reader 错误保留 errors.Is，特殊 ErrBadConn 不向 database/sql 暴露为自动重试信号；没有第二次业务执行。
+- 不为任意阻塞 Reader 启动可遗留的后台读取协程。调用方需要让 Reader 在取消时返回，可通过自己的上下文/关闭机制实现；驱动不能代为关闭借用来源。LongData 的字段和 Reader 在执行期间不能被并发修改。
+
+源码依据为 Java 同一基线的 [二进制流](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBStreamParameter.java)、[字符流](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBReaderParameter.java)、[MySQL 长数据](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/StreamParameter.java) 及 [原生执行](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java)。当前使用有界块，不暴露 Java 分块大小开关，不整流物化；真实大小限制、空流存储语义、LOB 转换和代理行为仍待四目标联调。
+
 ## 14. LOB 和复杂类型的 Go 1.25 方案
 
 ### 14.1 普通值与连接句柄分开

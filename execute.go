@@ -121,6 +121,11 @@ func (c *conn) prepareArguments(ctx context.Context, query string, args []driver
 			return nil, err
 		}
 		args[i].Value = value
+		if v, ok := value.(*LongData); ok {
+			if _, err = c.longDataParameter(v); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if c.session.mode == ModeOracle {
 		plan, err := buildBindPlan(query, c.session.mode)

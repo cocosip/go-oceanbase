@@ -14,6 +14,8 @@ import (
 )
 
 type outputState struct {
+	temporary      bool
+	longArgs       []driver.NamedValue
 	parent         *stmt
 	complexColumns []wire.Column
 	complexRows    [][]byte
@@ -84,9 +86,35 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 		}
 	}
 	if c.session.mode == ModeOracle {
+		for _, value := range values {
+			if v, ok := value.value.(*LongData); ok {
+				if _, err = c.longDataParameter(v); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if longValues(values) && prepared == nil {
+			prepared, err = c.prepareServerLocked(ctx, plan.query)
+			if err != nil {
+				return nil, err
+			}
+			outputs.temporary = true
+			defer func() {
+				if owned {
+					cleanup, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
+					defer cancel()
+					_ = prepared.closeLocked(cleanup)
+				}
+			}()
+		}
 		payload, err := c.outputPrepareExecute(ctx, plan, values, prepared)
 		if err != nil {
 			return nil, err
+		}
+		if longValues(values) {
+			if err = c.uploadLongDataLocked(ctx, prepared.id, values); err != nil {
+				return nil, err
+			}
 		}
 		owned = false
 		return c.queryPrepareExecuteLocked(ctx, payload, plan, outputs, prepared)
@@ -101,6 +129,9 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 		return nil, errors.Join(err, outputs.finishLocked(cleanup, c, false))
 	}
 	owned = false
+	if len(outputs.longArgs) > 0 {
+		return c.queryMySQLLongOutputsLocked(ctx, queryBytes, outputs)
+	}
 	return c.queryCommandStateLocked(ctx, append([]byte{3}, queryBytes...), false, nil, false, outputs)
 }
 

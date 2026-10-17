@@ -40,7 +40,7 @@ func testTableBlobProfile(t *testing.T, p profile) {
 	db.SetMaxOpenConns(2)
 	defer func() { _ = db.Close() }()
 	table := fmt.Sprintf("OBGTB_%d", time.Now().UnixNano())
-	typ, empty, suffix := "LONGBLOB", "X''", " ENGINE=InnoDB"
+	typ, empty, suffix := integrationLongBlobType, "X''", integrationInnoDBSuffix
 	if p.mode == oceanbase.ModeOracle {
 		typ, empty, suffix = integrationBlobType, "EMPTY_BLOB()", ""
 	}
