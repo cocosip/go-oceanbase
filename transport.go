@@ -5,13 +5,16 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 const (
-	networkTCP      = "tcp"
-	networkUnix     = "unix"
-	networkPipe     = "pipe"
-	configAddrField = "Addr"
+	networkTCP          = "tcp"
+	networkUnix         = "unix"
+	networkPipe         = "pipe"
+	networkSharedMemory = "sharedmemory"
+	configAddrField     = "Addr"
 )
 
 func parseTransportDSN(cfg *Config, values url.Values) error {
@@ -46,13 +49,16 @@ func (cfg *Config) normalizeTransport() error {
 		cfg.Addr = addr
 		return err
 	}
-	if cfg.Network != networkUnix && cfg.Network != networkPipe {
+	if cfg.Network != networkUnix && cfg.Network != networkPipe && cfg.Network != networkSharedMemory {
 		return &ConfigError{Field: "Network"}
 	}
 	if cfg.Addr == "" || strings.ContainsRune(cfg.Addr, 0) {
 		return &ConfigError{Field: configAddrField}
 	}
 	if cfg.Network == networkPipe && !validPipeAddress(cfg.Addr) {
+		return &ConfigError{Field: configAddrField}
+	}
+	if cfg.Network == networkSharedMemory && !validSharedMemoryName(cfg.Addr) {
 		return &ConfigError{Field: configAddrField}
 	}
 	if len(cfg.Routing.Endpoints) != 0 || cfg.Discovery.Source != nil {
@@ -71,7 +77,21 @@ func dialTransport(ctx context.Context, network, addr string) (net.Conn, error) 
 	if network == networkPipe {
 		return dialNamedPipe(ctx, addr)
 	}
+	if network == networkSharedMemory {
+		return dialSharedMemory(ctx, addr)
+	}
 	return (&net.Dialer{}).DialContext(ctx, network, addr)
+}
+
+func validSharedMemoryName(name string) bool {
+	var base string
+	if strings.HasPrefix(name, `Local\`) {
+		base = strings.TrimPrefix(name, `Local\`)
+	} else {
+		base = strings.TrimPrefix(name, `Global\`)
+	}
+	return base != "" && utf8.ValidString(name) && len(utf16.Encode([]rune(name))) <= 220 &&
+		strings.TrimSpace(base) == base && !strings.ContainsAny(base, "\\\x00")
 }
 
 func validPipeAddress(addr string) bool {

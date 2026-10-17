@@ -588,7 +588,7 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 - [ ] 在协议明确的适配上实现；认证/传输依赖使用平台文件隔离，不让基础包强制加载本地库。维持 §3.1 的单向包依赖，平台认证算法不反向引用根包配置或 wire。
 - [ ] 同命令通过；按进度 §5.4 将每个算法及传输单列到目标平台和服务端组合，分别记录正向认证/收发、拒绝、切换和清理证据；全部必需条目满足后才验收，只有交叉编译不能标记该平台验收完成。
 
-D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory/OBProxy VC 继续实现；D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
+D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe/Shared Memory 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory 的无关联分配取消/软预算和单缓冲批量回退见 §9.0.5；OBProxy VC 继续取证/实现。D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
 
 ### D29 LOCAL INFILE 受控导入
 

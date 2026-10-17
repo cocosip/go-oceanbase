@@ -11,3 +11,7 @@ import (
 func dialNamedPipe(context.Context, string) (net.Conn, error) {
 	return nil, fmt.Errorf("%w: named pipe transport requires Windows", ErrUnsupported)
 }
+
+func dialSharedMemory(context.Context, string) (net.Conn, error) {
+	return nil, fmt.Errorf("%w: shared memory transport requires Windows", ErrUnsupported)
+}

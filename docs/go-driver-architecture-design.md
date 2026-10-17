@@ -303,7 +303,7 @@ const (
 
 建连顺序：选址 → Dial → 初始握手 → TLS → 认证 → 模式识别 → OB 能力协商 → 包流选择 → 会话初始化 → 基线快照。
 
-- 建连 context 和 ConnectTimeout 覆盖选址、外部凭据、TLS、认证与初始化的总预算，不能为每个候选地址重新取得一整份预算。
+- 建连 context 和 ConnectTimeout 覆盖选址、外部凭据、TLS、认证与初始化的总预算，不能为每个候选地址重新取得一整份预算；平台同步调用及 Shared Memory 无关联分配的软预算例外见 §9.0.1、§9.0.5。
 - 支持 TCP、Unix socket；Windows Named Pipe、Shared Memory、OBProxy VC 通过提供的 Go 平台适配及 `DialContext` 接口接入。平台专用实现使用 build tags，不让所有平台加载原生认证/传输依赖。
 - 标准包、压缩包和 OB20 复用命令编解码；OB20 自身维护 request ID、序号、扩展信息和校验。
 - 必须处理分包、重组、EOF/OK 终止差异、附加 OK、session tracking、OUT 响应与多结果。
@@ -319,7 +319,7 @@ IPC 是一个显式固定端点，拒绝与 Routing.Endpoints 或 Discovery 混�
 
 DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，tcp/默认网络禁止 socket。URL authority 不再是 IPC 拨号地址；database path 仍是数据库名。程序化 Config 直接指定 Network/Addr，无需伪造 TCP 主机。解析后再次传入 NewConnector 的配置保持可用。
 
-Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory、OBProxy VC 继续独立开发，不计入此处支持声明。
+Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory 的独立实现见 §9.0.5，OBProxy VC 继续开发。
 
 ### 9.0.2 D32 TCP 配置的 Go 原生承载
 
@@ -361,6 +361,20 @@ ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协�
 未知版本不启用 PrepareExecute、offset fetch 或版本受限的 SQL checksum；Oracle 原生 OUT/LOB 操作、敏感游标、流式长参数及 XA 按既有能力门禁返回 ErrUnsupported，普通 CRUD、标准预处理及事务继续使用原路径。MetadataServerInfo 是显式业务请求，仍执行其版本查询，不受初始化策略抑制。默认探测失败必须关闭连接并保留错误，不能自动降级成“跳过探测”；必要基线或 InitSQL 失败时同样不发布连接。
 
 Java connectProxy 默认 false，跳过部分 session 变量读取、ob_version 和 auto_increment_increment 探测；Go 无对应的隐式变量/自增步长读取，只映射实际存在的可选版本探测，不迁移一个含义模糊的 connectProxy 布尔字段，也不接受其 Java DSN 名称。此策略不保证某个代理接受其他必要基线 SQL，真实部署仍需验证；使用前应评估上述高级能力限制。
+
+### 9.0.5 D28 Windows Shared Memory
+
+`Config{Network: "sharedmemory", Addr: "MYSQL"}` 选择 Windows 原生命名事件/文件映射传输，DSN 为 `network=sharedmemory&socket=MYSQL`。Addr 是服务端对象基名，不是磁盘文件；可显式使用 `Local\` 或 `Global\` 前缀。仅允许一个命名空间前缀、非空 UTF-8 基名，无 NUL/反斜杠/首尾空白；总长最多220个 UTF-16 单元，为连接 ID 和事件后缀留空间。不展开环境变量；无前缀且本地 CONNECT_REQUEST 不存在时才尝试 Global 命名空间，权限错误不触发该回退。默认仍为 TCP，Java sharedMemory 名称不作为 DSN 别名。
+
+实现位于根包 Windows 平台文件，复用已有 x/sys/windows，不新增公开接口、包或依赖。非 Windows 的内置拨号明确返回 ErrUnsupported，自定义 DialContext 仍可承接相同 network/address。固定 IPC 端点、Routing/Discovery 排斥、显式 TLS ServerName 和所有认证门禁与 §9.0.1 相同；本地共享内存不能替代经过校验的 TLS。
+
+协议依据固定 Java [SharedMemorySocket](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/io/socket/SharedMemorySocket.java)：CONNECT_MUTEX 串行化 CONNECT_REQUEST/CONNECT_ANSWER 和4字节连接 ID 映射；随后打开该 ID 的五个事件和16004字节 DATA 区。ID 按有符号32位十进制形成对象名。Go 用固定 OS 线程持有/释放分配 mutex，不创建替代服务端映射、不扩大对象访问权限；mutex 仅申请 SYNCHRONIZE，CONNECT_DATA 为 FILE_MAP_READ，DATA 为 FILE_MAP_WRITE（提供可读写 view），兼容 Java 的最小 ACL。获得 ID 后优先取得 CONNECTION_CLOSED，后续打开失败或取消时通知服务端并释放本地资源。
+
+**分配阶段的取消是软预算。** 等待 CONNECT_MUTEX 和发请求前可及时取消；一旦已发 CONNECT_REQUEST，答案没有请求关联 ID，必须继续持锁等答案，取得 ID 后关闭这次分配的会话并返回原 context 错误。否则下一连接可能误领旧答案。此阶段不能保证 ConnectTimeout、AttemptTimeout 或调用 context 的严格墙钟上限；服务端永久不答会使本次拨号持续等待并占用一个 OS 线程，后来的有限时连接可在等待锁时超时退出。驱动不丢弃后台 worker、不重发未完成请求，也不发送取消后会话的数据库凭据。共用端点的其他客户端必须遵守相同命名 mutex 协议；无法保证与绕过该锁的旧客户端并发分配安全。
+
+DATA 的前4字节为 little endian 长度，payload 上限16000；不照搬 Java 将16004误作内容上限的越界路径。Read 先复制整块到 Go 缓冲再 ACK，支持调用方部分读取；零长度或超长原生块拒绝。Write 按上限分块，成功通知对端后计入 n，中途超时保留已通知前缀；最后一块不额外等 ACK，因此 Close 可能丢弃尚未消费的尾块，QUIT 不保证送达，不能据此认定 SQL 已回滚或未执行。单一数据区不能承载双向 pipeline，sharedmemory 的 BatchAuto/BatchMultiSend 在发包前回退 BatchSequential，返回实际策略；同一功能仍通过顺序执行完成。
+
+建成后的 Read/Write 支持动态提前、延后和清除 deadline，超时保留 os.ErrDeadlineExceeded/net.Error.Timeout。Close 先唤醒等待者，等待原生 wait/内存访问退出后才关闭 handle/unmap，避免在 Win32 等待期间关闭 handle；两方向调用分别串行化。没有为每次 I/O 创建 goroutine，也不轮询事件。本机测试覆盖两模式/三包流、初始化/Ping/QUIT、TLS 目标验证及拒绝、分块/部分读取、非法长度、动态 deadline/Close、分配前后取消/延迟答案、并发分配/负数 ID、部分打开失败及批量回退；这些不是实际服务端、对象 ACL 或混合客户端互操作验收。OBProxy VC 仍需独立原生 ABI 证据，D28 整项保持进行中。
 
 ### 9.1 已实现的包流与协商（D23）
 
@@ -1377,7 +1391,7 @@ Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER
 
 实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。D30 ChangeUser 已复用共享门禁和实例持有机制，见 §16.3.2。
 
-当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI 及 §9.0.1 的 Unix/Named Pipe；Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI、§9.0.1 的 Unix/Named Pipe 及 §9.0.5 的 Windows Shared Memory；OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 
 ### 17.2.1 D32 TLS 配置的 Go 原生承载
 

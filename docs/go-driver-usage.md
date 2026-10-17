@@ -31,6 +31,8 @@ cfg.Logger = logger
 
 应用设置 `db.SetMaxOpenConns`、`SetMaxIdleConns`、`SetConnMaxLifetime` 等标准池参数。每次调用传入业务 `context`，不要用共享的无限期 context 替代调用超时。连接失效或提交失败时，应先判断业务状态，不能无条件重放非幂等写入。
 
+Windows Shared Memory 使用 `Config{Network: "sharedmemory", Addr: "MYSQL"}` 或 DSN `network=sharedmemory&socket=MYSQL`，Addr 为服务端对象基名，可带 Local/Global 命名空间前缀；不与多地址/发现混用、不回退 TCP。TLS 必须显式配置证书 ServerName；共享内存不获得明文认证豁免。**分配请求发出后需持锁等待无关联 ID 的答案，取消/建连超时为软预算，服务端不答可持续阻塞该拨号**；建成后的 I/O 支持 deadline/Close。批量 Auto/MultiSend 回退顺序，尾块 Close 不保证送达。完整资源及互操作限制见[架构 §9.0.5](go-driver-architecture-design.md#905-d28-windows-shared-memory)，真实服务尚未验收。
+
 如需独立限制网络读取等待，可设置 `Config.ReadTimeout = 5 * time.Second` 或 DSN `readTimeout=5s`；默认0关闭，两种兼容模式都适用。它按每次底层 Read 重新计时，context 的较早期限仍生效；持续收到数据的长结果仍需业务 context 限制总时长。超时会关闭连接并保留网络错误（errors.As 到 net.Error 检查 Timeout），不自动重放已写出的业务。详见[架构 §12.5.1](go-driver-architecture-design.md#1251-d32-已实现的网络读取超时)。
 
 ## 2. TLS 与认证配置
@@ -168,7 +170,7 @@ go test -run '^Example' .
 
 本地性能采样使用不联网的协议对端，见[本地基准](go-driver-benchmarks.md)；普通单测会检查同一组操作与结果。
 
-尚未闭环：Shared Memory/VC 平台适配、全部 Java 配置的行为/默认差异核对、真实数据库完整基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
+尚未闭环：VC 平台适配、Shared Memory 等平台能力的真实服务验收、全部 Java 配置的行为/默认差异核对、真实数据库完整基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
 
 手动集成入口 `TestCreateDatabaseSessions` 的 MySQL 两个 profile 另需 `OB_MYSQL_CREATE_DATABASE_DSN` / `OBPROXY_MYSQL_CREATE_DATABASE_DSN` 专用凭据，允许创建/删除临时数据库、查询 information_schema.SCHEMATA 并读写其中的表。用例生成随机名称，确认不存在后创建，验证新建/既有库和 InitSQL，再关闭业务会话并尝试删除；权限不足、清理失败必须报告。`OB_TEST_REQUIRE=1` 时缺少 fixture 直接失败。该用例本阶段仅编译，未连接数据库。
 

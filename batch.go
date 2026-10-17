@@ -146,7 +146,8 @@ type batchExec func(context.Context, []any, *batchAttempt) (sql.Result, error)
 
 func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Result, error) {
 	var prepareErr error
-	if batchMultiCandidate(request) && c.cfg.PrepareMode == PrepareServer {
+	// Shared memory has one data area for both directions; pipelining can overwrite responses.
+	if c.cfg.Network != networkSharedMemory && batchMultiCandidate(request) && c.cfg.PrepareMode == PrepareServer {
 		if err := c.lock(ctx); err != nil {
 			return nil, err
 		}

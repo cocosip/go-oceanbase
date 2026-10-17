@@ -13,3 +13,9 @@ func TestPlatformTransportUnsupportedPipe(t *testing.T) {
 		t.Fatal("native pipe on non-Windows", err)
 	}
 }
+
+func TestPlatformTransportUnsupportedSharedMemory(t *testing.T) {
+	if raw, err := dialTransport(context.Background(), networkSharedMemory, testSharedMemoryName); raw != nil || !errors.Is(err, ErrUnsupported) {
+		t.Fatal("native shared memory on non-Windows", err)
+	}
+}

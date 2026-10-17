@@ -77,7 +77,7 @@ TestReadTimeoutSessions 四目标要求显式只读慢 SQL fixture，验证独�
 
 七项 Java 配置（tcpNoDelay、tcpAbortiveClose、localSocketAddress、tcpKeepAlive、tcpRcvBuf、tcpSndBuf、socketFactory）对应现有 DialContext 与标准 net.Dialer/net.TCPConn，不添加重复驱动配置；默认值和错误/资源归属见架构 §9.0.2。可编译 ExampleConfig_tcpOptions 及 TestTCPDialContext* 覆盖本地原生 TCP、源地址、选中入口、协议收发、认证门禁、取消、关闭与 Java DSN 参数拒绝。显式 abortive close 不保证 QUIT 送达或服务端 SQL 回滚；内置默认关闭。
 
-这里只证明应用可通过同一驱动入口使用标准 TCP 能力；远端 OS 调优、真实探测/缓冲数值、网络中间件与数据库部署未验收。不改变 Shared Memory/VC 等 D28 缺口，也不以 API 映射计作整个 D32 完成。
+这里只证明应用可通过同一驱动入口使用标准 TCP 能力；远端 OS 调优、真实探测/缓冲数值、网络中间件与数据库部署未验收。不改变 VC 等 D28 缺口及 Shared Memory 真实服务验收状态，也不以 API 映射计作整个 D32 完成。
 
 ### 1.7 D32 TLS 原生配置
 
@@ -101,7 +101,7 @@ TestMetadataCatalog 已补真实来源检查源码，仅编译；允许未提供
 
 既有 DialContext 直接接入 x/net/proxy.ContextDialer，保持标准连接池与 TLS/认证门禁；本地真实 TCP SOCKS 对端覆盖两模式/三包流、远端域名、匿名/用户名密码、拒绝和畸形响应、取消/总预算/关闭、候选切换、TLS 目标身份与未验证目标零数据库凭据。示例只编译，普通单测不连接外部代理或数据库；代理认证不提供加密或数据库身份保证，细节见架构 §9.0.3。
 
-真实代理的 DNS、身份/网络策略、负载及数据库组合未验收。两项 Java 配置已映射；connectProxy 的初始化策略另见 §1.11，平台 Shared Memory/VC 仍待完成，实现28/32、验收0/32保持。
+真实代理的 DNS、身份/网络策略、负载及数据库组合未验收。两项 Java 配置已映射；connectProxy 的初始化策略另见 §1.11，Shared Memory 本机实现见 §19，VC 仍待完成，实现28/32、验收0/32保持。
 
 ### 1.11 D32 版本探测策略
 
@@ -325,7 +325,8 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | TCP | 标准 net.Dialer、多地址/发现和既有 TLS/模式/命令流程 | Windows 本地测试；真实两模式/代理和 Linux 待验证 |
 | Unix socket | Config.Network=unix，Go/OS 提供 AF_UNIX；固定 Addr，TLS 时显式 ServerName | 本机 Windows socket 协议收发/关闭、超时和门禁已测；Linux/真实服务 socket 待验证 |
 | Named Pipe | Config.Network=pipe；Windows go-winio overlapped I/O；暂时不存在按配置重试，权限错误不重试；非 Windows 内置拨号明确不支持 | 本机 Windows 管道协议收发/关闭、重试和门禁；远端同步 CreateFile 无严格 context 中断保证，见架构 §9.0.1；远程权限及真实服务待验证 |
-| Shared Memory/VC | 按原生事件/映射协议及 VC ABI 独立适配 | 待开发/平台运行，整项 D28 未完成 |
+| Shared Memory | Config.Network=sharedmemory / Addr 基名；Windows 原生事件/映射；分配请求发出后取消为软预算；批量不启用 pipeline | 本机两模式/三包流、TLS/明文门禁、原生边界/清理/并发已测；服务端永久不答可阻塞分配，实际服务/ACL/混合客户端仍待验证，见架构 §9.0.5 |
+| OBProxy VC | 按实际 native ABI 独立适配 | 待取证/开发/平台运行，整项 D28 未完成 |
 
 ## 20. D29 LOCAL INFILE
 
