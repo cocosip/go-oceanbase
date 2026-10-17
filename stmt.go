@@ -20,6 +20,7 @@ type stmt struct {
 	automatic               bool
 	cacheNoBackslash        bool
 	lastTypes, pendingTypes []wire.Parameter
+	epoch                   *resourceEpoch
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
@@ -104,7 +105,7 @@ func (c *conn) prepareServerLocked(ctx context.Context, query string) (*stmt, er
 	} else if int(header.Parameters) != len(plan.slots) {
 		return nil, r.fail(fmt.Errorf("%w: server parameter count", ErrBind), true)
 	}
-	prepared := &stmt{conn: c, id: header.ID, plan: plan, parameters: parameters}
+	prepared := &stmt{conn: c, id: header.ID, plan: plan, parameters: parameters, epoch: c.statementEpoch}
 	err = ctx.Err()
 	r.release()
 	if err == nil {
@@ -159,6 +160,17 @@ func (c *conn) readMetadata(ctx context.Context, count int, budget *int64, valid
 }
 
 func (s *stmt) NumInput() int { return s.plan.numInput }
+
+func (s *stmt) checkOpenLocked() error {
+	if s.epoch != s.conn.statementEpoch {
+		return ErrResource
+	}
+	if s.closed || s.closeRequested {
+		return fmt.Errorf("oceanbase: statement closed")
+	}
+	return nil
+}
+
 func (s *stmt) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.conn.cfg.Limits.CleanupTimeout)
 	defer cancel()
@@ -170,6 +182,10 @@ func (s *stmt) Close() error {
 	return s.closeLocked(ctx)
 }
 func (s *stmt) closeLocked(ctx context.Context) error {
+	if s.epoch != s.conn.statementEpoch {
+		s.closed, s.closeRequested = true, true
+		return nil // The server may already have reused the old statement ID for the new identity.
+	}
 	s.closeRequested = true
 	if s.leases != 0 {
 		return nil
@@ -238,8 +254,8 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 		}
 	}()
 	s.conn.clearDescriptors()
-	if s.closed || s.closeRequested {
-		return nil, fmt.Errorf("oceanbase: statement closed")
+	if err := s.checkOpenLocked(); err != nil {
+		return nil, err
 	}
 	if s.conn.closed.Load() {
 		return nil, driver.ErrBadConn

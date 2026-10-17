@@ -174,6 +174,17 @@ func EncodeHandshakeResponse(h HandshakeResponse) ([]byte, error) {
 	return data, nil
 }
 
+// EncodeChangeUser encodes OceanBase's COM_CHANGE_USER dialect, matching Connector/J:
+// it always includes the database terminator and omits the generic MySQL charset field.
+func EncodeChangeUser(h HandshakeResponse) ([]byte, error) {
+	h.Capabilities |= ClientConnectWithDB
+	data, err := EncodeHandshakeResponse(h)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte{17}, data[32:]...), nil
+}
+
 // DecodeOK parses an OK packet according to the negotiated client capabilities.
 func DecodeOK(data []byte, capabilities uint64) (OK, error) {
 	r := decoder{data: data}

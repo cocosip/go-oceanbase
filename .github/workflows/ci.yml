@@ -96,6 +96,10 @@ jobs:
       OB_ORACLE_DSN: ${{ secrets.OB_ORACLE_DSN }}
       OBPROXY_MYSQL_DSN: ${{ secrets.OBPROXY_MYSQL_DSN }}
       OBPROXY_ORACLE_DSN: ${{ secrets.OBPROXY_ORACLE_DSN }}
+      OB_MYSQL_CHANGE_USER_DSN: ${{ secrets.OB_MYSQL_CHANGE_USER_DSN }}
+      OB_ORACLE_CHANGE_USER_DSN: ${{ secrets.OB_ORACLE_CHANGE_USER_DSN }}
+      OBPROXY_MYSQL_CHANGE_USER_DSN: ${{ secrets.OBPROXY_MYSQL_CHANGE_USER_DSN }}
+      OBPROXY_ORACLE_CHANGE_USER_DSN: ${{ secrets.OBPROXY_ORACLE_CHANGE_USER_DSN }}
       OB_MYSQL_LOCAL_IMPORT_SQL: ${{ secrets.OB_MYSQL_LOCAL_IMPORT_SQL }}
       OB_ORACLE_LOCAL_IMPORT_SQL: ${{ secrets.OB_ORACLE_LOCAL_IMPORT_SQL }}
       OBPROXY_MYSQL_LOCAL_IMPORT_SQL: ${{ secrets.OBPROXY_MYSQL_LOCAL_IMPORT_SQL }}
@@ -126,4 +130,4 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations)$' -count=1
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|ChangeUserSessions)$' -count=1

@@ -258,6 +258,9 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | 客户端信息/会话变量 | 三个 ClientInfo 字段映射会话用户变量；系统变量标识符校验、值转义、保留 SQL NULL；编码/时区 setter 保留给 Config.Session | 两模式与代理的变量 SQL、可写性和值域待联调 |
 | 修改后的池隔离 | 活动事务/autocommit 关闭时拒绝；发送修改后不可归还原池，原 pinned 连接可继续使用；所有 setter 发送前清理自动预处理/类型描述缓存 | 物理断连及新借用者无状态泄漏的真实目标验证尚未执行 |
 | warning 数量 | OK/EOF 的 WarningSummary、Execute 每项 ResultInfo.Warnings；不依赖日志，helper/Ping/内部清理不覆盖业务快照 | 详情码/消息/SQLSTATE 尚未实现；非零 warning 的真实 SQL 及 Oracle 详情查询契约待取证 |
-| ChangeUser/显式取消 | 设计契约保留 | 尚未实现，不由以上辅助函数冒充 |
+| ChangeUser | 同连接 COM_CHANGE_USER；重新认证/基线/同模式，身份代次失效 server/client statement 与固定资源，失败关闭，成功关闭时退出原池 | 两模式、插件切换/门禁、取消、真实 TLS 及压缩/OB20 本地测试；四目标 TestChangeUserSessions 源码只编译，真实身份/权限/代理待验证 |
+| 显式取消 | 设计契约保留 | 尚未实现 |
 
-TestSessionOperations 四目标源码已加入手动 CI，本阶段只编译、不连接数据库。D30 仍为进行中；实现总数保持28/32，验收0/32。API 和状态生命周期见架构 §16.3.1。
+TestSessionOperations 和 TestChangeUserSessions 四目标源码已加入手动 CI，本阶段只编译、不连接数据库。D30 仍为进行中；实现总数保持28/32，验收0/32。API 和状态生命周期见架构 §16.3.1。
+
+ChangeUser 集成输入：OB_MYSQL_CHANGE_USER_DSN、OB_ORACLE_CHANGE_USER_DSN、OBPROXY_MYSQL_CHANGE_USER_DSN、OBPROXY_ORACLE_CHANGE_USER_DSN；必须为对应原服务上的另一个身份。强制验收时缺失失败，普通跳过不计通过。行为边界见架构 §16.3.2。

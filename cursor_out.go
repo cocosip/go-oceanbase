@@ -156,7 +156,7 @@ func (c *conn) materializeRefCursorLocked(ctx, iterationCtx context.Context, id 
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
 		defer cancel()
-		err = errors.Join(err, (&stmt{conn: c, id: uint32(id)}).closeLocked(cleanup))
+		err = errors.Join(err, (&stmt{conn: c, id: uint32(id), epoch: c.statementEpoch}).closeLocked(cleanup))
 	}()
 	cur := &cursorResource{refID: uint32(id)}
 	set := lobRowset{}

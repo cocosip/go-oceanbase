@@ -149,7 +149,7 @@ func (r *textRows) prepareExecuteMetadata(ctx context.Context, data []byte, plan
 		return header, 0, err
 	}
 	if prepared == nil {
-		r.autoStmt = &stmt{conn: r.conn, id: header.ID}
+		r.autoStmt = &stmt{conn: r.conn, id: header.ID, epoch: r.conn.statementEpoch}
 	} else if prepared.id == 0 {
 		prepared.id = header.ID
 	} else if header.ID != prepared.id {

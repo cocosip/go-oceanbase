@@ -22,6 +22,7 @@ type clientStmt struct {
 	conn   *conn
 	query  string
 	closed atomic.Bool
+	epoch  *resourceEpoch
 }
 
 func (c *conn) prepareClient(ctx context.Context, query string) (driver.Stmt, error) {
@@ -38,7 +39,7 @@ func (c *conn) prepareClient(ctx context.Context, query string) (driver.Stmt, er
 	if _, err := buildBindPlanEscapes(query, c.session.mode, c.session.ok.Status&512 != 0); err != nil {
 		return nil, err
 	}
-	return &clientStmt{conn: c, query: query}, nil
+	return &clientStmt{conn: c, query: query, epoch: c.statementEpoch}, nil
 }
 
 func (s *clientStmt) Close() error { s.closed.Store(true); return nil }
@@ -76,6 +77,10 @@ func (s *clientStmt) queryRows(ctx context.Context, args []driver.NamedValue) (*
 	if s.closed.Load() {
 		c.unlock()
 		return nil, fmt.Errorf("oceanbase: statement closed")
+	}
+	if s.epoch != c.statementEpoch {
+		c.unlock()
+		return nil, ErrResource
 	}
 	if hasOutputArguments(args) {
 		return c.queryOutputsLocked(ctx, s.query, args, nil)

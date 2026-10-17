@@ -998,9 +998,26 @@ func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
 - SessionVariable 只接受 ASCII 系统变量标识符，保留 SQL NULL；SetSessionVariable 的值是字符串，实际变量可写性/值域由服务端校验。time_zone、ncharacter_set_connection、character_set_*、collation_* 由 Config.Session 管理，运行时 setter 拒绝修改，防止解码配置与服务端状态不一致。两模式实际 SQL 支持仍需联调。
 - setter 只在无托管/服务端事务且 autocommit 开启时执行。发送修改前标记物理会话不可归还原池，成功或完整服务端错误后仍可在原 pinned 连接继续使用，关闭 sql.Conn 后淘汰；校验失败不标记。所有 setter 在发送前清理自动预处理缓存及类型描述缓存，覆盖 sql_mode 等解析语义变更；调用方显式持有的 sql.Stmt 仍遵循服务端原生绑定语义。此策略以重建连接代替不完整的变量恢复，不更改其他普通 SQL 的既有 reset 契约。
 - WarningSummary{Count uint16, Known bool} 保存协议 OK/EOF 数量；Known=false 表示尚无完整响应提供计数。Warnings 只读取最新普通 SQL 命令的最近完整结果快照，新的 SQL 清空并替换它，Ping/本节 helper/内部清理不覆盖；归还池后 reset 清空。Execute 的每项 ResultInfo.Warnings 独立保存各完整结果的数量，未完成结果保持未知。成功带 warning 仍是成功，nil logger 不影响快照。
-- 当前只公开数量，不编造警告码、SQLSTATE、消息或 Oracle SHOW WARNINGS 支持。warning 详情、ChangeUser、显式 CancelQuery 仍是 D30 未完成项；本节不能作为整项完成依据。
+- 当前只公开数量，不编造警告码、SQLSTATE、消息或 Oracle SHOW WARNINGS 支持。warning 详情和显式 CancelQuery 仍是 D30 未完成项，ChangeUser 实现见 §16.3.2；本节不能作为整项完成依据。
 
 实现继续使用根包现有的封闭请求、操作锁、Rows/错误状态机和 wire 叶包，无新增包或依赖。四目标集成源码 TestSessionOperations 已提供，本阶段仅编译，尚未验证真实模式、代理或版本。
+
+### 16.3.2 D30 ChangeUser 与会话身份代次
+
+```go
+func ChangeUser(ctx context.Context, conn *sql.Conn, credentials Credentials, database string) error
+```
+
+ChangeUser 在原物理连接、原 TLS 与原标准/压缩/OB20 包流上重新认证，不拨号、不重放业务、不修改原 Connector。调用方传入本次凭据与确切数据库名；空数据库表示 MySQL 不选择数据库，Oracle 使用新用户名的 @ 前部分作为默认 schema（没有 @ 时使用完整用户名）。不自动折叠显式名称大小写，用户名和数据库严格按连接字符集编码；服务端校验权限/名称。旧 Config.Credentials 回调不参与显式切换，切换凭据密码不保存在连接配置中。
+
+- 必须先消费/关闭 Rows，串行使用固定 sql.Conn。活动托管事务、服务端事务或 autocommit 关闭时拒绝切换；不会隐式提交或回滚业务事务。
+- 复用 D28 的插件工厂、初始/多轮/切换认证、密码编码、每轮 TLS 门禁及 io.Closer 生命周期。会话保留最终协商插件和 nonce，下一次切换创建新插件实例；不复用已完成的插件状态。认证全过程仍受调用 context 和 ConnectTimeout 中较早的期限限制，回调和平台同步调用仍须配合取消。
+- wire 使用 OceanBase Connector/J 的 COM_CHANGE_USER 布局：命令17、用户名终止串、按能力编码的认证数据、始终存在的数据库终止串，以及已协商的插件/连接属性；与通用 MySQL 布局不同，不附加两字节 charset。[源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L195)
+- 本地校验/认证响应准备通过后，先在旧身份下清理固定资源及自动预处理缓存，再发送切换。发送切换前更新 statement 身份代次并将物理会话标记为不可回原池。旧显式 server/client statement、LOB 和 Cursor 不能跨代次使用；旧 statement.Close 只关闭本地对象，不向新会话发送可能已被复用的旧 ID。
+- 服务端成功后，兼容模式必须保持原模式；重建 Config.Session 的字符集、autocommit、版本、时区、变量和 InitSQL 基线，并清空旧类型/自动 statement 缓存及 warning 快照。初始化共用持锁内核，不通过 database/sql 重入，也不重新协商已启用包流。
+- 发送切换后认证拒绝、超时/取消、畸形响应、模式变化、插件关闭错误或初始化失败，一律淘汰物理会话；成功时原 pinned 连接继续可用，sql.Conn.Close 时退出原池。原连接池之后重新建连仍使用原 Connector 身份。本地校验或初始 TLS 门禁拒绝不更改身份。
+
+TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing 提供本地协议与真实 TLS 对端证据；TestChangeUserSessions 四目标源码检查实际身份、旧 statement 失效及原池身份隔离。集成测试需各 profile 的 CHANGE_USER_DSN 提供同服务上的另一个合法身份，仅使用其用户名/密码/数据库，TLS 和认证策略继承原连接；本阶段仅编译，未连接数据库。真实插件、LOB/游标清理、代理、权限及版本组合仍待联调。
 
 ## 17. 选址、HA、认证与导入
 

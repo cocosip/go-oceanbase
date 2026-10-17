@@ -99,17 +99,19 @@ type AuthOptions struct {
 }
 
 type handshakeSession struct {
-	conn         net.Conn
-	raw          net.Conn
-	packets      *wire.PacketIO
-	hello        wire.Handshake
-	ok           wire.OK
-	mode         Mode
-	capabilities uint64
-	tlsVerified  bool
-	user         string
-	obVersion    string
-	newMetadata  bool
+	conn          net.Conn
+	raw           net.Conn
+	packets       *wire.PacketIO
+	hello         wire.Handshake
+	ok            wire.OK
+	mode          Mode
+	capabilities  uint64
+	tlsVerified   bool
+	user          string
+	obVersion     string
+	newMetadata   bool
+	authPlugin    string
+	authChallenge []byte
 }
 
 func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *handshakeSession, err error) {
@@ -413,6 +415,7 @@ func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSessio
 			if s.mode == ModeOracle && c.cfg.RowsAffectedMode == ChangedRows {
 				return &ConfigError{Field: "RowsAffectedMode"}
 			}
+			s.authPlugin, s.authChallenge = name, slices.Clone(challenge.Nonce)
 			return nil
 		case 0xff:
 			return decodeServerError(data)

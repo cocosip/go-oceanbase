@@ -88,6 +88,8 @@ func diagnosticOperation(command byte) string {
 		return "query"
 	case 14:
 		return "ping"
+	case 17:
+		return "change-user"
 	case 22:
 		return "prepare"
 	case 23:

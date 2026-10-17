@@ -97,7 +97,7 @@ func (c *conn) prepareAutomatic(ctx context.Context, query string, combined bool
 		if planErr != nil {
 			return nil, planErr
 		}
-		return &stmt{conn: c, plan: plan, automatic: true}, nil
+		return &stmt{conn: c, plan: plan, automatic: true, epoch: c.statementEpoch}, nil
 	}
 	s, err = c.prepareServerLocked(ctx, query)
 	if s != nil {

@@ -33,7 +33,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		return c.queryText(ctx, query)
 	}
 	if c.cfg.PrepareMode == PrepareClient {
-		return (&clientStmt{conn: c, query: query}).queryRows(ctx, args)
+		return (&clientStmt{conn: c, query: query, epoch: c.statementEpoch}).queryRows(ctx, args)
 	}
 	prepared, err := c.prepareArguments(ctx, query, args)
 	if err != nil {
@@ -47,6 +47,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(changeUserRequest); ok {
+			return c.execChangeUser(ctx, request)
+		}
 		if request, ok := args[0].Value.(*sessionOperationRequest); ok {
 			return c.execSessionOperation(ctx, request)
 		}
@@ -90,7 +93,7 @@ func (c *conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	}
 	if len(args) > 0 {
 		if c.cfg.PrepareMode == PrepareClient {
-			return (&clientStmt{conn: c, query: query}).ExecContext(ctx, args)
+			return (&clientStmt{conn: c, query: query, epoch: c.statementEpoch}).ExecContext(ctx, args)
 		}
 		prepared, err := c.prepareArguments(ctx, query, args)
 		if err != nil {

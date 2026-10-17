@@ -57,6 +57,14 @@ func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
 }
 
 func (c *conn) initialize(ctx context.Context) error {
+	if err := c.lock(ctx); err != nil {
+		return err
+	}
+	defer c.unlock()
+	return c.initializeLocked(ctx)
+}
+
+func (c *conn) initializeLocked(ctx context.Context) error {
 	charset := strings.ToLower(c.cfg.Session.Charset)
 	if charset == charsetUTF8MB3Alias {
 		charset = charsetUTF8
@@ -153,7 +161,11 @@ func (c *conn) readOceanBaseVersion(ctx context.Context) error {
 	if c.session.mode == ModeOracle {
 		query += " FROM dual"
 	}
-	rows, err := c.queryText(ctx, query)
+	encoded, err := c.encodeSQL(query)
+	if err != nil {
+		return err
+	}
+	rows, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, encoded...), false, nil, true)
 	if err != nil {
 		return err
 	}
@@ -182,7 +194,11 @@ func (c *conn) readOceanBaseVersion(ctx context.Context) error {
 }
 
 func (c *conn) initSQL(ctx context.Context, query string) error {
-	rows, err := c.queryText(ctx, query)
+	encoded, err := c.encodeSQL(query)
+	if err != nil {
+		return err
+	}
+	rows, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, encoded...), false, nil, true)
 	if err != nil {
 		return err
 	}

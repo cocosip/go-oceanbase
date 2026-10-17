@@ -618,7 +618,9 @@ D29 本地实现：`Import` + 一次性 `LocalInfile`，精确名称 Reader/授�
 - [ ] 用封闭函数而非任意私有指令接口公开；ChangeUser 重走认证门禁并重建基线，KILL 成功不表示原查询未执行。
 - [ ] 同命令通过；`TestSessionOperations` 验证身份、警告、辅助通道 TLS 和池隔离；缺权限返回明确错误。
 
-D30 首批实现：session_ops.go 提供固定 sql.Conn 的 schema/catalog、客户端信息/变量，setter 拒绝活动事务并使物理会话关闭时淘汰，防止状态泄漏；缓存清理、实际模式转义/编码和封闭请求复用既有内核。Warnings 与 ResultInfo.Warnings 先提供独立于 logger 的 OK/EOF 数量快照，详情尚未实现；ChangeUser 和 CancelQuery 也未实现，故以上整项清单保持未勾选。TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 是本地测试；四目标集成同名源码只验证本批辅助函数及数量快照，后续仍需扩展身份切换、非零 warning 详情、取消与辅助通道 TLS。D28 尚未闭环的 Shared Memory/VC 不影响本批已支持连接上的辅助函数，不视为完成 D28 或 D30。
+D30 首批实现：session_ops.go 提供固定 sql.Conn 的 schema/catalog、客户端信息/变量，setter 拒绝活动事务并使物理会话关闭时淘汰，防止状态泄漏；缓存清理、实际模式转义/编码和封闭请求复用既有内核。Warnings 与 ResultInfo.Warnings 先提供独立于 logger 的 OK/EOF 数量快照，详情尚未实现；ChangeUser 已补，CancelQuery 尚未实现，故以上整项清单保持未勾选。TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 是本地测试；四目标集成同名源码只验证本批辅助函数及数量快照，TestChangeUserSessions 已补身份切换集成源码，后续仍需非零 warning 详情、取消与辅助通道 TLS。D28 尚未闭环的 Shared Memory/VC 不影响本批已支持连接上的辅助函数，不视为完成 D28 或 D30。
+
+D30 ChangeUser 子项：新增 change_user.go 与协议/TLS/分帧/生命周期测试，显式凭据和数据库、同连接重新认证、同模式约束、共用持锁初始化、server/client statement 身份代次与固定资源失效均已实现。旧 statement.Close 不发送可能复用的 ID，发送后失败关闭连接、成功关闭时退出原池；不修改 Connector 或调用旧凭据提供方。四目标 TestChangeUserSessions 源码和 CI 已补，尚未连接数据库；warning 详情和 CancelQuery 未完成，整项继续进行。详见架构 §16.3.2。
 
 ### D31 XA 分支、状态与恢复
 

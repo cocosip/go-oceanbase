@@ -73,7 +73,7 @@ func (c *conn) registerResourceLocked(session Session, parent *stmt) (*resourceH
 	if transaction != (c.activeTx != nil) {
 		return nil, ErrResource
 	}
-	if parent != nil && (parent.conn != c || parent.closed || parent.closeRequested) {
+	if parent != nil && (parent.conn != c || parent.closed || parent.closeRequested || parent.epoch != c.statementEpoch) {
 		return nil, ErrResource
 	}
 	if c.resources.records == nil {
@@ -137,7 +137,7 @@ func (c *conn) releaseResourceLocked(ctx context.Context, id *resourceEpoch, rec
 	delete(c.resources.records, id)
 	var err error
 	if record.cursor != nil && record.cursor.refID != 0 {
-		err = (&stmt{conn: c, id: record.cursor.refID}).closeLocked(ctx)
+		err = (&stmt{conn: c, id: record.cursor.refID, epoch: c.statementEpoch}).closeLocked(ctx)
 	}
 	if record.lob != nil {
 		err = c.freeLOBLocked(ctx, record.lob)

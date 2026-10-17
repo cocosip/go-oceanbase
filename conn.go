@@ -24,6 +24,7 @@ type conn struct {
 	lastUsed        time.Time      // guarded by mu; last completed operation, including Rows consumption
 	sessionDirty    bool           // guarded by mu; helper mutations cannot return to the original pool
 	lastWarnings    WarningSummary // guarded by mu; ordinary SQL only
+	statementEpoch  *resourceEpoch // guarded by mu; explicit statements cannot cross identity changes
 }
 
 func (c *conn) Close() error {
