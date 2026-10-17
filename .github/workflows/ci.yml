@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [master, main, develop]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -17,82 +18,218 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   test:
+    name: Test (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ['1.25.x', '1.26.x']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Show toolchain
+        run: go version
+      - name: Download dependencies
+        run: go mod download
+      - name: Verify dependencies
+        run: go mod verify
+      - name: Build packages and examples
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Compile integration tests without a database
+        run: go test -tags=integration ./tests/integration -run '^$' -timeout 1m
+      - name: Unit tests with race and coverage
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./... -count=1 -timeout 5m
+      - name: Upload coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.os }}-go${{ matrix.go }}
+          path: coverage.out
+          if-no-files-found: warn
+          retention-days: 14
+
+  lint:
+    name: Lint (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         go: ['1.25.x', '1.26.x']
-    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-          cache: false
-      - run: go version
-      - run: go list -deps ./...
-      - run: go test ./... -count=1
-      - run: go vet ./...
-      - name: Prepare system GSSAPI and native ABI fixture
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgssapi-krb5-2 gcc
-      - name: Check system GSSAPI credential failure and native ABI
-        if: runner.os == 'Linux'
-        run: go test -tags=gssapi,gssapitest ./... -count=1
-        env:
-          OB_TEST_GSS_REQUIRE: '1'
-      - name: Check embedded OBProxy ABI and Unix transport without a database
-        if: runner.os == 'Linux'
-        run: go test -tags=obproxy,obproxytest ./... -count=1
-      - run: go test -race ./... -count=1
-        if: runner.os == 'Linux'
+          cache: true
+      - name: Check formatting and module files
+        if: runner.os == 'Linux' && matrix.go == '1.25.x'
+        shell: bash
+        run: |
+          files=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+          if [ -n "$files" ]; then
+            printf 'Run gofmt on:\n%s\n' "$files"
+            exit 1
+          fi
+          go mod tidy -diff
+      - name: Check GitHub Actions workflows
+        if: runner.os == 'Linux' && matrix.go == '1.25.x'
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
-      - name: Lint embedded OBProxy adapter and ABI fixtures
-        if: runner.os == 'Linux'
-        run: golangci-lint run --build-tags=obproxy,obproxytest ./...
+          args: --timeout=10m
+      - name: Lint integration test sources without a database
+        run: golangci-lint run --build-tags=integration ./...
 
-  protocol-boundaries:
+  native-platform:
+    name: Native ABI (Linux, Go ${{ matrix.go }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
+      fail-fast: false
       matrix:
         go: ['1.25.x', '1.26.x']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-          cache: false
-      - run: go test ./... -count=1
+          cache: true
+      - name: Prepare system GSSAPI and native ABI fixtures
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgssapi-krb5-2 gcc
+      - name: Check system GSSAPI credential failure and native ABI
+        run: go test -tags=gssapi,gssapitest ./... -count=1 -timeout 5m
+        env:
+          OB_TEST_GSS_REQUIRE: '1'
+      - name: Check embedded OBProxy ABI and Unix transport without a database
+        run: go test -tags=obproxy,obproxytest ./... -count=1 -timeout 5m
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          args: --build-tags=gssapi,gssapitest,obproxy,obproxytest --timeout=10m
+
+  protocol-boundaries:
+    name: 386 boundaries (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.25.x', '1.26.x']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Run 32-bit boundary tests
+        run: go test ./... -count=1 -timeout 5m
         env:
           GOARCH: '386'
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzFrames -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzFullTrace -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzHandshake -fuzztime 30s -parallel 2
-      - run: go test ./internal/auth -run '^$' -fuzz FuzzAuthPlugins -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzText -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz '^FuzzStmt$' -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz '^FuzzStmtArray$' -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzPrepareExecute -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzLOBLocator -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzBindPlan -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzClientPrepare -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzJDBCEscapes -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzScalars -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzMetadataFilters -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzCursorPosition -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzComplex -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzBlobIdentifiers -fuzztime 30s -parallel 2
-      - run: go test . -run '^$' -fuzz FuzzLongTextBoundary -fuzztime 30s -parallel 2
-      - run: go test ./internal/charset -run '^$' -fuzz FuzzCharset -fuzztime 30s -parallel 2
-      - run: go test ./internal/routing -run '^$' -fuzz FuzzAddressParsing -fuzztime 30s -parallel 2
-      - run: go test ./internal/routing -run '^$' -fuzz FuzzTNSParser -fuzztime 30s -parallel 2
+          CGO_ENABLED: '0'
+
+  fuzz:
+    name: Fuzz (${{ matrix.group }}, Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.25.x', '1.26.x']
+        group: [framing-auth, prepared-values, sql-bind, resources-routing]
+        include:
+          - group: framing-auth
+            targets: >-
+              ./internal/wire:FuzzPacket ./internal/wire:FuzzFrames
+              ./internal/wire:FuzzFullTrace ./internal/wire:FuzzHandshake
+              ./internal/auth:FuzzAuthPlugins
+          - group: prepared-values
+            targets: >-
+              ./internal/wire:FuzzText ./internal/wire:FuzzStmt
+              ./internal/wire:FuzzStmtArray ./internal/wire:FuzzPrepareExecute
+              ./internal/wire:FuzzLOBLocator .:FuzzScalars
+          - group: sql-bind
+            targets: >-
+              .:FuzzBindPlan .:FuzzClientPrepare .:FuzzJDBCEscapes
+              .:FuzzMetadataFilters .:FuzzCursorPosition
+          - group: resources-routing
+            targets: >-
+              .:FuzzComplex .:FuzzBlobIdentifiers .:FuzzLongTextBoundary
+              ./internal/charset:FuzzCharset
+              ./internal/routing:FuzzAddressParsing ./internal/routing:FuzzTNSParser
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Fuzz each target for 30 seconds
+        shell: bash
+        env:
+          FUZZ_TARGETS: ${{ matrix.targets }}
+        run: |
+          for target in $FUZZ_TARGETS; do
+            package=${target%:*}
+            name=${target##*:}
+            go test "$package" -run '^$' -fuzz "^${name}$" -fuzztime 30s -parallel 2 -timeout 2m 2>&1 | tee -a fuzz-results.txt
+          done
+      - name: Upload fuzz logs and regression corpus
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-${{ matrix.group }}-go${{ matrix.go }}
+          path: |
+            fuzz-results.txt
+            **/testdata/fuzz/**
+          retention-days: 14
+
+  benchmark:
+    name: Benchmark (Go ${{ matrix.go }})
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.25.x', '1.26.x']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - name: Run protocol-peer benchmarks without a database
+        shell: bash
+        run: go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m | tee benchmark-results.txt
+      - name: Upload benchmark results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-go${{ matrix.go }}
+          path: benchmark-results.txt
+          retention-days: 30
 
   stability:
+    name: Stability (${{ matrix.os }}, Go ${{ matrix.go }})
+    timeout-minutes: 20
     if: github.event_name == 'workflow_dispatch' && inputs.stability
     strategy:
       fail-fast: false
@@ -101,16 +238,18 @@ jobs:
         go: ['1.25.x', '1.26.x']
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-          cache: false
+          cache: true
       - run: go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
         env:
           OB_TEST_STABILITY_ITERATIONS: '4096'
 
   integration:
+    name: Integration (${{ matrix.profile }}, Go ${{ matrix.go }})
+    timeout-minutes: 30
     if: github.event_name == 'workflow_dispatch' && inputs.integration
     runs-on: ubuntu-latest
     strategy:
@@ -178,9 +317,9 @@ jobs:
       OBPROXY_ORACLE_DISCOVERY_TENANT: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_TENANT }}
       OBPROXY_ORACLE_DISCOVERY_ROLE: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_ROLE }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-          cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|BatchRewriteExecution|BatchArrayBindingExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|ReadTimeoutSessions|VersionProbeSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1
+          cache: true
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|BatchRewriteExecution|BatchArrayBindingExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|ReadTimeoutSessions|VersionProbeSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1 -timeout 20m

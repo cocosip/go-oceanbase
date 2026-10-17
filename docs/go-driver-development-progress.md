@@ -686,6 +686,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 补 TestAddressAffinityWeights：两个输入顺序各4096次采样，确认9:1权重产生明确偏好、仍有低权重候选且每次无重复；此宽阈值健全性测试不是服务吞吐或严格概率验收。用 Go overlay 临时模拟初始化错误可重试和选择器忽略权重，两个新回归分别按预期失败；实际生产代码未改变，恢复原源码的目标与全包测试通过。
 - 只读走查指出的候选次数、归还后池状态与四项固定源码链接证据缺口已修复：初始化允许两候选，超时先关闭 statement/固定连接后检查 Idle/OpenConnections，160项固定链接均完整。最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮、普通/integration 标签 lint 各0 issues，以及集成仅编译通过；实际 Go1.25 Windows/386 新目标通过。精确 FuzzStmt 选择器两版本各30秒通过，分别584170/904984次执行；文档/链接/选项/计数、CI YAML/目标及格式/diff 检查通过。未连接数据库，Linux/远程 CI/成功 race 尚未验证。
 
+#### D01/D32 GitHub Actions 优化
+
+- 参考 go-dicom 的三平台测试、独立 lint、安全扫描和依赖更新结构，保留本项目 Go1.25/1.26 下限与完整协议门禁。test 矩阵扩展 Linux/Windows/macOS，构建示例、vet、只编译 integration 源码，并执行 race/atomic coverage；双版本 Linux/Windows lint 独立运行，包含 integration 标签。Linux 另查 gofmt、go mod tidy -diff 与 actionlint。
+- 22个 fuzz 目标与源码枚举核对，每个版本分4组并行，每个目标完整名称匹配且运行30秒；保留双版本 Linux/386 实际测试，以及独立的 GSSAPI 系统拒绝/ABI、OBProxy 宿主/Unix 夹具及组合标签 lint。开启 Go 缓存，添加作业超时、自动运行并发取消，手动 CI 不自动取消；覆盖率、fuzz 日志/语料和本地对端基准分别保存 artifact。基准只在 PR/手动运行，不以共享 runner 时延设置硬阈值。
+- integration/stability 仍仅手动显式开启，数据库 secrets、四类 profile、OB_TEST_REQUIRE=1 和原有集成用例选择器保持；自动检查不读取数据库凭据。新增 CodeQL 的 push/PR/每周/手动入口，扫描权限限于该作业；Dependabot 每周检查 Actions 和 Go modules，更新仍受双版本检查约束。工作流详情见 README 的 GitHub Actions 段落。
+- 本地 Go1.25.0/1.26.0 Windows amd64 构建、全包 atomic coverage 测试、vet、integration 仅编译、go mod verify 与 go mod tidy -diff 通过；根包覆盖率84.5%，wire90.1%，其余内部包81.4%–88.5%，不设置未经约定的覆盖率阈值。两版本普通及 integration 标签 golangci-lint2.14.0 各0 issues；actionlint1.7.12、YAML/矩阵与22目标完整性、原集成凭据/选择器保持和文档结构检查通过。直接取工作流 Bash 脚本执行12种成功/首项失败/末项失败自检，确认参数精确且 tee 不吞错误、失败不继续后续目标；此处使用命令桩，只验证调度与失败传播，不替代30秒 fuzz。两版本实际执行 CI 同款 `go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m` 通过，仅为 Windows 本地协议对端结果。独立只读走查无确认问题，不保存独立报告。远程 Actions、Linux/macOS 运行、成功 race、CodeQL 结果及数据库联调仍未取证，不能据此关闭 D28/D32 或提高验收计数。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
