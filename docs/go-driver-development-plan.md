@@ -497,7 +497,7 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 - [x] 测试 `TestBatchResults`、`TestBatchAtomicity`：中间失败/后项状态、计数未知、OUT、分块限制；自动提交下不把可部分成功任务改成单语句整体失败；断线不重发已发送项。
 - [x] 执行 `go test . -run 'TestBatch' -count=1`，确认失败。
 - [x] 逐项路径与受限 multi-send 已实现；原生 Conn/Tx 一次标准库锁定、DB 全批次固定会话。无等价性证据时回退逐项，不改变已有 Tx 或隐式提交；清理错误保留确认成功，取消不丢失先前 SQL 错误。
-- [x] 同命令通过；`TestBatchStrategies`、`TestBatchTxBoundary` 及 wire `TestPipelineWritesAhead` 对比内容、顺序、错误、事务和真实提前发包。bulk/array/改写当前回退逐项，证据与未启用条件见架构 §13.4；`TestBatchExecution` 四目标源码仅编译，真实服务器支持/等价性待验证。
+- [x] 同命令通过；`TestBatchStrategies`、`TestBatchTxBoundary` 及 wire `TestPipelineWritesAhead` 对比内容、顺序、错误、事务和真实提前发包。BatchRewrite 已补受限 MySQL 多语句执行、显式权限及逐块服务端开关门禁；多 VALUES/bulk/array 和不满足条件的请求回退逐项，见架构 §13.4。`TestBatchExecution` / `TestBatchRewriteExecution` 四目标源码仅编译，真实服务器支持/等价性待验证。
 
 ### D23 压缩、OB20、新元数据与校验
 

@@ -252,7 +252,7 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 状态和计数 | 输入顺序，NotExecuted/Succeeded/Failed/Unknown、Started、已知/未知行数；失败不承诺零副作用 | 中间失败/后项、uint64 计数溢出、确认成功后清理错误本地通过 |
 | multi-send | Auto/MultiSend + ContinueOnError + server prepare + 简单 DML/标量；独立命令并发写/按序读，按行/物理参数位/总字节分块 | 提前发包、双向背压、16MiB 续包、错误和事务测试通过；服务器/代理缓冲行为待联调 |
 | 保守回退 | 默认遇错停止、OUT、一次性长参数、复杂值及自定义 Valuer 采用逐项；复用现有协议和输出规则 | 流一次消费、标量 OUT、全部六种策略偏好本地通过；句柄输出仍限 Execute |
-| 改写/bulk/array binding | 偏好已接入，实际均回退逐项；Java bulk 不支持说明、array 特殊错误计数及改写副作用不足以证明等价性 | 回退已验证，三类原生优化未启用；服务端版本/等价性证据待取 |
+| 改写/bulk/array binding | BatchRewrite 支持受限 MySQL 多语句改写：显式多语句权限、遇错停止、逐块确认服务端合并优化关闭；其余及多 VALUES/bulk/array 逐项，见架构 §13.4 | 改写和拒绝/回退已本地验证；TestBatchRewriteExecution 四目标仅编译，真实语义/性能待验收 |
 | 不确定性与取消 | 不重放；保留确认项，只将可能已发出且未确认的项标 Unknown；淘汰损坏连接并等待写协程；保留 SQL/context/清理错误链 | 单次拨号、部分发送、损坏/额外结果、Tx/操作取消及最终响应后取消本地通过 |
 
 具体接口、默认值及 Java 源码证据见架构 §13.4。`TestBatchExecution` 与手动 CI 四目标入口已加入，本阶段仅编译，不连接数据库，不计入验收。

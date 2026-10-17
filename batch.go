@@ -35,7 +35,7 @@ type BatchOptions struct {
 	ChunkParameters int
 }
 
-// BatchStatus distinguishes unsent, acknowledged and uncertain operations.
+// BatchStatus distinguishes unexecuted, acknowledged and uncertain operations.
 type BatchStatus uint8
 
 // Batch item outcomes never imply that the caller's transaction has committed.
@@ -48,6 +48,7 @@ const (
 )
 
 // BatchItem describes one input row; Started includes a possibly partial business-command write.
+// A rewritten command can be sent but leave later items NotExecuted after a server error.
 type BatchItem struct {
 	Status            BatchStatus
 	Started           bool
@@ -145,6 +146,9 @@ type batchAttempt struct {
 type batchExec func(context.Context, []any, *batchAttempt) (sql.Result, error)
 
 func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Result, error) {
+	if handled, err := c.tryBatchRewrite(ctx, request); handled {
+		return result{}, err
+	}
 	var prepareErr error
 	// Shared memory has one data area for both directions; pipelining can overwrite responses.
 	if c.cfg.Network != networkSharedMemory && batchMultiCandidate(request) && c.cfg.PrepareMode == PrepareServer {
@@ -162,7 +166,7 @@ func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Resu
 		}
 		c.unlock()
 	}
-	// shortcut: rewrite/bulk/array stay sequential until equivalent per-item effects are verified.
+	// shortcut: bulk/array and unsafe rewrites stay sequential until per-item effects are verified.
 	err := runBatchSequential(ctx, request.rows, request.options, request.result, func(ctx context.Context, args []any, attempt *batchAttempt) (sql.Result, error) {
 		attempt.native = true
 		if prepareErr != nil {

@@ -653,6 +653,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 两版本 Linux/amd64、arm64 的 obproxy 与 obproxy,obproxytest 构建及根包测试交叉编译、Darwin/amd64 默认构建/测试交叉编译通过，均 CGO_ENABLED=0；只代表编译。两版本 integration 仅编译、go mod tidy -diff 无差异；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项固定 Java 选项、32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。Linux CI 增加宿主/ABI 夹具测试与标签 lint，远程结果尚未取得。
 - 未连接数据库；真实 Linux 库/信号/生命周期、数据库互操作、远程 CI、成功 race 仍未运行，D28 整项和 D30/D31 平台依赖保持未闭环；实现28/32、验收0/32不变。
 
+#### D22/D32 受限批量多语句改写
+
+- 显式 BatchRewrite 在 MySQL 兼容模式、遇错停止、允许且实际协商多语句时，以独立 INSERT/UPDATE/DELETE/REPLACE 合并请求；复用现有标量和客户端字面量编码。每个合并块前读取同会话 ob_enable_batched_multi_statement，仅明确关闭才合并；不修改服务端开关。Oracle、继续执行策略和其他不满足条件的请求仍逐项；多 VALUES、bulk、array binding 未启用，契约见架构 §13.4。
+- 按行数、参数位、结果项和编码后消息字节分块，换行分隔语句以结束尾部注释；探测后重新验证 SQL mode 和绑定边界。本地非法后项先等待有效前缀执行，不能遮蔽更早的服务器错误。严格匹配逐项 OK/ERR 和 MORE_RESULTS；保留确认成功，已提交但未确认项标 Unknown 并淘汰连接，不重放、不引入事务边界；完整 ERR 确认跳过的同命令尾项为 NotExecuted/Started=true。
+- 固定 Connector/J 分号拼接实现和固定 OceanBase ObMPQuery 的遇错停止/服务端聚合开关已取证并链接到架构；不将该源码证据推广为任意历史服务器或代理的验收。增加外部 slog 示例、TestBatchRewriteExecution 四目标源码及手动 CI 选择器，集成仅编译，未连接数据库。
+- TestBatchRewrite* 覆盖标准/压缩/OB20、分块/字节限制、计数溢出、有效前缀与本地错误顺序、门禁回退、断线/损坏/额外或缺失响应、尾部注释/字面量、GBK、事务及取消。首次执行路径、探测后的 SQL mode 边界变化、完整服务器 ERR 与取消错误链均已验证失败后修复通过；两版本目标测试各20次通过。独立只读走查未发现已确认的严重问题，不保存独立报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Go1.25 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译、go mod tidy -diff 无差异。两版本 Linux/amd64、Darwin/amd64 的 CGO_ENABLED=0 全包构建及根包测试交叉编译通过，仅代表编译。八文档及 README 的链接/锚点/UTF-8/围栏/无机器路径、160项选项集合、32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。真实服务器/OBProxy 的逐项等价性、开关权限及吞吐，Linux/Darwin 实际运行、远程 CI 和成功 race 尚未验证；实现28/32、验收0/32不变，D28/D32 其余范围及 D30/D31 平台依赖继续保留。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

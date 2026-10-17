@@ -119,7 +119,7 @@ return tx.Commit()
 | 元数据 | `Metadata` | 返回标准 Rows，查询结束要关闭；列名与筛选契约见架构和源码注释 |
 | XA | `XAStart`、`XAEnd`、`XAPrepare`、`XACommit`、`XARollback` | 整个分支使用固定连接，不混用 sql.Tx 或裸 COMMIT；持久协调器由应用负责 |
 
-`ExecBatch` 保留输入顺序、实际 `Strategy`、每项 `Status/Started`。`BatchFailed` 不保证没有副作用，`BatchUnknown` 不能自动重试；当前 rewrite/bulk/array binding 回退逐项，不应宣称原生优化已完成。批量成功同样不表示调用方事务已提交。
+`ExecBatch` 保留输入顺序、实际 `Strategy`、每项 `Status/Started`。`BatchFailed` 不保证没有副作用，`BatchUnknown` 不能自动重试；显式 BatchRewrite 在 MySQL 兼容模式、允许并协商多语句、遇错停止且逐块确认服务端合并优化关闭时，以独立 DML 合并请求；其他条件及 bulk/array binding 回退逐项。用法见根包 ExampleExecBatch_rewrite；详细门禁和 Started=true/NotExecuted 含义见架构 §13.4。批量成功同样不表示调用方事务已提交。
 
 `Execute` 的命令结果不伪装成行集；`ResultInfo` 的计数只有在对应 `Known` 为真时才可使用。Oracle 匿名块不合成内部每条 DML 的独立计数。读取异常、关闭异常和 `Snapshot.Err` 均需要处理。
 

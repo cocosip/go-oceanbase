@@ -16,7 +16,11 @@ func batchMultiCandidate(request batchRequest) bool {
 	if !request.options.ContinueOnError || len(request.rows) < 2 || request.options.Strategy != BatchAuto && request.options.Strategy != BatchMultiSend {
 		return false
 	}
-	for _, row := range request.rows {
+	return batchScalarRows(request.rows)
+}
+
+func batchScalarRows(rows [][]any) bool {
+	for _, row := range rows {
 		for _, value := range row {
 			if named, ok := value.(sql.NamedArg); ok {
 				value = named.Value
