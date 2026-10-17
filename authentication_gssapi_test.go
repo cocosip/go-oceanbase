@@ -32,3 +32,23 @@ func TestAuthPluginGSSOptions(t *testing.T) {
 		}
 	}
 }
+
+type gssStepProbe struct{ calls int }
+
+func (p *gssStepProbe) Step([]byte) ([]byte, bool, error) {
+	p.calls++
+	return []byte("must-not-send"), false, nil
+}
+func (*gssStepProbe) Close() error { return nil }
+
+func TestAuthPluginGSSCanceledBeforeNativeStep(t *testing.T) {
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &resourceCancelAtCheckContext{Context: base, cancel: cancel}
+	probe := &gssStepProbe{}
+	plugin := &gssAuth{native: probe}
+	out, err := plugin.Respond(ctx, Credentials{}, AuthChallenge{More: true, Data: []byte{0x60, 1}})
+	if !errors.Is(err, context.Canceled) || out != nil || probe.calls != 0 {
+		t.Fatal("native step started after cancellation", out, probe.calls, err)
+	}
+}

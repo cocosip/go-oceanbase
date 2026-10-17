@@ -77,7 +77,7 @@
 | D25 | 诊断、profiling、FLT | D11、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D25，架构 §18.3.1 |
 | D26 | 静态多地址、负载、故障切换 | D06、D09 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D26、架构 §17.1.1 |
 | D27 | TNS/OCP/拓扑发现 | D26 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D27、架构 §17.1.2 |
-| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | old/Ed25519/PAM、Windows SSPI、Unix/Named Pipe 已补；其余继续 |
+| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | old/Ed25519/PAM、SSPI/Unix GSSAPI、Unix/Named Pipe 已补；其余继续 |
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 未开始 | 未验证 | 无 | — |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 未开始 | 未验证 | 无 | — |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 未开始 | 未验证 | 无 | — |
@@ -466,12 +466,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 - 首批代码：old password、client_ed25519、PAM dialog，Auth.PasswordCharset、DSN allowOldPassword/passwordCharset，以及实例 io.Closer 生命周期。内置算法留在 internal/auth；根包负责 TLS、模式、编码和会话，未新增包或循环依赖。Ed25519 使用纯 Go filippo.io/edwards25519 v1.1.0；不手写曲线算法、不加载本地动态库。
 - TestAuthPluginLifecycle/TypedNil、Algorithms、ExtendedHandshake/LegacySwitch/OldPasswordPolicy、PAM/Gate/Fallback/Failure/UnverifiedHandshake、PasswordCharset/OptionsDSN 覆盖实例清理、关闭错误、初始/切换、二进制末尾零、弱算法禁止、回答取消/NUL/错误提示及自定义传输统一门禁。FuzzAuthPlugins 覆盖算法及 PAM 提示。未连接数据库；真实服务插件和平台组合仍待联调。
-- Unix GSSAPI、Shared Memory/OBProxy VC 仍需开发；Windows Kerberos 的真实域票据及其余服务组合待验证；公开 ChangeUser 归 D30。D28 保持进行中，实现完成仍27/32，验收0/32；不以部分子项代替完整任务。
+- Shared Memory/OBProxy VC 仍需开发；Unix GSSAPI 的系统库运行/真实票据、Windows Kerberos 的真实域票据及其余服务组合待验证；公开 ChangeUser 归 D30。D28 保持进行中，实现完成仍27/32，验收0/32；不以部分子项代替完整任务。
 - 首批本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包测试及 integration 源码编译通过；AuthPlugin 两版本各10次通过，普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。FuzzAuthPlugins 各30秒通过，1180142 / 629696次。独立走查发现 PAM 切换重复剥离终止符，回归先失败后修复通过；无其他遗留已确认问题。Linux/远程 CI/成功 race 和真实服务认证仍无新证据。
 - 后续传输子项：Config.Network 和 DSN network/socket、Unix 标准库拨号、Windows Named Pipe build tags/go-winio 已实现；IPC 单端点、显式 TLS ServerName、不回退 TCP、保留统一取消/明文门禁。TestPlatformTransport 覆盖本机原生 socket/管道的协议收发、配置/DSN 和解析配置再建 Connector、超时/关闭及默认明文拒绝；Shared Memory 的原生事件/映射和分配取消继续取证，VC 的 native ABI 仍需核对。
 - 传输子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、各10次 PlatformTransport、实际 Windows/386 全包测试及 integration 源码编译通过；普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues，go mod tidy -diff 无差异。Go1.25 Linux/amd64 全包构建和根包测试源码交叉编译通过，仅编译不代表运行。独立走查发现缺失管道未进入配置重试，原生缺失后恢复回归先失败后修复通过；最终复核无其他已确认问题。远端 UNC 的同步 CreateFile 不能由 context 严格中断，已在架构 §9.0.1 记录；真实服务、远端权限、Linux 运行和成功 race 仍待验证。
-- GSS 子项：新增可选 AuthConversation，建立上下文前完整保留原始令牌首字节与切换种子末尾零；nil 不发包、非 nil 空切片发送空包，上下文完成后仍须最终 OK。各轮保留 TLS/context 门禁及实例清理。Auth.ServicePrincipalName/DSN servicePrincipalName 已接入校验。Windows 使用当前进程身份和原生 SSPI，Kerberos 检查实际 mutual-auth 标志，NTLM/Negotiate 每轮要求驱动验证 TLS；非 Windows 内置提供器明确返回不支持，Unix GSS 继续开发。
+- GSS 子项：新增可选 AuthConversation，建立上下文前完整保留原始令牌首字节与切换种子末尾零；nil 不发包、非 nil 空切片发送空包，上下文完成后仍须最终 OK。各轮保留 TLS/context 门禁及实例清理。Auth.ServicePrincipalName/DSN servicePrincipalName 已接入校验。Windows 使用当前进程身份和原生 SSPI，Kerberos 检查实际 mutual-auth 标志，NTLM/Negotiate 每轮要求驱动验证 TLS；Unix 提供方的后续实现及启用条件见下文。
 - GSS 子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、GSS/Conversation 各10次、实际 Windows/386 全包测试及 integration 源码编译通过；普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。Go1.25 Linux/amd64 全包构建和根包测试源码交叉编译通过，go mod tidy -diff 无差异。FuzzAuthPlugins 扩展种子解析，各30秒通过846952 / 841195次。受限进程因 SEC_E_NO_CREDENTIALS 跳过原生身份用例；在当前用户身份下已实际通过原生 NTLM 令牌和经验证 TLS 的完整 SSPI 握手，并完成双版本/386 检查。原始令牌/切换终止符回归先失败后修复通过，独立走查无遗留已确认重要问题。Windows 域 Kerberos/Negotiate、真实数据库、Linux 运行和成功 race 仍未验证；SSPI 同步系统调用的 context 时限边界见架构 §17.2.1。
+- Unix GSS 子项：Linux amd64/arm64/386、macOS amd64/arm64 的内置提供方已实现，通过 -tags=gssapi 显式启用；purego v0.11.1 调用固定系统库，保持无强制 cgo/头文件构建。启用后需原生加载器/C 运行库；默认构建不导入 purego，保留静态部署能力。每次从默认缓存取得 Kerberos initiator 凭据，导入固定 SPN 并校验实际 mutual 标志；不读数据库密码、不修改进程环境、不请求委派。RFC2744 缓冲区/OID/集合的 ABI 宽度、续轮上下文和内存固定/复制/释放、错误返回仍带句柄及幂等关闭均有测试；当前 Windows amd64 实际编译和运行独立 C ABI 对端，不能据此声称 Linux/macOS 的系统库已运行。公开配置和包依赖方向不变。
+- CI 已为 Linux 加入 -tags=gssapi,gssapitest 的全量测试，包括系统 GSSAPI 无凭据失败及原生 ABI 检查，OB_TEST_GSS_REQUIRE=1 禁止以缺库跳过该 CI 检查；测试专用 gssapitest 标签需要 C 编译器，普通驱动构建/测试无需。真实 Unix 票据双向交换、系统库/平台运行和远程 CI 结果继续待取证；Shared Memory/VC 继续开发，D28 保持进行中。
+- Unix GSS 子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包测试、GSS 定向各10次、独立 C ABI 各3次及 integration 源码编译通过；普通/integration/gssapitest 的 Windows lint 与 gssapi,gssapitest 的 Linux lint 两版本均0 issues。两个工具链分别完成 Linux amd64/arm64/386、macOS amd64/arm64 的启用标签构建和 ABI 测试源码交叉编译，仅代表编译证据。默认 Linux CGO_ENABLED=0 根包测试 ELF 均无 PT_INTERP/PT_DYNAMIC，默认依赖图不含 purego，启用标签后包含。native Step 前取消的回归先失败再通过；独立走查无遗留已确认重要问题。go mod tidy -diff 无差异；未连接数据库，Unix 系统库运行、真实票据、远程 CI 和成功 race 仍未验证。实现27/32、验收0/32不变。
 
 ## 6. 待取证条件与推进方式
 

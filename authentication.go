@@ -94,6 +94,7 @@ type AuthOptions struct {
 	PasswordCharset string
 	// ServicePrincipalName overrides the GSSAPI server SPN. Native providers use
 	// the process identity or credential cache; Credentials.Password is not used.
+	// Unix system GSSAPI requires the gssapi build tag.
 	ServicePrincipalName string
 }
 

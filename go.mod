@@ -10,3 +10,5 @@ require (
 	github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e
 	golang.org/x/sys v0.38.0
 )
+
+require github.com/ebitengine/purego v0.11.1

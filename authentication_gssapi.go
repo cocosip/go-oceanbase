@@ -51,6 +51,9 @@ func (p *gssAuth) Respond(ctx context.Context, _ Credentials, c AuthChallenge) (
 		}
 		token = c.Data
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	response, complete, err := p.native.Step(token)
 	if err != nil {
 		return nil, err

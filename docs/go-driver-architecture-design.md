@@ -1128,11 +1128,15 @@ Kerberos 请求双向认证，并检查 SSPI 最终实际返回的 mutual 标志
 
 多轮原始 token 插件可选择实现 `AuthConversation`（AuthPlugin 加 Complete() bool）。在 Complete 为 false 时，完整服务器包（包括 0/1/fe/ff 首字节）交给 Respond；仍逐轮执行 Security 门禁，最多32轮，不把 token 误作 OK、auth-more、切换或 ERR。Complete 为 true 后仅接受最终 OK/ERR；nil 续轮输出不发包，非 nil 空切片显式发空包。初始握手响应仍按协议包含认证字段。自定义工厂的认证策略、复制挑战与 io.Closer 契约继续适用。
 
-本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取正向证据。真实域 Kerberos、Negotiate/服务端组合仍待验证；Unix 原生 GSSAPI/凭据缓存适配继续开发，目前内置提供方明确返回 ErrUnsupported，不以可注册自定义工厂替代其完成状态。SSPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。
+Unix 提供方通过 `-tags=gssapi` 显式启用，在 Linux amd64/arm64/386、macOS amd64/arm64 使用系统 GSSAPI，机制限定为与 Java 标准路径一致的 Kerberos。采用 `github.com/ebitengine/purego v0.11.1` 调用 RFC2744 的名称、凭据、上下文和缓冲区 API；构建无需 C 编译器或 GSS 头文件，启用后运行环境须提供原生动态加载器和 C 运行库，GSS 系统库在使用时按固定名称加载。默认构建不导入 purego，保留 CGO_ENABLED=0 的静态部署能力。Linux 尝试 MIT 的 libgssapi_krb5.so.2、Heimdal 的 libgssapi.so.3/libgssapi.so；macOS 使用系统 GSS.framework；不接受服务端提供的库路径。未启用标签、未安装 GSS 系统库、缺失符号及未适配平台明确返回 ErrUnsupported，缺少票据/凭据作为认证错误返回。Windows 构建仍默认使用 SSPI。
+
+Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER_NAME 导入 SPN，指定 Kerberos OID 和 MUTUAL 标志；不使用数据库密码，不设置进程环境、不写票据、不请求委派。KRB5_CONFIG/KRB5CCNAME 等由部署环境在启动前配置；身份隔离由独立进程/凭据缓存负责，不能用每连接 os.Setenv 切换身份。原始令牌上限16MiB，输入内存只在原生调用期间固定，输出复制后立即释放；即使原生调用报错仍清理已返回的句柄与缓冲区。最终检查实际 mutual 标志；关闭依次删除上下文、释放凭据/名称及系统库引用，删除上下文不发送额外网络令牌。
+
+本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取正向证据。Unix 状态/清理单测和独立 C 库 ABI 用例已有 Windows amd64 本机运行证据；Linux/macOS 系统 GSSAPI 的运行及真实票据双向交换仍待验证，交叉编译不替代运行。SSPI/GSSAPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。GSS 状态错误仅报告操作和 major/minor 状态码，不拼接可能含身份、路径或票据细节的系统错误字符串。
 
 实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。共享门禁和实例持有机制供后续 D30 ChangeUser 复用；公开切用户能力尚未实现。
 
-当前 D28 已落地上述认证子项、Windows SSPI 及 §9.0.1 的 Unix/Named Pipe；Unix GSSAPI、Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI 及 §9.0.1 的 Unix/Named Pipe；Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 
 ### 17.3 LOCAL INFILE
 
