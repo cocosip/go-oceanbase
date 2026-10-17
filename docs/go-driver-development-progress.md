@@ -778,6 +778,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 沙箱内 SEC_E_NO_CREDENTIALS 仍明确 skip；使用当前 Windows 身份运行正向目标，并解析测试事件拒绝任何 skip。Go1.25.0/1.26.0 Windows amd64 原生初始 token、原握手与新目标各25轮通过；新目标合计200条完整会话、600次原生 NTLM 交换。Go1.25 Windows/386 三个原生目标实际通过。Go overlay 临时忽略 AuthConversation 分支、遗漏 raw.Close，两种故障分别在全部4场景被检出；原源码恢复后的最终双版本全包 test/vet、integration 仅编译和普通/integration 标签 golangci-lint 均通过且各0 issues。
 - 独立只读走查无确认问题，不另存报告；架构/计划/兼容矩阵同步标准包流范围，文档/链接/160配置、32任务/28实现/0验收和Go格式/diff检查通过。本地 NTLM 与TCP关闭证据不证明原生资源无泄漏；域 Kerberos/Negotiate、真实 Linux VC、Linux/macOS 系统库、远程 CI、成功 race 及真实数据库仍未验证，D28/D30/D31/D32和计数保持。
 
+#### D32 逐项配置证据与固定标量语义
+
+- 配置映射160行新增归类和具体 Test/Example 源文件链接，区分 Go 配置、标准库、显式 API、固定语义、安全拒绝、应用责任、平台适配和不适用；补充证据解释，明确 Example 无 Output 时只编译、Java store 转换/诊断由应用管理、Windows 宿主 ABI 不证明真实 Linux VC，链接齐全不等于逐项功能验收。
+- 新增 TestDSNJavaCanonicalOptions，从固定 Java 2.4.14 源码提取并独立保留160名称预期；158个 query key 在 ParseDSN 和标准 sql.Open 的配置阶段返回脱敏未知项 ConfigError；connectTimeout/servicePrincipalName 两个共享名称检查实际 Go 字段和 sql.Open 接受。历史别名/枚举外参数复用原拒绝断言；不连接数据库、不读取文档生成预期、不把拒绝视为对应功能已实现。
+- 新增 TestMySQLScalarCompatibility，使用 database/sql 和本地协议对端覆盖文本/服务端预处理/客户端预处理 × 标准/压缩/OB20，共9场景；断言 TINYINT（显示宽度1/unsigned）、YEAR 和 BIT(1)/BIT(64) 的类型名、ScanType、原始值、NULL、跨行保留的字节及后续 Ping，保持 Go 整数/字节语义。对端字段不证明真实服务端建表和取值范围。
+- Go overlay 将 TINYINT/BIT 误转布尔、YEAR 误转字符串、未知 Java 参数静默忽略、SPN 丢失，分别在6/9/6/158/1个预期场景检出；无编译失败、panic 或 skip。原始源码没有变动。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；两个新增目标各25轮且无 skip，Go1.25 实际 Windows/386 的新增及原 Java 迁移目标通过。初次 lint 的重复字符串已提取常量，最终两版本普通及 integration 标签 golangci-lint 均0 issues。
+- 独立只读复核重新核对固定160名称及387个本地 Test/Example 链接，无确认问题，不另存报告；文档/链接/160初值/10别名/2额外字段、32任务/28实现/0验收及 Go 格式/diff 检查通过。元数据入口目前只证明本地查询计划和部分公开投影，全部 Catalog/remarks 组合仍需补证；域认证、真实 Linux VC、Linux/macOS、远程 CI、成功 race 及真实数据库均未据此验收，D28/D30/D31/D32和28/32实现、0/32验收保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

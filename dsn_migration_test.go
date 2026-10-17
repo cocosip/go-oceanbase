@@ -19,29 +19,34 @@ func TestDSNJavaMigrationBoundary(t *testing.T) {
 		"password2", "password3",
 	} {
 		t.Run(name, func(t *testing.T) {
-			const sensitive = "migration-secret@tenant#&value"
-			u := url.URL{
-				Scheme: "oceanbase", Host: "localhost", Path: "/demo",
-				User:     url.UserPassword(testUser, sensitive),
-				RawQuery: url.Values{name: {sensitive}}.Encode(),
-			}
-			_, err := ParseDSN(u.String())
-			assertMigrationConfigError(t, err, "DSN option", sensitive)
-			db, err := sql.Open("oceanbase", u.String())
-			if db != nil {
-				if closeErr := db.Close(); closeErr != nil {
-					t.Fatal(closeErr)
-				}
-			}
-			assertMigrationConfigError(t, err, "DSN option", sensitive)
+			assertMigrationOptionRejected(t, name)
 		})
 	}
+}
+
+func assertMigrationOptionRejected(t *testing.T, name string) {
+	t.Helper()
+	const sensitive = "migration-secret@tenant#&value"
+	u := url.URL{
+		Scheme: "oceanbase", Host: "localhost", Path: "/demo",
+		User:     url.UserPassword(testUser, sensitive),
+		RawQuery: url.Values{name: {sensitive}}.Encode(),
+	}
+	_, err := ParseDSN(u.String())
+	assertMigrationConfigError(t, err, "DSN option", sensitive)
+	db, err := sql.Open("oceanbase", u.String())
+	if db != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			t.Fatal(closeErr)
+		}
+	}
+	assertMigrationConfigError(t, err, "DSN option", sensitive)
 }
 
 func TestDSNJavaValueCoercions(t *testing.T) {
 	const interactive = "interactive"
 	for _, tc := range []struct{ name, value string }{
-		{"connectTimeout", "30000"}, {"readTimeout", "1000"},
+		{testConnectTimeoutOption, "30000"}, {"readTimeout", "1000"},
 		{interactive, ""}, {interactive, "1"}, {interactive, "0"}, {interactive, "TrUe"},
 		{"parseTime", "'true'"}, {"parseTime", `"true"`}, {"allowMultiStatements", "False"},
 	} {

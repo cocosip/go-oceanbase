@@ -721,6 +721,8 @@ D32 标准连接池子项以 sql.DB 原生 setter/context/Stats 和外部 slog �
 
 D32 初始化/执行选项按固定 Java 实现补证：usePipelineAuth 的认证后初始化分支在当前版本逐条 getResult，Go 沿用逐条确认/失败即关闭，不声明流水线优化；enableQueryTimeouts 由每次调用 context 承载；encloseParamInParentheses 对应当前版本的空格边界；serverAffinityOrder 的替换列表由 Endpoints/Weight/Strategy 承载，不能仅映射成 Ordered。新增 TestInitializationErrorBoundary、TestClientParameterBoundaries、TestStatementContextDeadline 及同名 Java DSN 拒绝测试，无生产配置/API/依赖变更。数组编码 fuzz 接入30秒 CI，原 FuzzStmt 选择器修复多目标歧义；真实 SQL/HA、平台与远程 CI 验收继续保留。
 
+D32 逐项证据子项为160个规范选项补充 Go 配置、标准库、显式 API、固定语义、安全拒绝、应用责任、平台适配或不适用分类，并关联具体本地测试入口；不将 Example 的编译、旧参数拒绝或查询计划当作完整行为验收。TestDSNJavaCanonicalOptions 独立固定158个拒绝 query key 和2个同名 Go 入口；TestMySQLScalarCompatibility 补齐 TINYINT/YEAR/BIT 的9条执行/包流路径，保留 Go 整数/字节契约。元数据的全部 Catalog/remarks 组合、平台、远程 CI、成功 race 和真实目标仍待闭环，不勾选逐项完整验证或 D32 整项完成。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。
