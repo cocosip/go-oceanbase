@@ -295,6 +295,56 @@ func TestTopologyHealthAcrossRefresh(t *testing.T) {
 	}
 }
 
+func TestTopologyRemovedAddressLateResult(t *testing.T) {
+	var removed bool
+	d, err := NewDiscovery(func(context.Context) (Snapshot, error) {
+		endpoints := []DiscoveredEndpoint{{Address: Address{Addr: discoveryHealthB}}}
+		if !removed {
+			endpoints = append(endpoints, DiscoveredEndpoint{Address: Address{Addr: discoveryHealthA}})
+		}
+		return Snapshot{Service: discoveryTestService, Endpoints: endpoints}, nil
+	}, DiscoveryOptions{Service: discoveryTestService, RefreshInterval: time.Second, RequestTimeout: time.Second, MaxAge: time.Second, Selection: Options{BlacklistTimeout: time.Minute}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = d.Close() }()
+	d.refresh()
+	previous, _, err := d.Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous.Failure(discoveryHealthA, time.Now())
+	removed = true
+	d.refresh()
+	current, count, err := d.Get(context.Background())
+	if err != nil || count != 1 {
+		t.Fatalf("refreshed topology: count=%d, error=%v", count, err)
+	}
+	assertRemoved := func(t *testing.T) {
+		t.Helper()
+		current.state.mu.Lock()
+		_, present := current.state.blocked[discoveryHealthA]
+		size := len(current.state.blocked)
+		current.state.mu.Unlock()
+		if present || size != 1 {
+			t.Fatalf("removed address retained in health state: present=%v, size=%d", present, size)
+		}
+		addresses, wait := current.Order(time.Now())
+		if len(addresses) != 1 || addresses[0].Addr != discoveryHealthB || wait != 0 {
+			t.Fatalf("removed address affected selection: %v, wait=%v", addresses, wait)
+		}
+	}
+	assertRemoved(t)
+	t.Run("late failure", func(t *testing.T) {
+		previous.Failure(discoveryHealthA, time.Now())
+		assertRemoved(t)
+	})
+	t.Run("late success", func(t *testing.T) {
+		previous.Success(discoveryHealthA)
+		assertRemoved(t)
+	})
+}
+
 func TestTopologyFailureCached(t *testing.T) {
 	var calls atomic.Int32
 	d, err := NewDiscovery(func(context.Context) (Snapshot, error) { calls.Add(1); return Snapshot{}, ErrUnavailable }, DiscoveryOptions{Service: discoveryTestService, RefreshInterval: time.Hour, RequestTimeout: time.Second, MaxAge: time.Hour})
