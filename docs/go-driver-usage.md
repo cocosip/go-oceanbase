@@ -37,6 +37,10 @@ DB 应长期复用，退出时 Close；sql.Conn.Close 只归还租约，不能�
 
 Windows Shared Memory 使用 `Config{Network: "sharedmemory", Addr: "MYSQL"}` 或 DSN `network=sharedmemory&socket=MYSQL`，Addr 为服务端对象基名，可带 Local/Global 命名空间前缀；不与多地址/发现混用、不回退 TCP。TLS 必须显式配置证书 ServerName；共享内存不获得明文认证豁免。**分配请求发出后需持锁等待无关联 ID 的答案，取消/建连超时为软预算，服务端不答可持续阻塞该拨号**；建成后的 I/O 支持 deadline/Close。批量 Auto/MultiSend 回退顺序，尾块 Close 不保证送达。完整资源及互操作限制见[架构 §9.0.5](go-driver-architecture-design.md#905-d28-windows-shared-memory)，真实服务尚未验收。
 
+嵌入式 OBProxy VC 使用 [NewOBProxyDialer 示例](../obproxy_example_test.go)：按[架构 §9.0.6](go-driver-architecture-design.md#906-d28-嵌入式-obproxy-vc)先构建独立 C 宿主，在 Linux amd64/arm64 为 Go 程序启用 `-tags=obproxy`，传入可信宿主和原生库的绝对路径、原生 `-o` 内容，再把回调交给 `Config.DialContext`，同时设置 `Network="unix"`、`Addr=".obproxy/obproxy.domain"`。工厂不启动进程；首次拨号启动宿主加载原生库，避免其信号处理、locale、allocator 干扰 Go。业务数据通过标准 Unix 连接完成统一认证、TLS 和 SQL；TLS 需显式 ServerName，IPC 不获得明文凭据豁免。
+
+等待初始化可按 context 返回，原生 init 可能继续；DB.Close 不停止宿主，父进程退出时控制管道 EOF 使宿主终止。宿主/库/配置/工作目录只能选定一份，失败也缓存；不同配置使用独立父进程和不同目录。启动会替换 `.obproxy/obproxy.domain`，须独占工作目录，不能运行时 chdir，socket 绝对路径最多107字节，proxyConfig 限4095字节 UTF-8 且无 NUL。原生 stdout/stderr 在宿主内丢弃，文件日志由原生配置管理，Go Logger 不控制它；Go 仍仅使用外部传入的 slog。普通驱动无需 C 编译器；真实原生库及服务仍待验收。
+
 如需独立限制网络读取等待，可设置 `Config.ReadTimeout = 5 * time.Second` 或 DSN `readTimeout=5s`；默认0关闭，两种兼容模式都适用。它按每次底层 Read 重新计时，context 的较早期限仍生效；持续收到数据的长结果仍需业务 context 限制总时长。超时会关闭连接并保留网络错误（errors.As 到 net.Error 检查 Timeout），不自动重放已写出的业务。详见[架构 §12.5.1](go-driver-architecture-design.md#1251-d32-已实现的网络读取超时)。
 
 ## 2. TLS 与认证配置
@@ -174,7 +178,7 @@ go test -run '^Example' .
 
 本地性能采样使用不联网的协议对端，见[本地基准](go-driver-benchmarks.md)；普通单测会检查同一组操作与结果。
 
-尚未闭环：VC 平台适配、Shared Memory 等平台能力的真实服务验收、全部 Java 配置的行为/默认差异核对、真实数据库完整基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
+尚未闭环：VC 原生平台运行、Shared Memory 等平台能力的真实服务验收、全部 Java 配置的行为/默认差异核对、真实数据库完整基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
 
 手动集成入口 `TestCreateDatabaseSessions` 的 MySQL 两个 profile 另需 `OB_MYSQL_CREATE_DATABASE_DSN` / `OBPROXY_MYSQL_CREATE_DATABASE_DSN` 专用凭据，允许创建/删除临时数据库、查询 information_schema.SCHEMATA 并读写其中的表。用例生成随机名称，确认不存在后创建，验证新建/既有库和 InitSQL，再关闭业务会话并尝试删除；权限不足、清理失败必须报告。`OB_TEST_REQUIRE=1` 时缺少 fixture 直接失败。该用例本阶段仅编译，未连接数据库。
 

@@ -39,11 +39,17 @@ jobs:
         run: go test -tags=gssapi,gssapitest ./... -count=1
         env:
           OB_TEST_GSS_REQUIRE: '1'
+      - name: Check embedded OBProxy ABI and Unix transport without a database
+        if: runner.os == 'Linux'
+        run: go test -tags=obproxy,obproxytest ./... -count=1
       - run: go test -race ./... -count=1
         if: runner.os == 'Linux'
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
+      - name: Lint embedded OBProxy adapter and ABI fixtures
+        if: runner.os == 'Linux'
+        run: golangci-lint run --build-tags=obproxy,obproxytest ./...
 
   protocol-boundaries:
     runs-on: ubuntu-latest

@@ -8,7 +8,7 @@
 - 实现完成：**28 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
 - 下一执行任务：**D28 平台传输取证与 D32 收口；D30/D31 的本地子项已补齐，平台依赖尚未闭环**。
 - 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；改写/bulk/array binding 当前按证据回退逐项，原生优化未启用；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量/详情/清除、ChangeUser 和显式取消已有本地实现；D31 XA 两模式本地实现、恢复/故障测试与集成源码已补；D28 Windows Shared Memory 已有本地实现，VC 与 D32 仍需实现，D30/D31 依赖闭环待完成。
+- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；改写/bulk/array binding 当前按证据回退逐项，原生优化未启用；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量/详情/清除、ChangeUser 和显式取消已有本地实现；D31 XA 两模式本地实现、恢复/故障测试与集成源码已补；D28 Windows Shared Memory 与 VC 独立宿主已有本地实现，VC 真实 Linux 平台验证及 D32 收口待完成，D30/D31 依赖闭环待完成。
 - 工具链：已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
 - 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
 
@@ -77,7 +77,7 @@
 | D25 | 诊断、profiling、FLT | D11、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D25，架构 §18.3.1 |
 | D26 | 静态多地址、负载、故障切换 | D06、D09 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D26、架构 §17.1.1 |
 | D27 | TNS/OCP/拓扑发现 | D26 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D27、架构 §17.1.2 |
-| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | old/Ed25519/PAM、SSPI/Unix GSSAPI、Unix/Named Pipe/Shared Memory 已补；VC 继续 |
+| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | old/Ed25519/PAM、SSPI/Unix GSSAPI、Unix/Named Pipe/Shared Memory 和 VC 宿主已补；VC 真实平台继续 |
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 本地子项通过，待依赖 | D28 VC | Codex；辅助函数、warning、ChangeUser 和单次显式取消已补；整项不提前计完成；见 §5.6 D30 |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 进行中 | 本地子项通过，待依赖 | D30/D28 VC | Codex；见 §5.6 D31；集成源码仅编译 |
@@ -642,6 +642,17 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TestPool 各10次、普通及 integration 标签 golangci-lint（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、go mod tidy -diff，以及 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建和根包测试交叉编译通过。lint 共用锁使一次并发启动被拒，随后顺序运行通过。
 - 六份相关文档同步；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项 Java 选项集合和32任务/28实现/0验收、Go 格式及 diff 检查通过。未连接数据库；真实空闲超时、容量/长期资源、监控部署、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证，D28/D32 及 D30/D31 平台依赖保持未完成。
 
+#### D28 OBProxy VC 独立原生宿主
+
+- 根包增加 NewOBProxyDialer(hostPath, libraryPath, proxyConfig)，复用 Config.DialContext、Unix net.Conn 和原有 TLS/认证/模式/三包流，不增加公开包、内部包或依赖。宿主/库均需可信绝对路径，配置合法 UTF-8、无 NUL、最多4095字节，固定目录 socket 最多107字节。Java 两项 VC DSN 配置继续明确拒绝，迁移见映射和示例。
+- 已按固定 OBProxy 提交核对官方 init/close、未连接句柄、argv、Unix endpoint 及客户端运行模式。原生启动安装信号处理器且改动 locale/allocator，故由 tools/obproxy-host/main.c 独立进程加载，保护 Go 运行时；Go 首次拨号只启动一次，相同身份共享、冲突拒绝、失败缓存。取消等待不终止共享 init；DB.Close 仅关业务连接，父进程控制管道 EOF 使宿主退出，init 卡住也能终止。
+- C 宿主将长度帧中的原始配置编码为单个 JSON 字段，隔离原生输出后发送 OBV1/状态握手；临时句柄成功/失败均释放，缺符号不调用 init，初始化过的库不卸载。Go 独立持有就绪读取端，失败关闭管道、kill 并通过唯一 Wait 回收宿主。宿主不重启、不自动重放业务；工作目录独占和原生日志管理见架构 §9.0.6。
+- TestOBProxy* 覆盖配置/路径/入口拒绝、并发单次启动/冲突/取消/失败缓存、两模式三包流、会话复用/QUIT/实际 Close、TLS 明文门禁及取消后不进入凭据阶段。obproxytest 用 gcc -Wall -Wextra -Werror 构建独立 C 宿主/共享库，验证 JSON 控制字符/中文/4095字节上限、void**/负返回码、成功/失败临时句柄、缺库/缺符号、坏/短就绪帧、快速退出，以及正常与 init 卡住时的 EOF 退出。Windows 标签只用于夹具，不声明 Windows 原生 OBProxy 支持。
+- 重复运行发现夹具的后台 QUIT/EOF 读取会清除最初 deadline 并无限等待，已改为总时限兜底，分别验证 QUIT 和真实 Unix Close 恰好一次；取消和 deadline 的原生 Unix 测试保留。EOF 用例还改为等待完整落盘标记，避免文件刚创建即终止宿主的同步竞争。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、带 obproxytest 的全包 test/vet 通过；协议会话/TLS 目标各100次、宿主 EOF 目标各10次通过。两版本普通/integration/obproxytest 标签 golangci-lint2.14.0 各0 issues；实际 Go1.25 Windows/386 全包测试通过。并行校验期间 TestConnectBudget/init 和 native ABI 启动预算曾超时，全部并行作业结束后 Go1.26 全包及 EOF 顺序重跑通过。
+- 两版本 Linux/amd64、arm64 的 obproxy 与 obproxy,obproxytest 构建及根包测试交叉编译、Darwin/amd64 默认构建/测试交叉编译通过，均 CGO_ENABLED=0；只代表编译。两版本 integration 仅编译、go mod tidy -diff 无差异；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项固定 Java 选项、32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。Linux CI 增加宿主/ABI 夹具测试与标签 lint，远程结果尚未取得。
+- 未连接数据库；真实 Linux 库/信号/生命周期、数据库互操作、远程 CI、成功 race 仍未运行，D28 整项和 D30/D31 平台依赖保持未闭环；实现28/32、验收0/32不变。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
@@ -658,7 +669,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 ## 7. 下一步工作
 
-1. 继续 D28 VC 取证与 D32 收口；Shared Memory 的真实服务验收待环境；D30/D31 本地契约已补，其平台依赖未闭环，整项仍不计完成。保持单公开根包、池隔离与单向依赖。
+1. 继续 D28 VC 真实平台验证与 D32 收口；Shared Memory 的真实服务验收待环境；D30/D31 本地契约已补，其平台依赖未闭环，整项仍不计完成。保持单公开根包、池隔离与单向依赖。
 2. 继续用故障对端验证标准 database/sql 查询，不连接真实数据库。
 3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
 

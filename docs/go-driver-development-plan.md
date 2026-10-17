@@ -45,6 +45,7 @@
 | `connector.go`、`conn.go`、`session.go`、`mode.go`、`capabilities.go` | 建连、实际模式、会话状态、资源代次 | D03–D06、D09、D15 |
 | `internal/wire/` | 包流、基础握手消息、命令、压缩及 OB20；不依赖 database/sql | D02、D03、D23 |
 | `internal/auth/` | 独立认证算法及算法阶段状态；根包组合握手和安全门禁 | D03、D28 |
+| `transport*.go`、`shared_memory*.go`、`obproxy*.go`、`tools/obproxy-host/main.c` | 根包平台拨号及 OBProxy 独立原生宿主；不新增公共或内部包 | D28 |
 | `execute.go`、`prepare_execute.go`、`rows.go`、`result.go`、`stmt.go` | 文本/二进制执行、标准接口、混合结果摘要；必要合并协议及通用策略 | D05、D08、D11、D14、D24 |
 | `bind.go`、`bind_oracle.go`、`sql_lexer.go`、`client_prepare.go` | 绑定计划、词法、客户端预处理、显式 JDBC escape | D07、D10 |
 | `codec*.go`、`types.go`、`internal/charset/` | 两模式基础/扩展类型、编码、时间 | D07、D08、D12、D18 |
@@ -588,7 +589,9 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 - [ ] 在协议明确的适配上实现；认证/传输依赖使用平台文件隔离，不让基础包强制加载本地库。维持 §3.1 的单向包依赖，平台认证算法不反向引用根包配置或 wire。
 - [ ] 同命令通过；按进度 §5.4 将每个算法及传输单列到目标平台和服务端组合，分别记录正向认证/收发、拒绝、切换和清理证据；全部必需条目满足后才验收，只有交叉编译不能标记该平台验收完成。
 
-D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe/Shared Memory 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory 的无关联分配取消/软预算和单缓冲批量回退见 §9.0.5；OBProxy VC 继续取证/实现。D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
+D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe/Shared Memory 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory 的无关联分配取消/软预算和单缓冲批量回退见 §9.0.5；OBProxy VC 独立宿主见 §9.0.6，真实平台待验证。D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
+
+D28 VC 子批次按架构 §9.0.6 实施：根包 obproxy.go 管理 DialContext 工厂、固定入口及初始化单例；obproxy_host.go 用标准 os/exec 和管道启动独立 C 宿主 tools/obproxy-host/main.c，按 build tags 限制生产支持平台。宿主绑定官方 init/close，将原生信号/locale/allocator 与 Go 隔离；Go 复用 Unix net.Conn。TestOBProxy* 验证配置拒绝、并发一次初始化/冲突/取消/失败缓存、两模式/三包流及 TLS 门禁；独立 C 共享库和宿主夹具验证 JSON/void**/返回码、临时句柄、坏握手/缺库/缺符号和父进程 EOF（含 init 卡住）。普通构建不要求 C 编译器；obproxytest 用本机 gcc 构建夹具。真实 Linux 库/版本/信号/生命周期及服务仍需运行验收，不能凭 Windows 合成 ABI 或交叉编译勾选 D28。
 
 ### D29 LOCAL INFILE 受控导入
 

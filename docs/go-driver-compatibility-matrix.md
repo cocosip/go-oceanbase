@@ -101,7 +101,7 @@ TestMetadataCatalog 已补真实来源检查源码，仅编译；允许未提供
 
 既有 DialContext 直接接入 x/net/proxy.ContextDialer，保持标准连接池与 TLS/认证门禁；本地真实 TCP SOCKS 对端覆盖两模式/三包流、远端域名、匿名/用户名密码、拒绝和畸形响应、取消/总预算/关闭、候选切换、TLS 目标身份与未验证目标零数据库凭据。示例只编译，普通单测不连接外部代理或数据库；代理认证不提供加密或数据库身份保证，细节见架构 §9.0.3。
 
-真实代理的 DNS、身份/网络策略、负载及数据库组合未验收。两项 Java 配置已映射；connectProxy 的初始化策略另见 §1.11，Shared Memory 本机实现见 §19，VC 仍待完成，实现28/32、验收0/32保持。
+真实代理的 DNS、身份/网络策略、负载及数据库组合未验收。两项 Java 配置已映射；connectProxy 的初始化策略另见 §1.11，Shared Memory 本机实现见 §19，VC 实现及平台边界见 §19，实现28/32、验收0/32保持。
 
 ### 1.11 D32 版本探测策略
 
@@ -332,7 +332,7 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | Unix socket | Config.Network=unix，Go/OS 提供 AF_UNIX；固定 Addr，TLS 时显式 ServerName | 本机 Windows socket 协议收发/关闭、超时和门禁已测；Linux/真实服务 socket 待验证 |
 | Named Pipe | Config.Network=pipe；Windows go-winio overlapped I/O；暂时不存在按配置重试，权限错误不重试；非 Windows 内置拨号明确不支持 | 本机 Windows 管道协议收发/关闭、重试和门禁；远端同步 CreateFile 无严格 context 中断保证，见架构 §9.0.1；远程权限及真实服务待验证 |
 | Shared Memory | Config.Network=sharedmemory / Addr 基名；Windows 原生事件/映射；分配请求发出后取消为软预算；批量不启用 pipeline | 本机两模式/三包流、TLS/明文门禁、原生边界/清理/并发已测；服务端永久不答可阻塞分配，实际服务/ACL/混合客户端仍待验证，见架构 §9.0.5 |
-| OBProxy VC | 按实际 native ABI 独立适配 | 待取证/开发/平台运行，整项 D28 未完成 |
+| OBProxy VC | NewOBProxyDialer；Linux amd64/arm64 -tags=obproxy；独立 C 宿主调用官方 init/close，隔离原生信号/locale/allocator；Go Unix 通道复用标准 deadline/TLS/认证；固定宿主/库/配置/工作目录 | 并发/取消/失败缓存/固定入口、两模式/三包流/TLS 门禁及 Windows amd64 独立 C 宿主/ABI 夹具、就绪及父进程 EOF 退出已测；Linux 原生代理启动/信号/退出与真实服务待运行，见架构 §9.0.6；D28 平台证据未闭环 |
 
 ## 20. D29 LOCAL INFILE
 

@@ -335,7 +335,7 @@ IPC 是一个显式固定端点，拒绝与 Routing.Endpoints 或 Discovery 混�
 
 DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，tcp/默认网络禁止 socket。URL authority 不再是 IPC 拨号地址；database path 仍是数据库名。程序化 Config 直接指定 Network/Addr，无需伪造 TCP 主机。解析后再次传入 NewConnector 的配置保持可用。
 
-Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory 的独立实现见 §9.0.5，OBProxy VC 继续开发。
+Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory 的独立实现见 §9.0.5，OBProxy VC 的独立宿主适配见 §9.0.6，真实平台仍待验收。
 
 ### 9.0.2 D32 TCP 配置的 Go 原生承载
 
@@ -390,7 +390,38 @@ Java connectProxy 默认 false，跳过部分 session 变量读取、ob_version 
 
 DATA 的前4字节为 little endian 长度，payload 上限16000；不照搬 Java 将16004误作内容上限的越界路径。Read 先复制整块到 Go 缓冲再 ACK，支持调用方部分读取；零长度或超长原生块拒绝。Write 按上限分块，成功通知对端后计入 n，中途超时保留已通知前缀；最后一块不额外等 ACK，因此 Close 可能丢弃尚未消费的尾块，QUIT 不保证送达，不能据此认定 SQL 已回滚或未执行。单一数据区不能承载双向 pipeline，sharedmemory 的 BatchAuto/BatchMultiSend 在发包前回退 BatchSequential，返回实际策略；同一功能仍通过顺序执行完成。
 
-建成后的 Read/Write 支持动态提前、延后和清除 deadline，超时保留 os.ErrDeadlineExceeded/net.Error.Timeout。Close 先唤醒等待者，等待原生 wait/内存访问退出后才关闭 handle/unmap，避免在 Win32 等待期间关闭 handle；两方向调用分别串行化。没有为每次 I/O 创建 goroutine，也不轮询事件。本机测试覆盖两模式/三包流、初始化/Ping/QUIT、TLS 目标验证及拒绝、分块/部分读取、非法长度、动态 deadline/Close、分配前后取消/延迟答案、并发分配/负数 ID、部分打开失败及批量回退；这些不是实际服务端、对象 ACL 或混合客户端互操作验收。OBProxy VC 仍需独立原生 ABI 证据，D28 整项保持进行中。
+建成后的 Read/Write 支持动态提前、延后和清除 deadline，超时保留 os.ErrDeadlineExceeded/net.Error.Timeout。Close 先唤醒等待者，等待原生 wait/内存访问退出后才关闭 handle/unmap，避免在 Win32 等待期间关闭 handle；两方向调用分别串行化。没有为每次 I/O 创建 goroutine，也不轮询事件。本机测试覆盖两模式/三包流、初始化/Ping/QUIT、TLS 目标验证及拒绝、分块/部分读取、非法长度、动态 deadline/Close、分配前后取消/延迟答案、并发分配/负数 ID、部分打开失败及批量回退；这些不是实际服务端、对象 ACL 或混合客户端互操作验收。OBProxy VC 的独立适配见 §9.0.6，D28 的平台/真实服务证据仍独立管理。
+
+### 9.0.6 D28 嵌入式 OBProxy VC
+
+固定 OBProxy 提交 `81eeae92526f5efbee516e863c7234532dfa6175` 的 [C 入口](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/driver/c/ob_proxy_vc_c.cpp)、[进程初始化](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/ob_proxy_init.cpp)、[客户端](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/proxy/client/ob_driver_client.cpp)和[布局](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/utils/ob_layout.cpp)表明：init 启动唯一 OBProxy，再创建未连接的客户端句柄；数据通道是工作目录中的 `.obproxy/obproxy.domain`。原生 Close 直接释放句柄，超时 setter 不唤醒正在 poll 的 I/O，send 还会折叠错误码，因此数据收发使用 Go 标准 Unix net.Conn。
+
+[ObProxyMain 启动和信号处理](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/ob_proxy_main.cpp)显示：客户端运行模式也会安装 SIGINT、SIGTERM 等信号处理器，未采用 Go 运行时要求的 SA_ONSTACK；同时修改 locale/allocator、注册退出回调、创建后台线程。直接将该库加载进 Go 进程会破坏运行时和应用信号契约。因此由项目提供的独立 C 宿主加载库，隔离这些进程副作用；Go 仍保留单一根包和 DialContext 接口。
+
+```mermaid
+flowchart LR
+    DB[database/sql] --> Dial[Go DialContext]
+    Dial -->|首次启动与就绪握手| Host[C 宿主进程]
+    Host -->|官方 init / close| Native[OBProxy 原生库]
+    Dial -->|Unix net.Conn / TLS / 统一协议| Socket[.obproxy/obproxy.domain]
+    Native --> Socket
+```
+
+`NewOBProxyDialer(hostPath, libraryPath, proxyConfig)` 返回 Config.DialContext。hostPath 是从 [宿主源文件](../tools/obproxy-host/main.c)构建的可信可执行文件绝对路径，libraryPath 是可信原生共享库绝对路径；不搜索 PATH、不自动下载或执行 shell。Linux 可在项目根目录构建：
+
+```sh
+cc -std=c11 -O2 -Wall -Wextra -Werror -o obproxy-go-host tools/obproxy-host/main.c -ldl -pthread
+```
+
+原生库及其依赖由部署方单独提供，以上命令只构建宿主。Go 生产目标为带 `obproxy` build tag 的 Linux amd64/arm64；其他目标明确 ErrUnsupported。普通驱动编译无需 C 编译器或该库，宿主按平台独立构建；Windows 的 obproxytest 仅执行自建 C ABI 夹具，不声明 Windows 原生 OBProxy 支持。
+
+proxyConfig 是原生 `-o` 内容，仅允许合法 UTF-8、无 NUL、最多4095字节，避免官方固定 argv 缓冲溢出。构造只校验并捕获工作目录；首次拨号启动宿主，将原始配置通过 stdin 的 uint32 little endian 长度帧发送，宿主编码为唯一 JSON proxy_config 字段（空配置为 `{}`）。原生输出与控制通道分离：宿主在加载库前重定向 stdout/stderr 到空设备，原生文件日志仍由原生配置管理。宿主调用官方 `ob_proxy_vc_c_init` / `ob_proxy_vc_c_close`，立即释放未连接的临时句柄，再返回8字节就绪消息 `OBV1` + int32 little endian 状态；缺库、缺符号、空句柄或非零状态均失败。Go 在失败路径关闭管道、终止并回收宿主；读取端独立于 cmd.Wait，避免退出与就绪读取竞态。
+
+宿主启动后保留 stdin 控制管道；父进程退出使其 EOF，专用监视线程直接终止宿主全部原生线程，包括 init 卡住的情况。DB.Close 只关闭业务连接，不停止共享宿主；成功启动的库不卸载。宿主/库/配置/工作目录组成进程唯一身份：相同身份并发共享一次初始化，不同身份拒绝；失败结果缓存，不自动重启或重放业务。宿主后续退出由 Unix 连接错误暴露，不能据此推断 SQL 是否执行。
+
+Config 使用 `Network=unix`、`Addr=.obproxy/obproxy.domain`；回调拒绝其他 network/路径，不混用路由/发现、不回退 TCP。原生启动会删除/重建该 socket，须独占工作目录，绝对 socket 路径最多107字节，使用期间不得 chdir；不同配置须使用独立父进程和不同目录。首次启动前已取消不会启动宿主；等待中的调用可按 context 返回，但共享 init 继续，不能宣称取消即原生初始化停止。后续连接、动态 deadline 和 Close 均使用标准 Unix 连接。
+
+每条物理会话复用标准 TLS、认证、模式识别和初始化，IPC 不获得明文凭据豁免，TLS 必须显式 ServerName。Java cs_id 仅用于原生客户端日志，Go 继续使用既有协议连接 ID 和外部传入的 slog，nil 静默；原生日志在独立进程中管理，不接入 slog.Default。离线夹具覆盖 ABI、配置转义/边界、就绪/失败/EOF 清理、两模式和三包流；真实 Linux 原生库启动、信号处理、退出及服务端互操作仍需平台验收。
 
 ### 9.1 已实现的包流与协商（D23）
 
@@ -1407,7 +1438,7 @@ Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER
 
 实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。D30 ChangeUser 已复用共享门禁和实例持有机制，见 §16.3.2。
 
-当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI、§9.0.1 的 Unix/Named Pipe 及 §9.0.5 的 Windows Shared Memory；OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI、§9.0.1 的 Unix/Named Pipe 及 §9.0.5 的 Windows Shared Memory；§9.0.6 的 OBProxy VC 独立宿主适配已有离线验证，各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 
 ### 17.2.1 D32 TLS 配置的 Go 原生承载
 
