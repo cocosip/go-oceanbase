@@ -81,7 +81,7 @@
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 本地子项通过，待依赖 | D28 Shared Memory/VC | Codex；辅助函数、warning、ChangeUser 和单次显式取消已补；整项不提前计完成；见 §5.6 D30 |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 进行中 | 本地子项通过，待依赖 | D30/D28 Shared Memory/VC | Codex；见 §5.6 D31；集成源码仅编译 |
-| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接属性/交互标志首批已补，见 §5.6 D32 |
+| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接属性/交互标志、排序规则已补，见 §5.6 D32 |
 
 ## 4. 里程碑
 
@@ -530,6 +530,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 根包 Config.Interactive/ConnectionAttributes 已补，前者同时提供严格 DSN interactive；属性仅显式 map，不自动采集进程/主机信息，不增加包或依赖。配置快照、保留键、严格字符集、编码后累计限额及缺失能力拒绝见架构 §6.1；不将 map 透传当作代理身份认证已完成。
 - TestConnectionAttributesSnapshot/Validation/EncodedBudget/Handshake/MissingCapability/ChangeUser、TestInteractiveCapability、TestDSNInteractive 及 TLSVerifiedAuthentication 覆盖两模式、UTF-8/GBK/GB18030、转码收缩/扩展与长度前缀、TLS、普通/压缩/OB20 的重发。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译、go mod tidy -diff 通过；六文档 UTF-8/相对链接/代码块/无机器路径、32任务/28实现/0验收、160项名称集合与固定 Java 源码一致、CI YAML/Go格式/diff 检查通过。未运行真实数据库、Linux 目标或成功 race，不另存走查报告。
 - 固定 DefaultOptions 的空格枚举核对补齐5项，清单从155更正为160项：serverAffinityOrder、connectionCollation、rewriteInsertByMultiQueries、useLocalXID、defaultConnectionAttributesBanList。其余字段、默认差异和测试仍需逐项核对；README/其他示例、完整基准、资源稳定性与 D28 依赖未完成。D32 保持进行中，实现28/32、验收0/32；暂不连接数据库，不以本地属性字节证明服务端可见性或空闲超时效果。此前各阶段的155项检查仅代表当时清单行数，不能当作完整性证据。
+
+#### D32 连接排序规则
+
+- 新增 Session.Collation / DSN collation，对应 Java connectionCollation；MySQL 使用 SET NAMES Charset COLLATE Collation，同一命令保持编码与排序规则基线，初始化自定义 SQL 后恢复、ChangeUser 与 Full reset 替换连接均保持配置。Oracle 显式拒绝；不复制 Java 的静默忽略，不新增包或依赖。具体边界见架构 §6.2 与配置清单。
+- TestCollationConfig/ModeGuard/ServerFailure/Lifecycle/FullReset、TestDSNCollation 与 ExampleSessionOptions_collation 覆盖严格标识符、DSN、两模式正/负向、服务端错误、UTF-8/GBK/utf8mb3、普通/压缩/OB20 及连接生命周期。ASCII 校验前转小写会接受 Kelvin 非 ASCII 字符的缺陷已有先失败再通过的回归。独立只读走查无遗留已确认重要问题，不保存独立报告。
+- 已通过 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试及两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）。TestSessionCollation 四目标集成源码已接入手动 CI，本次仅编译；真实排序/比较/预处理参数效果仍待联调。D32 保持进行中，实现28/32、验收0/32，D28 平台依赖及其余配置/交付项继续保留。
+- 两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；六文档 UTF-8/相对链接/代码块/无机器路径、32任务/28实现/0验收、160项名称与固定 Java 源码集合一致、CI YAML/改动 Go 格式/diff 检查通过。未连接数据库，未运行 Linux 目标或远程 CI，race 仍无成功证据。
 
 ## 6. 待取证条件与推进方式
 

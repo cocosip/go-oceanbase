@@ -68,6 +68,8 @@ type SessionOptions struct {
 	// ParseTime converts unzoned dates and timestamps using Location; invalid or ambiguous times fail.
 	ParseTime bool
 	Charset   string
+	// Collation optionally selects a MySQL-mode collation for Charset; empty uses its default.
+	Collation string
 	NCharset  string
 	Location  *time.Location
 	Variables map[string]string
@@ -175,6 +177,9 @@ func cloneConfigOptions(cfg Config) (Config, error) {
 	cfg.Session, err = cloneSessionOptions(cfg.Session)
 	if err != nil {
 		return Config{}, err
+	}
+	if cfg.Mode == ModeOracle && cfg.Session.Collation != "" {
+		return Config{}, &ConfigError{Field: "Session.Collation"}
 	}
 	if _, err = (&connector{cfg: cfg}).connectionAttributes(); err != nil {
 		return Config{}, err

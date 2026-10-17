@@ -58,6 +58,8 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		}
 		cfg.Interactive = value == dsnTrue
 		return nil
+	case "charset", "collation", "ncharset", "location", "parseTime":
+		return cfg.Session.applyDSNOption(name, value)
 	case "allowOldPassword", "passwordCharset", "servicePrincipalName":
 		return cfg.Auth.applyDSNOption(name, value)
 	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum", "fullLinkTrace":
@@ -97,21 +99,6 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 		cfg.Limits.FetchSize, err = strconv.Atoi(value)
 	case "maxResultItems":
 		cfg.Limits.MaxResultItems, err = strconv.Atoi(value)
-	case "charset":
-		cfg.Session.Charset = value
-	case "ncharset":
-		cfg.Session.NCharset = value
-	case "location":
-		cfg.Session.Location, err = time.LoadLocation(value)
-	case "parseTime":
-		switch value {
-		case dsnTrue:
-			cfg.Session.ParseTime = true
-		case dsnFalse:
-			cfg.Session.ParseTime = false
-		default:
-			err = &ConfigError{Field: "parseTime"}
-		}
 	case "rowsAffectedMode":
 		switch value {
 		case "matched":
@@ -150,6 +137,31 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 		}
 	default:
 		return &ConfigError{Field: "DSN option"}
+	}
+	if err != nil {
+		return &ConfigError{Field: name}
+	}
+	return nil
+}
+
+func (o *SessionOptions) applyDSNOption(name, value string) error {
+	var err error
+	switch name {
+	case "charset":
+		o.Charset = value
+	case "collation":
+		o.Collation = value
+	case "ncharset":
+		o.NCharset = value
+	case "location":
+		o.Location, err = time.LoadLocation(value)
+	case "parseTime":
+		if value != dsnTrue && value != dsnFalse {
+			return &ConfigError{Field: name}
+		}
+		o.ParseTime = value == dsnTrue
+	default:
+		return &ConfigError{Field: name}
 	}
 	if err != nil {
 		return &ConfigError{Field: name}

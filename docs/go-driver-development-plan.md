@@ -668,6 +668,8 @@ D31 本地实现：新增 xa.go / xa_protocol.go，原生 OUT 复用内部调用
 
 D32 首批已补 Config.Interactive、ConnectionAttributes 及握手/ChangeUser 的共同编码与边界校验，详见架构 §6.1。逐项迁移清单同步该子项；D28 平台缺口、其他选项、示例、基准和完整验收继续保留，D32 不提前计完成。
 
+D32 排序规则子项已补 Session.Collation/DSN collation，MySQL 同一 SET NAMES/COLLATE 保持编码基线，Oracle 显式拒绝；初始化恢复与 ChangeUser 共用原路径，契约见架构 §6.2。两种模式的本地正/负向用例及 TestSessionCollation 集成源码已补，集成仅编译。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。

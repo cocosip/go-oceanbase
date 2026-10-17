@@ -52,6 +52,17 @@ func TestDSNInteractive(t *testing.T) {
 	}
 }
 
+func TestDSNCollation(t *testing.T) {
+	if _, err := ParseDSN("oceanbase://app@localhost/?collation=utf8mb4_bin"); err != nil {
+		t.Fatal("collation option rejected", err)
+	}
+	for _, option := range []string{"collation=", "collation=utf8mb4_bin&collation=utf8mb4_general_ci", "collation=utf8mb4_bin%3BSELECT%201"} {
+		if _, err := ParseDSN("oceanbase://app@localhost/?" + option); err == nil {
+			t.Fatal("invalid collation option accepted")
+		}
+	}
+}
+
 func TestDSNValues(t *testing.T) {
 	cfg, err := ParseDSN("oceanbase://app%40tenant%23cluster:p%40ss%3Aword@[::1]:2883/a%2Fb?mode=mysql&connectTimeout=3s&rowsAffectedMode=changed&resetMode=full&maxMessageBytes=1024&maxLOBBytes=512&fetchSize=4&maxResultItems=8&cleanupTimeout=250ms&allowMultiStatements=true&location=UTC")
 	if err != nil {

@@ -32,6 +32,10 @@ func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
 		return SessionOptions{}, &ConfigError{Field: fieldNCharset}
 	}
 	options.Charset = strings.ToLower(options.Charset)
+	if options.Collation != "" && (len(options.Collation) > 128 || !sessionVariableName(options.Collation)) {
+		return SessionOptions{}, &ConfigError{Field: "Session.Collation"}
+	}
+	options.Collation = strings.ToLower(options.Collation)
 	options.NCharset = strings.ToLower(options.NCharset)
 	if options.NCharset != "" {
 		if _, err := charset.Encode(options.NCharset, ""); err != nil || options.NCharset == charsetBinary {
@@ -69,7 +73,14 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 	if charset == charsetUTF8MB3Alias {
 		charset = charsetUTF8
 	}
-	if err := c.initSQL(ctx, "SET NAMES "+charset); err != nil {
+	names := "SET NAMES " + charset
+	if collation := c.cfg.Session.Collation; collation != "" {
+		if c.session.mode != ModeMySQL {
+			return fmt.Errorf("%w: connection collation requires MySQL compatibility mode", ErrUnsupported)
+		}
+		names += " COLLATE " + collation
+	}
+	if err := c.initSQL(ctx, names); err != nil {
 		return err
 	}
 	if err := c.initSQL(ctx, "SET autocommit=1"); err != nil {
@@ -93,12 +104,12 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 			return err
 		}
 	}
-	names := make([]string, 0, len(c.cfg.Session.Variables))
+	variables := make([]string, 0, len(c.cfg.Session.Variables))
 	for name := range c.cfg.Session.Variables {
-		names = append(names, name)
+		variables = append(variables, name)
 	}
-	slices.Sort(names)
-	for _, name := range names {
+	slices.Sort(variables)
+	for _, name := range variables {
 		if !sessionVariableName(name) {
 			return &ConfigError{Field: "Session.Variables"}
 		}
@@ -112,9 +123,9 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 			return err
 		}
 	}
-	if len(names) != 0 || len(c.cfg.Session.InitSQL) != 0 {
+	if len(variables) != 0 || len(c.cfg.Session.InitSQL) != 0 {
 		// Decoding must use the same encoding and zone as the published session.
-		for _, query := range []string{"SET NAMES " + charset, "SET SESSION time_zone = " + c.quoteSessionValue(zone)} {
+		for _, query := range []string{names, "SET SESSION time_zone = " + c.quoteSessionValue(zone)} {
 			if err := c.initSQL(ctx, query); err != nil {
 				return err
 			}

@@ -212,6 +212,18 @@ Go 不自动采集 Java 的 PID、线程、OS、主机等动态属性，因此 J
 
 本地覆盖两模式、UTF-8/GBK、GB18030 扩展编码、长度前缀阈值、配置快照、保留键、能力缺失、TLS，以及普通/压缩/OB20 的 ChangeUser 重发；不代表已验证服务端属性表可见性或 interactive_timeout 的实际效果。
 
+### 6.2 D32 已实现的连接排序规则
+
+`SessionOptions.Collation string` / DSN `collation` 对应 Java `connectionCollation`；Go 零值为空，Java 默认 null，均不额外选择自定义排序规则。非空值先按原始 ASCII 标识符校验（最长128字节），再转小写；拒绝空白、引号、分隔符、NUL、非 ASCII 和无效 UTF-8，不用字符串拼接承载任意 SQL。
+
+MySQL 兼容模式初始化使用 `SET NAMES <Charset> COLLATE <Collation>`，以同一命令设置 client/connection/results 字符集和 connection 排序规则。排序规则不擅自改写调用方 Charset，未设置 Charset 时仍默认 utf8mb4；名称是否存在、是否匹配该字符集由目标服务原子校验，失败保留服务端错误并关闭连接，不回退成默认规则。依据为固定 Java `AbstractConnectProtocol.setCollationVariables` 的模式条件，以及 [OceanBase v4.3.5_CE MySQL 语法](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/sql/parser/sql_parser_mysql_mode.y) 的 `NAMES charset_name_or_default opt_collation`。
+
+执行 Session.Variables/InitSQL 后复用同一设置恢复基线，ChangeUser 初始化和 Full reset 的新连接继续应用该配置；Managed reset 的职责边界不变。驱动编码始终由 Charset 决定，结果解码按列的实际 collation ID，不从名称猜测字节编码。
+
+Java 在 Oracle 兼容模式忽略该选项，Go 显式配置则拒绝：已指定 ModeOracle 时 NewConnector 返回 `ConfigError{Field:"Session.Collation"}`；ModeAuto 认证后识别为 Oracle 时，在任何初始化 SQL 前返回 ErrUnsupported。此字段不替代 Oracle 的 NLS 设置。
+
+本地覆盖配置/DSN、UTF-8/GBK/utf8mb3 别名、初始化恢复、ChangeUser、Full reset 替换连接、普通/压缩/OB20、服务端错误及 Oracle 拒绝。`ExampleSessionOptions_collation` 可运行且不建立网络连接。四目标 TestSessionCollation 集成源码已接手动 CI：MySQL 正向验证会话状态、比较效果、预处理 Unicode 和重建基线，Oracle 验证配置拒绝；本阶段仅编译，不提供真实效果或版本兼容承诺。
+
 ## 7. 标准库接口实现表
 
 | 内部类型 | 必须实现的接口 | 关键规则 |

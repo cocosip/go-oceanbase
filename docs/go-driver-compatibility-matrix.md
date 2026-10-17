@@ -31,6 +31,16 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 
 源码依据：固定版本 DefaultOptions、AbstractConnectProtocol.initializeClientCapabilities、SendHandshakeResponsePacket.writeConnectAttributes；对应选项及默认差异见[配置清单](go-driver-options-mapping.md)，Go 契约见架构 §6.1。D32 仍进行中，未缩减其余选项、平台与完整交付范围。
 
+### 1.2 D32 排序规则
+
+| 能力 | Go 当前行为 | 本地证据 / 待验证 |
+| --- | --- | --- |
+| MySQL connectionCollation | Session.Collation/DSN collation；SET NAMES Charset COLLATE Collation，空值保持默认 | 配置/严格标识符、UTF-8/GBK/utf8mb3、普通/压缩/OB20 的初始化恢复及 ChangeUser、Full reset 替换连接本地通过；真实排序/比较/参数往返待联调 |
+| 失败与编码 | 服务端验证字符集配对/名称，不回退、不改驱动编码，失败关闭；列按实际 ID 解码 | 未知/不匹配的服务端错误与资源关闭本地覆盖；实际目标支持清单待确认 |
+| Oracle 模式 | 显式 ModeOracle 在配置阶段拒绝；ModeAuto 实际 Oracle 在初始化前 ErrUnsupported | 两类拒绝本地覆盖；不复制 Java 的静默忽略，不改变默认 Oracle 流程 |
+
+四目标 TestSessionCollation 已加入手动 CI，仅编译；MySQL 直连/代理需要真实正向验证，Oracle 对应本功能的负向契约，不据此宣称整体兼容。默认差异与生命周期见架构 §6.2。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |
