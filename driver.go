@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"io"
 )
 
 func init() { sql.Register("oceanbase", drv{}) }
@@ -15,6 +16,7 @@ func (d drv) Open(name string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = c.(io.Closer).Close() }()
 	return c.Connect(context.Background())
 }
 

@@ -70,6 +70,7 @@ jobs:
       - run: go test . -run '^$' -fuzz FuzzLongTextBoundary -fuzztime 30s -parallel 2
       - run: go test ./internal/charset -run '^$' -fuzz FuzzCharset -fuzztime 30s -parallel 2
       - run: go test ./internal/routing -run '^$' -fuzz FuzzAddressParsing -fuzztime 30s -parallel 2
+      - run: go test ./internal/routing -run '^$' -fuzz FuzzTNSParser -fuzztime 30s -parallel 2
 
   integration:
     if: github.event_name == 'workflow_dispatch' && inputs.integration
@@ -86,10 +87,30 @@ jobs:
       OB_ORACLE_DSN: ${{ secrets.OB_ORACLE_DSN }}
       OBPROXY_MYSQL_DSN: ${{ secrets.OBPROXY_MYSQL_DSN }}
       OBPROXY_ORACLE_DSN: ${{ secrets.OBPROXY_ORACLE_DSN }}
+      OB_MYSQL_TNS_DSN: ${{ secrets.OB_MYSQL_TNS_DSN }}
+      OB_MYSQL_OCP_DSN: ${{ secrets.OB_MYSQL_OCP_DSN }}
+      OB_ORACLE_TNS_DSN: ${{ secrets.OB_ORACLE_TNS_DSN }}
+      OB_ORACLE_OCP_DSN: ${{ secrets.OB_ORACLE_OCP_DSN }}
+      OBPROXY_MYSQL_TNS_DSN: ${{ secrets.OBPROXY_MYSQL_TNS_DSN }}
+      OBPROXY_MYSQL_OCP_DSN: ${{ secrets.OBPROXY_MYSQL_OCP_DSN }}
+      OBPROXY_ORACLE_TNS_DSN: ${{ secrets.OBPROXY_ORACLE_TNS_DSN }}
+      OBPROXY_ORACLE_OCP_DSN: ${{ secrets.OBPROXY_ORACLE_OCP_DSN }}
+      OB_MYSQL_DISCOVERY_IDENTITY_SQL: ${{ secrets.OB_MYSQL_DISCOVERY_IDENTITY_SQL }}
+      OB_MYSQL_DISCOVERY_TENANT: ${{ secrets.OB_MYSQL_DISCOVERY_TENANT }}
+      OB_MYSQL_DISCOVERY_ROLE: ${{ secrets.OB_MYSQL_DISCOVERY_ROLE }}
+      OB_ORACLE_DISCOVERY_IDENTITY_SQL: ${{ secrets.OB_ORACLE_DISCOVERY_IDENTITY_SQL }}
+      OB_ORACLE_DISCOVERY_TENANT: ${{ secrets.OB_ORACLE_DISCOVERY_TENANT }}
+      OB_ORACLE_DISCOVERY_ROLE: ${{ secrets.OB_ORACLE_DISCOVERY_ROLE }}
+      OBPROXY_MYSQL_DISCOVERY_IDENTITY_SQL: ${{ secrets.OBPROXY_MYSQL_DISCOVERY_IDENTITY_SQL }}
+      OBPROXY_MYSQL_DISCOVERY_TENANT: ${{ secrets.OBPROXY_MYSQL_DISCOVERY_TENANT }}
+      OBPROXY_MYSQL_DISCOVERY_ROLE: ${{ secrets.OBPROXY_MYSQL_DISCOVERY_ROLE }}
+      OBPROXY_ORACLE_DISCOVERY_IDENTITY_SQL: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_IDENTITY_SQL }}
+      OBPROXY_ORACLE_DISCOVERY_TENANT: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_TENANT }}
+      OBPROXY_ORACLE_DISCOVERY_ROLE: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_ROLE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover)$' -count=1
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery)$' -count=1

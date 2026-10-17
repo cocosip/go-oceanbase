@@ -1026,6 +1026,61 @@ DSN 支持 `addresses`（逗号分隔 DNS/IPv4/带括号 IPv6，端口可省略�
 
 根包 routing.go/failover.go 组合配置、拨号、认证及初始化；internal/routing 只处理自有 Address/Options、排序和健康，依赖标准库，不导入根包或 wire/auth/charset；无新增公共子包、池或后台 goroutine。
 
+### 17.1.2 D27 TNS、OCP 与拓扑刷新契约
+
+公开 API 仍在唯一根包，发现设施不另建连接池：
+
+```go
+type Topology struct {
+    Service string
+    Endpoints []Endpoint
+}
+type TopologySource func(context.Context) (Topology, error)
+type DiscoveryOptions struct {
+    Source TopologySource
+    Service string
+    RefreshInterval, RequestTimeout, MaxAge time.Duration
+}
+```
+
+`Config.Discovery` 的 Source 非 nil 时启用；必须显式配置 Service，且不能同时配置 Routing.Endpoints。Addr 仍校验，但不作发现失败的降级地址。未配置发现时没有发现 goroutine；NewConnector 只做校验和快照，首次 Connect 才启动一个串行刷新任务。Source 必须返回独占的 Topology/Endpoints 并遵守 context；同一 Connector 串行调用，同一个函数被多个 Connector 共享时由调用方保证并发安全。
+
+| 规则 | 当前实现 |
+| --- | --- |
+| 默认时间 | RefreshInterval=30秒、RequestTimeout=5秒、MaxAge=5分钟；禁止负值，MaxAge 不小于 RefreshInterval |
+| 预算 | Connect 等待发现与拨号/认证/初始化共用 ConnectTimeout；发现 HTTP 请求由 Connector 生命周期和 RequestTimeout 约束。取消一个等待者不取消其他等待者共用的刷新请求；等待者立即按自己的 context 返回 |
+| 缓存与发布 | 最多1024个规范化唯一地址；Service 必须精确匹配配置值，Role 严格过滤。失败/非法快照保留仍在 MaxAge 内的上次成功结果；过期后关闭降级通路，已有刷新失败立即报错，否则等待后续受限刷新；失败不触发调用方驱动的请求风暴。刷新不改 User、Database、Credentials、兼容模式或业务会话 |
+| 选址 | 每次 Connect 固定一个成功发现的候选代次；刷新只影响之后取得快照的新 Connect。动态 MaxAttempts=0 按该次符合角色的候选数计算一次遍历；AttemptTimeout=0 按该候选数与总预算计算。各代共享保留地址的冷却状态和轮转计数，旧代迟到的拨号结果仍反馈到新代；共享健康表按最新成员裁剪，删除地址不会无限积累 |
+| 关闭 | Connector 实现 io.Closer，sql.DB.Close 自动调用；Close 幂等、取消发现并最多等待 RequestTimeout。违规不响应取消的自定义 Source 会导致 Close 返回超时，不能强杀用户函数。关闭后 Connect 返回 ErrConnectorClosed，已交付的物理连接不绑定发现 context，可继续执行/关闭。driver.Open 创建的私有 Connector 在成功或失败后立即关闭发现设施 |
+| 错误/隐私 | 发现错误仅返回固定类型/类别，不保留 URL、文件路径、HTTP 内容及 Source 原始错误；业务认证/拨号错误仍按原契约保留 errors.Is/As。无隐式日志、磁盘缓存、全局服务注册表 |
+
+内置入口和格式：
+
+- `ParseAddressDescription(description)`：无 I/O，返回 Topology；接受独立 `(DESCRIPTION=...)`。`NewTNSFileSource(path, alias)`：每次读取显式的本地常规文件，按别名精确匹配（不区分大小写），支持 `alias=(DESCRIPTION=...)`、Java 的 `(alias=(DESCRIPTION=...))`、多个别名和 `#` 注释；文件源不会用无别名 DESCRIPTION 顶替缺失别名。无环境搜索路径、默认文件或全局 watcher。跟随调用方配置的符号链接，目标必须是常规文件；拒绝设备/目录等非常规目标，打开前后检查类型与尺寸；配置文件应由调用方信任和管理，本地文件系统 syscall 无法由 Go context 中断，文件系统卡顿及并发替换不构成可强制中止的 I/O 保证。
+- `NewOCPSource(endpoint, client)`：调用显式 HTTP(S) URL；client 可 nil，构造时复制 Client、共享其调用方管理的 transport/callback。标准 context 覆盖连接/响应读取；可在注入 transport 配置拨号阶段的更短超时。拒绝 URL 内嵌凭据、fragment 和重定向；最多读取1MiB，不落盘。兼容 Java 实际 HTTP 包装 `data.NET_SERVICE_NAME` + `data.DESCRIPTION`，以及直接 DESCRIPTION JSON；包装内显式失败状态被拒绝，元数据有界解析。包装的 NET_SERVICE_NAME 是逻辑服务身份，CONNECT_DATA.SERVICE_NAME 不是自动切库指令；直接 DESCRIPTION 以 SERVICE_NAME 作为逻辑身份。服务端变体需按真实响应联调。
+- TNS/OCP 共同支持 ADDRESS_LIST/ADDRESS、TCP HOST/PORT（默认2881）、WEIGHT、CONNECT_DATA/SERVICE_NAME，以及显式 TYPE=master/slave/readwrite/readonly；组按出现顺序映射 Endpoint.Group。拒绝重复/未知字段、非法端口/角色、重复地址、尾随垃圾、损坏 UTF-8；深度最多16、解析节点有界。JSON 重复键按不区分大小写拒绝。TNS 引号/转义值和非 TCP 描述不猜测执行。
+- Java 的 OBLB/LOAD_BALANCE、策略、重试和黑名单描述字段属于来源提示：识别并校验其格式，**执行策略统一由 Go RoutingOptions 决定，不从服务端覆盖本地重试和安全配置**。组内/组间策略及黑名单附加算法不逐项照搬 Java；需要这些策略时在调用方配置 RoutingOptions/Endpoint.Group/Weight，未知描述明确拒绝。外层包装元数据不参与选址。
+
+使用方式：
+
+```go
+source, err := oceanbase.NewTNSFileSource("tnsnames.ob", "orders")
+if err != nil { return err }
+connector, err := oceanbase.NewConnector(oceanbase.Config{
+    User: "app", Mode: oceanbase.ModeOracle,
+    Discovery: oceanbase.DiscoveryOptions{Service: "orders", Source: source},
+})
+if err != nil { return err }
+db := sql.OpenDB(connector)
+defer db.Close()
+```
+
+DSN 增加 `tnsFile` + `tnsAlias` 或 `ocpURL`（两类互斥），必须搭配 `discoveryService`；可选 `discoveryRefreshInterval/discoveryTimeout/discoveryMaxAge`。`addressDescription` 为 URL 编码的静态 DESCRIPTION，与上述发现源和 addresses 互斥。动态源、混合角色和复杂分组优先 typed Config。静态 addresses 的显式 role 统一标记行为保持 D26；DESCRIPTION/TNS/OCP 中未标记的地址不自动继承 role，受限 Role 必须由实际来源标记，或调用方在有真实服务依据时显式包装 TopologySource 赋予服务角色。Service 标识不是租户认证证明，租户仍由凭据与服务端身份取证保证。
+
+Java replication 的主/从地址映射为显式角色快照及两个标准 sql.DB；Java Aurora 的 replica_host_status/innodb_read_only、域名规则属于 Aurora 产品契约，不向 OceanBase 发出这些猜测 SQL。自有控制面、复制服务或 Aurora 服务通过 TopologySource 提供地址、角色和稳定 Service，沿用同一校验/缓存/关闭链路；驱动不内置一个冒充 OceanBase 原生拓扑的 Aurora 探测器。真实产品的查询、权限、角色变化和租户证明逐适配器取证，回调及本地夹具通过不代表服务端兼容通过。
+
+依赖仍为 root → internal/routing → 标准库；内部 routing 拥有发现快照、解析、HTTP 和生命周期，不导入根包、wire/auth/charset。Connector 仅组合公开配置与内部类型，不把发现依赖接入单会话命令路径。
+
 ### 17.2 认证、TLS 和扩展点
 
 - 提供 Java 中已注册认证方式的 Go 适配路径：native、SHA-256、caching SHA-2、clear/old password、Ed25519、GSSAPI、PAM。

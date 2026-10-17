@@ -90,6 +90,7 @@ type Config struct {
 	Protocol             ProtocolOptions
 	Execution            ExecutionOptions
 	Routing              RoutingOptions
+	Discovery            DiscoveryOptions
 	Limits               Limits
 	RowsAffectedMode     RowsAffectedMode
 	ResetMode            ResetMode
@@ -174,6 +175,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 }
 
 func (cfg *Config) validateDriverOptions() error {
+	if err := cfg.Discovery.normalize(); err != nil {
+		return err
+	}
 	if err := cfg.Diagnostics.validate(); err != nil {
 		return err
 	}

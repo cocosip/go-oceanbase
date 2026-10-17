@@ -26,11 +26,16 @@ type Options struct {
 
 // Selector owns connector-local health and concurrent round-robin state.
 type Selector struct {
-	mu        sync.Mutex
 	addresses []Address
 	options   Options
-	next      uint64
-	blocked   map[string]time.Time
+	state     *selectionState
+}
+
+// selectionState is shared by discovery generations so late dial results remain visible.
+type selectionState struct {
+	mu      sync.Mutex
+	next    uint64
+	blocked map[string]time.Time
 }
 
 // NewSelector snapshots a bounded, unique candidate list without network activity.
@@ -48,17 +53,17 @@ func NewSelector(addresses []Address, options Options) (*Selector, error) {
 		}
 		seen[address.Addr] = time.Time{}
 	}
-	return &Selector{addresses: slices.Clone(addresses), options: options, blocked: seen}, nil
+	return &Selector{addresses: slices.Clone(addresses), options: options, state: &selectionState{blocked: seen}}, nil
 }
 
 // Order returns healthy candidates or the delay until the first candidate leaves cooldown.
 func (s *Selector) Order(now time.Time) ([]Address, time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
 	var result []Address
 	var earliest time.Time
 	for _, address := range s.addresses {
-		until := s.blocked[address.Addr]
+		until := s.state.blocked[address.Addr]
 		if !until.After(now) {
 			result = append(result, address)
 		} else if earliest.IsZero() || until.Before(earliest) {
@@ -77,7 +82,7 @@ func (s *Selector) Order(now time.Time) ([]Address, time.Duration) {
 		s.orderGroup(result[start:end])
 		start = end
 	}
-	s.next++
+	s.state.next++
 	return result, 0
 }
 
@@ -86,7 +91,7 @@ func (s *Selector) orderGroup(group []Address) {
 	case Random:
 		rand.Shuffle(len(group), func(i, j int) { group[i], group[j] = group[j], group[i] })
 	case RoundRobin:
-		n := int(s.next % uint64(len(group)))
+		n := int(s.state.next % uint64(len(group)))
 		copy(group, append(slices.Clone(group[n:]), group[:n]...))
 	case Affinity:
 		for i := range group {

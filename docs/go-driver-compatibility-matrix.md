@@ -208,3 +208,15 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 活动会话 | RoleReadOnly 拒绝写事务，固定角色不降级；业务丢响应不重放，事务不换 Socket；可选 idle PING 失败淘汰 | 普通写权限由服务端负责，不自动路由 SELECT；真实角色标签由调用方保证 |
 
 TestConnectionFailover 四目标源码及手动 CI 已加入；各 profile 的 DSN addresses 至少包含两个同租户、同兼容模式入口。测试在首次拨号注入失败，再实际连接备用入口，验证活动只读事务不重拨、关闭后新会话能选择已恢复入口；它不模拟真实服务器宕机或证明业务未知结果的数据库侧状态。本阶段只编译，不连接数据库；真实 HA、Linux、远程 CI 和 race 不计通过。
+
+## 18. D27 发现源与 Connector 生命周期
+
+| 适配 | 本地实现与证据 | 真实验收边界 |
+| --- | --- | --- |
+| DESCRIPTION/TNS | 有界嵌套/别名/注释解析、文件前后类型/尺寸校验；角色/分组/权重与来源策略提示映射；无隐式环境搜索/磁盘缓存 | 真实 TNS 文件变更、权限及文件系统阻塞待验证；源文件由调用方管理 |
+| OCP | 显式 URL + 注入 HTTP Client；Java 的 data.NET_SERVICE_NAME/DESCRIPTION 包装和直接描述；重复键/大小/深度/失败状态/超时/重定向拒绝 | 实际 OCP 版本/响应变体、TLS/认证/服务权限与变化待联调；不把 Java 内存对象样例当 HTTP 接口 |
+| 共享刷新 | 惰性串行、服务身份与角色门禁、最后成功快照/硬过期、新连接代次、同址健康继承及幂等关闭 | 来源标签不能证明真实租户/主从角色；静态/动态源均需服务端身份取证 |
+| replication/Aurora | 显式角色快照和 TopologySource 同链路适配；两个标准 sql.DB；不向 OceanBase 猜测外部产品 SQL | 自有复制控制面和 Aurora 实际发现回调、权限、角色变化逐服务待验证；无 OceanBase 原生 Aurora 支持承诺 |
+| 关闭/旧入口 | sql.DB.Close 停止刷新；driver.Open 私有 Connector 清理；已获得的连接不随发现 context 取消 | 自定义源必须响应 context；超时只限制等待，不能强杀用户回调/文件系统 syscall |
+
+TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶段仅编译、不连接数据库。每个基础 DSN 环境变量的前缀（移除 `_DSN`）需配置 `_TNS_DSN`、`_OCP_DSN`，以及 `_DISCOVERY_IDENTITY_SQL`、`_DISCOVERY_TENANT`、`_DISCOVERY_ROLE`。身份 SQL 由部署方按实际版本/权限提供，返回租户及 readwrite/readonly 两列；测试只为未标记的整个逻辑服务显式赋予该角色，并在同会话查询验证。该查询必须真实读取服务端身份，常量返回不算验收证据。受控刷新后的角色/地址变化、外部复制/Aurora 发现仍需独立真实服务取证，不能用初次连接或静态回调代替。Linux、远程 CI 与 race 仍不计通过。

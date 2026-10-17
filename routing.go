@@ -107,6 +107,18 @@ func (cfg *Config) normalizeRouting() error {
 		return &ConfigError{Field: "Routing"}
 	}
 	o.Endpoints = slices.Clone(o.Endpoints)
+	if cfg.Discovery.Source != nil {
+		if len(o.Endpoints) != 0 {
+			return &ConfigError{Field: "Routing.Endpoints with Discovery"}
+		}
+		if o.RetryDelay == 0 {
+			o.RetryDelay = 50 * time.Millisecond
+		}
+		if o.BlacklistTimeout == 0 {
+			o.BlacklistTimeout = time.Second
+		}
+		return nil
+	}
 	if len(o.Endpoints) == 0 {
 		o.Endpoints = []Endpoint{{Addr: cfg.Addr, Role: o.Role}}
 	}

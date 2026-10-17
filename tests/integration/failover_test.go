@@ -101,6 +101,11 @@ func TestConnectionFailover(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal("recovery budget expired")
 			}
+			// DB.Close now closes its Connector; recovery uses a new lifecycle.
+			connector, err = oceanbase.NewConnector(cfg)
+			if err != nil {
+				failOperation(t, "recovery configuration", err)
+			}
 			recovered := sql.OpenDB(connector)
 			defer func() { _ = recovered.Close() }()
 			if err = recovered.PingContext(ctx); err != nil {

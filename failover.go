@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/cocosip/go-oceanbase/internal/routing"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -14,14 +15,14 @@ type handshakeTransportError struct{ error }
 
 func (e *handshakeTransportError) Unwrap() error { return e.error }
 
-func (c *connector) connectCandidate(ctx context.Context) (*conn, error) {
+func (c *connector) connectCandidate(ctx context.Context, routes *routing.Selector, options RoutingOptions) (*conn, error) {
 	var last error
 	attempts := 0
-	for attempts < c.cfg.Routing.MaxAttempts {
+	for attempts < options.MaxAttempts {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		addresses, delay := c.routes.Order(time.Now())
+		addresses, delay := routes.Order(time.Now())
 		if len(addresses) == 0 {
 			if err := waitCandidate(ctx, delay); err != nil {
 				return nil, err
@@ -30,11 +31,11 @@ func (c *connector) connectCandidate(ctx context.Context) (*conn, error) {
 		}
 		for _, address := range addresses {
 			attempts++
-			attemptCtx, stop := context.WithTimeout(ctx, c.cfg.Routing.AttemptTimeout)
+			attemptCtx, stop := context.WithTimeout(ctx, options.AttemptTimeout)
 			session, retry, err := c.dialCandidate(attemptCtx, address.Addr)
 			stop()
 			if err == nil {
-				c.routes.Success(address.Addr)
+				routes.Success(address.Addr)
 				return session, nil
 			}
 			last = err
@@ -44,11 +45,11 @@ func (c *connector) connectCandidate(ctx context.Context) (*conn, error) {
 			if !retry {
 				return nil, err
 			}
-			c.routes.Failure(address.Addr, time.Now())
-			if attempts == c.cfg.Routing.MaxAttempts {
+			routes.Failure(address.Addr, time.Now())
+			if attempts == options.MaxAttempts {
 				return nil, last
 			}
-			if err := waitCandidate(ctx, c.cfg.Routing.RetryDelay); err != nil {
+			if err := waitCandidate(ctx, options.RetryDelay); err != nil {
 				return nil, err
 			}
 		}

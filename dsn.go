@@ -27,6 +27,10 @@ func ParseDSN(dsn string) (Config, error) {
 	if err != nil {
 		return Config{}, &ConfigError{Field: "DSN options"}
 	}
+	hasDescription := values.Has("addressDescription")
+	if err := parseDiscoveryDSN(&cfg, values); err != nil {
+		return Config{}, err
+	}
 	for name, list := range values {
 		if len(list) != 1 || list[0] == "" {
 			return Config{}, &ConfigError{Field: "DSN options"}
@@ -36,7 +40,9 @@ func ParseDSN(dsn string) (Config, error) {
 		}
 	}
 	for i := range cfg.Routing.Endpoints {
-		cfg.Routing.Endpoints[i].Role = cfg.Routing.Role
+		if !hasDescription && cfg.Routing.Endpoints[i].Role == RoleAny {
+			cfg.Routing.Endpoints[i].Role = cfg.Routing.Role
+		}
 	}
 	return normalizeConfig(cfg)
 }

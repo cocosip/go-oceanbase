@@ -566,9 +566,9 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 
 依赖：D26。对应：M02、M12；架构 §17.1。
 
-文件：新增 `internal/routing/tns.go`、`ocp.go`、`topology.go`、对应测试；更新配置与兼容矩阵。
+文件：根包 `discovery.go`、配置/DSN/Connector 生命周期；新增 `internal/routing/tns.go`、`ocp.go`、`topology.go`、对应测试；更新兼容矩阵、集成入口与 CI。
 
-交付：扩展地址描述/TNS/OCP、replication/aurora 对应的发现适配；按实际服务能力记录映射，不把外部产品名称直接当 OceanBase 支持承诺。
+交付：扩展地址描述/TNS/OCP、replication/aurora 对应的发现适配；按实际服务能力记录映射，不把外部产品名称直接当 OceanBase 支持承诺。D27 公开 API、来源策略映射、OCP 真实包装与外部 TopologySource 边界见架构 §17.1.2。
 
 - [ ] 测试 `TestTNSParser`、`TestOCPRefresh`、`TestTopologyChanges`：嵌套/非法描述、超时/无效响应、缓存过期、刷新后仍保持逻辑服务/角色一致；关闭 Connector 终止刷新但不取消活动业务连接。
 - [ ] 执行 `go test ./internal/routing -run 'Test(TNS|OCP|Topology)' -count=1`，确认失败。
