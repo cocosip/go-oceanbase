@@ -31,6 +31,13 @@ const (
 	ResultFailure
 )
 
+// ResultColumn preserves the server's column label and origin, decoded to UTF-8.
+// Empty origin fields mean not supplied; they are never inferred from labels or SQL.
+// Name is the result label; Table may be an alias. OriginalName and OriginalTable identify origins.
+type ResultColumn struct {
+	Catalog, Schema, Table, OriginalTable, Name, OriginalName string
+}
+
 // ResultInfo describes one observable result. Complete means its response boundary was consumed.
 type ResultInfo struct {
 	Kind              ResultKind
@@ -42,6 +49,8 @@ type ResultInfo struct {
 	Complete          bool
 	Err               error
 	Warnings          WarningSummary
+	// Columns is populated only for row results after their complete metadata was read.
+	Columns []ResultColumn
 }
 
 // ExecutionSnapshot is an independent, concurrent-safe view of execution progress.
@@ -54,12 +63,13 @@ type ExecutionSnapshot struct {
 // Execution owns standard Rows and records command and row results as they are consumed.
 // Snapshot may be called concurrently; row iteration follows database/sql's contract.
 type Execution struct {
-	session  Session
-	mu       sync.RWMutex
-	rows     *sql.Rows
-	snapshot ExecutionSnapshot
-	started  bool
-	rowsets  int
+	session       Session
+	mu            sync.RWMutex
+	rows          *sql.Rows
+	snapshot      ExecutionSnapshot
+	started       bool
+	rowsets       int
+	metadataBytes int64
 }
 
 type executionRequest struct {
@@ -131,6 +141,9 @@ func (e *Execution) Snapshot() ExecutionSnapshot {
 	defer e.mu.RUnlock()
 	s := e.snapshot
 	s.Results = slices.Clone(s.Results)
+	for i := range s.Results {
+		s.Results[i].Columns = slices.Clone(s.Results[i].Columns)
+	}
 	return s
 }
 
@@ -161,13 +174,32 @@ func (e *Execution) add(info ResultInfo) {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if info.Kind == ResultRows {
-		info.RowSetIndex = e.rowsets
-		e.rowsets++
-	} else {
-		info.RowSetIndex = -1
-	}
+	info.RowSetIndex = -1
 	e.snapshot.Results = append(e.snapshot.Results, info)
+}
+
+func (e *Execution) rowset(columns []wire.Column, limit int64) error {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	size := rowsetMetadataSize(columns)
+	if size > limit-e.metadataBytes {
+		return wire.ErrMessageTooLarge
+	}
+	info := ResultInfo{Kind: ResultRows, RowSetIndex: e.rowsets, Columns: make([]ResultColumn, len(columns))}
+	for i, column := range columns {
+		info.Columns[i] = ResultColumn{
+			Catalog: column.Catalog, Schema: column.Schema,
+			Table: column.Table, OriginalTable: column.OriginalTable,
+			Name: column.Name, OriginalName: column.OriginalName,
+		}
+	}
+	e.metadataBytes += size
+	e.rowsets++
+	e.snapshot.Results = append(e.snapshot.Results, info)
+	return nil
 }
 func (e *Execution) command(ok wire.OK) error {
 	if e == nil {

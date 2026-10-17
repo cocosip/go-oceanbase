@@ -553,6 +553,10 @@ const (
     ResultFailure
 )
 
+type ResultColumn struct {
+    Catalog, Schema, Table, OriginalTable, Name, OriginalName string
+}
+
 type ResultInfo struct {
     Kind              ResultKind
     RowSetIndex       int // 非行结果为 -1；行结果从 0 开始
@@ -562,6 +566,8 @@ type ResultInfo struct {
     InsertIDKnown     bool
     Complete          bool
     Err               error
+    Warnings          WarningSummary
+    Columns           []ResultColumn // 仅行结果；按投影顺序保存列标签及服务端来源
 }
 
 type ExecutionSnapshot struct {
@@ -587,12 +593,13 @@ Session 的定义见 §14.1。Execute 只接受非 nil 的 `*sql.Conn` 或 `*sql
 - 一个命令结果可以有已知的 0 计数；Known 区分“已知为 0”与“服务端没有提供”。无法表示为 int64 的计数返回明确溢出错误。生成 ID 仅在协议可靠提供时可知，不补查、不猜测。
 - 过程返回多少项以协议实际可观察结果为准。保留确有计数语义的最终 CALL 汇总响应；纯 OUT/session tracking 等控制响应不新增业务项。不从一个汇总计数虚构过程内部各语句的计数，也不一概丢弃尾随 OK 或零计数。
 - Rows 项在读到完整结果边界后标记 Complete；成功 drain 也可以使它完成，不表示业务读取了每一行。命令项收到完整 OK 后完成；明确的独立服务端 ERR 可形成 Failure 项。行结果中途失败则保留该项未完成及其错误，不生成虚假的后续项。
-- Snapshot 并发安全并返回摘要副本。Done 表示该执行已结束，包括失败结束；成功条件为 Done 且 Err 为 nil。失败时保留已确认的前缀和原错误，未观察到的语句是否执行不能由摘要推断。
+- Snapshot 并发安全并返回摘要及各项 Columns 切片的独立副本。Done 表示该执行已结束，包括失败结束；成功条件为 Done 且 Err 为 nil。失败时保留已确认的前缀、列来源和原错误，未观察到的语句是否执行不能由摘要推断。
 - 参数/配置在发送前失败可以返回 nil、error；开始发送后若 QueryContext 直接失败，仍返回非 nil Execution 和 error，保留已经确认的信息，此时 Rows 可为 nil。不能以 ErrBadConn 隐藏部分执行结果。
 - Close 幂等，有界关闭/排空 Rows 并完成摘要、OUT 和资源发布。它返回读取、最终化或清理的错误，即使 Rows 已自动关闭，也不能丢失此前错误。取消、超时或清理失败时标记未完成结果，清理未发布资源并淘汰无法同步的会话。调用方停止行迭代后调用 Close，检查 Execute 错误、Rows.Err、Close 错误和最终 Snapshot。
 - Snapshot 只复制驱动内存状态，可与行迭代并发调用；它不查询标准 Rows。标准库内部事务取消没有向驱动公开，显式 Commit/Rollback 自动关闭未读 Rows 时，其取消错误由 Execution.Close 读取 Rows.Err 并合并到最终摘要，保留此前驱动错误和原始超时原因。Done 表示驱动已完成收尾；取得包含标准库错误的最终摘要以 Close 为边界。
 - `Rows().Close()` 走同一最终化逻辑；已发布 Cursor/LOB 的寿命见 §13.2，不随 Execution.Close 关闭。Rows 的读取与关闭仍遵守标准库并发契约；仅 Snapshot 允许并发观察，不承诺并发 Next。
 - 摘要达到 MaxResultItems 后不再无界分配：返回资源上限错误，保留已记录前缀并有界清理，不能将后续项默认为未执行或静默丢弃后返回成功。
+- 列来源在一个行集的完整元数据读取并验证后一次发布；未完整元数据、隐藏 OUT、命令或 Failure 不发布 Columns。整个 Execution 的元数据累计受 MaxMessageBytes 限制，复用行集元数据的保守内存估算（包含结构开销及扩展描述），超过预算时保留此前结果并淘汰连接。普通 Query 的 Rows 不额外保存摘要。
 
 普通 `sql.Result` 仍只有标准 LastInsertId/RowsAffected；多语句 Exec 返回最后一个命令结果的可知计数/ID，没有可用命令结果时相应方法返回明确错误，不把不同语句的计数相加。需要逐项信息使用 Execute；给内部 driver.Result 加方法不能穿透标准库包装。[G10]
 
@@ -1064,6 +1071,18 @@ defer rows.Close()
 - UDT 属性与集合元素投影使用 OceanBase 的 NUMBER_PRECISION 字段，输出别名仍为 precision；依据固定 [v4.3.5_CE 属性视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25001_25050.cpp) 与 [集合视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25051_25100.cpp)，不套用不一致的字典字段。
 
 以上路径已由协议对端覆盖，真实数据库字典字段、版本差异及权限仍需集成验证；D16/D18 的 Query/Next 缓存未命中场景仍由各自任务验证。
+
+### 16.1.2 D32 结果列来源与产品身份
+
+标准 `Rows.Columns()` 和 `Rows.ColumnTypes()[i].Name()` 始终提供服务端的结果标签；需要来源时使用 `Execute(...).Snapshot().Results[i].Columns`，与行集内的投影顺序对应。`ResultColumn.Name` 是标签，`OriginalName` 是服务端提供的原列名；`Table` 是协议表名（可能是别名），`OriginalTable` 是原表名，`Schema`、`Catalog` 保留协议原值。六个字符串按会话字符集严格解码为 UTF-8，不折叠大小写、不把协议 catalog 自动解释为业务数据库。
+
+来源字段为空表示服务端未提供，表达式、视图或具体版本可能缺少来源；不从 SQL、标签或其他字段推断。每个行集拥有独立的 Columns；快照和执行关闭后仍可读取此前元数据。元数据完整不代表行读取完成，也不证明该列可写、具有权限或能唯一定位基表。完整性、并发和预算见 §11.4。
+
+Java `useOldAliasMetadataBehavior` 默认 false，MySQL getColumnName 优先原名，空值/开关/forceAlias 时使用标签，Oracle 始终使用标签；getTableName 也受该选项和 forceAlias 影响。[源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseResultSetMetaData.java#L270) Go 同时保留标签和来源，由调用方按用途选择，不更改标准库返回的标签。Java `blankTableNameMeta` 默认 false，Go 不增清空表名开关，展示时是否隐藏来源由应用决定。
+
+Java `useCompatibleMetadata` 默认 false，只改变 JDBC getDatabaseProductName 返回 OceanBase 或 MySQL/Oracle，不控制结果列或字典查询。[源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/JDBC4DatabaseMetaData.java#L1966) Go 的产品始终为 OceanBase；既有 MetadataServerInfo 分开提供 `oceanbase_version`、`compatibility_mode` 及字典能力，不提供伪装产品名开关。三项 Java 同名 DSN 均拒绝。
+
+TestExecutionColumn* 覆盖两模式文本/二进制、GBK、合并执行、多结果、未完整元数据拒绝、累计预算与快照隔离；TestMetadataServerIdentity 验证两模式的固定投影及模式/版本分离，OUT 测试确认辅助结果不泄露。TestMetadataCatalog 已补公开 API 来源检查，服务端未返回的来源允许为空；本阶段仅编译，真实字段返回和版本/代理差异未验收。
 
 ### 16.2 XA
 

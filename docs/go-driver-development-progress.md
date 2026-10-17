@@ -606,6 +606,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10次及普通/integration 标签 golangci-lint2.14.0（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译、go mod tidy -diff 通过。初轮测试编译和 goconst 提示已整理，最终使用既有协议 helper 和文件内常量。
 - 八文档及 README 的 UTF-8、相对链接/锚点、围栏、无机器路径、160项固定 Java 选项集合与四项映射、Go 格式/diff 检查通过。未连接数据库；夹具状态与错误不证明真实权限、快照隔离、回滚效果或 HA。实现28/32、验收0/32保持，D28/D32 其余范围继续推进，Linux 实际运行、远程 CI 与成功 race 仍待验证。
 
+#### D32 结果列来源与产品身份
+
+- 公开 ResultColumn 和 ResultInfo.Columns，通过既有 Execute.Snapshot 保留完整行集的标签/原列/原表等六字段；标准 Rows 返回标签，未知来源为空。每次快照深复制嵌套切片，累计元数据沿用保守内存估算及 MaxMessageBytes；超限不发布该行集、保留已确认前缀并淘汰连接。未完整元数据、隐藏 OUT、命令和 Failure 不发布列。没有新增包、配置或依赖。
+- TestExecutionColumn* 覆盖两模式文本/二进制、GBK 解码、PrepareExecute、多结果和关闭后保留、来源/快照隔离、并发快照、精确预算及真实协议路径累计超限、畸形列和终止包拒绝；既有顺序/行错误/OUT 测试补元数据断言。先因缺少公开结构和发布方法编译失败，实现后通过。TestMetadataServerIdentity 检查两模式固定 SQL、公开列名和扫描，三个 Java 元数据 DSN 均拒绝；Java useCompatibleMetadata 仅切产品名，映射按架构 §16.1.2 适配。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次、普通及 integration 标签 golangci-lint2.14.0（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建及根包测试交叉编译、go mod tidy -diff 通过。TestMetadataCatalog 增加公开 API 来源检查，尚未连接数据库；允许服务端不提供来源，不伪造字段。
+- 架构、映射、使用指南、矩阵、计划和进度同步；160项 Java 映射集合及32任务/28实现/0验收保持。真实字段、权限、代理/版本差异、Linux 实际运行、远程 CI 和成功 race 仍待验证，D28/D32 整项未完成。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

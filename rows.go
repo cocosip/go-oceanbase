@@ -283,7 +283,7 @@ func (r *textRows) readColumns(ctx context.Context, count int, budget int64) err
 	}
 	r.columns, r.done, r.more = columns, false, false
 	if !r.hiddenOut {
-		r.execution.add(ResultInfo{Kind: ResultRows})
+		return r.execution.rowset(columns, r.conn.cfg.Limits.MaxMessageBytes)
 	}
 	return nil
 }

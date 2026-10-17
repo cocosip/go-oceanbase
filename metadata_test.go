@@ -373,6 +373,51 @@ func TestMetadataOracleParameterIdentity(t *testing.T) {
 	}
 }
 
+func TestMetadataServerIdentity(t *testing.T) {
+	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			name, types := "MYSQL", byte('0')
+			if mode == ModeOracle {
+				name, types = "ORACLE", '1'
+			}
+			query := `SELECT ob_version() AS "oceanbase_version",'` + name + `' AS "compatibility_mode",1 AS "parameter_dictionary",` + string(types) + ` AS "type_dictionary" FROM dual WHERE 1=1`
+			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
+				if !readQuery(ctx, t, p, query) {
+					return
+				}
+				row := append([]byte{7}, "4.3.5.0"...)
+				row = append(append(row, byte(len(name))), name...)
+				row = append(row, 1, '1', 1, types)
+				if !sendPackets(ctx, t, p, []byte{4}, textColumn("v", 253, 45, 0), textColumn("m", 253, 45, 0), textColumn("p", 3, 63, 0), textColumn("t", 3, 63, 0), []byte{254, 0, 0, 2, 0}, row, []byte{254, 0, 0, 2, 0}) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			rows, err := Metadata(context.Background(), pinnedSession(t, db), MetadataFilter{Kind: MetadataServerInfo})
+			if err != nil {
+				t.Fatal(err)
+			}
+			labels, err := rows.Columns()
+			if err != nil || strings.Join(labels, " ") != "oceanbase_version compatibility_mode parameter_dictionary type_dictionary" {
+				t.Fatal(labels, err)
+			}
+			if !rows.Next() {
+				t.Fatal(rows.Err())
+			}
+			var version, actualMode string
+			var parameters, typeDictionary int
+			if err = rows.Scan(&version, &actualMode, &parameters, &typeDictionary); err != nil || version != "4.3.5.0" || actualMode != name || parameters != 1 || typeDictionary != int(types-'0') {
+				t.Fatal(version, actualMode, parameters, typeDictionary, err)
+			}
+			if err = rows.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestMetadataDictionaryErrors(t *testing.T) {
 	const malformedNumber = "malformed-number"
 	const denied = "privilege"

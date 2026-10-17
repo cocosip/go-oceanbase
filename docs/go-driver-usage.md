@@ -109,6 +109,10 @@ return tx.Commit()
 
 `Execute` 的命令结果不伪装成行集；`ResultInfo` 的计数只有在对应 `Known` 为真时才可使用。Oracle 匿名块不合成内部每条 DML 的独立计数。读取异常、关闭异常和 `Snapshot.Err` 均需要处理。
 
+标准 `Rows.Columns()` / `ColumnTypes().Name()` 返回结果标签。需要原列/原表来源时，从 `e.Snapshot().Results` 中选 `Kind == oceanbase.ResultRows` 的项，再按投影顺序读取 `Columns`：`Name` 是标签，`OriginalName` 是原列名，`Table` / `OriginalTable` 保留协议表名/原表名，另有 `Schema` / `Catalog`。字段为空表示服务端未提供，不能从标签推断；快照和列切片为独立副本，执行关闭后仍保留已观察的来源。`RowSetIndex` 对应标准 Rows 的行集顺序，命令/Failure 没有 Columns。列来源不证明结果可更新或具有访问权限；累计预算及 Java 差异见[架构 §16.1.2](go-driver-architecture-design.md#1612-d32-结果列来源与产品身份)。
+
+`MetadataServerInfo` 分开返回 OceanBase 版本和兼容模式，MySQL/Oracle 不是另一种数据库产品；不提供 `useCompatibleMetadata` 等 Java 元数据开关。
+
 生命周期顺序为：关闭每批 `Rows` → 关闭 `Cursor` / `Blob` / `Clob` / `Execution` → 提交或回滚 `Tx` → 关闭固定 `Conn` → 应用结束时关闭 `DB`。Blob 的偏移单位为字节；Clob 为 Unicode 码点，均从零开始。读到文件尾可能返回 `io.EOF`；LOB 返回 nil 时先处理 SQL NULL，不能解引用。
 
 普通 `QueryContext` 返回的 LOB/复杂值与显式 locator 不是同一种所有权语义；需要有界物化时设置 `Limits.MaxLOBBytes` 等限制，不能用无限物化读取大对象。`CursorStatic` 需要有界缓存；`CursorSensitive`、可更新游标及原生 locator 的具体版本限制见兼容矩阵。示例使用 Forward，不证明其他模式已完成真实验收。

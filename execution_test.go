@@ -75,6 +75,9 @@ func TestExecutionOrder(t *testing.T) {
 	if !final.Done || final.Err != nil || len(final.Results) != 3 || !final.Results[1].Complete || final.Results[1].RowsAffectedKnown || final.Results[2].RowsAffected != 2 || final.Results[2].InsertID != testMaxUint64Text || !final.Results[2].InsertIDKnown {
 		t.Fatal(final)
 	}
+	if final.Results[0].Columns != nil || final.Results[2].Columns != nil || len(final.Results[1].Columns) != 1 || final.Results[1].Columns[0].Name != "v" {
+		t.Fatal("command or row columns lost", final)
+	}
 	if err = e.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +141,13 @@ func TestExecutionPartialError(t *testing.T) {
 				if s.Results[1].Kind != ResultRows || s.Results[1].Complete || s.Results[1].Err == nil {
 					t.Fatal(s)
 				}
+				if len(s.Results[1].Columns) != 1 || s.Results[1].Columns[0].Name != "v" {
+					t.Fatal("row error lost metadata", s)
+				}
 			} else if s.Results[1].Kind != ResultFailure || !s.Results[1].Complete {
 				t.Fatal(s)
+			} else if s.Results[1].Columns != nil {
+				t.Fatal("failure has columns", s)
 			}
 			if err = e.Close(); !errors.As(err, &server) {
 				t.Fatal("close lost earlier error", err)

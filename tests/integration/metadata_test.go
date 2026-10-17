@@ -108,6 +108,7 @@ func testMetadataProfile(t *testing.T, p profile) {
 		}
 	}
 	compareMetadataColumns(t, p, pinned, base, schema, parent)
+	checkResultColumnOrigins(t, pinned, schema, parent)
 	for _, kind := range []oceanbase.MetadataKind{oceanbase.MetadataSchemas, oceanbase.MetadataIndexes, oceanbase.MetadataTablePrivileges, oceanbase.MetadataColumnPrivileges, oceanbase.MetadataRoutines, oceanbase.MetadataRoutineParameters, oceanbase.MetadataServerInfo} {
 		f := oceanbase.MetadataFilter{Kind: kind}
 		rows, err := oceanbase.Metadata(ctx, pinned, f)
@@ -133,6 +134,33 @@ func testMetadataProfile(t *testing.T, p profile) {
 			}
 		}
 	}
+}
+
+func checkResultColumnOrigins(t *testing.T, pinned *sql.Conn, schema, table string) {
+	t.Helper()
+	e, err := oceanbase.Execute(testContext(t), pinned, "SELECT t.id AS OB_VISIBLE FROM "+table+" t WHERE 1=0")
+	if e != nil {
+		defer func() { _ = e.Close() }()
+	}
+	if err != nil {
+		failOperation(t, "query result origins", err)
+	}
+	labels, err := e.Rows().Columns()
+	if err != nil || len(labels) != 1 || labels[0] != "OB_VISIBLE" {
+		t.Fatal("standard result label", labels, err)
+	}
+	if err = e.Close(); err != nil {
+		failOperation(t, "close result origins", err)
+	}
+	s := e.Snapshot()
+	if len(s.Results) != 1 || !s.Results[0].Complete || len(s.Results[0].Columns) != 1 {
+		t.Fatal("missing result column metadata", s)
+	}
+	col := s.Results[0].Columns[0]
+	if col.Name != labels[0] || col.Schema != "" && !strings.EqualFold(col.Schema, schema) || col.OriginalTable != "" && !strings.EqualFold(col.OriginalTable, table) || col.OriginalName != "" && !strings.EqualFold(col.OriginalName, "id") {
+		t.Fatal("result origin differs from source table", col)
+	}
+	t.Logf("server origin fields may be empty: %+v", col)
 }
 
 func compareMetadataColumns(t *testing.T, p profile, pinned *sql.Conn, base oceanbase.MetadataFilter, schema, parent string) {

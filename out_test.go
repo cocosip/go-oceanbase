@@ -151,6 +151,9 @@ func TestOutMySQLSessionFinalization(t *testing.T) {
 	if len(snapshot.Results) != 2 || snapshot.Results[0].Kind != ResultRows || snapshot.Results[1].RowsAffected != 2 || !snapshot.Done {
 		t.Fatal("helper results leaked", snapshot)
 	}
+	if len(snapshot.Results[0].Columns) != 1 || snapshot.Results[0].Columns[0].Name != "ordinary" || snapshot.Results[1].Columns != nil {
+		t.Fatal("OUT helper columns leaked", snapshot)
+	}
 	if err = pinned.PingContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
