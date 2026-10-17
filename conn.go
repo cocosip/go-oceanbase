@@ -21,7 +21,9 @@ type conn struct {
 	descriptors     map[descriptorKey]*typeDescriptor // guarded by mu; one command lifetime
 	descriptorBytes int64
 	statements      statementCache
-	lastUsed        time.Time // guarded by mu; last completed operation, including Rows consumption
+	lastUsed        time.Time      // guarded by mu; last completed operation, including Rows consumption
+	sessionDirty    bool           // guarded by mu; helper mutations cannot return to the original pool
+	lastWarnings    WarningSummary // guarded by mu; ordinary SQL only
 }
 
 func (c *conn) Close() error {
@@ -57,7 +59,7 @@ func (c *conn) Ping(ctx context.Context) error {
 }
 
 func (c *conn) IsValid() bool {
-	return !c.closed.Load()
+	return !c.closed.Load() && !c.sessionDirty
 }
 
 func (c *conn) lock(ctx context.Context) error {

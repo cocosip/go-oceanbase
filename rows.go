@@ -229,6 +229,9 @@ func (r *textRows) advance(ctx context.Context) error {
 			r.last = result{affected: ok.AffectedRows, id: ok.InsertID, known: true}
 			r.conn.observeResourceStatus(ok.Status)
 			r.conn.session.ok = ok
+			if !r.keepGate {
+				r.conn.lastWarnings = WarningSummary{Count: ok.Warnings, Known: true}
+			}
 			if err = r.execution.command(ok); err != nil {
 				return err
 			}
@@ -343,10 +346,13 @@ func (r *textRows) rowPacket(ctx context.Context) ([]byte, error) {
 		}
 		r.conn.observeResourceStatus(ok.Status)
 		r.conn.session.ok = ok
+		if !r.keepGate {
+			r.conn.lastWarnings = WarningSummary{Count: ok.Warnings, Known: true}
+		}
 		r.done = true
 		r.lastRowStatus = ok.Status
 		if !r.hiddenOut {
-			r.execution.rowDone()
+			r.execution.rowDone(ok.Warnings)
 		}
 		r.more = ok.Status&8 != 0 || r.nativeTail
 		if !r.more && !r.hiddenOut {

@@ -15,7 +15,9 @@ func (c *conn) ResetSession(ctx context.Context) error {
 	}
 	defer c.unlock()
 	c.clearDescriptors()
-	if c.closed.Load() {
+	c.lastWarnings = WarningSummary{}
+	if c.closed.Load() || c.sessionDirty {
+		c.discard()
 		return driver.ErrBadConn
 	}
 	if interval := c.cfg.Routing.ValidationInterval; interval > 0 && time.Since(c.lastUsed) >= interval {

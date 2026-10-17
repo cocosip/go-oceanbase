@@ -99,6 +99,7 @@ func (c *connector) dialCandidate(ctx context.Context, addr string) (*conn, bool
 		return nil, false, err
 	}
 	connected.lastUsed = time.Now()
+	connected.lastWarnings = WarningSummary{}
 	return connected, false, nil
 }
 

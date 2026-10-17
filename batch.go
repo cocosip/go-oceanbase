@@ -260,6 +260,7 @@ func batchFailure(result *BatchResult) error {
 func (r *textRows) beginExecution() {
 	r.execution.begin()
 	if !r.keepGate {
+		r.conn.lastWarnings = WarningSummary{}
 		if batch, _ := r.ctx.Value(batchContextKey{}).(*batchAttempt); batch != nil {
 			batch.started = true
 		}

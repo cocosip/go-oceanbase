@@ -977,6 +977,31 @@ schema/catalog、用户切换、客户端信息、warning、会话变量及版�
 
 warnings 作为结构化结果诊断暴露，不能把成功带 warning 的操作改成随意失败；也不能仅因日志未启用就丢失所有可查询 warning 信息。
 
+### 16.3.1 D30 会话辅助与 warning 数量快照（首批实现）
+
+以下函数只接受非 nil 的 `*sql.Conn`，调用方应先消费/关闭 Rows 并串行操作同一连接；没有新的会话包装对象或公开任意协议命令入口：
+
+```go
+func CurrentSchema(context.Context, *sql.Conn) (string, error)
+func SetSchema(context.Context, *sql.Conn, string) error
+func CurrentCatalog(context.Context, *sql.Conn) (string, error)
+func SetCatalog(context.Context, *sql.Conn, string) error
+func GetClientInfo(context.Context, *sql.Conn) (ClientInfo, error)
+func SetClientInfo(context.Context, *sql.Conn, ClientInfo) error
+func SessionVariable(context.Context, *sql.Conn, string) (sql.NullString, error)
+func SetSessionVariable(context.Context, *sql.Conn, string, string) error
+func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
+```
+
+- CurrentSchema 在 Oracle 兼容模式查询 SYS_CONTEXT 当前 schema，在 MySQL 兼容模式查询当前数据库；没有选定数据库时返回空字符串。SetSchema 接受确切名称，不自动大小写折叠：Oracle 标识符双引号转义，MySQL 使用 COM_INIT_DB；名称按连接字符集编码，不拼接为多条 SQL。catalog 只适用于 MySQL 兼容模式，Oracle 明确返回 ErrUnsupported。
+- ClientInfo 是 ApplicationName、ClientUser、ClientHostname 三个 string 字段，映射同名会话用户变量；SetClientInfo 一次替换全部字段，空字段发送 NULL，读取 NULL 转为空字符串。变量值复用当前模式和 NO_BACKSLASH_ESCAPES 状态的字符串转义与严格 SQL 编码，不写入全局变量。
+- SessionVariable 只接受 ASCII 系统变量标识符，保留 SQL NULL；SetSessionVariable 的值是字符串，实际变量可写性/值域由服务端校验。time_zone、ncharacter_set_connection、character_set_*、collation_* 由 Config.Session 管理，运行时 setter 拒绝修改，防止解码配置与服务端状态不一致。两模式实际 SQL 支持仍需联调。
+- setter 只在无托管/服务端事务且 autocommit 开启时执行。发送修改前标记物理会话不可归还原池，成功或完整服务端错误后仍可在原 pinned 连接继续使用，关闭 sql.Conn 后淘汰；校验失败不标记。所有 setter 在发送前清理自动预处理缓存及类型描述缓存，覆盖 sql_mode 等解析语义变更；调用方显式持有的 sql.Stmt 仍遵循服务端原生绑定语义。此策略以重建连接代替不完整的变量恢复，不更改其他普通 SQL 的既有 reset 契约。
+- WarningSummary{Count uint16, Known bool} 保存协议 OK/EOF 数量；Known=false 表示尚无完整响应提供计数。Warnings 只读取最新普通 SQL 命令的最近完整结果快照，新的 SQL 清空并替换它，Ping/本节 helper/内部清理不覆盖；归还池后 reset 清空。Execute 的每项 ResultInfo.Warnings 独立保存各完整结果的数量，未完成结果保持未知。成功带 warning 仍是成功，nil logger 不影响快照。
+- 当前只公开数量，不编造警告码、SQLSTATE、消息或 Oracle SHOW WARNINGS 支持。warning 详情、ChangeUser、显式 CancelQuery 仍是 D30 未完成项；本节不能作为整项完成依据。
+
+实现继续使用根包现有的封闭请求、操作锁、Rows/错误状态机和 wire 叶包，无新增包或依赖。四目标集成源码 TestSessionOperations 已提供，本阶段仅编译，尚未验证真实模式、代理或版本。
+
 ## 17. 选址、HA、认证与导入
 
 ### 17.1 地址发现和 HA

@@ -47,6 +47,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(*sessionOperationRequest); ok {
+			return c.execSessionOperation(ctx, request)
+		}
 		if request, ok := args[0].Value.(localInfileRequest); ok {
 			return c.execLocalInfile(ctx, request)
 		}

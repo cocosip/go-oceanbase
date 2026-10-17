@@ -249,3 +249,15 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | 安全与资源 | 无隐式本地文件读取，单次授权/名称拒绝/来源限额/关闭和禁止重放有本地回归 | 同步 Open/Read/Close 必须配合 context 返回；数据库部分效果不能由本地对端证明 |
 
 四目标手动 CI 运行 `TestLocalImport`，对应环境名为 `OB_MYSQL_LOCAL_IMPORT_SQL`、`OB_ORACLE_LOCAL_IMPORT_SQL`、`OBPROXY_MYSQL_LOCAL_IMPORT_SQL`、`OBPROXY_ORACLE_LOCAL_IMPORT_SQL`。Oracle 缺失 SQL 时强制验收失败，普通跳过不计通过。本阶段未连接数据库，整项验收仍未完成。
+
+## 21. D30 会话辅助与 warning（首批）
+
+| 能力 | 本地实现 | 待验证/未完成 |
+| --- | --- | --- |
+| schema/catalog | 固定 sql.Conn；Oracle current schema、MySQL current database/COM_INIT_DB；Oracle catalog 明确不支持；名称严格编码/转义 | 实际服务版本、权限、代理及显式预处理绑定语义待联调 |
+| 客户端信息/会话变量 | 三个 ClientInfo 字段映射会话用户变量；系统变量标识符校验、值转义、保留 SQL NULL；编码/时区 setter 保留给 Config.Session | 两模式与代理的变量 SQL、可写性和值域待联调 |
+| 修改后的池隔离 | 活动事务/autocommit 关闭时拒绝；发送修改后不可归还原池，原 pinned 连接可继续使用；所有 setter 发送前清理自动预处理/类型描述缓存 | 物理断连及新借用者无状态泄漏的真实目标验证尚未执行 |
+| warning 数量 | OK/EOF 的 WarningSummary、Execute 每项 ResultInfo.Warnings；不依赖日志，helper/Ping/内部清理不覆盖业务快照 | 详情码/消息/SQLSTATE 尚未实现；非零 warning 的真实 SQL 及 Oracle 详情查询契约待取证 |
+| ChangeUser/显式取消 | 设计契约保留 | 尚未实现，不由以上辅助函数冒充 |
+
+TestSessionOperations 四目标源码已加入手动 CI，本阶段只编译、不连接数据库。D30 仍为进行中；实现总数保持28/32，验收0/32。API 和状态生命周期见架构 §16.3.1。

@@ -41,6 +41,7 @@ type ResultInfo struct {
 	InsertIDKnown     bool
 	Complete          bool
 	Err               error
+	Warnings          WarningSummary
 }
 
 // ExecutionSnapshot is an independent, concurrent-safe view of execution progress.
@@ -172,7 +173,7 @@ func (e *Execution) command(ok wire.OK) error {
 	if e == nil {
 		return nil
 	}
-	info := ResultInfo{Kind: ResultCommand, RowsAffectedKnown: true, Complete: true}
+	info := ResultInfo{Kind: ResultCommand, RowsAffectedKnown: true, Complete: true, Warnings: WarningSummary{Count: ok.Warnings, Known: true}}
 	if ok.InsertID != 0 {
 		info.InsertID = strconv.FormatUint(ok.InsertID, 10)
 		info.InsertIDKnown = true
@@ -186,7 +187,7 @@ func (e *Execution) command(ok wire.OK) error {
 	e.add(info)
 	return info.Err
 }
-func (e *Execution) rowDone() {
+func (e *Execution) rowDone(warnings uint16) {
 	if e == nil {
 		return
 	}
@@ -194,6 +195,7 @@ func (e *Execution) rowDone() {
 	defer e.mu.Unlock()
 	if n := len(e.snapshot.Results); n > 0 && e.snapshot.Results[n-1].Kind == ResultRows {
 		e.snapshot.Results[n-1].Complete = true
+		e.snapshot.Results[n-1].Warnings = WarningSummary{Count: warnings, Known: true}
 	}
 }
 func (e *Execution) finish(err error) {
