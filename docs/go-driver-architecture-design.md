@@ -1144,6 +1144,29 @@ Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER
 
 导入时有 context、大小/时间约束及明确 Close 所有权；协议拒绝和数据发送中断也要正确结束/丢弃连接。该功能不会因未设计便被删掉，也不会为“全功能”而默认开放任意文件读取。
 
+#### 17.3.1 D29 已实现的受控导入
+
+公开入口是 `Import(ctx, exec, query, input)`，`exec` 接受 `*sql.DB`、`*sql.Conn` 或 `*sql.Tx`，输入为一次性的 `*LocalInfile`。配置与 SQL 分开，SQL 由业务方提供；导入不会开始、提交或重新执行事务。DB 入口先固定物理连接，Conn/Tx 保留调用方原会话；不另建驱动连接池或包。
+
+```go
+input := &oceanbase.LocalInfile{
+    Name:     "input",
+    Reader:   strings.NewReader("1\tvalue\n"),
+    MaxBytes: 8 << 20,
+}
+result, err := oceanbase.Import(ctx, db,
+    "LOAD DATA LOCAL INFILE 'input' INTO TABLE target", input)
+```
+
+- `Reader` 由调用方持有，驱动从不关闭；必须指定精确匹配的 `Name`。也可改用 `Open func(context.Context, string) (io.ReadCloser, error)`，由回调根据本轮请求名授权并返回输入，返回的非 nil Reader 由驱动恰好关闭一次，包括回调同时返回错误的情况。两种来源互斥；回调模式下非空 `Name` 仍须精确匹配。
+- 请求名按会话字符集严格解码为 Go 字符串，校验非空、无 NUL 和长度上限，再匹配/调用回调；文件内容按原始字节发送，不隐式转码。驱动不把名称映射到文件、URL 或全局白名单。
+- 握手在服务端提供时协商 `CLIENT_LOCAL_FILES`，只声明协议能力。普通 Exec/Query、建连初始化和其他内部命令均无输入授权；仅 Import 对应的单条命令可接受一个请求，重复/畸形/不匹配请求直接淘汰连接，不发送任何该请求的数据。
+- `MaxBytes=0` 使用 `Limits.MaxLOBBytes`，分块不超过64 KiB和单消息上限；复用长参数的有界读取、精确上限探测与取消检查。`Timeout=0` 为30秒，覆盖固定连接、等待、发送及最终确认，并受更早的 context 时限约束。Reader/Open/Close 为同步调用，必须配合取消并返回；不会用脱离调用的 goroutine 隐藏阻塞，也不能递归访问同一受限连接。
+- 正常 EOF 后先完成驱动持有 Reader 的关闭，再发送空结束包；随后必须收到最终 OK/ERR，其他响应淘汰连接。延续消息在包序号回绕时仍保持同一请求身份、trace 与诊断记录，复用标准/压缩/OB20 包流。
+- 输入错误、取消、超限或关闭错误不发送成功结束包，立即丢弃物理会话；最终完整服务器 ERR 保留结构化错误且允许会话继续使用。错误以 `ErrLocalInfile` 标识，并屏蔽来源返回的 `driver.ErrBadConn` 重试信号；输入实例不能重复或并发消费。失败可能已有数据库效果，驱动不宣称自动回滚，事务效果须按服务端/存储引擎实际验证。
+
+本地对端已覆盖两兼容模式及完整压缩/OB20 往返，不代表真实目标已支持 LOAD DATA LOCAL。`TestLocalImport` 保留四目标源码与手动 CI：MySQL 模式提供默认 SQL，Oracle 模式需配置对应 profile 的 `LOCAL_IMPORT_SQL` 模板，包含 `{table}`，请求名固定为 `input`；强制验收时缺失配置失败。数据库联调暂不执行。
+
 ## 18. slog、诊断与完整链路追踪
 
 ### 18.1 日志注入契约

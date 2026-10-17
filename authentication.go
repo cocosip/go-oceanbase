@@ -188,6 +188,8 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
 	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF | wire.ClientConnectAttrs
+	// Protocol support does not grant access: only an explicit Import supplies a Reader.
+	wanted |= wire.ClientLocalFiles
 	if c.cfg.Protocol.Compression != FeatureOff {
 		if c.cfg.Protocol.Compression == FeatureRequired && server&wire.ClientCompress == 0 {
 			return 0, fmt.Errorf("%w: compression", ErrUnsupported)

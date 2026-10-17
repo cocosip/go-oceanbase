@@ -598,10 +598,12 @@ D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、�
 
 交付：显式 Reader/请求解析回调、请求级权限及大小/时间限制；服务端文件名不直接映射本地文件；Reader Close 所有权明确。
 
-- [ ] 测试 `TestLocalInfilePolicy`、`TestLocalInfileFailure`：未授权请求无文件读取；Reader 中途失败/取消/超限正确终止响应或淘汰连接；不隐式重传。
-- [ ] 执行 `go test . -run 'TestLocalInfile' -count=1`，确认失败。
-- [ ] 通过已有执行状态机发送授权内容，不建全局文件白名单；配置与导入 SQL 分开。
+- [x] 测试 `TestLocalInfilePolicy`、`TestLocalInfileFailure`：未授权请求无文件读取；Reader 中途失败/取消/超限正确终止响应或淘汰连接；不隐式重传。
+- [x] 执行 `go test . -run 'TestLocalInfile' -count=1`，确认失败。
+- [x] 通过已有执行状态机发送授权内容，不建全局文件白名单；配置与导入 SQL 分开。
 - [ ] 同命令通过；`TestLocalImport` 校验真实入库行数/内容和失败事务行为，支持条件写入矩阵。
+
+D29 本地实现：`Import` + 一次性 `LocalInfile`，精确名称 Reader/授权 Open 二选一；Reader 调用方关闭，Open 返回值驱动关闭。输入只挂在本次文本命令上，沿用长参数的有界读取和既有 Rows 状态机；wire 叶包新增延续写入，避免序号回绕重启诊断/trace，无新包或依赖。当前不连接数据库，最后一项的本地命令已通过，四目标集成源码及 CI 已补但未运行，不能勾选真实验收。具体契约见架构 §17.3.1。
 
 ### D30 会话辅助、warning、ChangeUser 与显式取消
 

@@ -47,6 +47,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(localInfileRequest); ok {
+			return c.execLocalInfile(ctx, request)
+		}
 		if request, ok := args[0].Value.(batchRequest); ok {
 			return c.execBatch(ctx, request)
 		}
@@ -234,6 +237,9 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 	r := c.startRows(ctx, binary, auto)
 	r.parameterStmt = parameterStmt
 	r.keepGate = keepGate
+	if !keepGate && !binary && len(payload) > 0 && payload[0] == 3 {
+		r.localInfile, _ = ctx.Value(localInfileContextKey{}).(*LocalInfile)
+	}
 	r.captureLOBOpen()
 	r.outputs = outputs
 	ctx = r.ctx

@@ -237,3 +237,15 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | Unix socket | Config.Network=unix，Go/OS 提供 AF_UNIX；固定 Addr，TLS 时显式 ServerName | 本机 Windows socket 协议收发/关闭、超时和门禁已测；Linux/真实服务 socket 待验证 |
 | Named Pipe | Config.Network=pipe；Windows go-winio overlapped I/O；暂时不存在按配置重试，权限错误不重试；非 Windows 内置拨号明确不支持 | 本机 Windows 管道协议收发/关闭、重试和门禁；远端同步 CreateFile 无严格 context 中断保证，见架构 §9.0.1；远程权限及真实服务待验证 |
 | Shared Memory/VC | 按原生事件/映射协议及 VC ABI 独立适配 | 待开发/平台运行，整项 D28 未完成 |
+
+## 20. D29 LOCAL INFILE
+
+`Import` 和一次性 `LocalInfile` 已本地实现；仅本次命令授权精确名称 Reader 或 Open 回调，普通命令不允许上传，协议能力位不代表本地文件权限。请求名按会话字符集解码，内容原样发送；复用标准/压缩/OB20、同会话事务和既有清理策略。大小/超时/Reader 所有权及失败语义见架构 §17.3.1。
+
+| 目标/能力 | 当前证据 | 待验证条件 |
+| --- | --- | --- |
+| MySQL 兼容模式直连/代理 | 本地请求/拒绝/失败/取消/事务协议；完整三种包流；集成源码已提供默认 LOAD DATA LOCAL SQL | 实际版本/能力位、租户导入权限、local_infile 服务配置、入库计数/内容和部分失败事务效果 |
+| Oracle 兼容模式直连/代理 | 本地两模式共用实现和字节流；集成入口已提供 | 目标实际支持的 SQL 及 LOCAL 请求协议；对应 profile 的 LOCAL_IMPORT_SQL 模板须包含 {table} 并请求 input；真实支持未确认 |
+| 安全与资源 | 无隐式本地文件读取，单次授权/名称拒绝/来源限额/关闭和禁止重放有本地回归 | 同步 Open/Read/Close 必须配合 context 返回；数据库部分效果不能由本地对端证明 |
+
+四目标手动 CI 运行 `TestLocalImport`，对应环境名为 `OB_MYSQL_LOCAL_IMPORT_SQL`、`OB_ORACLE_LOCAL_IMPORT_SQL`、`OBPROXY_MYSQL_LOCAL_IMPORT_SQL`、`OBPROXY_ORACLE_LOCAL_IMPORT_SQL`。Oracle 缺失 SQL 时强制验收失败，普通跳过不计通过。本阶段未连接数据库，整项验收仍未完成。

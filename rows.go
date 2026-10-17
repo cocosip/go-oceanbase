@@ -43,6 +43,8 @@ type textRows struct {
 	buffered             []lobRowset
 	bufferRow            int
 	bufferBytes          int64
+	localInfile          *LocalInfile
+	localInfileAck       bool
 }
 
 func (r *textRows) Columns() []string {
@@ -184,6 +186,19 @@ func (r *textRows) advance(ctx context.Context) error {
 		}
 		if len(data) == 0 {
 			return wire.ErrMalformed
+		}
+		if r.localInfileAck {
+			r.localInfileAck = false
+			if data[0] != 0 && data[0] != 255 {
+				return wire.ErrMalformed
+			}
+		}
+		if data[0] == 251 {
+			if err = r.uploadLocalInfile(ctx, data); err != nil {
+				return err
+			}
+			r.localInfileAck = true
+			continue
 		}
 		if data[0] == 255 {
 			err = decodeServerError(data)

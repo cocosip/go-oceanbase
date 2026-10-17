@@ -17,6 +17,7 @@ const (
 	ClientFoundRows         uint64 = 1 << 1
 	ClientConnectWithDB     uint64 = 1 << 3
 	ClientCompress          uint64 = 1 << 5
+	ClientLocalFiles        uint64 = 1 << 7
 	ClientProtocol41        uint64 = 1 << 9
 	ClientSSL               uint64 = 1 << 11
 	ClientTransactions      uint64 = 1 << 13

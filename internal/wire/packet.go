@@ -126,7 +126,17 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 }
 
 // WriteMessage sends one logical message without retrying failed I/O.
-func (p *PacketIO) WriteMessage(ctx context.Context, payload []byte) (err error) {
+func (p *PacketIO) WriteMessage(ctx context.Context, payload []byte) error {
+	return p.writeMessage(ctx, payload, true)
+}
+
+// WriteContinuation sends an in-command message without starting trace/diagnostic
+// state when its packet sequence wraps to zero. It never resets framing identity.
+func (p *PacketIO) WriteContinuation(ctx context.Context, payload []byte) error {
+	return p.writeMessage(ctx, payload, false)
+}
+
+func (p *PacketIO) writeMessage(ctx context.Context, payload []byte, command bool) (err error) {
 	var transferred int64
 	sequence := p.sequence
 	defer func() { p.notePacket(true, sequence, transferred, nil, err) }()
@@ -136,7 +146,7 @@ func (p *PacketIO) WriteMessage(ctx context.Context, payload []byte) (err error)
 	if _, err = messageSize(0, len(payload), p.maxMessageBytes); err != nil {
 		return err
 	}
-	if sequence == 0 {
+	if sequence == 0 && command {
 		p.finishTrace()
 		p.finishDiagnostic()
 		if err = p.beginTrace(ctx); err != nil {
