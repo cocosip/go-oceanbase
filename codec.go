@@ -88,6 +88,8 @@ func textTypeName(c wire.Column, mode Mode) string {
 			return typeNameBinaryFloat
 		case 5:
 			return typeNameBinaryDouble
+		case 12:
+			return typeNameDate
 		case 15, 253:
 			return typeNameVarchar2
 		case 203:

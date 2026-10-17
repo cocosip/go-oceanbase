@@ -335,6 +335,8 @@ go test -tags=integration ./tests/integration -count=1
 - [ ] 实现类型映射和文本规范；字符集确需依赖时只引入对应编码库，记录版本与用途，不开发通用编码框架。
 - [ ] 同命令通过；`TestAllScalarTypes` 交叉模式/文本/二进制/客户端路径验证；支持性差异进入兼容矩阵。
 
+Oracle DATE 元数据补充：协议类型12在 Oracle 报告 DATE、MySQL 报告 DATETIME；ParseTime 只改变 Scan 来源，不改变类型名称或截断时分秒。TestDateColumnTypes/TestDateParameterMetadata 提供本地回归；TestAllScalarTypes 已补 DATE/TIMESTAMP 列名检查与 Oracle DATE 含时间夹具，集成仅编译，真实验证仍未勾选。
+
 ### D13 数据库、结果和参数元数据
 
 依赖：D09、D12。对应：M11；架构 §16.1。

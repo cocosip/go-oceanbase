@@ -13,6 +13,9 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
+const scalarTextPath = "text"
+const scalarDateText = "2024-02-29"
+
 func TestAllScalarTypes(t *testing.T) {
 	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
 	if err != nil {
@@ -20,7 +23,7 @@ func TestAllScalarTypes(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.name, func(t *testing.T) {
-			for _, path := range []string{"text", "server", "client"} {
+			for _, path := range []string{scalarTextPath, "server", "client"} {
 				t.Run(path, func(t *testing.T) { testScalarProfile(t, p, path) })
 			}
 		})
@@ -53,13 +56,14 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 	values := "?,?,?,?,?,?,?,?"
 	query := "SELECT n,v,b,ts,d,tm,yr FROM " + table + " WHERE id=1"
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
-	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, "2024-02-29", "-838:59:59.999999", 2026}
+	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, scalarDateText, "-838:59:59.999999", 2026}
 	if p.mode == oceanbase.ModeOracle {
-		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9)"
-		values = "?,?,?,?,?,?,?,?,?"
+		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9),dt DATE"
+		values = "?,?,?,?,?,?,?,?,?,?"
 		query = "SELECT n,v,b,ts,tz,ltz,ym,ds,ROWID FROM " + table + " WHERE id=1"
 		instant = instant.Add(789 * time.Nanosecond)
 		args = []any{1, oceanbase.Number("12345678901234567890.123456789"), oceanbase.NString("中文😀"), oceanbase.Raw{0, 255}, instant, oceanbase.TimestampTZ("2026-01-02 03:04:05.123456789 -00:30"), oceanbase.TimestampLTZ("2026-01-02 03:04:05.123456789 +00:00"), oceanbase.IntervalYM("-999999999-11"), oceanbase.IntervalDS("-999999999 23:59:59.123456789")}
+		args = append(args, time.Date(2024, 2, 29, 12, 34, 56, 0, time.UTC))
 	}
 	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" ("+definition+")"); err != nil {
 		failOperation(t, "create scalar table", err)
@@ -73,7 +77,7 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 		failOperation(t, "insert scalar values", err)
 	}
 	var row *sql.Row
-	if path == "text" {
+	if path == scalarTextPath {
 		row = db.QueryRowContext(testContext(t), query)
 	} else {
 		stmt, err := db.PrepareContext(testContext(t), query)
@@ -84,6 +88,53 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 		row = stmt.QueryRowContext(testContext(t))
 	}
 	checkScalarProfileRow(t, p, db, table, row, instant)
+	checkScalarDateMetadata(t, p, db, table, path)
+}
+
+func checkScalarDateMetadata(t *testing.T, p profile, db *sql.DB, table, path string) {
+	t.Helper()
+	query := "SELECT d,ts FROM " + table + " WHERE id=1"
+	wantDate, wantTimestamp := scalarDateText, "DATETIME"
+	if p.mode == oceanbase.ModeOracle {
+		query = "SELECT dt,ts FROM " + table + " WHERE id=1"
+		wantDate, wantTimestamp = "2024-02-29 12:34:56", "TIMESTAMP"
+	}
+	var rows *sql.Rows
+	var err error
+	if path == scalarTextPath {
+		rows, err = db.QueryContext(testContext(t), query)
+	} else {
+		stmt, prepareErr := db.PrepareContext(testContext(t), query)
+		if prepareErr != nil {
+			failOperation(t, "prepare date metadata select", prepareErr)
+		}
+		defer func() { _ = stmt.Close() }()
+		rows, err = stmt.QueryContext(testContext(t))
+	}
+	if err != nil {
+		failOperation(t, "query date metadata", err)
+	}
+	defer func() { _ = rows.Close() }()
+	columns, err := rows.ColumnTypes()
+	if err != nil || len(columns) != 2 {
+		t.Fatal("date metadata missing", err)
+	}
+	if columns[0].DatabaseTypeName() != "DATE" || columns[1].DatabaseTypeName() != wantTimestamp {
+		t.Fatal("date/timestamp database type names changed", columns[0].DatabaseTypeName(), columns[1].DatabaseTypeName())
+	}
+	var date, timestamp string
+	if !rows.Next() {
+		t.Fatal("date row missing", rows.Err())
+	}
+	if err = rows.Scan(&date, &timestamp); err != nil {
+		failOperation(t, "read date value", err)
+	}
+	if date != wantDate {
+		t.Fatal("date time-of-day changed", date)
+	}
+	if rows.Next() || rows.Err() != nil {
+		t.Fatal("date result boundary changed", rows.Err())
+	}
 }
 
 func checkScalarProfileRow(t *testing.T, p profile, db *sql.DB, table string, row *sql.Row, instant time.Time) {
@@ -119,7 +170,7 @@ func checkScalarProfileRow(t *testing.T, p profile, db *sql.DB, table string, ro
 		if err := row.Scan(&n, &text, &raw, &timestamp, &date, &duration, &year); err != nil {
 			failOperation(t, "read MySQL scalar values", err)
 		}
-		if date != "2024-02-29" || duration != "-838:59:59.999999" || year != 2026 {
+		if date != scalarDateText || duration != "-838:59:59.999999" || year != 2026 {
 			t.Fatal("date/TIME/YEAR changed")
 		}
 	}

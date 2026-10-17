@@ -718,6 +718,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标各10轮、Go1.25 实际 Windows/386 通过。初次 lint 提示测试字符串重复，改用局部常量并保留已有全大写/新增混合大小写的拒绝覆盖；最终两版本普通及 integration 标签 golangci-lint 各0 issues。文档 UTF-8/链接/锚点/围栏/无机器路径、160项初值和行号/10别名/2额外字段及32任务/28实现/0验收、Go格式和diff检查通过。
 - 这批完成入口和默认值证据，不把160项字段核对视为160项服务端行为验收。真实平台、远程 CI、成功 race 及数据库仍未验证，D28/D30/D31/D32 和28/32实现、0/32验收保持；继续核对逐项运行行为及其本地测试，数据库联调仍暂缓。
 
+#### D12/D13 Oracle DATE 元数据修复
+
+- 固定 Java ColumnType.getColumnTypeName 将 Oracle 协议类型12报告为 DATE；Go 原先回落到 MySQL 名称 DATETIME。已在共享 textTypeName 增加 Oracle 分支，同时覆盖结果列、服务端参数元数据及类型支持检查，MySQL 保持 DATETIME；不新增 API、配置、包或依赖。
+- 新增 TestDateColumnTypes/TestDateParameterMetadata：两模式 × 三种包流，结果列再交叉文本/服务端预处理/客户端预处理及 ParseTime 开关，共42组合；核对类型名称、ScanType、闰日时分秒、NULL、语句关闭和同会话 Ping/QUIT。修复前21个 Oracle 组合仅在名称断言失败，MySQL 对照通过；修复后目标通过。
+- TestAllScalarTypes 已补 Oracle DATE 列与整秒含时间输入，三种执行路径检查 DATE/TIMESTAMP 元数据及日期值；MySQL 对照检查 DATE/DATETIME。两工具链均只编译该集成源码，不运行数据库。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过，Go1.25 实际 Windows/386 目标通过；初次 integration lint 的两处重复字符串已提取常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读走查无确认问题；文档/链接/160配置初值及32任务/28实现/0验收、Go格式和diff检查通过。真实数据库、Linux/macOS/远程 CI 与成功 race 未验证，四项未收口任务及计数保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
