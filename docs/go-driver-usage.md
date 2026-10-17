@@ -95,7 +95,7 @@ if _, err := tx.ExecContext(ctx, "UPDATE app_table SET v=? WHERE id=?", "new", 1
 return tx.Commit()
 ```
 
-事务内所有操作使用 `tx`，不能混用 `db` 查询来观察未提交数据。`Commit` 失败可能意味着结果未知；`Rollback` 清理也不能证明远端已经回滚。示例中的延迟回滚只处理尚未结束的事务。
+事务内所有操作使用 `tx`，不能混用 `db` 查询来观察未提交数据。`Commit` 失败可能意味着结果未知；优先用 `errors.Is(err, oceanbase.ErrCommitUnknown)` 判断，因为发送后取消/超时也会同时保留 `context.Canceled` / `context.DeadlineExceeded`。此时不能按普通取消自动重放事务，`Rollback` 清理也不能证明远端已经回滚。示例中的延迟回滚只处理尚未结束的事务。
 
 只读事务使用 `db.BeginTx(ctx, &sql.TxOptions{ReadOnly:true})`，在已有物理连接上设置服务端事务属性。`Routing.Role` 约束新连接的入口，角色标签本身不保证 SQL 权限；显式角色失败时不会回退其他角色。RoleReadOnly 的 DB 必须使用 ReadOnly=true 开启事务，普通 Query/Exec 不会自动变成只读事务。完整示例见 `transaction_example_test.go` 的 ExampleNewConnector_readOnlyTransactions，默认测试只编译该联网示例。
 

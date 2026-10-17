@@ -800,6 +800,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 将 D14 标量输出、D19 游标、D20 过程资源和 D25 FLT 原先混在同一已勾选步骤中的本地验证与数据库验收拆开；真实 TestScalarCall/Returning、TestCursorModes/Updates、TestProcedureResources、TestFullLinkTrace 保持未勾选，源码仅编译。
 - 本轮仅调整开发计划和进度文档，没有修改代码、测试或 CI，也未重新运行 Go 测试/lint；沿用上一代码批次的验证记录，不增加新的运行证据。任务总数和实现/验收计数保持32/28/0，D28/D30/D31/D32 继续进行中。
 
+#### D09 COMMIT 写出后的取消与超时分类
+
+- 修复本地事务的发送/读取边界：完整 COMMIT 写出后，如果读取响应前 context 已取消或超时，原实现直接返回裸 context 错误，丢失 ErrCommitUnknown。现在按 WriteMessage 的发送证据区分发送前拒绝与响应未知；发送后保留 ErrCommitUnknown 和底层 context 原因，淘汰原会话，不重放或补发 ROLLBACK。完整服务端拒绝保留 Error；确认成功后恢复失败仍为 ErrTxCleanup。复用既有 wire、错误分类与标准 database/sql，不增加公开 API、包或依赖。
+- 新增 [TestCommitCanceledAfterWrite、TestCommitDeadlineAfterWrite、TestCommitServerRejection](../tx_commit_test.go)，覆盖两种兼容模式，经真实 database/sql 与本地协议对端检查写出后的取消/超时、明确拒绝、单次提交/拨号、底层关闭、池中无遗留连接及结束后不能回滚。旧 tx.go 的 Go overlay 使取消/超时四场景均按预期因缺少 ErrCommitUnknown 失败；修正后的目标通过。对端仅确认收到 COMMIT，不证明真实提交或回滚结果。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标在 Go1.25 各10轮及实际 Windows/386 通过。初次 lint 的重复模式名称改为复用既有测试常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，不另存报告；架构和使用指南已同步，文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，真实平台、远程 CI 和成功 race 的缺口不变，D28/D30/D31/D32 继续进行中。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

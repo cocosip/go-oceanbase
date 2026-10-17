@@ -140,9 +140,16 @@ func (t *tx) finish(commit bool) error {
 	if commit {
 		command = "COMMIT"
 	}
-	if err := c.commandOK(ctx, append([]byte{3}, command...)); err != nil {
+	p := c.session.packets
+	p.ResetSequence()
+	err := p.WriteMessage(ctx, append([]byte{3}, command...))
+	sent := err == nil || !errorsPreSend(err)
+	if err == nil {
+		err = c.readCommandOK(ctx)
+	}
+	if err != nil {
 		c.discard()
-		if commit && err != driver.ErrBadConn && err != context.Canceled && err != context.DeadlineExceeded {
+		if commit && sent {
 			var server *Error
 			if !errors.As(err, &server) {
 				return errors.Join(ErrCommitUnknown, err)

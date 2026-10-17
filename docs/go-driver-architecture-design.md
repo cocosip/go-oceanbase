@@ -741,7 +741,7 @@ Config.RowsAffectedMode 默认 MatchedRows。MySQL 兼容模式通过 CLIENT_FOU
 | 建连失败 | 返回具体建连错误；Connect/Open 不返回 ErrBadConn |
 | 参数、类型、包大小在发送前验证失败 | 返回具体错误；连接仍同步时可复用 |
 | 开始发送后的网络错误或响应丢失 | 返回原传输错误，标记连接 broken；不能包装为 ErrBadConn |
-| COMMIT 响应丢失 | 返回具有“提交结果未知”语义的错误，不自动再提交或回滚并声称已撤销 |
+| COMMIT 响应丢失 | 返回 `ErrCommitUnknown`，包括完整写出后、读取响应前发生的取消/超时；保留底层 context 错误，不自动再提交或回滚并声称已撤销 |
 | 已收到服务端错误 | 返回服务端错误；是否保留连接取决于协议同步及会话状态 |
 
 关闭坏连接和允许重试是两个独立决定。Validator 负责淘汰连接，不能为了淘汰而把所有错误变成 ErrBadConn。[G01][G02]
