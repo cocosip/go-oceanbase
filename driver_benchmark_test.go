@@ -123,10 +123,36 @@ func driverBenchmarkDB(t testing.TB, mode Mode, options ExecutionOptions, serve 
 		_ = db.Close()
 		t.Fatal(err)
 	}
+	pinned, err := db.Conn(ctx)
+	if err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	var physical *conn
+	err = pinned.Raw(func(raw any) error { physical = raw.(*conn); return nil })
+	err = errors.Join(err, pinned.Close())
+	if err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
 	// Register after dialing so DB.Close sends QUIT before transport cleanup waits for the peer.
 	t.Cleanup(func() {
+		checkBenchmarkIdle(t, physical, db.Stats())
 		if err := db.Close(); err != nil {
 			t.Error(err)
+		}
+		if stats := db.Stats(); stats.OpenConnections != 0 || stats.InUse != 0 {
+			t.Error("benchmark pool retained connections after Close:", stats)
+		}
+		checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer checkCancel()
+		if err := physical.lock(checkCtx); err != nil {
+			t.Error(err)
+			return
+		}
+		defer physical.unlock()
+		if !physical.closed.Load() || len(physical.resources.records) != 0 || physical.statements.order.Len() != 0 || len(physical.statements.entries) != 0 {
+			t.Error("benchmark physical connection retained resources after Close")
 		}
 	})
 	return db, ctx

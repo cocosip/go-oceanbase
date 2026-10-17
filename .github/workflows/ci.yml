@@ -9,6 +9,10 @@ on:
         description: 'Run integration tests against explicitly configured test databases'
         type: boolean
         default: false
+      stability:
+        description: 'Run extended driver resource checks without a database'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,6 +90,24 @@ jobs:
       - run: go test ./internal/charset -run '^$' -fuzz FuzzCharset -fuzztime 30s -parallel 2
       - run: go test ./internal/routing -run '^$' -fuzz FuzzAddressParsing -fuzztime 30s -parallel 2
       - run: go test ./internal/routing -run '^$' -fuzz FuzzTNSParser -fuzztime 30s -parallel 2
+
+  stability:
+    if: github.event_name == 'workflow_dispatch' && inputs.stability
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        go: ['1.25.x', '1.26.x']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - run: go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
+        env:
+          OB_TEST_STABILITY_ITERATIONS: '4096'
 
   integration:
     if: github.event_name == 'workflow_dispatch' && inputs.integration

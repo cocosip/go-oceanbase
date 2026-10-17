@@ -380,3 +380,5 @@ TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手�
 ## 23. D32 本地性能夹具
 
 两模式 CRUD、每次/复用预处理、缓存命中、逐项/multi-send 批量、16KiB BLOB 和32行 fetch 共16场景已有本地协议对端及普通单测正确性检查。Go1.25.0/1.26.0 Windows amd64 短样本与复现方式见[本地基准](go-driver-benchmarks.md)。进程内对端、断言和调度开销计入统计；没有真实 SQL/网络/服务端工作量，也不覆盖全部传输/优化组合。真实数据库性能、LOB 远端流式和长期资源稳定性仍未验证，不构成任何组合的性能验收，D32 保持进行中。
+
+`TestDriverResourceStability` 在固定8轮复用上述场景，检查每轮会话/statement/LOB/游标清理及缓存、池边界，记录 GC 后的进程级堆/goroutine；手动 `stability` CI 独立于数据库集成入口。只覆盖串行 net.Pipe 基础路径，不能证明真实句柄、完整并发/故障路径或生产长期稳定性，样本及运行方式见本地基准 §6。

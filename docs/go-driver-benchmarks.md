@@ -34,7 +34,9 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -b
 
 以上为 POSIX shell 写法；PowerShell 先设置 `$env:GOTOOLCHAIN='go1.25.0'` 或 `'go1.26.0'`，再执行对应 go 命令。无需 DSN、凭据或数据库。普通 `go test ./...` 也会运行相同夹具的预热及每项两轮操作，CI 默认检查返回值和清理；不会默认采集性能结果。
 
-每个夹具从建连起有2分钟总预算；对端保留到 DB.Close 完成，再关闭传输并等待 goroutine 退出，最后取消 context。testing.TB.Context 在 Cleanup 前取消，因此夹具使用 WithoutCancel 后自行施加预算。长时间 benchtime 必须与该预算匹配；资源稳定性测试需独立设计，不能直接延长这个单连接短基准并宣称完成验收。
+每个夹具从建连起有2分钟总预算；对端保留到 DB.Close 完成，再关闭传输并等待 goroutine 退出，最后取消 context。testing.TB.Context 在 Cleanup 前取消，因此夹具使用 WithoutCancel 后自行施加预算。长时间 benchtime 必须与该预算匹配；独立资源检查见 §6，不能直接延长这个单连接短基准并宣称完成验收。
+
+所有夹具在计时之外、DB.Close 之前直接检查原物理会话：池无借用、事务/响应/LOB/游标资源已释放，statement 缓存索引一致、容量及租约合法，类型描述字节在预算内。检查不重新借连接，避免 ResetSession 清掉残留后掩盖泄漏。关闭后确认池归零、物理连接关闭、缓存和资源登记清空；每个协议对端等待退出。该检查同时用于普通单测、benchmark 和下面的扩展运行。
 
 ## 4. 本地样本
 
@@ -78,3 +80,44 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -b
 ## 5. 尚待验证
 
 真实两模式/直连与 OBProxy 的 CRUD、缓存、原生批量优化、LOB 流式和游标性能、网络与多连接负载、长期内存/句柄/goroutine 曲线仍未执行。Linux 实际运行、远程 CI 和成功 race 证据仍缺。D32 不因此完成；实现28/32、验收0/32不变，详见[开发进度](go-driver-development-progress.md)。
+
+## 6. 离线资源稳定性检查
+
+`TestDriverResourceStability` 复用以上16场景，在固定8轮中反复创建、使用并关闭会话。每个场景每轮先预热一次，再执行 N 次；默认 N=2，普通单测和 CI 都运行。通过 `OB_TEST_STABILITY_ITERATIONS` 指定1–10000的 N 可增加负载，不改变样本/测试树大小，也不访问 DSN 或真实数据库。每个场景仍有独立2分钟预算，整个命令需设置足够的 timeout。
+
+```sh
+OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.25.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
+OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
+```
+
+PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOLCHAIN`，再执行 go 命令。手动 CI 的 `stability` 输入可单独开启两版本、Linux/Windows 的同一检查，不依赖 integration 输入或数据库 secrets；远程任务未运行不计通过。
+
+每个场景完整执行 Cleanup 后才进入下一个场景；每轮结束主动 GC，记录 `resource_sample` 的 elapsed_ms、HeapAlloc、HeapObjects 和 NumGoroutine。样本0为空载基线；共9个采样点。资源所有权、缓存容量及池关闭是硬断言；堆和 goroutine 为进程级观测，含 testing 的固定测试树、输出、运行时缓存及对端开销，不设置任意阈值，也不能据此断言无泄漏。此运行覆盖反复建连和基础串行路径，尚未覆盖同一长寿命会话、全部扩展/错误/并发/包流组合。net.Pipe 不提供真实 OS socket/文件句柄曲线，数据库负载和生产长期运行继续待验收。
+
+
+### 6.1 本地扩展样本
+
+2026-10-17，Windows/amd64，Intel Core i5-9400，默认 GOMAXPROCS=6；两工具链顺序运行，各 N=4096、8轮、16场景，未并行运行其他 Go 检查。全部资源断言通过，Go1.25 用时111.101秒，Go1.26 用时114.024秒。每个场景每轮含一次预热，因此每工具链共524416次场景操作；单次场景的 SQL/行数见 §2，不将其称为 SQL 吞吐。
+
+| Go | 样本 | 耗时 ms | GC 后堆 bytes | 堆对象数 | goroutine |
+| --- | --- | --- | --- | --- | --- |
+| 1.25.0 | 0 | 1 | 229344 | 699 | 2 |
+| 1.25.0 | 1 | 13735 | 373072 | 1289 | 2 |
+| 1.25.0 | 2 | 27610 | 392352 | 1330 | 2 |
+| 1.25.0 | 3 | 41373 | 391536 | 1308 | 2 |
+| 1.25.0 | 4 | 55074 | 403360 | 1406 | 2 |
+| 1.25.0 | 5 | 68852 | 410400 | 1446 | 2 |
+| 1.25.0 | 6 | 82795 | 409952 | 1422 | 2 |
+| 1.25.0 | 7 | 96534 | 413936 | 1467 | 2 |
+| 1.25.0 | 8 | 110498 | 437520 | 1521 | 2 |
+| 1.26.0 | 0 | 0 | 274928 | 725 | 2 |
+| 1.26.0 | 1 | 14618 | 411384 | 1243 | 2 |
+| 1.26.0 | 2 | 28593 | 439336 | 1365 | 2 |
+| 1.26.0 | 3 | 42697 | 442968 | 1386 | 2 |
+| 1.26.0 | 4 | 56979 | 485928 | 1518 | 2 |
+| 1.26.0 | 5 | 71207 | 482648 | 1474 | 2 |
+| 1.26.0 | 6 | 85237 | 488440 | 1507 | 2 |
+| 1.26.0 | 7 | 99199 | 495400 | 1581 | 2 |
+| 1.26.0 | 8 | 113095 | 502216 | 1594 | 2 |
+
+各静止采样点均为2个 goroutine；两版的堆/对象数在热身后仍有增长，不能将结果表述为“零增长”或据此证明无泄漏。样本含测试框架的固定元数据和运行时缓存；上面的资源断言提供的是每次场景清理的直接证据。要判断生产长期稳定性仍需更长时间、长寿命会话、多连接和故障组合，以及真实 socket/OS 句柄与数据库环境。
