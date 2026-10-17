@@ -744,6 +744,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - dialCandidate 两处分支复用 nilReader 判断，不调用 typed-nil 方法；nil 且无错误返回既有拨号结果错误，带错误则保留错误链和候选重试分类，有效连接与错误同时返回仍恰好关闭一次。普通拨号及 CancelQuery 辅助拨号共用此边界，不新增公开 API、配置、包或依赖。
 - 新目标共12个 nil 组合，检查拨号次数、无凭据请求及无入池；TestDialContextErrorClosesConnection 用关闭计数与对端 EOF 检查所有权和无网络写。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过；Go1.25 实际 Windows/386 新目标通过。初次 lint 的重复测试名称已更名，最终两版本普通及 integration 标签 golangci-lint 均0 issues；独立只读复核无确认问题，文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过，不另存报告。未连接数据库，四项未收口任务及28/32实现、0/32验收保持。
 
+#### D13 二进制字符串类型名称
+
+- 固定 Java ColumnType.getColumnTypeName 与 ColumnDefinition.isBinary 以字符集63区分 BINARY/VARBINARY，不能依据 BINARY_FLAG128将文本 binary 排序规则改为二进制。共享类型名函数已将 MySQL 协议15/253/254对应的名称修正，Oracle VARCHAR2/CHAR保持；结果、参数元数据及语句支持检查共用，ScanType/字节值和长度语义不变。不新增公开 API、配置、包或依赖。
+- TestBinaryStringColumnTypes 用实际 database/sql 覆盖两模式 × 文本/服务端/客户端三路径 × 标准/压缩/OB20，六列同时检查二进制类型及带 binary 排序规则的文本对照；包含0/255原始字节、中文、非 nil 空值、NULL、ScanType、二进制长度及 statement/Ping/QUIT关闭复用。TestBinaryStringParameterMetadata 另覆盖两模式/三包流，合计24组合；修复前9个MySQL结果组合仅名称断言失败，Oracle对照通过。
+- TestAllScalarTypes 已增加 BINARY(4)列，与 VARBINARY(100)检查名称、ScanType、字节长度与内容；固定输入自身包含补零，不把本地对端当作服务端补零证据。两工具链仅编译该集成源码，未连接数据库。独立只读走查无确认问题，不另存报告；D28/D30/D31/D32及28/32实现、0/32验收保持。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过；初次 lint 的重复状态字符串已移除，最终两版本普通及 integration 标签 golangci-lint 各0 issues。Go1.25 实际 Windows/386 新目标、文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过；Linux/macOS、远程 CI、成功 race 与真实服务端列元数据仍未验证。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

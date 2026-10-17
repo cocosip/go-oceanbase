@@ -1191,6 +1191,8 @@ defer rows.Close()
 - `metadataLocked` 在已拥有连接 gate 且响应已完整结束时执行，复用同一参数化计划和现有字符集/安全字面量编码；返回 Rows 只关闭自身取消回调，不释放外层 gate。未读响应直接拒绝；内部查询不会经 Metadata/Session 或另开物理连接。公开入口把锁所有权交给返回 Rows。D18 已实现单业务命令内的类型描述缓存，D13 不缓存任意字典行集。
 - UDT 属性与集合元素投影使用 OceanBase 的 NUMBER_PRECISION 字段，输出别名仍为 precision；依据固定 [v4.3.5_CE 属性视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25001_25050.cpp) 与 [集合视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25051_25100.cpp)，不套用不一致的字典字段。
 
+普通结果与 StatementParameters 的 MySQL 字符串类型名按字符集编号63区分：协议15/253报告 VARBINARY，254报告 BINARY；其他编号继续 VARCHAR/CHAR，即使存在 BINARY_FLAG。ScanType 仍为二进制 []byte、文本 string，长度保持字节/字符语义，空字节值与 NULL 分开。Oracle 仍报告 VARCHAR2/CHAR。依据固定 Java [类型名称](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L425)和[二进制列判定](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L715)。TestBinaryStringColumnTypes/TestBinaryStringParameterMetadata 提供两模式本地证据；TestAllScalarTypes 的 BINARY/VARBINARY 真实列对照仅编译。
+
 以上路径已由协议对端覆盖，真实数据库字典字段、版本差异及权限仍需集成验证；D16/D18 的 Query/Next 缓存未命中场景仍由各自任务验证。
 
 ### 16.1.2 D32 结果列来源与产品身份

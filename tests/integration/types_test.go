@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"math"
@@ -54,12 +55,12 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	table := fmt.Sprintf("obgo_types_%d", time.Now().UnixNano())
-	definition := "id INTEGER PRIMARY KEY,n DECIMAL(38,9),v VARCHAR(100),b VARBINARY(100),ts DATETIME(6),d DATE,tm TIME(6),yr YEAR,u BIGINT UNSIGNED,s BIGINT"
-	values := "?,?,?,?,?,?,?,?,?,?"
+	definition := "id INTEGER PRIMARY KEY,n DECIMAL(38,9),v VARCHAR(100),b VARBINARY(100),ts DATETIME(6),d DATE,tm TIME(6),yr YEAR,u BIGINT UNSIGNED,s BIGINT,bf BINARY(4)"
+	values := "?,?,?,?,?,?,?,?,?,?,?"
 	query := "SELECT n,v,b,ts,d,tm,yr FROM " + table + " WHERE id=1"
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, scalarDateText, "-838:59:59.999999", 2026}
-	args = append(args, uint64(math.MaxUint64), int64(math.MinInt64))
+	args = append(args, uint64(math.MaxUint64), int64(math.MinInt64), []byte{0, 255, 0, 0})
 	if p.mode == oceanbase.ModeOracle {
 		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9),dt DATE"
 		values = "?,?,?,?,?,?,?,?,?,?"
@@ -96,8 +97,8 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 
 func checkScalarMetadata(t *testing.T, p profile, db *sql.DB, table, path string) {
 	t.Helper()
-	query := "SELECT d,ts,u,s FROM " + table + " WHERE id=1"
-	wantColumns := 4
+	query := "SELECT d,ts,u,s,b,bf FROM " + table + " WHERE id=1"
+	wantColumns := 6
 	wantDate, wantTimestamp := scalarDateText, "DATETIME"
 	if p.mode == oceanbase.ModeOracle {
 		query = "SELECT dt,ts FROM " + table + " WHERE id=1"
@@ -130,12 +131,14 @@ func checkScalarMetadata(t *testing.T, p profile, db *sql.DB, table, path string
 	var date, timestamp string
 	destinations := []any{&date, &timestamp}
 	var unsigned, signed reflect.Value
+	var variableBinary, fixedBinary []byte
 	if p.mode == oceanbase.ModeMySQL {
 		if columns[2].ScanType() != reflect.TypeFor[uint64]() || columns[3].ScanType() != reflect.TypeFor[int64]() {
 			t.Fatal("integer ScanType cannot represent full column range")
 		}
 		unsigned, signed = reflect.New(columns[2].ScanType()), reflect.New(columns[3].ScanType())
-		destinations = append(destinations, unsigned.Interface(), signed.Interface())
+		destinations = append(destinations, unsigned.Interface(), signed.Interface(), &variableBinary, &fixedBinary)
+		checkScalarBinaryMetadata(t, columns[4:])
 	}
 	if !rows.Next() {
 		t.Fatal("date row missing", rows.Err())
@@ -149,8 +152,26 @@ func checkScalarMetadata(t *testing.T, p profile, db *sql.DB, table, path string
 	if p.mode == oceanbase.ModeMySQL && (unsigned.Elem().Interface() != uint64(math.MaxUint64) || signed.Elem().Interface() != int64(math.MinInt64)) {
 		t.Fatal("integer ScanType lost boundary value")
 	}
+	if p.mode == oceanbase.ModeMySQL && (!bytes.Equal(variableBinary, []byte{0, 255}) || !bytes.Equal(fixedBinary, []byte{0, 255, 0, 0})) {
+		t.Fatal("binary string bytes or padding changed")
+	}
 	if rows.Next() || rows.Err() != nil {
 		t.Fatal("date result boundary changed", rows.Err())
+	}
+}
+
+func checkScalarBinaryMetadata(t *testing.T, columns []*sql.ColumnType) {
+	t.Helper()
+	for i, want := range []struct {
+		name   string
+		length int64
+	}{{"VARBINARY", 100}, {"BINARY", 4}} {
+		if columns[i].DatabaseTypeName() != want.name || columns[i].ScanType() != reflect.TypeFor[[]byte]() {
+			t.Fatal("binary string type metadata changed", columns[i].DatabaseTypeName(), columns[i].ScanType())
+		}
+		if size, known := columns[i].Length(); !known || size != want.length {
+			t.Fatal("binary string byte length changed", size, known)
+		}
 	}
 }
 

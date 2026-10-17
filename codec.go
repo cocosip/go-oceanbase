@@ -20,6 +20,7 @@ const (
 	typeNameInteger      = "INTEGER"
 	typeNameTime         = "TIME"
 	typeNameBoolean      = "BOOLEAN"
+	typeNameBinary       = "BINARY"
 	typeNameVarbinary    = "VARBINARY"
 	typeNameDecimal      = "DECIMAL"
 	typeNameBigInt       = "BIGINT"
@@ -92,6 +93,8 @@ func textTypeName(c wire.Column, mode Mode) string {
 			return typeNameDate
 		case 15, 253:
 			return typeNameVarchar2
+		case 254:
+			return typeNameChar
 		case 203:
 			return typeNameRaw
 		case 200:
@@ -159,6 +162,9 @@ func mysqlTextTypeName(c wire.Column) string {
 	case 13:
 		return "YEAR"
 	case 15, 253:
+		if c.Charset == 63 {
+			return typeNameVarbinary
+		}
 		return typeNameVarchar
 	case 16:
 		return "BIT"
@@ -174,6 +180,9 @@ func mysqlTextTypeName(c wire.Column) string {
 		}
 		return "TEXT"
 	case 254:
+		if c.Charset == 63 {
+			return typeNameBinary
+		}
 		return typeNameChar
 	case 255:
 		return "GEOMETRY"

@@ -165,6 +165,8 @@ TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模�
 
 D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查询：MySQL information_schema 与 Oracle ALL_* 分开实现，Oracle catalog 不存在时返回空行集，MySQL 无 UDT/同义词字典时返回 ErrUnsupported；权限错误保留服务端代码。StatementParameters 总是服务端 prepare 后关闭，保留逻辑/物理映射和原始协议方向码。公开与内部字典执行共用计划，内部只在完整响应边界保持原 gate 与物理连接。以上为本地对端验证，真实字典字段及 OBProxy 兼容未验证。
 
+MySQL BINARY/VARBINARY 结果及参数类型名已按字符集63修正，文本 binary 排序规则不误报；Oracle VARCHAR2/CHAR 名称保持。两模式/三包流、本地结果三路径、字节/空值/NULL及元数据已覆盖，真实列对照 TestAllScalarTypes 仅编译，详见架构 §16.1.1。
+
 ## 5. 标量 OUT、INOUT、RETURNING（D14）
 
 | 能力 | Go 行为 | 验证状态 |
