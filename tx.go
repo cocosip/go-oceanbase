@@ -40,6 +40,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if c.closed.Load() {
 		return nil, driver.ErrBadConn
 	}
+	if c.xaUsed {
+		return nil, &XAError{Code: -9, Err: errors.New("XA session cannot enter a local transaction")}
+	}
 	if c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 {
 		return nil, fmt.Errorf("oceanbase: transaction already active or autocommit disabled")
 	}

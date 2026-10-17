@@ -27,6 +27,9 @@ type conn struct {
 	warningsCleared bool           // guarded by mu; local suppression until the next ordinary SQL
 	statementEpoch  *resourceEpoch // guarded by mu; explicit statements cannot cross identity changes
 	cancellation    cancelState
+	xaUsed          bool
+	xaActive        string
+	xaBranches      map[string]xaBranch
 }
 
 func (c *conn) Close() error {

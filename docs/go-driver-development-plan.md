@@ -644,12 +644,14 @@ func XARecover(ctx context.Context, conn *sql.Conn) ([]XID, error)
 func XAForget(ctx context.Context, conn *sql.Conn, xid XID) error
 ```
 
-XAVote 区分 prepared/read-only，错误单独返回；没有 read-only 反馈的路径不能编造该票。XAFlags 只接受该阶段支持的 XA 标准值。输入/输出 XID 的字节切片按值复制，避免调用方修改已登记分支身份。
+XAVote 区分 prepared/read-only，错误单独返回；没有 read-only 反馈的路径不能编造该票。XAFlags 只接受该阶段支持的 XA 标准值及已取证的 Oracle 扩展值（架构 §16.2.1）。输入/输出 XID 的字节切片按值复制，避免调用方修改已登记分支身份。
 
 - [ ] 测试 `TestXAState`、`TestXARecover`、`TestXAUnknownCommit`：禁止与 sql.Tx 混用、非法 flags/长度、join/resume/suspend、1PC/2PC、准备分支不随本地对象关闭回滚；结果未知不重放。
 - [ ] 执行 `go test . -run 'TestXA' -count=1`，确认失败。
 - [ ] 用外部调用测试固定 flags/返回码和 Recover 的 XID 列表，再实现原生 XA/DBMS_XA；不明分支状态的物理连接不能回池。
 - [ ] 同命令通过；两模式 `TestXATransactions`、`TestXARecoveryAfterDisconnect` 由新连接恢复；明确 Forget/超时等真实支持条件，不伪造成功。
+
+D31 本地实现：新增 xa.go / xa_protocol.go，原生 OUT 复用内部调用并保留发送阶段证据。两模式本地协议测试及四目标集成源码、示例已补，契约见架构 §16.2.1；Forget/RM 超时明确不支持。D30 的平台依赖未闭环，整体依赖与真实服务端验证继续按进度表保留，不以本地测试代替验收。
 
 ### D32 配置逐项迁移、完整验收与交付
 

@@ -171,7 +171,7 @@ func (c *conn) execSessionOperation(ctx context.Context, r *sessionOperationRequ
 	if err != nil {
 		return nil, err
 	}
-	if mutate && (c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0) {
+	if mutate && (c.xaUsed || c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0) {
 		return nil, fmt.Errorf("%w: session mutation requires autocommit without a transaction", ErrUnsupported)
 	}
 	encoded, err := c.encodeSQL(query)

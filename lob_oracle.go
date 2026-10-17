@@ -187,28 +187,38 @@ func (l *nativeLOBResource) parameter() wire.Parameter {
 
 // The caller owns the gate; only a complete response permits this internal command.
 func (c *conn) lobCallLocked(ctx context.Context, query string, params []wire.Parameter, count int) ([]driver.Value, error) {
-	if c.closed.Load() {
-		return nil, ErrResource
-	}
-	if c.responseActive || !supportsPrepareExecute(c.session.obVersion) {
-		return nil, ErrUnsupported
-	}
-	payload, err := wire.EncodePrepareExecute(0, []byte(query), params, c.cfg.Limits.MaxMessageBytes)
+	s, err := c.callInternalLocked(ctx, query, params, count)
 	if err != nil {
 		return nil, err
 	}
+	return s.values, err
+}
+
+func (c *conn) callInternalLocked(ctx context.Context, query string, params []wire.Parameter, count int) (*outputState, error) {
 	s := &outputState{internal: true, bindings: make([]*outBinding, count), physical: make([]int, count)}
+	if c.closed.Load() {
+		return s, ErrResource
+	}
+	if c.responseActive || !supportsPrepareExecute(c.session.obVersion) {
+		return s, ErrUnsupported
+	}
+	payload, err := wire.EncodePrepareExecute(0, []byte(query), params, c.cfg.Limits.MaxMessageBytes)
+	if err != nil {
+		return s, err
+	}
 	for i := range s.physical {
 		s.physical[i] = i
 	}
 	r, err := c.queryPrepareExecuteLocked(ctx, payload, bindPlan{slots: make([]bindSlot, len(params))}, s, nil)
 	if err != nil {
-		return nil, err
+		return s, err
 	}
-	if err = r.drainAll(ctx); err != nil {
-		return nil, err
+	err = r.drainAll(ctx)
+	s.resultItems = r.items
+	if err != nil {
+		return s, err
 	}
-	return s.values, nil
+	return s, nil
 }
 
 func (c *conn) readLOBBytesLocked(ctx context.Context, lob *nativeLOBResource, p []byte, off int64) (int, error) {

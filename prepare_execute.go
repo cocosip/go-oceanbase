@@ -99,10 +99,16 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 	}
 	if err := p.WriteMessage(ctx, payload); err != nil {
 		broken := !errorsPreSend(err)
+		if outputs != nil {
+			outputs.started = broken
+		}
 		if broken {
 			r.beginExecution()
 		}
 		return nil, r.fail(err, broken)
+	}
+	if outputs != nil {
+		outputs.started = true
 	}
 	r.beginExecution()
 	data, err := p.ReadMessage(ctx)

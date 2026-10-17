@@ -268,3 +268,15 @@ ChangeUser 集成输入：OB_MYSQL_CHANGE_USER_DSN、OB_ORACLE_CHANGE_USER_DSN�
 TestWarningDetails 四目标源码和手动 CI 已补，需 OB_MYSQL_WARNING_SQL、OB_ORACLE_WARNING_SQL、OBPROXY_MYSQL_WARNING_SQL、OBPROXY_ORACLE_WARNING_SQL 提供成功且产生非零警告的 SQL（MySQL 须保留实际详情）；强制验收缺失失败，普通跳过不计通过。本阶段仅编译，不执行 SQL。详情的当前诊断区、限额/失败连接及本地清除契约见架构 §16.3.3。
 
 TestCancelQuerySessions 四目标源码/手动 CI 已补，每个 DSN 前缀对应 CANCEL_SQL 和 CANCEL_CODE，例如 OB_MYSQL_CANCEL_SQL/OB_MYSQL_CANCEL_CODE；其余前缀为 OB_ORACLE、OBPROXY_MYSQL、OBPROXY_ORACLE。SQL 必须为足够长的只读阻塞查询，CODE 必须为实际目标已确认的非零中断码；拒绝把语法/权限等任意错误当作取消成功。源码仅编译未连接数据库；本地测试不能验证真实 ID 分配、代理路由和权限。本子项已实现，但 D28 依赖未闭环，D30 继续进行，实现28/32、验收0/32不变，契约见架构 §16.3.4。
+
+## 22. D31 XA 本地契约
+
+| 能力 | Go 当前行为 | 证据与边界 |
+| --- | --- | --- |
+| XID/flags | 复制二进制 XID、按阶段及模式校验 flags，Oracle 扩展值显式公开 | 原生字节/负 FormatID/空 BranchID/非法长度及阶段本地通过；真实版本待验证 |
+| 两模式执行 | MySQL XA SQL；Oracle DBMS_XA 原生 XID/OUT，保留 prepare 票和 XA 错误 | 1PC/2PC、rollback-only、挂起恢复、原生输出和返回码本地通过；Oracle 原生调用要求 >=2.2.76 |
+| 恢复与隔离 | 实际四列/集合解析，有界全列表，专用会话退出原池，不本地回滚 prepared | NULL/长度/额外结果/上限、prepared Close、事务/身份/会话 guard 本地通过 |
+| 故障 | 写出后结果不明淘汰、不重放；commit 额外 ErrCommitUnknown | 部分写、丢确认及原生输出后尾部错误本地通过；不包含真实故障恢复证据 |
+| 明确未支持 | Forget/RM timeout 不伪造成功，协调日志与恢复决策归应用 | Java 本身未实现的服务器契约；context 不是 RM timeout |
+
+TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手动 CI，包含 DML、1PC/2PC/rollback、join/resume/suspend、准备后断开并用新连接恢复及提交可见性；本阶段只编译。标准/压缩/OB20 两模式本地覆盖不代替服务端 SQL、权限、版本、代理和 RM 恢复语义。D31 保持进行中，因 D30/D28 平台依赖未闭环，实现28/32、验收0/32；细节见架构 §16.2.1。

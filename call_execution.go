@@ -21,6 +21,8 @@ type outputState struct {
 	complexRows    [][]byte
 	complexBytes   int64
 	internal       bool
+	started        bool // native command may have reached the server
+	resultItems    int
 	columns        []wire.Column
 	bindings       []*outBinding
 	physical       []int

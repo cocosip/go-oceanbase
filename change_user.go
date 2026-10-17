@@ -46,7 +46,7 @@ func (c *conn) execChangeUser(ctx context.Context, request changeUserRequest) (d
 	if c.responseActive {
 		return nil, errResponseActive
 	}
-	if c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 {
+	if c.xaUsed || c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 {
 		return nil, fmt.Errorf("%w: ChangeUser requires autocommit without a transaction", ErrUnsupported)
 	}
 	return result{known: true}, c.changeUserLocked(ctx, request)

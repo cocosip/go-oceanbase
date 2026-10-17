@@ -971,6 +971,23 @@ defer rows.Close()
 - 一阶段/两阶段提交、join/resume/suspend、服务端支持的超时及返回码逐项适配；不支持的 flags 明确拒绝。
 - XA 失败没有透明业务重放；提交结果不确定时由协调方查询恢复。
 
+### 16.2.1 D31 已实现契约与边界
+
+公共根包提供 `XID`、`XAFlags`、`XAVote` 和上述七个显式函数，固定 `*sql.Conn`，复用包私有请求及连接 gate；不新增包、依赖、连接池或事务管理器。XID 的 FormatID 为 int32（-1 保留），GlobalID 为 1–64 字节、BranchID 为 0–64 字节，输入及恢复结果复制切片，二进制身份不经字符集转换。
+
+- MySQL 使用十六进制二进制字面量及 32 位 FormatID 位表示，精确传递 JOIN/RESUME；不套用 Java `pinGlobalTxToPhysicalConnection` 将 JOIN 暗改 RESUME。服务端拒绝时保留错误，支持条件由实际版本验收。
+- Oracle 使用固定匿名 PL/SQL 调用 `SYS.DBMS_XA`，首个原生 OUT 返回函数整数码，XID 按 Java `useLocalXID` 路径固定为 SYS.DBMS_XA_XID 的 NUMBER/RAW/RAW；避免逐次字典查找和 SQL 字面量拼接。使用原生 PrepareExecute，实际 ob_version 必须满足既有 >=2.2.76 门禁；旧版/未知版明确 ErrUnsupported。该 PL/SQL 选择的服务端适用性仍待联调。
+- Start 接受 NoFlags/Join/Resume；Oracle 另接受 XAOracleReadOnly(256)、XAOracleSerializable(1024)、XAOracleLoose(65536)。End 接受 Success/Fail/Suspend；Oracle 另接受 Migrate 或 Suspend|Migrate，其余组合发送前拒绝。Oracle Start 先关闭 autocommit，确认 End 后恢复；恢复失败返回 ErrTxCleanup 并淘汰会话。
+- 本地只跟踪本连接已确认的分支阶段；同时最多关联一个活动分支，已知挂起分支用 Resume，已结束分支用 Join，prepare 要求 ended，1PC 要求已知 ended，2PC 要求已知 prepared。新连接可以向服务端 prepare/2PC commit/rollback 未知分支，用于外部恢复；不把本地映射当作 RM 全局真相。映射受 MaxResultItems 限制。
+- End(Fail) 标记本地 rollback-only，随后 prepare/commit 拒绝，必须 rollback；Oracle 发送其支持的 Success 等价解除关联。此标记不跨进程/连接持久化，协调方必须持久记录失败决定并保证不从新连接提交 rollback-only 分支。
+- Prepare 的 0/3 分别为 prepared/read-only；MySQL 成功只给 prepared，不编造 read-only。Oracle 负码以及正的回滚/启发式码均作为 XAError 返回，不把任意正数视为成功。XAError 保留整数 XA Code；MySQL 已取证的 1397–1402 映射对应标准码，其他错误保留原 Error 并归 RMERR，不猜测未取证映射。
+- Recover 读取真实四列/原生 OUT 集合。严格校验长度、NULL、FormatID 及元素 SYS/类型/顺序；Oracle 支持命名集合或元数据明确为 SYS.DBMS_XA_XID 元素的匿名集合，NULL BQUAL 视为合法空限定符，NULL GlobalID 拒绝。行数和累计内容受 MaxResultItems/MaxMessageBytes 限制；畸形、超限或额外结果不返回部分列表并淘汰连接。
+- 所有公开 XA 错误均可用 errors.Is(err, ErrXA) 分类，底层服务端/context 错误保留。可能写出的变更命令遇到 IO/取消/畸形或已输出后尾部失败时返回 ErrXAOutcomeUnknown，提交另带 ErrCommitUnknown，淘汰原会话且不返回可重放 ErrBadConn。完整服务端拒绝保留其 XA/服务器码，不推断分支已完成；恢复查询失败不代表业务已回滚。
+- 首次 XA 尝试后会话永久专用；禁止 sql.Tx、ChangeUser 及会话 setter，关闭后退出原池。XA 边界先失效已有 LOB/Cursor；prepared Close 仅关闭 statement/物理会话，不发送本地 ROLLBACK 或重置 autocommit。禁止混入裸 XA/COMMIT/ROLLBACK/改变 autocommit 的 SQL，驱动不解析其全局事务语义。配置的只读服务仅允许恢复查询，XA 变更须使用读写入口。
+- Forget 返回 ErrUnsupported，RM 事务超时设置未提供；Java 相应实现本身也是未支持，不能沿用其无操作成功。调用 context 仅限制客户端 IO，不能替代 RM 超时。XARecover、持久协调日志、决策和未知结果处理归调用方；列表缺少某 XID 不能单独证明其已提交或回滚。
+
+`xa_test.go` 覆盖两模式、标准/压缩/OB20、1PC/2PC、挂起/恢复、阶段与 flags、rollback-only、原生 XID/OUT、返回码、恢复数据/边界及部分写/丢确认/尾部失败。`TestXATransactions` 和 `TestXARecoveryAfterDisconnect` 已加入四目标手动 CI，验证 DML 可见性及准备后关闭、新物理连接恢复；当前只编译，未连接数据库。示例在 `examples/xa/`，明确不包含持久协调器。D30 的 D28 平台依赖未闭环，D31 本地实现与整体依赖闭环分别记录。
+
 ### 16.3 其他会话功能
 
 schema/catalog、用户切换、客户端信息、warning、会话变量及版本能力通过固定 sql.Conn 上的函数承载。ChangeUser 必须重新认证、重建基线并使所有旧 statement/locator/cursor 失效；不在普通池连接上隐式切用户。显式 ChangeUser 后将该物理连接标记为不可归还原池，调用方关闭 sql.Conn 时淘汰它，防止另一个调用方取得错误身份的会话。

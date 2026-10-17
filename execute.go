@@ -47,6 +47,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(*xaRequest); ok {
+			return c.execXA(ctx, request)
+		}
 		if request, ok := args[0].Value.(changeUserRequest); ok {
 			return c.execChangeUser(ctx, request)
 		}
