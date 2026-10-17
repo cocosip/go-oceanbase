@@ -342,6 +342,18 @@ TCP 的七个 Java 配置项通过现有 `Config.DialContext` 与 Go 标准库�
 
 固定 Java 依据：DefaultOptions 的 tcpNoDelay/tcpAbortiveClose/localSocketAddress（L100–L116）、tcpKeepAlive/tcpRcvBuf/tcpSndBuf/socketFactory（L225–L249），以及 AbstractConnectProtocol.createSocket（L249–L285）。默认 Go 行为以1.25/1.26标准库 net.Dialer/newTCPConn 为依据；不把 Java 选项有对应 Go API 当作真实网络验收已完成。
 
+### 9.0.3 D32 SOCKS5 代理的 Go 承载
+
+SOCKS5 通过现有 `Config.DialContext` 配合 Go 官方 `golang.org/x/net/proxy.SOCKS5` 承载；[可编译应用示例](../socks_example_test.go)使用显式代理地址和支持 context 的 `net.Dialer`，再将 `proxy.ContextDialer.DialContext` 直接交给驱动。不新增代理配置结构、拨号接口或全局注册表，不读取 ALL_PROXY/NO_PROXY，不在代理失败时绕过代理直连。回调在构建 Connector 前创建，可复用于并发新连接；代理配置及来源对象在使用期间保持不可变。
+
+Java socksProxyHost 默认 null、socksProxyPort 默认1080；Go 默认仍直连，需要代理时调用方显式组合 `net.JoinHostPort(host, "1080")`（IPv6 同样适用），两个 Java 同名 DSN 参数均拒绝。驱动把当前路由候选入口原样交给回调；主机名交给 SOCKS 服务器解析，驱动不先解析成 IP 或固定到初始 Config.Addr。重试沿用总预算、角色和黑名单，不重放业务 SQL，也不自动切回直连。
+
+代理用户名/密码使用独立的 `proxy.Auth`，与 OceanBase Credentials/ProxyUser 无关；nil 表示仅请求无认证方式。非 nil 时该库同时允许服务器选择无认证或用户名密码，不能把它当作“必须使用用户名密码”的策略。SOCKS5 用户名密码协商本身是明文，随后建立的数据库 TLS 不保护先前的代理协商；部署侧决定代理链路保护，不能因代理已认证而放宽数据库 TLS 门禁。数据库 TLS 仍验证选中数据库入口或调用方显式 ServerName，不使用代理主机名代替。
+
+ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协商、后续数据库握手/初始化；取消或失败由拨号器关闭隧道。预算到期时 socket deadline 可能先于 context 定时器触发，错误可能为 context.DeadlineExceeded 或 net.Error.Timeout；不要求所有自定义拨号器归一成同一个错误。成功返回的连接不继承建连 context 的寿命，后续命令继续使用各自的 context/ReadTimeout。仅支持 TCP 目标，IPC 不享有代理豁免。`connectProxy` 是另一项 Java 初始化策略，不是 SOCKS 或 HTTP CONNECT 开关，本子项不改变其待完成状态。
+
+示例和本地测试使用 x/net v0.58.0；核对时 v0.59.0 及更新版要求 Go1.26，故保留 Go1.25 基线。模块最小版本选择同步提升 x/sys 至 v0.47.0、x/text 至 v0.41.0，需全包及跨平台回归；驱动生产包不导入 x/net，公开 API 和生产包依赖方向不变。本地 TestSOCKS* 覆盖两模式/三种包流、域名远端解析、认证、失败前零数据库凭据、路由切换、取消与连接关闭、TLS 正反向和目标身份；真实代理部署、DNS/权限、吞吐及数据库联调未验收。
+
 ### 9.1 已实现的包流与协商（D23）
 
 `ProtocolOptions` 的六项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata`、`fullLinkTrace` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
@@ -484,7 +496,7 @@ Number 验证十进制与指数文本，不接收 float64 来重建精确值，�
 
 Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用原生 TIMESTAMP(9)，MySQL 协议只支持微秒，超过精度明确报错。IntervalYM/DS 保留符号、最高九位年/日与最高九位秒小数，不换算成 time.Duration。二进制和文本行中的 Oracle 扩展时间均按原生字段体解码，不能把它误当成字符文本。
 
-字符集叶包使用 x/text v0.31.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。
+字符集叶包使用 x/text v0.41.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。
 
 ### 11.2.2 已实现的 OBJECT/ARRAY 约定（D18）
 

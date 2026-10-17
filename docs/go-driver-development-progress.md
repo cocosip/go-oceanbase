@@ -613,6 +613,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次、普通及 integration 标签 golangci-lint2.14.0（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建及根包测试交叉编译、go mod tidy -diff 通过。TestMetadataCatalog 增加公开 API 来源检查，尚未连接数据库；允许服务端不提供来源，不伪造字段。
 - 架构、映射、使用指南、矩阵、计划和进度同步；160项 Java 映射集合及32任务/28实现/0验收保持。真实字段、权限、代理/版本差异、Linux 实际运行、远程 CI 和成功 race 仍待验证，D28/D32 整项未完成。
 
+#### D32 SOCKS5 应用适配
+
+- 两项 Java socksProxyHost/socksProxyPort 使用既有 Config.DialContext 与官方 x/net/proxy.ContextDialer 承载，新增可编译 ExampleConfig_socks5 及本地 TCP 对端；无新增生产 API、配置、包或拨号逻辑。显式代理地址、远端 DNS、独立代理身份、数据库 TLS 目标验证及不读取代理环境变量的边界见架构 §9.0.3。核对固定 Java 后，将 connectProxy 明确归为独立初始化策略，保持待迁移状态。
+- TestSOCKSDialContextSessions/Routing/Cancellation/TLSGate/VerifiedTLS/Failure 和 TestSOCKSJavaDSNRejected 覆盖两模式/三包流、匿名及用户名密码、候选传播/切换、代理拒绝/畸形响应、取消/预算/关闭、未验证目标零数据库凭据与旧参数拒绝。缺示例 helper 时先编译失败，实现后通过；示例本身只编译，不连接外部服务。走查复现 socket deadline 与 context 定时器竞争导致的测试误判，预算断言同时接受到期网络超时；显式取消及对端 EOF 检查保留，Go1.25 SOCKS 全目标和独立取消复核各25次通过。
+- x/net v0.58.0 为核对时最新的 Go1.25 兼容版本，仅示例/测试导入；模块选择同步提升 x/sys 至 v0.47.0、x/text 至 v0.41.0，生产包依赖图无 x/net。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、SOCKS 目标各10次、普通及 integration 标签 golangci-lint2.14.0（各0 issues）、integration 仅编译、go mod tidy -diff 和 go mod verify 通过。实际 Windows/386 全包测试通过；首次并行检查期间既有 ReadTimeoutCommands 出现一次100ms 元数据超时，单独重复10次及最终全量重跑通过，未修改该测试或生产逻辑。
+- 两版本 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过。文档保持八份及 README，链接/锚点/UTF-8/围栏/无机器路径、160项 Java 选项集合及32任务/28实现/0验收检查通过；未连接数据库。真实代理的 DNS/认证/网络策略及吞吐、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证。D28/D32 其余范围继续进行，D30/D31 平台依赖未闭环。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
