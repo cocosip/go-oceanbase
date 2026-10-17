@@ -75,6 +75,9 @@ type SessionOptions struct {
 
 // Config is copied by NewConnector. A nil Logger produces no driver logs.
 type Config struct {
+	// Network defaults to tcp; unix and pipe use Addr as the local endpoint.
+	// DialContext receives the selected network and address without TLS exemptions.
+	Network              string
 	Addr                 string
 	User                 string
 	Password             string
@@ -133,8 +136,7 @@ func normalizeConfig(cfg Config) (Config, error) {
 		cfg.ConnectTimeout = 10 * time.Second
 	}
 	var err error
-	cfg.Addr, err = normalizeAddress(cfg.Addr)
-	if err != nil {
+	if err = cfg.normalizeTransport(); err != nil {
 		return Config{}, err
 	}
 	if err = cfg.normalizeRouting(); err != nil {
@@ -214,7 +216,7 @@ func cloneAuthOptions(options AuthOptions) (AuthOptions, error) {
 func normalizeAddress(addr string) (string, error) {
 	value, err := routing.NormalizeAddress(addr)
 	if err != nil {
-		return "", &ConfigError{Field: "Addr"}
+		return "", &ConfigError{Field: configAddrField}
 	}
 	return value, nil
 }

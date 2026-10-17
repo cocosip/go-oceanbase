@@ -60,9 +60,9 @@ func (c *connector) connectCandidate(ctx context.Context, routes *routing.Select
 func (c *connector) dialCandidate(ctx context.Context, addr string) (*conn, bool, error) {
 	dial := c.cfg.DialContext
 	if dial == nil {
-		dial = (&net.Dialer{}).DialContext
+		dial = dialTransport
 	}
-	raw, err := dial(ctx, "tcp", addr)
+	raw, err := dial(ctx, c.cfg.Network, addr)
 	if err != nil {
 		if raw != nil {
 			_ = raw.Close()

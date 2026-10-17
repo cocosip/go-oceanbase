@@ -129,7 +129,11 @@ func (cfg *Config) normalizeRouting() error {
 		if e.Role > RoleReadOnly || e.Addr == "" {
 			return &ConfigError{Field: "Routing.Endpoints"}
 		}
-		addr, err := normalizeAddress(e.Addr)
+		addr := e.Addr
+		var err error
+		if cfg.Network == networkTCP {
+			addr, err = normalizeAddress(e.Addr)
+		}
 		if err != nil || seen[addr] {
 			return &ConfigError{Field: "Routing.Endpoints"}
 		}
@@ -153,6 +157,9 @@ func (cfg *Config) normalizeRouting() error {
 	}
 	if o.BlacklistTimeout == 0 {
 		o.BlacklistTimeout = time.Second
+	}
+	if cfg.Network != networkTCP {
+		o.Endpoints = nil
 	}
 	return nil
 }

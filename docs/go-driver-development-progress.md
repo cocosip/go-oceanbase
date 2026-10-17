@@ -77,7 +77,7 @@
 | D25 | 诊断、profiling、FLT | D11、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D25，架构 §18.3.1 |
 | D26 | 静态多地址、负载、故障切换 | D06、D09 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D26、架构 §17.1.1 |
 | D27 | TNS/OCP/拓扑发现 | D26 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D27、架构 §17.1.2 |
-| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | 已补 old/Ed25519/PAM 与插件清理；其余继续 |
+| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | old/Ed25519/PAM、Unix/Named Pipe 已补；其余继续 |
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 未开始 | 未验证 | 无 | — |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 未开始 | 未验证 | 无 | — |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 未开始 | 未验证 | 无 | — |
@@ -466,8 +466,10 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 - 首批代码：old password、client_ed25519、PAM dialog，Auth.PasswordCharset、DSN allowOldPassword/passwordCharset，以及实例 io.Closer 生命周期。内置算法留在 internal/auth；根包负责 TLS、模式、编码和会话，未新增包或循环依赖。Ed25519 使用纯 Go filippo.io/edwards25519 v1.1.0；不手写曲线算法、不加载本地动态库。
 - TestAuthPluginLifecycle/TypedNil、Algorithms、ExtendedHandshake/LegacySwitch/OldPasswordPolicy、PAM/Gate/Fallback/Failure/UnverifiedHandshake、PasswordCharset/OptionsDSN 覆盖实例清理、关闭错误、初始/切换、二进制末尾零、弱算法禁止、回答取消/NUL/错误提示及自定义传输统一门禁。FuzzAuthPlugins 覆盖算法及 PAM 提示。未连接数据库；真实服务插件和平台组合仍待联调。
-- GSSAPI/SSPI、Unix/Named Pipe/Shared Memory/OBProxy VC 仍需开发；公开 ChangeUser 归 D30。D28 保持进行中，实现完成仍27/32，验收0/32；不以部分子项代替完整任务。
+- GSSAPI/SSPI、Shared Memory/OBProxy VC 仍需开发；公开 ChangeUser 归 D30。D28 保持进行中，实现完成仍27/32，验收0/32；不以部分子项代替完整任务。
 - 首批本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包测试及 integration 源码编译通过；AuthPlugin 两版本各10次通过，普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。FuzzAuthPlugins 各30秒通过，1180142 / 629696次。独立走查发现 PAM 切换重复剥离终止符，回归先失败后修复通过；无其他遗留已确认问题。Linux/远程 CI/成功 race 和真实服务认证仍无新证据。
+- 后续传输子项：Config.Network 和 DSN network/socket、Unix 标准库拨号、Windows Named Pipe build tags/go-winio 已实现；IPC 单端点、显式 TLS ServerName、不回退 TCP、保留统一取消/明文门禁。TestPlatformTransport 覆盖本机原生 socket/管道的协议收发、配置/DSN 和解析配置再建 Connector、超时/关闭及默认明文拒绝；Shared Memory 的原生事件/映射和分配取消继续取证，VC 的 native ABI 仍需核对。
+- 传输子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、各10次 PlatformTransport、实际 Windows/386 全包测试及 integration 源码编译通过；普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues，go mod tidy -diff 无差异。Go1.25 Linux/amd64 全包构建和根包测试源码交叉编译通过，仅编译不代表运行。独立走查发现缺失管道未进入配置重试，原生缺失后恢复回归先失败后修复通过；最终复核无其他已确认问题。远端 UNC 的同步 CreateFile 不能由 context 严格中断，已在架构 §9.0.1 记录；真实服务、远端权限、Linux 运行和成功 race 仍待验证。
 
 ## 6. 待取证条件与推进方式
 

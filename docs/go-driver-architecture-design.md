@@ -256,6 +256,16 @@ const (
 - 未知字段若可按长度安全跳过，则保留连接同步；无法确定边界的未知协议结构使该连接失效。
 - 不采用未识别类型一律当作 BLOB 的隐式兜底；Java 中存在此路径，Go 版改为明确的 UnsupportedType 错误，避免把类型解释错误传播给业务。[J03]
 
+### 9.0.1 D28 已实现的 TCP、Unix 与 Named Pipe
+
+`Config.Network` 默认 `tcp`；`unix` 使用 `net.Dialer.DialContext` 连接 `Addr` 中的 Unix socket 字面地址，路径不做环境变量或用户目录展开。`pipe` 在 Windows 使用 `github.com/Microsoft/go-winio v0.6.2`，Addr 为显式 UNC Named Pipe 名称。已建立管道的收发使用 overlapped I/O 和 deadline；拨号时检查 context，并在管道忙时轮询。非 Windows 的内置 pipe 拨号返回 ErrUnsupported；调用方自定义 DialContext 仍可以接管相同 network/address。平台实现以 build tags 隔离，不加载额外本地库；直接使用 `golang.org/x/sys/windows` 识别管道暂时不存在的错误，让其进入已有重试流程，权限错误仍直接返回。
+
+IPC 是一个显式固定端点，拒绝与 Routing.Endpoints 或 Discovery 混用；次数、单次/总建连预算、初始化、空闲验证与后续命令继续使用既有流程。不会因 IPC 失败自动回退 TCP。TLSConfig 非 nil 时，IPC 必须显式指定证书 ServerName，不能把文件路径或管道名当证书主机名；nil TLS 不构成明文密码豁免。DialContext 收到实际 Network 和 Addr，并继续承担 context/失败资源所有权契约。
+
+DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，tcp/默认网络禁止 socket。URL authority 不再是 IPC 拨号地址；database path 仍是数据库名。程序化 Config 直接指定 Network/Addr，无需伪造 TCP 主机。解析后再次传入 NewConnector 的配置保持可用。
+
+Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory、OBProxy VC 继续独立开发，不计入此处支持声明。
+
 ### 9.1 已实现的包流与协商（D23）
 
 `ProtocolOptions` 的六项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata`、`fullLinkTrace` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
@@ -1114,7 +1124,7 @@ PAM `dialog` 的工厂每次创建独立轮次状态。`AuthOptions.PAM func(con
 
 实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。共享门禁和实例持有机制供后续 D30 ChangeUser 复用；公开切用户能力尚未实现。
 
-当前 D28 仅上述认证子项已落地；GSSAPI/SSPI、Unix/Named Pipe/Shared Memory/OBProxy VC 的实现及验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+当前 D28 已落地上述认证子项及 §9.0.1 的 Unix/Named Pipe；GSSAPI/SSPI、Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 
 ### 17.3 LOCAL INFILE
 

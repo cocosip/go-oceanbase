@@ -28,6 +28,9 @@ func ParseDSN(dsn string) (Config, error) {
 		return Config{}, &ConfigError{Field: "DSN options"}
 	}
 	hasDescription := values.Has("addressDescription")
+	if err := parseTransportDSN(&cfg, values); err != nil {
+		return Config{}, err
+	}
 	if err := parseDiscoveryDSN(&cfg, values); err != nil {
 		return Config{}, err
 	}

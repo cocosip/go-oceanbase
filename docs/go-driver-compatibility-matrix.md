@@ -232,4 +232,7 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | PAM dialog | 支持该插件的目标服务；所有回答仅驱动验证 TLS 后发送；回调按轮次独立，可并发且响应取消 | 本地真实 TLS、两轮对话、默认单密码和错误/取消门禁；PAM 服务/平台待验证 |
 | 插件生命周期/编码 | AuthFactory 每使用独立实例，可选 io.Closer；内置密码严格 PasswordCharset，默认 UTF-8 | 成功/拒绝/切换/错误清理和字符集本地测试；ChangeUser 公开链路归 D30 |
 | GSSAPI/SSPI | 平台身份、凭据/票据及实际多轮上下文 | 待开发，保留 Windows 和 Unix 正向目标 |
-| TCP/Unix/Named Pipe/Shared Memory/VC | TCP 已有基础路径；IPC 继续按实际协议和平台适配，不能假定仅本地便豁免 TLS | TCP 本地测试；其余待开发/平台运行，整项 D28 未完成 |
+| TCP | 标准 net.Dialer、多地址/发现和既有 TLS/模式/命令流程 | Windows 本地测试；真实两模式/代理和 Linux 待验证 |
+| Unix socket | Config.Network=unix，Go/OS 提供 AF_UNIX；固定 Addr，TLS 时显式 ServerName | 本机 Windows socket 协议收发/关闭、超时和门禁已测；Linux/真实服务 socket 待验证 |
+| Named Pipe | Config.Network=pipe；Windows go-winio overlapped I/O；暂时不存在按配置重试，权限错误不重试；非 Windows 内置拨号明确不支持 | 本机 Windows 管道协议收发/关闭、重试和门禁；远端同步 CreateFile 无严格 context 中断保证，见架构 §9.0.1；远程权限及真实服务待验证 |
+| Shared Memory/VC | 按原生事件/映射协议及 VC ABI 独立适配 | 待开发/平台运行，整项 D28 未完成 |

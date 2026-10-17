@@ -34,7 +34,11 @@ func NewConnector(cfg Config) (driver.Connector, error) {
 	if cfg.Discovery.Source != nil {
 		c.discovery, err = cfg.Discovery.discovery(cfg.Routing)
 	} else {
-		c.routes, err = cfg.Routing.selector()
+		routes := cfg.Routing
+		if cfg.Network != networkTCP {
+			routes.Endpoints = []Endpoint{{Addr: cfg.Addr, Role: routes.Role}}
+		}
+		c.routes, err = routes.selector()
 	}
 	if err != nil {
 		return nil, &ConfigError{Field: "Routing/Discovery"}
