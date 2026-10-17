@@ -82,7 +82,7 @@ func validInfileName(name string) bool {
 	return len(name) > 0 && len(name) <= 4096 && utf8.ValidString(name) && !strings.ContainsRune(name, 0)
 }
 
-func nilInfileReader(reader io.Reader) bool {
+func nilReader(reader io.Reader) bool {
 	if reader == nil {
 		return true
 	}
@@ -103,7 +103,7 @@ func (v *LocalInfile) validate() error {
 		if v.Reader != nil {
 			return ErrLocalInfile
 		}
-	} else if !validInfileName(v.Name) || nilInfileReader(v.Reader) {
+	} else if !validInfileName(v.Name) || nilReader(v.Reader) {
 		return ErrLocalInfile
 	}
 	return nil
@@ -169,7 +169,7 @@ func (r *textRows) uploadLocalInfile(ctx context.Context, request []byte) (err e
 	}()
 	if v.Open != nil {
 		owned, err = v.Open(ctx, name)
-		if nilInfileReader(owned) {
+		if nilReader(owned) {
 			owned = nil
 			return errors.Join(ErrLocalInfile, err)
 		}

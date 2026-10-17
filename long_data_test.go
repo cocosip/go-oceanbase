@@ -588,9 +588,81 @@ func TestLongDataReaderBounds(t *testing.T) {
 }
 
 func TestLongDataNilReader(t *testing.T) {
-	var reader *bytes.Reader
-	if _, err := convertArgument(&LongData{Reader: reader, Length: -1}); !errors.Is(err, ErrLongData) {
-		t.Fatal(err)
+	for _, reader := range []io.Reader{nil, (*bytes.Reader)(nil), longReaderFunc(nil), longMapReader(nil), longSliceReader(nil), longChanReader(nil)} {
+		t.Run(fmt.Sprintf("%T", reader), func(t *testing.T) {
+			if _, err := convertArgument(&LongData{Reader: reader, Length: -1}); !errors.Is(err, ErrLongData) {
+				t.Fatalf("nil Reader accepted: %v", err)
+			}
+		})
+	}
+}
+
+type longMapReader map[string]byte
+
+func (longMapReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+type longSliceReader []byte
+
+func (longSliceReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+type longChanReader chan byte
+
+func (longChanReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+func TestLongDataNilReaderSession(t *testing.T) {
+	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+		for _, framing := range []string{testStandard, testCompression, testOB20} {
+			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
+				readers := []io.Reader{longReaderFunc(func([]byte) (int, error) { return 0, io.EOF }), longMapReader{}, longSliceReader{}, make(longChanReader)}
+				status := byte(2)
+				typ := byte(252)
+				if mode == ModeOracle {
+					status, typ = 6, 254
+				}
+				db := batchRewriteDB(t, Config{Mode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
+					for range readers {
+						if !servePrepareStatus(ctx, t, p, selectBindSQL, 77, 1, nil, status) ||
+							!readCommand(ctx, t, p, longDataPacket(mode, 77, 0, 3, nil)) {
+							return
+						}
+						if mode == ModeOracle && !sendPackets(ctx, t, p, []byte{0, 0, 0, status, 0, 0, 0}) {
+							return
+						}
+						if !serveOK(ctx, t, p, append(executeHeader(77), 0, 1, typ, 0), status) || !readCommand(ctx, t, p, stmtPacket(25, 77)) {
+							return
+						}
+					}
+					if !serveOK(ctx, t, p, []byte{14}, status) {
+						return
+					}
+					p.ResetSequence()
+					serveQuit(t, p)
+				})
+				defer func() { _ = db.Close() }()
+				input := &LongData{Reader: longReaderFunc(nil), Length: -1}
+				if _, err := db.ExecContext(context.Background(), selectBindSQL, input); !errors.Is(err, ErrLongData) {
+					t.Fatal("nil Reader was not rejected before prepare/upload", err)
+				}
+				if input.used.Load() {
+					t.Fatal("rejected Reader consumed the input")
+				}
+				for i, reader := range readers {
+					if i != 0 {
+						input = &LongData{}
+					}
+					input.Reader = reader
+					if _, err := db.ExecContext(context.Background(), selectBindSQL, input); err != nil {
+						t.Fatalf("non-nil empty %T rejected: %v", reader, err)
+					}
+					if !input.used.Load() {
+						t.Fatal("valid Reader was not consumed")
+					}
+				}
+				if err := db.Ping(); err != nil {
+					t.Fatal("Reader validation disturbed session reuse", err)
+				}
+			})
+		}
 	}
 }
 

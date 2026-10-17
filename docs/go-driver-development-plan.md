@@ -486,6 +486,7 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 交付：显式长参数输入，Reader 的所有权/关闭规则在类型中固定；LONG_DATA/PIECE_DATA 按模式能力选择，长度未知时有总上限，不读取整个内容后再上传。公开 *LongData 的 Length/MaxBytes/Text、借用 Reader 和一次消费规则见架构 §13.5；复用同一 gate，辅助上传失败淘汰连接，上传后 execute 前取消亦清理。普通 PrepareClient 明确拒绝，OUT 的必要原生路径保留。
 
 - [x] 测试 `TestLongDataChunks`、`TestLongDataFailure`：空/未知长度、分块边界、Reader 报错/取消、部分写、限制超出；错误后没有 rewind/第二次执行。
+- [x] `TestLongDataNilReader` 拒绝全部可为 nil 的 Reader 具体类型；`TestLongDataNilReaderSession` 验证两模式/三包流在预处理前拒绝、不消费对象，纠正输入后可继续使用，并接受非 nil 的函数/map/slice/channel 空 Reader。
 - [x] 执行 `go test . -run 'TestLongData' -count=1`，确认失败。
 - [x] 实现一次性长参数编码和失败资源清理；不把上传能力当作 MySQL 表内随机访问的替代。
 - [x] 同命令通过；`TestLongParameters` 四目标源码覆盖两模式大对象内容哈希及提交/回滚，仅编译，真实语义待联调；无须日志输出对象内容。

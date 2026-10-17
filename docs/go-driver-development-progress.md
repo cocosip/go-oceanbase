@@ -732,6 +732,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestAllScalarTypes 的 MySQL 夹具增加 unsigned/signed BIGINT，复用既有标量元数据查询路径，按实际 ScanType 反射扫描 MaxUint64/MinInt64；两版本均仅编译该集成源码。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过；两版本普通及 integration 标签 golangci-lint 均0 issues，Go1.25 实际 Windows/386 目标通过。独立只读走查无确认问题；文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过。未连接数据库，Linux/macOS/远程 CI、成功 race 与真实服务端边界仍未验证，四项未收口任务和计数保持。
 
+#### D21 长参数 typed-nil Reader 校验
+
+- 原校验只拒绝 nil 接口和 nil 指针，接受底层为 nil 的函数/map/slice/channel Reader；nil 函数 Reader 随后的读取可触发调用方函数调用 panic。TestLongDataNilReader 在修复前复现四类输入被接受；复用 LOCAL INFILE 已有的完整 nil 判断，统一为包私有 nilReader，不新增公开 API、配置、包或依赖。
+- TestLongDataNilReaderSession 使用实际 database/sql 与本地协议对端，覆盖两模式 × 标准/压缩/OB20：非法输入在 prepare/upload 前返回 ErrLongData，输入未消费，修正同一对象后成功执行；非 nil 的函数/map/slice/channel 空 Reader 正常上传，最终关闭 statement 并 Ping/QUIT 复用会话。LOCAL INFILE 的借用/持有及 nil 返回规则保持。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过，两版本普通及 integration 标签 golangci-lint 均0 issues；Go1.25 实际 Windows/386 的 LongData/LocalInfile 目标通过。独立只读复核无确认问题，文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过，不另存报告；本轮未连接数据库，D28/D30/D31/D32 和28/32实现、0/32验收保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

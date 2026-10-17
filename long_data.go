@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"sync/atomic"
 	"unicode/utf8"
 
@@ -18,6 +17,7 @@ import (
 
 // LongData is a one-use streamed IN parameter. Pass a pointer; do not copy it after use.
 // Reader remains caller-owned, including on failure. It must return for cancellation to finish.
+// Nil and typed-nil Readers are rejected before preparation or upload.
 // Length is the exact source byte count; -1 reads to EOF. Zero requires an empty Reader.
 // Text reads UTF-8 and converts to Session.Charset; otherwise bytes are binary.
 // MaxBytes bounds source and converted bytes separately; zero uses Limits.MaxLOBBytes.
@@ -34,10 +34,7 @@ type LongData struct {
 var ErrLongData = errors.New("oceanbase: invalid or failed long data")
 
 func (v *LongData) validate() error {
-	if v == nil || v.Reader == nil || v.Length < -1 || v.MaxBytes < 0 || v.used.Load() {
-		return ErrLongData
-	}
-	if r := reflect.ValueOf(v.Reader); r.Kind() == reflect.Pointer && r.IsNil() {
+	if v == nil || nilReader(v.Reader) || v.Length < -1 || v.MaxBytes < 0 || v.used.Load() {
 		return ErrLongData
 	}
 	return nil

@@ -977,7 +977,7 @@ input := &oceanbase.LongData{
 _, err := tx.ExecContext(ctx, "INSERT INTO files(id, content) VALUES (?, ?)", id, input)
 ```
 
-- Reader 始终由调用方关闭；Length 是源字节精确长度，-1 表示到 EOF，0 要求空流。已知长度同样探测至多一个额外字节以发现超长；不足返回 io.ErrUnexpectedEOF，不截断冒充成功。
+- Reader 始终由调用方关闭；nil 及底层为 nil 的指针、函数、map、slice、channel Reader 在预处理/上传前返回 ErrLongData，不消费输入；非 nil 的空 Reader 正常上传空流。Length 是源字节精确长度，-1 表示到 EOF，0 要求空流。已知长度同样探测至多一个额外字节以发现超长；不足返回 io.ErrUnexpectedEOF，不截断冒充成功。
 - MaxBytes 为每个输入的源字节和转换后字节分别设上限；0 采用 Limits.MaxLOBBytes。显式增大允许流超过普通 LOB 物化上限；每块仍受 MaxMessageBytes 限制。Oracle hex 的协议膨胀不计入内容长度，每包仍受限。
 - Text=false 发送二进制；Text=true 接受 UTF-8，按 Session.Charset 增量转换，拒绝非法/不可表示字符，跨块保留不完整码点；不把 NCharset 字节混入普通文本流。目标 CLOB/NCLOB 的服务端类型转换仍须真实环境验证。
 - 首次开始上传即原子消费该对象；成功或中途失败均不能再次使用，也不复制、seek 或 rewind Reader。Oracle 同一具名参数的多个位置逐块分发同一数据，不再次读取来源；调用方重新构造对象不代表驱动拥有重放授权。
