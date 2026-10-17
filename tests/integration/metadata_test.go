@@ -14,6 +14,10 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
+const metadataTableRemark = "table 备注 'quoted'"
+const metadataColumnRemark = "column 备注 'quoted'"
+const metadataCatalogName = "def"
+
 func TestMetadataCatalog(t *testing.T) {
 	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
 	if err != nil {
@@ -72,6 +76,7 @@ func testMetadataProfile(t *testing.T, p profile) {
 			failOperation(t, "drop metadata view", err)
 		}
 	}()
+	configureMetadataRemarks(t, p, pinned, parent)
 	base := oceanbase.MetadataFilter{SchemaPattern: metadataPattern(schema), NamePattern: metadataPattern(parent)}
 	for _, tt := range []struct {
 		kind  oceanbase.MetadataKind
@@ -108,6 +113,7 @@ func testMetadataProfile(t *testing.T, p profile) {
 		}
 	}
 	compareMetadataColumns(t, p, pinned, base, schema, parent)
+	compareMetadataCatalogAndRemarks(t, p, pinned, base)
 	checkResultColumnOrigins(t, pinned, schema, parent)
 	for _, kind := range []oceanbase.MetadataKind{oceanbase.MetadataSchemas, oceanbase.MetadataIndexes, oceanbase.MetadataTablePrivileges, oceanbase.MetadataColumnPrivileges, oceanbase.MetadataRoutines, oceanbase.MetadataRoutineParameters, oceanbase.MetadataServerInfo} {
 		f := oceanbase.MetadataFilter{Kind: kind}
@@ -188,6 +194,9 @@ func compareMetadataColumns(t *testing.T, p profile, pinned *sql.Conn, base ocea
 		if strings.EqualFold(name, "id") && (!nullable.Valid || nullable.Int64 != 0) {
 			t.Fatal("primary key nullability differs from DDL")
 		}
+		if strings.EqualFold(name, "note") && (!remarks.Valid || remarks.String != metadataColumnRemark) {
+			t.Fatal("column remarks differ from DDL")
+		}
 	}
 	if err = rows.Err(); err != nil {
 		failOperation(t, "metadata column rows", err)
@@ -224,4 +233,85 @@ func compareMetadataColumns(t *testing.T, p profile, pinned *sql.Conn, base ocea
 
 func metadataPattern(s string) string {
 	return strings.NewReplacer("/", "//", "_", "/_", "%", "/%").Replace(s)
+}
+
+func configureMetadataRemarks(t *testing.T, p profile, pinned *sql.Conn, table string) {
+	t.Helper()
+	tableText := strings.ReplaceAll(metadataTableRemark, "'", "''")
+	columnText := strings.ReplaceAll(metadataColumnRemark, "'", "''")
+	commands := []string{
+		"ALTER TABLE " + table + " COMMENT='" + tableText + "'",
+		"ALTER TABLE " + table + " MODIFY note VARCHAR(12) COMMENT '" + columnText + "'",
+	}
+	if p.mode == oceanbase.ModeOracle {
+		commands = []string{
+			"COMMENT ON TABLE " + table + " IS '" + tableText + "'",
+			"COMMENT ON COLUMN " + table + ".note IS '" + columnText + "'",
+		}
+	}
+	for _, command := range commands {
+		if _, err := pinned.ExecContext(testContext(t), command); err != nil {
+			failOperation(t, "set metadata remarks", err)
+		}
+	}
+}
+
+func compareMetadataCatalogAndRemarks(t *testing.T, p profile, pinned *sql.Conn, base oceanbase.MetadataFilter) {
+	t.Helper()
+	ctx := testContext(t)
+	filter := base
+	filter.Kind = oceanbase.MetadataTables
+	rows, err := oceanbase.Metadata(ctx, pinned, filter)
+	if err != nil {
+		failOperation(t, "table remarks", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var catalog, schema, name, kind, remarks sql.NullString
+	if !rows.Next() {
+		t.Fatal("table remarks row missing", rows.Err())
+	}
+	if err = rows.Scan(&catalog, &schema, &name, &kind, &remarks); err != nil {
+		failOperation(t, "scan table remarks", err)
+	}
+	if !remarks.Valid || remarks.String != metadataTableRemark || catalog.Valid != (p.mode == oceanbase.ModeMySQL) || catalog.Valid && catalog.String != metadataCatalogName {
+		t.Fatal("table remarks or catalog differ from the mode/DDL")
+	}
+	if rows.Next() || rows.Err() != nil {
+		t.Fatal("table remarks response boundary", rows.Err())
+	}
+	if err = rows.Close(); err != nil {
+		failOperation(t, "close table remarks", err)
+	}
+	for _, kind := range []oceanbase.MetadataKind{oceanbase.MetadataTables, oceanbase.MetadataColumns} {
+		for _, catalog := range []string{"", metadataCatalogName, "d%", "x' OR 1=1 --", "库/_%"} {
+			filter.Kind, filter.Catalog = kind, catalog
+			want := 0
+			if catalog == "" || p.mode == oceanbase.ModeMySQL && catalog == metadataCatalogName {
+				want = 1
+				if kind == oceanbase.MetadataColumns {
+					want = 3
+				}
+			}
+			checkMetadataCatalogCount(t, pinned, filter, want)
+		}
+	}
+}
+
+func checkMetadataCatalogCount(t *testing.T, pinned *sql.Conn, filter oceanbase.MetadataFilter, want int) {
+	t.Helper()
+	rows, err := oceanbase.Metadata(testContext(t), pinned, filter)
+	if err != nil {
+		failOperation(t, "exact catalog filter", err)
+	}
+	defer func() { _ = rows.Close() }()
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	if rows.Err() != nil || count != want {
+		t.Fatalf("catalog filter kind=%d returned %d rows, want %d: %v", filter.Kind, count, want, rows.Err())
+	}
+	if err = rows.Close(); err != nil {
+		failOperation(t, "close catalog filter", err)
+	}
 }

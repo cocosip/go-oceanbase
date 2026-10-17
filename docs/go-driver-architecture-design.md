@@ -1165,6 +1165,8 @@ defer rows.Close()
 
 `MetadataFilter` 字段为 `Kind`、`Catalog`、`SchemaPattern`、`NamePattern`、`ColumnPattern`、`ReferencedSchemaPattern`、`ReferencedNamePattern`、`TableTypes []string`、`Query`。Catalog 为精确匹配；其他 Pattern 保留调用方大小写，使用 LIKE，`/` 为转义符，空值选择所有可访问对象。下划线等普通名字需要调用方按 LIKE 规则转义。SchemaPattern 过滤 schema/owner；NamePattern 过滤表、例程或类型名；ColumnPattern 过滤列、参数或属性名。Referenced 两字段只用于外键，TableTypes 只用于表查询，值限定 `TABLE` / `VIEW` / `SYNONYM` / `MATERIALIZED VIEW`；不适用的非空字段明确拒绝。Query 只供 StatementParameters 使用。
 
+Tables/Columns 固定返回 remarks，保留字典返回的中文、引号、首尾空白、空字符串或 NULL，不增加 remarks 开关。空 Catalog 不自动绑定当前 schema；Oracle 的 catalog 为 NULL，因此非空 Catalog 不能匹配对象。[TestMetadataCatalogAndRemarks](../metadata_contract_test.go) 通过两模式/utf8mb4/GBK/三包流的公开 API 检查这些请求及结果转换，并验证重新查询能返回更新后的备注；本地固定行集不证明服务端字典 SQL 的求值。[TestMetadataCatalog](../tests/integration/metadata_test.go) 已补 DDL 备注与 Catalog 过滤对照，本阶段仅编译。
+
 下表列顺序固定。以 `#` 标记的列为 `int64`，其余为 `string`；`#` 不是列名的一部分。所有列允许 SQL NULL，缺失数据保留 NULL。字典 Rows 的 DatabaseTypeName 统一为 `BIGINT` / `VARCHAR`，ScanType 对应 `int64` / `string`，不暴露两种字典内部 NUMBER/VARCHAR2 的差异。
 
 | MetadataKind 后缀 | 返回列（按顺序） |

@@ -786,6 +786,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go overlay 将 TINYINT/BIT 误转布尔、YEAR 误转字符串、未知 Java 参数静默忽略、SPN 丢失，分别在6/9/6/158/1个预期场景检出；无编译失败、panic 或 skip。原始源码没有变动。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；两个新增目标各25轮且无 skip，Go1.25 实际 Windows/386 的新增及原 Java 迁移目标通过。初次 lint 的重复字符串已提取常量，最终两版本普通及 integration 标签 golangci-lint 均0 issues。
 - 独立只读复核重新核对固定160名称及387个本地 Test/Example 链接，无确认问题，不另存报告；文档/链接/160初值/10别名/2额外字段、32任务/28实现/0验收及 Go 格式/diff 检查通过。元数据入口目前只证明本地查询计划和部分公开投影，全部 Catalog/remarks 组合仍需补证；域认证、真实 Linux VC、Linux/macOS、远程 CI、成功 race 及真实数据库均未据此验收，D28/D30/D31/D32和28/32实现、0/32验收保持。
 
+#### D13/D32 Catalog 过滤与表/列备注契约
+
+- 新增 TestMetadataCatalogAndRemarks，使用公开 Metadata、固定 sql.Conn 与本地协议对端，覆盖两模式 × utf8mb4/GBK × 标准/压缩/OB20，共12场景。每场景对 Catalogs/Schemas/Tables/Columns 分别检查空 Catalog、def、通配符、引号注入文本与中文 Catalog，共20请求，再重新查询表/列备注，共22请求；空值不隐式限定当前 schema，非空值要求精确过滤 SQL。MySQL 的 def 和 Oracle 的 NULL/空 catalog 行集分别固定预期。
+- 独立 SQL 预期与固定 GBK 字节向量不调用生产查询计划、插值或字符集编码器；返回通用字典字段名，检查公开固定列名、BIGINT/VARCHAR、ScanType、可空性及值。备注包含中文、单引号、首尾空白和 NULL；MySQL 空串与 NULL 区分，Oracle 夹具不伪造空串语义。两次重新查询必须返回更新的备注；末尾 Ping、QUIT 与关闭检查确认仍为同一物理会话。对端返回固定行集，不执行字典 SQL，不能视为真实字典求值证据。
+- TestMetadataCatalog 集成源码增加两模式 DDL 表/列备注和 Tables/Columns 的五种 Catalog 过滤对照；本轮仅编译，不连接数据库。架构、开发计划与两项 Java 配置映射同步上述范围，没有生产逻辑、公开 API、包或依赖变更。
+- Go overlay 临时忽略 Catalog、将精确比较改为 LIKE、将文本 NULL 改为空串、裁剪备注首尾空白，分别在全部12场景被检出；丢失 MySQL/Oracle 备注投影分别在对应6场景被检出，无编译失败、panic 或 skip，生产源码未改动。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标各25轮且无 skip，Go1.25 实际 Windows/386 新目标通过。初次 lint 的重复字符串已复用/提取测试常量，最终两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读走查无确认问题，不另存报告。真实数据库、域认证、真实 Linux VC、Linux/macOS、远程 CI 与成功 race 仍未验收，D28/D30/D31/D32 和28/32实现、0/32验收保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
