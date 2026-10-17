@@ -60,6 +60,7 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 		return
 	}
 	if !r.released {
+		r.acknowledgeBatch()
 		if cause := r.contextError(); cause != nil {
 			// A queued discard callback may be stopped below; canceled commands still poison state.
 			r.conn.discard()

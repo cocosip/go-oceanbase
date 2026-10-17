@@ -27,7 +27,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
 | PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 通用策略未实现；真实版本待联调 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19 已实现 Oracle 已知 >=2.2.5 的 offset/尾 OK；旧/未知版本向前 fetch，真实版本待联调 |
-| LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后只声明 V2 属性位 1；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset 及 D22/D23 待实现 |
+| LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后只声明 V2 属性位 1；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset、原生 array binding 与 D23 OB20 未实现；D22 当前按 §13 回退逐项 |
 
 ## 3. 真实目标
 
@@ -148,3 +148,16 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 失败与取消 | Reader 不由驱动关闭；上传失败/取消淘汰连接；上传后 execute 前取消同样清理；无自动重放 | 部分写、服务端段错误/损坏、Reader 异常及取消回归；阻塞 Reader 需调用方协作返回 |
 
 详见架构 §13.5。普通 PrepareClient 拒绝流输入；OUT 延用其必要的原生协议。`TestLongParameters` 与四目标手动 CI 入口已加入，本阶段仅编译，未连接数据库；max_allowed_packet、空流存储、实际 LOB/事务和 OBProxy 行为仍待联调。
+
+## 13. 批量执行与策略（D22）
+
+| 能力 | Go 当前行为 | 验证状态 |
+| --- | --- | --- |
+| 公开接口 | ExecBatch；DB 全批次固定 Conn，Conn/Tx 单次私有分派，不创建/结束事务 | 两模式、自动提交部分成功及原事务回滚对端验证；真实目标未验证 |
+| 状态和计数 | 输入顺序，NotExecuted/Succeeded/Failed/Unknown、Started、已知/未知行数；失败不承诺零副作用 | 中间失败/后项、uint64 计数溢出、确认成功后清理错误本地通过 |
+| multi-send | Auto/MultiSend + ContinueOnError + server prepare + 简单 DML/标量；独立命令并发写/按序读，按行/物理参数位/总字节分块 | 提前发包、双向背压、16MiB 续包、错误和事务测试通过；服务器/代理缓冲行为待联调 |
+| 保守回退 | 默认遇错停止、OUT、一次性长参数、复杂值及自定义 Valuer 采用逐项；复用现有协议和输出规则 | 流一次消费、标量 OUT、全部六种策略偏好本地通过；句柄输出仍限 Execute |
+| 改写/bulk/array binding | 偏好已接入，实际均回退逐项；Java bulk 不支持说明、array 特殊错误计数及改写副作用不足以证明等价性 | 回退已验证，三类原生优化未启用；服务端版本/等价性证据待取 |
+| 不确定性与取消 | 不重放；保留确认项，只将可能已发出且未确认的项标 Unknown；淘汰损坏连接并等待写协程；保留 SQL/context/清理错误链 | 单次拨号、部分发送、损坏/额外结果、Tx/操作取消及最终响应后取消本地通过 |
+
+具体接口、默认值及 Java 源码证据见架构 §13.4。`TestBatchExecution` 与手动 CI 四目标入口已加入，本阶段仅编译，不连接数据库，不计入验收。

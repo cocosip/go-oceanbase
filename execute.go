@@ -47,6 +47,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	if query == "" && len(args) == 1 {
+		if request, ok := args[0].Value.(batchRequest); ok {
+			return c.execBatch(ctx, request)
+		}
 		if request, ok := args[0].Value.(cursorMutationRequest); ok {
 			return c.execCursorMutation(ctx, request)
 		}
@@ -106,41 +109,48 @@ func (c *conn) prepareArguments(ctx context.Context, query string, args []driver
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
-		return nil, wire.ErrMessageTooLarge
-	}
-	if len(args) > 65535 {
-		return nil, fmt.Errorf("%w: too many arguments", ErrBind)
-	}
-	for i := range args {
-		if c.session.mode == ModeMySQL && args[i].Name != "" {
-			return nil, fmt.Errorf("%w: unexpected named argument", ErrBind)
-		}
-		value, err := convertArgument(args[i].Value)
-		if err != nil {
-			return nil, err
-		}
-		args[i].Value = value
-		if v, ok := value.(*LongData); ok {
-			if _, err = c.longDataParameter(v); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if c.session.mode == ModeOracle {
-		plan, err := buildBindPlan(query, c.session.mode)
-		if err != nil {
-			return nil, err
-		}
-		if _, err = bindArguments(plan, args); err != nil {
-			return nil, err
-		}
+	if err := c.validatePrepareArguments(query, args); err != nil {
+		return nil, err
 	}
 	prepared, err := c.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	return prepared.(*stmt), nil
+}
+
+func (c *conn) validatePrepareArguments(query string, args []driver.NamedValue) error {
+	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+		return wire.ErrMessageTooLarge
+	}
+	if len(args) > 65535 {
+		return fmt.Errorf("%w: too many arguments", ErrBind)
+	}
+	for i := range args {
+		if c.session.mode == ModeMySQL && args[i].Name != "" {
+			return fmt.Errorf("%w: unexpected named argument", ErrBind)
+		}
+		value, err := convertArgument(args[i].Value)
+		if err != nil {
+			return err
+		}
+		args[i].Value = value
+		if v, ok := value.(*LongData); ok {
+			if _, err = c.longDataParameter(v); err != nil {
+				return err
+			}
+		}
+	}
+	if c.session.mode == ModeOracle {
+		plan, err := buildBindPlan(query, c.session.mode)
+		if err != nil {
+			return err
+		}
+		if _, err = bindArguments(plan, args); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
@@ -233,11 +243,11 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 		// A rejected pre-send packet does not poison the physical session.
 		broken := !errorsPreSend(err)
 		if broken {
-			r.execution.begin()
+			r.beginExecution()
 		}
 		return nil, r.fail(err, broken)
 	}
-	r.execution.begin()
+	r.beginExecution()
 	if err := r.advance(ctx); err != nil {
 		return nil, r.fail(err, true)
 	}

@@ -634,6 +634,45 @@ BatchResult 按输入索引返回影响行数或不可知状态；BatchError 标
 
 长数据 Reader 属于一次执行；报错后不自动 rewind 和重发。客户端改写需要完整词法验证，不把任意 INSERT 都当成可安全改写 SQL。[J09]
 
+D22 已落地的接口与选择规则：
+
+```go
+type BatchOptions struct {
+    ContinueOnError bool
+    Strategy BatchStrategy
+    ChunkRows int
+    ChunkParameters int
+}
+type BatchItem struct {
+    Status BatchStatus
+    Started bool
+    RowsAffected int64
+    RowsAffectedKnown bool
+    Err error
+}
+type BatchResult struct {
+    Items []BatchItem
+    Strategy BatchStrategy
+}
+type BatchError struct {
+    Index int
+    Completed int
+    Err error
+}
+```
+
+- Strategy 是偏好：BatchAuto（零值）、BatchSequential、BatchMultiSend、BatchRewrite、BatchBulk、BatchArrayBinding；结果报告实际策略。后三种当前均回退 BatchSequential，不声称原生优化已实现。ContinueOnError 默认 false，确保失败后不再发后项；true 也必须在取消、损坏响应、断线或结果不确定时停止。
+- ChunkRows=0 使用 128，ChunkParameters=0 使用 65535；负值和非法策略发送前拒绝。multi-send 同时限制块行数、展开后的物理参数位总数及编码内容总字节数，单命令受 MaxMessageBytes 和既有值上限约束；逐项路径逐行限制输入参数，不聚合数据包。
+- *sql.DB 在整个批次固定一个 *sql.Conn；原生 Conn/Tx 用一次标准 ExecContext 私有分派持有标准库连接锁。没有隐藏事务、提交、辅助会话或整批重试。自定义 Execer 逐项调用，物理会话和事务由其实现负责；未知错误保守记为 BatchUnknown 并停止。
+- Status 为 BatchNotExecuted、BatchSucceeded、BatchFailed、BatchUnknown。Started 只表示业务命令可能开始发送，辅助 prepare/上传不算。BatchFailed 记录已知错误，不保证没有数据库副作用；BatchSucceeded 同样不代表事务已提交。已读完整成功响应后发生清理/取消错误，保留成功状态和已知计数，并通过 Err 返回错误；不将确认成功改成未知。
+- RowsAffectedKnown=false 表示没有可安全表示的计数，含 uint64 超出 int64；不推算各项数字。BatchError.Index 是首个携带错误的输入索引（从 0 开始），没有对应输入的最终化错误为 -1；Completed 是确认成功项数，包含错误后继续执行的成功项。errors.Is/As 保留 SQL、context 和清理错误链。
+- Auto/MultiSend 仅在 ContinueOnError=true、至少两行、PrepareServer、全部显式标量输入和单条 INSERT/UPDATE/DELETE/REPLACE 时启用；共享 prepare 前复用普通参数校验，本地非法项或 Oracle 物理参数位超过单块限制时整批回退逐项；共享 prepare 失败按首项错误处理，后项仍遵循逐项继续策略；SQL 在两种引号解释下均通过词法检查，排除分号、可执行注释、RETURNING、CALL/查询/会话 SQL。OUT、长参数、复杂值、自定义 Valuer 等回退逐项，继续复用既有绑定/输出/一次消费规则；资源句柄输出仍只接受 Execute。
+- multi-send 只 prepare 一次，将独立 COM_STMT_EXECUTE 命令并行写入/按序读响应，双向背压不产生先写完再读的死锁。每条命令独立重置序号；收齐 OK/ERR 才确认该项。服务端 ERR 可继续；断线/取消/损坏或额外结果淘汰连接，保留已确认前缀，仅可能发出且未确认的项标 Unknown，未发的后续块保留 NotExecuted；结束前等待写协程退出。
+
+原生优化证据与保守选择：固定 Java 基线的 [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) 明确记录 OceanBase 不支持 COM_STMT_BULK_EXECUTE；其中 MariaDB 风格的版本判断不能作为 OceanBase 支持证据。[ComStmtExecute](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtExecute.java#L165) 存在 Oracle array flag/列式参数布局，但 [JDBC4ServerPreparedStatement](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/JDBC4ServerPreparedStatement.java#L665) 的事务/PrepareExecute 条件及特殊错误计数，尚不足以证明全部参数类型与逐项停止/继续等价。SQL 多行改写也可能改变自动提交的部分成功、触发器和错误边界。因此三类偏好目前选择逐项，不猜测版本门槛；取得真实目标及逐项语义证据后才增加优化，正确执行能力不依赖它们。
+
+本地故障对端已覆盖状态、计数、原事务、OUT/流、分块、多发包、取消和不重放。`TestBatchExecution` 提供四目标部分成功、策略和原事务回滚源码，本阶段仅编译，真实 SQL/服务器/OBProxy 行为未验收。
+
 ### 13.5 一次性长参数（D21）
 
 公开入口使用 `*LongData`，直接作为标准 `ExecContext` / `QueryContext`、`Execute`、服务端 `Stmt` 或 `OpenCursor` 的 IN 参数；保留同一物理会话和事务。普通显式 PrepareClient 在读取 Reader 前返回 ErrUnsupported；OUT 本来就必须使用原生协议，混合长参数继续走该路径。

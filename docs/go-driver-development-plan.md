@@ -489,14 +489,14 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D11、D14、D18、D21。对应：M07；架构 §13.4。
 
-文件：新增 `batch.go`、`batch_test.go`、`tests/integration/batch_test.go`；修改绑定与执行计划。
+文件：新增 `batch.go`、`batch_protocol.go`、批量测试、`internal/wire/pipeline.go` 及测试、`tests/integration/batch_test.go`；修改绑定、执行起点和共享 Rows 最终化。
 
 交付：ExecBatch、BatchOptions/BatchResult/BatchError；逐项状态、已知/未知计数、默认遇错停止，显式继续；实现逐项、多发包、安全改写、bulk、array binding 的能力选择。
 
-- [ ] 测试 `TestBatchResults`、`TestBatchAtomicity`：中间失败/后项状态、计数未知、OUT、分块限制；自动提交下不把可部分成功任务改成单语句整体失败；断线不重发已发送项。
-- [ ] 执行 `go test . -run 'TestBatch' -count=1`，确认失败。
-- [ ] 先落逐项正确路径，再逐个增加有等价证据的优化；无等价性回退逐项，不改变已有 Tx 或隐式提交。
-- [ ] 同命令通过；`TestBatchStrategies` 对比内容、顺序、错误和事务；每种 bulk/array 路径单独记录服务端版本证据。
+- [x] 测试 `TestBatchResults`、`TestBatchAtomicity`：中间失败/后项状态、计数未知、OUT、分块限制；自动提交下不把可部分成功任务改成单语句整体失败；断线不重发已发送项。
+- [x] 执行 `go test . -run 'TestBatch' -count=1`，确认失败。
+- [x] 逐项路径与受限 multi-send 已实现；原生 Conn/Tx 一次标准库锁定、DB 全批次固定会话。无等价性证据时回退逐项，不改变已有 Tx 或隐式提交；清理错误保留确认成功，取消不丢失先前 SQL 错误。
+- [x] 同命令通过；`TestBatchStrategies`、`TestBatchTxBoundary` 及 wire `TestPipelineWritesAhead` 对比内容、顺序、错误、事务和真实提前发包。bulk/array/改写当前回退逐项，证据与未启用条件见架构 §13.4；`TestBatchExecution` 四目标源码仅编译，真实服务器支持/等价性待验证。
 
 ### D23 压缩、OB20、新元数据与校验
 

@@ -134,7 +134,7 @@ func convertArgument(value any) (any, error) {
 
 func (*conn) CheckNamedValue(value *driver.NamedValue) error {
 	switch value.Value.(type) {
-	case cursorMutationRequest, cursorOpenRequest, cursorFetchRequest, savepointRequest, executionRequest, metadataRequest, resourceRequest, lobOpenRequest, lobRequest, tableBlobOpenRequest:
+	case batchRequest, cursorMutationRequest, cursorOpenRequest, cursorFetchRequest, savepointRequest, executionRequest, metadataRequest, resourceRequest, lobOpenRequest, lobRequest, tableBlobOpenRequest:
 		return nil
 	}
 	v, err := convertArgument(value.Value)
