@@ -2,7 +2,7 @@
 
 ## 1. 范围与读数
 
-`BenchmarkDriver` 在单个物理连接上，通过进程内 `net.Pipe` 协议对端运行两种 OceanBase 兼容模式，共16个场景。入口见 [driver_benchmark_test.go](../driver_benchmark_test.go)。没有连接数据库，不执行真实 SQL，也不包含网络往返或服务端执行、存储和锁开销。
+`BenchmarkDriver` 在单个物理连接上，通过进程内 `net.Pipe` 协议对端运行两种 OceanBase 兼容模式，共18个场景（基础16项，另含 MySQL 批量改写和 Oracle 原生数组绑定）。入口见 [driver_benchmark_test.go](../driver_benchmark_test.go)。没有连接数据库，不执行真实 SQL，也不包含网络往返或服务端执行、存储和锁开销。
 
 计时和分配统计包含 database/sql、驱动、对端响应构造、协议收发、调度及结果断言。因此 B/op 和 allocs/op **不是纯驱动分配量**，ns/op 也不是数据库延迟。当前夹具采用标准包流和单连接；不覆盖 TLS、压缩、OB20、多连接并发或真实代理性能。短样本仅用于后续在相同夹具下复测，不设置性能通过阈值，不据此判断两工具链性能高低。
 
@@ -18,6 +18,8 @@
 | cache-hit | 隐式预处理缓存命中，StatementCacheSize=1、ReuseParameterTypes=true | 预热后复用语句/参数类型，检查省略类型头 |
 | batch-sequential | 每轮8项 INSERT，核对策略、逐项状态和影响行数 | 每项 prepare/execute/close，含结果分配与断言 |
 | batch-multisend | 每轮8项 INSERT，核对真实 MultiSend 策略及逐项结果 | 每批共享 prepare；含分块收发和 close |
+| batch-rewrite（MySQL） | 每轮8项独立 INSERT，多语句改写；检查实际策略、guard 查询和8个完整 OK | 含每批服务端合并开关查询、插值与多结果消费 |
+| batch-array-binding（Oracle） | 已有可写 sql.Tx 中每轮8项原生绑定；检查 flag24 整包、statement close 和逐项成功但计数未知 | 每批 prepare/execute/close；事务开启/最终 rollback 在计时外 |
 | lob | 打开、读取并关闭16KiB BLOB，核对所有字节 | MySQL 表内 BLOB 查询字典/长度/分块；Oracle inline locator 物化读取 |
 | fetch | 同一游标每轮返回32个 int64，核对0–31及关闭 Rows | 游标 prepare/execute/最终 close 在计时外；Oracle 含 offset 扩展、元数据和尾 OK |
 
@@ -32,7 +34,7 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverBenchmarkFixtures$' -count=30
 GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -benchtime=100x -count=3
 ```
 
-以上为 POSIX shell 写法；PowerShell 先设置 `$env:GOTOOLCHAIN='go1.25.0'` 或 `'go1.26.0'`，再执行对应 go 命令。无需 DSN、凭据或数据库。普通 `go test ./...` 也会运行相同夹具的预热及每项两轮操作，CI 默认检查返回值和清理；不会默认采集性能结果。
+以上为 POSIX shell 写法；PowerShell 先设置 `$env:GOTOOLCHAIN='go1.25.0'` 或 `'go1.26.0'`，再执行对应 go 命令。无需 DSN、凭据或数据库。普通 `go test ./...` 也会运行相同夹具的预热及每项两轮操作，CI 默认检查返回值和清理；普通 push 不默认采集性能结果，PR/手动 CI 则执行独立基准任务并保存 artifact。
 
 每个夹具从建连起有2分钟总预算；对端保留到 DB.Close 完成，再关闭传输并等待 goroutine 退出，最后取消 context。testing.TB.Context 在 Cleanup 前取消，因此夹具使用 WithoutCancel 后自行施加预算。长时间 benchtime 必须与该预算匹配；独立资源检查见 §6，不能直接延长这个单连接短基准并宣称完成验收。
 
@@ -40,7 +42,7 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -b
 
 ## 4. 本地样本
 
-采集日期：2026-10-17。Windows/amd64，Intel Core i5-9400 CPU @ 2.90GHz，默认 GOMAXPROCS=6；Go1.25.0 和 Go1.26.0。每项100次操作、同进程采样3次；下表各指标分别取3个样本的中位数，未作显著性分析。操作和断言定义以本文件及对应提交中的夹具为准。
+以下原始16场景样本的采集日期：2026-10-17；新增两项不与旧样本混合，见 §4.1。Windows/amd64，Intel Core i5-9400 CPU @ 2.90GHz，默认 GOMAXPROCS=6；Go1.25.0 和 Go1.26.0。每项100次操作、同进程采样3次；下表各指标分别取3个样本的中位数，未作显著性分析。操作和断言定义以本文件及对应提交中的夹具为准。
 
 | 模式/场景 | Go | ns/op | B/op | allocs/op |
 | --- | --- | --- | --- | --- |
@@ -77,13 +79,28 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -b
 | oracle-compatible/lob | 1.26.0 | 102,149 | 99,270 | 190 |
 | oracle-compatible/fetch | 1.26.0 | 319,728 | 47,362 | 939 |
 
+### 4.1 新增原生批量场景
+
+2026-10-18 增加两个受支持模式专用场景，不将回退逐项当作优化路径。批量改写声明多语句能力并逐批确认服务端聚合开关关闭；数组绑定使用已知4.3.5.1版本对端、原可写事务和8项有符号标量，最终聚合计数不分摊到各项。两者复用原物理会话的清理断言，纳入普通功能夹具与8轮资源检查。事务最终 rollback 只用于确认生命周期，不证明真实数据库撤销效果。
+
+同日 Windows/amd64、相同 CPU 与 GOMAXPROCS=6，仅运行上述两个场景，各100次操作、3个样本；各指标分别取中位数。每次批量含8行，以下为整次批量开销，包含进程内对端及断言，不代表数据库吞吐或工具链性能差异。
+
+| 模式/场景 | Go | ns/op | B/op | allocs/op |
+| --- | --- | --- | --- | --- |
+| mysql-compatible/batch-rewrite | 1.25.0 | 153,689 | 25,936 | 472 |
+| oracle-compatible/batch-array-binding | 1.25.0 | 99,189 | 21,482 | 349 |
+| mysql-compatible/batch-rewrite | 1.26.0 | 157,059 | 25,937 | 472 |
+| oracle-compatible/batch-array-binding | 1.26.0 | 96,715 | 21,483 | 349 |
+
+复现命令：`go test . -run '^$' -bench '^BenchmarkDriver$/.*/batch-(rewrite|array-binding)$' -benchmem -benchtime=100x -count=3 -timeout 2m`，工具链设置见 §3。两个夹具使用相同的42作为8项输入，不独立验证输入次序或不同值；数组期望包复用生产编码器，独立字节格式断言另见 `TestStmtArrayGolden`。
+
 ## 5. 尚待验证
 
 真实两模式/直连与 OBProxy 的 CRUD、缓存、原生批量优化、LOB 流式和游标性能、网络与多连接负载、长期内存/句柄/goroutine 曲线仍未执行。Linux 实际运行、远程 CI 和成功 race 证据仍缺。D32 不因此完成；实现28/32、验收0/32不变，详见[开发进度](go-driver-development-progress.md)。
 
 ## 6. 离线资源稳定性检查
 
-`TestDriverResourceStability` 复用以上16场景，在固定8轮中反复创建、使用并关闭会话。每个场景每轮先预热一次，再执行 N 次；默认 N=2，普通单测和 CI 都运行。通过 `OB_TEST_STABILITY_ITERATIONS` 指定1–10000的 N 可增加负载，不改变样本/测试树大小，也不访问 DSN 或真实数据库。每个场景仍有独立2分钟预算，整个命令需设置足够的 timeout。
+`TestDriverResourceStability` 复用以上18场景，在固定8轮中反复创建、使用并关闭会话。每个场景每轮先预热一次，再执行 N 次；默认 N=2，普通单测和 CI 都运行。通过 `OB_TEST_STABILITY_ITERATIONS` 指定1–10000的 N 可增加负载，不改变样本/测试树大小，也不访问 DSN 或真实数据库。每个场景仍有独立2分钟预算，整个命令需设置足够的 timeout。
 
 ```sh
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.25.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
@@ -121,3 +138,30 @@ PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOL
 | 1.26.0 | 8 | 113095 | 502216 | 1594 | 2 |
 
 各静止采样点均为2个 goroutine；两版的堆/对象数在热身后仍有增长，不能将结果表述为“零增长”或据此证明无泄漏。样本含测试框架的固定元数据和运行时缓存；上面的资源断言提供的是每次场景清理的直接证据。要判断生产长期稳定性仍需更长时间、长寿命会话、多连接和故障组合，以及真实 socket/OS 句柄与数据库环境。
+
+### 6.2 含原生批量的18场景样本
+
+2026-10-18，Windows/amd64、相同 CPU 与 GOMAXPROCS=6；两工具链顺序运行，未并行运行其他 Go 检查。各 N=4096、8轮、18场景，共589968次场景操作（含每场景每轮一次预热）。全部资源断言通过，Go1.25 用时119.070秒，Go1.26 用时121.222秒；不与 §6.1 的16场景负载直接比较。
+
+| Go | 样本 | 耗时 ms | GC 后堆 bytes | 堆对象数 | goroutine |
+| --- | --- | --- | --- | --- | --- |
+| 1.25.0 | 0 | 2 | 224352 | 694 | 2 |
+| 1.25.0 | 1 | 14916 | 537736 | 1374 | 2 |
+| 1.25.0 | 2 | 29808 | 518392 | 1486 | 2 |
+| 1.25.0 | 3 | 44903 | 557928 | 1496 | 2 |
+| 1.25.0 | 4 | 59745 | 596744 | 1491 | 2 |
+| 1.25.0 | 5 | 74518 | 518152 | 1417 | 2 |
+| 1.25.0 | 6 | 89326 | 563944 | 1513 | 2 |
+| 1.25.0 | 7 | 104141 | 609416 | 1550 | 2 |
+| 1.25.0 | 8 | 118984 | 542296 | 1621 | 2 |
+| 1.26.0 | 0 | 0 | 274592 | 722 | 2 |
+| 1.26.0 | 1 | 15017 | 625216 | 1391 | 2 |
+| 1.26.0 | 2 | 30276 | 590464 | 1346 | 2 |
+| 1.26.0 | 3 | 45374 | 605632 | 1454 | 2 |
+| 1.26.0 | 4 | 60453 | 608360 | 1416 | 2 |
+| 1.26.0 | 5 | 75699 | 609400 | 1411 | 2 |
+| 1.26.0 | 6 | 90744 | 660968 | 1551 | 2 |
+| 1.26.0 | 7 | 105871 | 620440 | 1476 | 2 |
+| 1.26.0 | 8 | 121129 | 515512 | 1519 | 2 |
+
+采样点均为2个 goroutine，堆/对象数高于空载基线且有波动；这只是有限负载和逐场景清理的证据，不证明无泄漏，也不替代 §5 的真实平台、多连接、故障及长期验收。

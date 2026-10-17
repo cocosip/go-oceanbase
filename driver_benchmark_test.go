@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,8 +29,8 @@ type driverBenchmarkCase struct {
 	run   func(testing.TB, Mode, int, func(), func())
 }
 
-func driverBenchmarkCases() []driverBenchmarkCase {
-	return []driverBenchmarkCase{
+func driverBenchmarkCases(mode Mode) []driverBenchmarkCase {
+	cases := []driverBenchmarkCase{
 		{name: "crud", run: runDriverCRUD},
 		{name: "prepare-per-call", run: func(t testing.TB, mode Mode, n int, start, stop func()) {
 			runDriverPrepared(t, mode, n, start, stop, false, false)
@@ -49,13 +50,19 @@ func driverBenchmarkCases() []driverBenchmarkCase {
 		{name: "lob", bytes: benchmarkPayloadBytes, run: runDriverLOB},
 		{name: "fetch", bytes: benchmarkFetchRows * 8, rows: benchmarkFetchRows, run: runDriverFetch},
 	}
+	if mode == ModeMySQL {
+		cases = append(cases, driverBenchmarkCase{name: "batch-rewrite", rows: benchmarkBatchRows, run: runDriverBatchRewrite})
+	} else {
+		cases = append(cases, driverBenchmarkCase{name: "batch-array-binding", rows: benchmarkBatchRows, run: runDriverBatchArray})
+	}
+	return cases
 }
 
 // These benchmarks measure database/sql and the driver against an in-process protocol peer.
 // They include peer/scheduler allocations and do not measure real database throughput.
 func BenchmarkDriver(b *testing.B) {
 	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		for _, scenario := range driverBenchmarkCases() {
+		for _, scenario := range driverBenchmarkCases(mode) {
 			b.Run(map[Mode]string{ModeMySQL: "mysql-compatible", ModeOracle: "oracle-compatible"}[mode]+"/"+scenario.name, func(b *testing.B) {
 				b.ReportAllocs()
 				b.SetBytes(scenario.bytes)
@@ -71,7 +78,7 @@ func BenchmarkDriver(b *testing.B) {
 // Run the same workload and result checks in ordinary CI, where benchmarks are not selected.
 func TestDriverBenchmarkFixtures(t *testing.T) {
 	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		for _, scenario := range driverBenchmarkCases() {
+		for _, scenario := range driverBenchmarkCases(mode) {
 			t.Run(map[Mode]string{ModeMySQL: "mysql-compatible", ModeOracle: "oracle-compatible"}[mode]+"/"+scenario.name, func(t *testing.T) {
 				scenario.run(t, mode, 2, func() {}, func() {})
 			})
@@ -79,7 +86,7 @@ func TestDriverBenchmarkFixtures(t *testing.T) {
 	}
 }
 
-func driverBenchmarkDB(t testing.TB, mode Mode, options ExecutionOptions, serve func(context.Context, *wire.PacketIO, byte) bool) (*sql.DB, context.Context) {
+func driverBenchmarkDB(t testing.TB, mode Mode, cfg Config, serve func(context.Context, *wire.PacketIO, byte) bool) (*sql.DB, context.Context) {
 	t.Helper()
 	// testing cancels TB.Context before Cleanup; the peer must survive DB.Close.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Minute)
@@ -89,7 +96,8 @@ func driverBenchmarkDB(t testing.TB, mode Mode, options ExecutionOptions, serve 
 		status = 6
 	}
 	var dials atomic.Int32
-	configured, err := NewConnector(Config{User: testUser, Mode: mode, Execution: options, DialContext: func(context.Context, string, string) (net.Conn, error) {
+	cfg.User, cfg.Mode = testUser, mode
+	cfg.DialContext = func(context.Context, string, string) (net.Conn, error) {
 		if dials.Add(1) != 1 {
 			return nil, errors.New("benchmark unexpectedly replaced its physical connection")
 		}
@@ -105,7 +113,11 @@ func driverBenchmarkDB(t testing.TB, mode Mode, options ExecutionOptions, serve 
 			defer close(done)
 			defer func() { _ = server.Close() }()
 			p := wire.NewPacketIO(authPeerConn{server}, 64<<20)
-			if !serveConnect(ctx, t, p, status) || !serveBaseline(ctx, t, p, status) || !serveOK(ctx, t, p, []byte{14}, status) || !serve(ctx, p, status) {
+			offer := uint64(0)
+			if cfg.AllowMultiStatements {
+				offer = wire.ClientMultiStatements
+			}
+			if !serveConnect(ctx, t, p, status, offer) || !serveBaseline(ctx, t, p, status) || !serveOK(ctx, t, p, []byte{14}, status) || !serve(ctx, p, status) {
 				return
 			}
 			p.ResetSequence()
@@ -113,7 +125,8 @@ func driverBenchmarkDB(t testing.TB, mode Mode, options ExecutionOptions, serve 
 		}()
 		t.Cleanup(func() { _ = client.Close(); _ = server.Close(); <-done })
 		return client, nil
-	}})
+	}
+	configured, err := NewConnector(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +174,7 @@ func driverBenchmarkDB(t testing.TB, mode Mode, options ExecutionOptions, serve 
 func runDriverCRUD(t testing.TB, mode Mode, n int, start, stop func()) {
 	t.Helper()
 	queries := []string{"INSERT INTO benchmark_fixture VALUES (42)", "UPDATE benchmark_fixture SET id=42", "SELECT id FROM benchmark_fixture", "DELETE FROM benchmark_fixture"}
-	db, ctx := driverBenchmarkDB(t, mode, ExecutionOptions{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
 			for j, query := range queries {
 				if !readQuery(ctx, t, p, query) {
@@ -208,7 +221,7 @@ func runDriverPrepared(t testing.TB, mode Mode, n int, start, stop func(), expli
 	if cached {
 		options.StatementCacheSize, options.ReuseParameterTypes = 1, true
 	}
-	db, ctx := driverBenchmarkDB(t, mode, options, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, Config{Execution: options}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
 			if (i == 0 || !explicit && !cached) && !servePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, status) {
 				return false
@@ -254,7 +267,7 @@ func runDriverPrepared(t testing.TB, mode Mode, n int, start, stop func(), expli
 
 func runDriverBatch(t testing.TB, mode Mode, n int, start, stop func(), strategy BatchStrategy) {
 	t.Helper()
-	db, ctx := driverBenchmarkDB(t, mode, ExecutionOptions{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
 			for j := 0; j < benchmarkBatchRows; j++ {
 				if (j == 0 || strategy == BatchSequential) && !servePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, status) {
@@ -291,10 +304,97 @@ func runDriverBatch(t testing.TB, mode Mode, n int, start, stop func(), strategy
 	stop()
 }
 
+func runDriverBatchRewrite(t testing.TB, mode Mode, n int, start, stop func()) {
+	t.Helper()
+	query := strings.TrimSuffix(strings.Repeat("INSERT INTO benchmark_fixture VALUES ( 42 )\n;\n", benchmarkBatchRows), "\n;\n")
+	db, ctx := driverBenchmarkDB(t, mode, Config{AllowMultiStatements: true}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+		for i := 0; i <= n; i++ {
+			if !serveBatchRewriteGuard(ctx, t, p, "0", status) || !readQuery(ctx, t, p, query) {
+				return false
+			}
+			for j := 0; j < benchmarkBatchRows; j++ {
+				flags := status
+				if j < benchmarkBatchRows-1 {
+					flags |= 8
+				}
+				if !sendPackets(ctx, t, p, commandPacket(1, 0, flags)) {
+					return false
+				}
+			}
+		}
+		return true
+	})
+	rows := make([][]any, benchmarkBatchRows)
+	for i := range rows {
+		rows[i] = []any{int64(42)}
+	}
+	for i := 0; i <= n; i++ {
+		if i == 1 {
+			start()
+		}
+		result, err := ExecBatch(ctx, db, benchmarkPreparedSQL, rows, BatchOptions{Strategy: BatchRewrite})
+		if err != nil || result.Strategy != BatchRewrite || len(result.Items) != benchmarkBatchRows {
+			t.Fatal("rewritten batch shape/strategy", result, err)
+		}
+		for _, item := range result.Items {
+			if item.Status != BatchSucceeded || !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 {
+				t.Fatal("rewritten batch outcome", item)
+			}
+		}
+	}
+	stop()
+}
+
+func runDriverBatchArray(t testing.TB, mode Mode, n int, start, stop func()) {
+	t.Helper()
+	values := make([]any, benchmarkBatchRows)
+	rows := make([][]any, benchmarkBatchRows)
+	for i := range values {
+		values[i] = int64(42)
+		rows[i] = []any{values[i]}
+	}
+	expected := batchArrayPacket(t, values, wire.ExecuteOptions{})
+	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, _ byte) bool {
+		if !serveOK(ctx, t, p, []byte("\x03"+testAutocommitOff), 4) || !serveOK(ctx, t, p, []byte("\x03"+testOracleReadWrite), 5) {
+			return false
+		}
+		for i := 0; i <= n; i++ {
+			if !servePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, 5) || !readCommand(ctx, t, p, expected) ||
+				!sendPackets(ctx, t, p, commandPacket(benchmarkBatchRows, 0, 5)) || !readCommand(ctx, t, p, stmtPacket(25, 7)) {
+				return false
+			}
+		}
+		return serveOK(ctx, t, p, []byte("\x03"+testRollbackSQL), 4) && serveOK(ctx, t, p, []byte("\x03"+testAutocommitOn), 6)
+	})
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	for i := 0; i <= n; i++ {
+		if i == 1 {
+			start()
+		}
+		result, err := ExecBatch(ctx, tx, benchmarkPreparedSQL, rows, BatchOptions{Strategy: BatchArrayBinding, ContinueOnError: true})
+		if err != nil || result.Strategy != BatchArrayBinding || len(result.Items) != benchmarkBatchRows {
+			t.Fatal("array batch shape/strategy", result, err)
+		}
+		for _, item := range result.Items {
+			if item.Status != BatchSucceeded || !item.Started || item.RowsAffectedKnown {
+				t.Fatal("array batch outcome", item)
+			}
+		}
+	}
+	stop()
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func runDriverLOB(t testing.TB, mode Mode, n int, start, stop func()) {
 	t.Helper()
 	payload := bytes.Repeat([]byte{'x'}, benchmarkPayloadBytes)
-	db, ctx := driverBenchmarkDB(t, mode, ExecutionOptions{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
 			if mode == ModeOracle {
 				if !serveLOBQueryStatus(ctx, t, p, "SELECT b FROM benchmark_fixture", 210, status, lobInlineFixture(string(payload))) {
@@ -339,7 +439,7 @@ func runDriverLOB(t testing.TB, mode Mode, n int, start, stop func()) {
 
 func runDriverFetch(t testing.TB, mode Mode, n int, start, stop func()) {
 	t.Helper()
-	db, ctx := driverBenchmarkDB(t, mode, ExecutionOptions{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		column := textColumn("id", 8, 63, 0)
 		if !servePrepareStatus(ctx, t, p, benchmarkCursorSQL, 7, 0, nil, status) || !readCommand(ctx, t, p, cursorExecuteFixture(7)) ||
 			!sendPackets(ctx, t, p, []byte{1}, column, []byte{254, 0, 0, status | 64, 0}) {

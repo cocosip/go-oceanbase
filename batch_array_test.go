@@ -20,7 +20,7 @@ const (
 	arrayFallbackValuer     = "array-valuer"
 )
 
-func batchArrayPacket(t *testing.T, values []any, options wire.ExecuteOptions) []byte {
+func batchArrayPacket(t testing.TB, values []any, options wire.ExecuteOptions) []byte {
 	t.Helper()
 	rows := make([][]wire.Parameter, len(values))
 	for i, value := range values {

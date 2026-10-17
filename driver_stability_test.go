@@ -28,7 +28,7 @@ func TestDriverResourceStability(t *testing.T) {
 	for sample := 0; sample <= stabilitySamples; sample++ {
 		if sample > 0 {
 			for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-				for _, scenario := range driverBenchmarkCases() {
+				for _, scenario := range driverBenchmarkCases(mode) {
 					name := fmt.Sprintf("sample-%d/mode-%d/%s", sample, mode, scenario.name)
 					if !t.Run(name, func(t *testing.T) {
 						scenario.run(t, mode, iterations, func() {}, func() {})

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/binary"
 	"errors"
 	"net"
 	"sync"
@@ -38,9 +39,15 @@ func peerDial(t *testing.T, serve func(context.Context, *wire.PacketIO)) func(co
 	}
 }
 
-func serveConnect(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte) bool {
+func serveConnect(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, offers ...uint64) bool {
 	t.Helper()
-	if err := p.WriteMessage(ctx, authGreeting(authNative, false)); err != nil {
+	greeting := authGreeting(authNative, false)
+	offset := bytes.IndexByte(greeting[1:], 0) + 2 + 4 + 8 + 1
+	for _, offer := range offers {
+		binary.LittleEndian.PutUint16(greeting[offset:], binary.LittleEndian.Uint16(greeting[offset:])|uint16(offer))
+		binary.LittleEndian.PutUint16(greeting[offset+5:], binary.LittleEndian.Uint16(greeting[offset+5:])|uint16(offer>>16))
+	}
+	if err := p.WriteMessage(ctx, greeting); err != nil {
 		t.Error(err)
 		return false
 	}

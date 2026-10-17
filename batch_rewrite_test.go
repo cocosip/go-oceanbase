@@ -86,7 +86,7 @@ func batchRewriteDB(t *testing.T, cfg Config, variant string, serve func(context
 	return sql.OpenDB(c)
 }
 
-func serveBatchRewriteGuard(ctx context.Context, t *testing.T, p *wire.PacketIO, value string, status byte) bool {
+func serveBatchRewriteGuard(ctx context.Context, t testing.TB, p *wire.PacketIO, value string, status byte) bool {
 	t.Helper()
 	return readQuery(ctx, t, p, batchRewriteGuard) && sendPackets(ctx, t, p,
 		[]byte{1}, textColumn("server-merge-on", 253, 45, 0), []byte{254, 0, 0, status, 0},

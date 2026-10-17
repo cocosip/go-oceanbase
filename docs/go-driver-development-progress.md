@@ -1,6 +1,6 @@
 # OceanBase Go 驱动开发进度
 
-最后更新：2026-10-17。任务定义见 [开发计划](go-driver-development-plan.md)，行为契约见 [架构设计](go-driver-architecture-design.md)。
+最后更新：2026-10-18。任务定义见 [开发计划](go-driver-development-plan.md)，行为契约见 [架构设计](go-driver-architecture-design.md)。
 
 ## 1. 当前状态
 
@@ -692,6 +692,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 22个 fuzz 目标与源码枚举核对，每个版本分4组并行，每个目标完整名称匹配且运行30秒；保留双版本 Linux/386 实际测试，以及独立的 GSSAPI 系统拒绝/ABI、OBProxy 宿主/Unix 夹具及组合标签 lint。开启 Go 缓存，添加作业超时、自动运行并发取消，手动 CI 不自动取消；覆盖率、fuzz 日志/语料和本地对端基准分别保存 artifact。基准只在 PR/手动运行，不以共享 runner 时延设置硬阈值。
 - integration/stability 仍仅手动显式开启，数据库 secrets、四类 profile、OB_TEST_REQUIRE=1 和原有集成用例选择器保持；自动检查不读取数据库凭据。新增 CodeQL 的 push/PR/每周/手动入口，扫描权限限于该作业；Dependabot 每周检查 Actions 和 Go modules，更新仍受双版本检查约束。工作流详情见 README 的 GitHub Actions 段落。
 - 本地 Go1.25.0/1.26.0 Windows amd64 构建、全包 atomic coverage 测试、vet、integration 仅编译、go mod verify 与 go mod tidy -diff 通过；根包覆盖率84.5%，wire90.1%，其余内部包81.4%–88.5%，不设置未经约定的覆盖率阈值。两版本普通及 integration 标签 golangci-lint2.14.0 各0 issues；actionlint1.7.12、YAML/矩阵与22目标完整性、原集成凭据/选择器保持和文档结构检查通过。直接取工作流 Bash 脚本执行12种成功/首项失败/末项失败自检，确认参数精确且 tee 不吞错误、失败不继续后续目标；此处使用命令桩，只验证调度与失败传播，不替代30秒 fuzz。两版本实际执行 CI 同款 `go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m` 通过，仅为 Windows 本地协议对端结果。独立只读走查无确认问题，不保存独立报告。远程 Actions、Linux/macOS 运行、成功 race、CodeQL 结果及数据库联调仍未取证，不能据此关闭 D28/D32 或提高验收计数。
+
+#### D32 原生批量基准与资源检查扩展
+
+- 基础16场景之外，增加 MySQL batch-rewrite 与 Oracle batch-array-binding，共18场景；两者只在支持的模式登记，普通 TestDriverBenchmarkFixtures、BenchmarkDriver 和8轮 TestDriverResourceStability 共用。MySQL 声明多语句能力、逐批检查服务端合并开关、核对8个结果；Oracle 使用原可写 sql.Tx，核对 flag24、每批 prepare/close、逐项状态及未知计数，不把顺序回退算作优化路径。
+- 复用既有物理会话/池/缓存/事务/资源关闭断言；事务创建和最终 rollback 在计时外，每批完整调用/编解码和结果断言计时。仅扩展测试夹具，不新增公开 API、生产包或依赖。架构中“驱动尚未实现、两版本构建未验证”的过时描述改为引用当前进度，原未验收边界继续保留。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、夹具各10轮、普通及 integration 标签 golangci-lint 各0 issues、integration 仅编译通过。两个新基准各100次、3样本；18场景资源检查各4096次、8轮，共589968次场景操作，均通过，采样见[本地基准](go-driver-benchmarks.md) §4.1、§6.2。禁用改写/数组优化的 overlay 分别使对应夹具按预期失败，确认不会静默测试顺序回退；生产源码未改变。
+- Go1.25 实际 Windows/386 的夹具与默认资源检查通过；文档 UTF-8/链接/锚点/围栏/无机器路径、160项选项与32任务/28实现/0验收、Go 格式、diff 和 actionlint 检查通过。
+- 独立只读走查无确认问题；基准采用重复标量，不独立覆盖输入次序/不同值，数组期望包复用生产编码器，独立字节断言见 TestStmtArrayGolden。未连接数据库，Linux/macOS 实际运行、远程 CI、成功 race、多连接/故障及长期稳定性仍未取证；D28/D30/D31/D32 状态和28/32、0/32计数保持。
 
 ## 6. 待取证条件与推进方式
 
