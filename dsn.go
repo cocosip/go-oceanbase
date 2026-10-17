@@ -19,7 +19,7 @@ func ParseDSN(dsn string) (Config, error) {
 		return Config{}, &ConfigError{Field: "DSN"}
 	}
 	if strings.Contains(strings.TrimPrefix(u.EscapedPath(), "/"), "/") {
-		return Config{}, &ConfigError{Field: "Database"}
+		return Config{}, &ConfigError{Field: configDatabaseField}
 	}
 	cfg := Config{Addr: u.Host, User: u.User.Username(), Database: strings.TrimPrefix(u.Path, "/")}
 	cfg.Password, _ = u.User.Password()
@@ -60,6 +60,12 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		return nil
 	case "proxyUser":
 		cfg.ProxyUser = value
+		return nil
+	case "createDatabaseIfMissing":
+		if value != dsnTrue && value != dsnFalse {
+			return &ConfigError{Field: name}
+		}
+		cfg.CreateDatabaseIfMissing = value == dsnTrue
 		return nil
 	case "charset", "collation", "ncharset", "location", "parseTime":
 		return cfg.Session.applyDSNOption(name, value)

@@ -212,7 +212,7 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	if c.cfg.RowsAffectedMode == MatchedRows {
 		wanted |= wire.ClientFoundRows
 	}
-	if c.cfg.Database != "" {
+	if c.cfg.Database != "" && !c.cfg.CreateDatabaseIfMissing {
 		if server&wire.ClientConnectWithDB == 0 {
 			return 0, fmt.Errorf("%w: initial database", ErrUnsupported)
 		}

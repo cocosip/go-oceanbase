@@ -117,6 +117,8 @@ func (c *conn) cancelQuery(ctx context.Context, configuredConn *connector, id *c
 		}
 	}()
 	cfg.Mode = id.mode
+	// Cancellation must not create a database as a side effect of its private login.
+	cfg.CreateDatabaseIfMissing = false
 	// Synchronous observers could reenter the original connection while it waits for KILL.
 	cfg.Logger, cfg.Diagnostics = nil, DiagnosticOptions{}
 	auxConnector := &connector{cfg: cfg}

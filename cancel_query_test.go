@@ -20,11 +20,11 @@ const cancelPermissionPath = "permission"
 
 func TestCancelQueryIdentity(t *testing.T) {
 	for _, status := range []byte{2, 6} {
-		t.Run(fmt.Sprint(modeFromStatus(status)), func(t *testing.T) { testCancelQueryIdentity(t, status) })
+		t.Run(fmt.Sprint(modeFromStatus(status)), func(t *testing.T) { testCancelQueryIdentity(t, status, false) })
 	}
 }
 
-func testCancelQueryIdentity(t *testing.T, status byte) {
+func testCancelQueryIdentity(t *testing.T, status byte, createDatabase bool) {
 	t.Helper()
 	started, killed := make(chan struct{}), make(chan struct{})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -38,6 +38,11 @@ func testCancelQueryIdentity(t *testing.T, status byte) {
 		}
 		if !serveCancelConnect(ctx, t, p, status, id) || !serveBaseline(ctx, t, p, status) {
 			return
+		}
+		if !aux && createDatabase {
+			if !serveOK(ctx, t, p, []byte(testCreateDatabaseQuery), status) || !serveOK(ctx, t, p, []byte(testCreateDatabaseSelect), status) {
+				return
+			}
 		}
 		if aux {
 			if !serveOK(ctx, t, p, []byte("\x03KILL QUERY 42"), status) {
@@ -61,6 +66,9 @@ func testCancelQueryIdentity(t *testing.T, status byte) {
 		p.ResetSequence()
 		serveQuit(t, p)
 	})}
+	if createDatabase {
+		cfg.Database, cfg.CreateDatabaseIfMissing = testCreateDatabaseName, true
+	}
 	configured, err := NewConnector(cfg)
 	if err != nil {
 		t.Fatal(err)

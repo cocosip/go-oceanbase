@@ -53,6 +53,8 @@ cfg.TLSConfig = &tls.Config{
 
 `Session.Collation` 只适用于 MySQL 兼容模式，且必须与 `Session.Charset` 匹配；Oracle 显式拒绝。`Interactive` 请求服务端交互超时策略，不是客户端保活。`ConnectionAttributes` 只能传应用元数据，不得注入协议保留键。
 
+初始 MySQL 数据库需要由连接显式创建时，设置 `Config.CreateDatabaseIfMissing=true` 或 DSN `createDatabaseIfMissing=true`，并指定非空 Database。默认关闭，Oracle 拒绝。驱动认证后在同一连接执行 IF NOT EXISTS 并选库，随后才运行 InitSQL；需账户具备相应权限，初始化失败也可能已经留下数据库，不会自动删除或重试建库。池替换连接会再次创建/选择；ChangeUser 和取消查询辅助连接不执行创建。详见[架构 §6.4](go-driver-architecture-design.md#64-d32-已实现的初始数据库创建)。
+
 ## 3. 查询、参数与本地事务
 
 查询优先用 `QueryRowContext` / `QueryContext`，写入用 `ExecContext`。两模式均可使用 `?`；Oracle 还可用 `:name` 与 `sql.Named`。占位符只绑定值，不能绑定表名、列名或关键字；动态标识符需要独立可信校验。不要把业务值拼入 SQL。
@@ -145,3 +147,5 @@ go test -run '^Example' .
 全包测试会编译两个 main 示例，但不会执行 `main`；`Example` 只有含 `Output` 注释的函数才运行，其他只编译。`ExampleNewConnector_proxyUser` 和 `ExampleSessionOptions_collation` 为不联网的配置演示。integration 的 `-run '^$'` 也只是编译。
 
 尚未闭环：Shared Memory/VC 平台适配、全部 Java 配置的行为/默认差异核对、完整 CRUD/prepare/cache/batch/LOB/fetch 基准与长期资源曲线、真实数据库联调、Linux 实际运行、远程 CI 和成功 race 证据。完整范围仍保留在 D28/D32 及其依赖任务，本文和示例不构成新增验收结论。
+
+手动集成入口 `TestCreateDatabaseSessions` 的 MySQL 两个 profile 另需 `OB_MYSQL_CREATE_DATABASE_DSN` / `OBPROXY_MYSQL_CREATE_DATABASE_DSN` 专用凭据，允许创建/删除临时数据库、查询 information_schema.SCHEMATA 并读写其中的表。用例生成随机名称，确认不存在后创建，验证新建/既有库和 InitSQL，再关闭业务会话并尝试删除；权限不足、清理失败必须报告。`OB_TEST_REQUIRE=1` 时缺少 fixture 直接失败。该用例本阶段仅编译，未连接数据库。

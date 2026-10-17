@@ -178,6 +178,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | --- | --- |
 | 连接 | `Addr` 默认 `127.0.0.1:2881`；静态 User 或 Credentials 回调必填；连接建立总预算默认 10 秒，受调用 context 更早期限约束 |
 | 连接声明 | `Interactive` 默认 false；`ConnectionAttributes` 默认 nil，仅显式提供应用元数据；见 §6.1 |
+| 初始数据库 | `CreateDatabaseIfMissing` 默认 false；仅新 MySQL 模式物理连接可显式创建并选择非空 Database，见 §6.4 |
 | 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
 | 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
 | 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password/ProxyUser；代理登录见 §6.3 |
@@ -239,6 +240,18 @@ ChangeUser 每次显式传入代理目标，空值清除，不继承旧目标或
 CancelQuery 除原有入口、认证用户、模式、TLS 与连接 ID 检查外，还比较两条连接认证成功时的代理目标；辅助凭据回调返回不同目标或清除目标时，拒绝发送 KILL。拒绝不会改变原查询的身份或自动重放业务。用户名/目标不写入驱动日志或诊断。
 
 固定源码依据：`Credential.java` 的目标分离、`SendHandshakeResponsePacket.java` 的专用属性（L88、L399）和 ChangeUser 重发（L280）、`ConnectionOracleTest.testProxyUser` 的代理与实际用户断言。`TestProxyUser*` 覆盖配置、DSN、动态覆盖/清除、能力/模式/编码/预算、TLS、普通/压缩/OB20 的 ChangeUser、池隔离及取消身份。外部 ExampleNewConnector_proxyUser 可离线运行。TestProxyUserSessions 提供 Oracle 直连/代理的真实身份、切换/清除与新池恢复用例，MySQL 验证配置拒绝；本阶段仅编译。
+
+### 6.4 D32 已实现的初始数据库创建
+
+`Config.CreateDatabaseIfMissing` / DSN `createDatabaseIfMissing=true/false` 对应 Java `createDatabaseIfNotExist`，默认均为 false。必须显式开启并指定非空 Database；名称按 Session.Charset 严格编码，拒绝 NUL、无效 UTF-8 和不可表示字符，不在配置错误中回显名称。显式 ModeOracle 在 NewConnector 拒绝；ModeAuto 认证后实际为 Oracle 时在初始化 SQL 之前返回 ErrUnsupported 并关闭，不像 Java 静默忽略创建请求。
+
+开启后初始握手不声明 CLIENT_CONNECT_WITH_DB，不发送数据库名，也不要求服务端支持该握手位；完成认证、模式检查与协议协商后，在同一物理连接建立字符集/自动提交/版本/时区基线，再发送 `CREATE DATABASE IF NOT EXISTS` 和 COM_INIT_DB，最后运行 Session.Variables/InitSQL。标识符使用反引号并对内含反引号双写，名称不作为 SQL 值或未转义片段拼接；COM_INIT_DB 使用原始名称的连接字符集编码。关闭时沿用普通握手选库语义。
+
+创建与选库服从同一个 ConnectTimeout/路由尝试预算，保留服务端错误；失败关闭连接，不重试其他地址或回退普通登录。DDL 可能已生效，初始化失败、取消或断连不会自动删除数据库；IF NOT EXISTS 也不保证无 CREATE 权限的账户能连接既有数据库，必须按服务端权限处理。驱动不为数据库指定额外默认字符集/排序规则，沿用服务端 CREATE 默认值。
+
+池中新物理连接/Full reset 替换会再次执行 IF NOT EXISTS；普通复用不重复执行。ChangeUser 的派生配置清除此选项，仅按其 database 参数重新认证，不自动建库；CancelQuery 辅助连接也清除此选项，正常选库后直接执行取消，不产生建库副作用。原 Connector 配置不受这些局部清除影响，不新增包或全局状态。
+
+固定 Java 依据：AbstractConnectProtocol 的 CLIENT_CONNECT_WITH_DB 条件（L337–L342）和 additionalData 创建/USE 顺序（L1378–L1386）。本地 TestCreateDatabase* 覆盖握手、三种 framing、UTF-8/GBK、转义、初始化顺序、两模式拒绝、服务端失败/总预算与 ChangeUser/取消隔离。TestCreateDatabaseSessions 提供 MySQL 直连/代理的创建、既有库、InitSQL 和物理替换用例，要求专用 CREATE/DROP DATABASE 权限 fixture；Oracle 只验证配置拒绝，本阶段均不联网。
 
 ## 7. 标准库接口实现表
 

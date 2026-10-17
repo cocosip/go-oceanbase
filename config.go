@@ -17,6 +17,8 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/routing"
 )
 
+const configDatabaseField = "Database"
+
 // Mode is an OceanBase compatibility mode. Auto is pinned after initialization.
 type Mode uint8
 
@@ -112,6 +114,9 @@ type Config struct {
 	// Keys starting with "_" and "ob_capability_flag" are reserved. Nil adds no
 	// application attributes; protocol and proxy identity attributes are generated separately.
 	ConnectionAttributes map[string]string
+	// CreateDatabaseIfMissing creates and selects Database on new MySQL-mode connections.
+	// It is opt-in, requires a nonempty Database, and never applies to ChangeUser or CancelQuery.
+	CreateDatabaseIfMissing bool
 }
 
 // ConfigError identifies an invalid field without retaining its sensitive value.
@@ -124,7 +129,7 @@ func normalizeConfig(cfg Config) (Config, error) {
 		return Config{}, &ConfigError{Field: "User"}
 	}
 	if strings.ContainsRune(cfg.Database, 0) {
-		return Config{}, &ConfigError{Field: "Database"}
+		return Config{}, &ConfigError{Field: configDatabaseField}
 	}
 	if cfg.Mode > ModeOracle {
 		return Config{}, &ConfigError{Field: "Mode"}
@@ -183,6 +188,14 @@ func cloneConfigOptions(cfg Config) (Config, error) {
 	}
 	if cfg.Mode == ModeOracle && cfg.Session.Collation != "" {
 		return Config{}, &ConfigError{Field: "Session.Collation"}
+	}
+	if cfg.CreateDatabaseIfMissing {
+		if cfg.Database == "" || cfg.Mode == ModeOracle {
+			return Config{}, &ConfigError{Field: "CreateDatabaseIfMissing"}
+		}
+		if _, err = charset.Encode(cfg.Session.Charset, cfg.Database); err != nil {
+			return Config{}, &ConfigError{Field: configDatabaseField}
+		}
 	}
 	if _, err = (&connector{cfg: cfg}).connectionAttributes(cfg.ProxyUser); err != nil {
 		return Config{}, err

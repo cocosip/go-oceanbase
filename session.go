@@ -69,6 +69,9 @@ func (c *conn) initialize(ctx context.Context) error {
 }
 
 func (c *conn) initializeLocked(ctx context.Context) error {
+	if c.cfg.CreateDatabaseIfMissing && c.session.mode != ModeMySQL {
+		return fmt.Errorf("%w: database creation requires MySQL compatibility mode", ErrUnsupported)
+	}
 	charset := strings.ToLower(c.cfg.Session.Charset)
 	if charset == charsetUTF8MB3Alias {
 		charset = charsetUTF8
@@ -103,6 +106,9 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 		if err := c.initSQL(ctx, "SET NCHARACTER_SET_CONNECTION = "+c.quoteSessionValue(name)); err != nil {
 			return err
 		}
+	}
+	if err := c.createInitialDatabase(ctx); err != nil {
+		return err
 	}
 	variables := make([]string, 0, len(c.cfg.Session.Variables))
 	for name := range c.cfg.Session.Variables {
@@ -140,6 +146,20 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 		return &ConfigError{Field: "Session.InitSQL transaction state"}
 	}
 	return nil
+}
+
+func (c *conn) createInitialDatabase(ctx context.Context) error {
+	if !c.cfg.CreateDatabaseIfMissing {
+		return nil
+	}
+	database, err := c.encodeSQL(c.cfg.Database)
+	if err != nil {
+		return err
+	}
+	if err = c.initSQL(ctx, "CREATE DATABASE IF NOT EXISTS "+quoteBlobIdentifier(ModeMySQL, c.cfg.Database)); err != nil {
+		return err
+	}
+	return c.commandOK(ctx, append([]byte{2}, database...))
 }
 
 func sessionTimeZone(loc *time.Location) (string, error) {

@@ -552,6 +552,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）通过；新增示例及 README 完整 Go 片段在双版本编译通过，两个 main 示例的 Windows/386 编译和 Linux/amd64 CGO_ENABLED=0 交叉构建通过。integration 仅编译，go mod tidy -diff 无差异。Go1.25 实际运行综合示例缺 DSN/Auto 模式两个预检，均在联网前拒绝；不把这些预检计作联网功能运行证据。
 - 七文档及 README 的 UTF-8、相对链接/锚点、代码围栏、无机器盘符路径检查通过，任务仍为32项、实现28项、验收0项。独立只读走查未发现已确认重要问题，不保存独立报告。数据库上的示例运行、完整基准/资源曲线、Shared Memory/VC 和其他配置仍未闭环；Linux 实际运行、远程 CI 和成功 race 证据仍缺。D32 继续进行中，不勾选完整交付。
 
+#### D32 初始数据库创建
+
+- 新增 Config.CreateDatabaseIfMissing / DSN createDatabaseIfMissing，默认 false，仅 MySQL 新物理连接显式启用；握手不选择数据库，认证及会话基线完成后 CREATE IF NOT EXISTS、COM_INIT_DB，再运行 Variables/InitSQL。名称严格编码并转义标识符，Oracle/空目标显式拒绝；复用既有命令与编码，无新增包或依赖。完整契约见架构 §6.4。
+- 创建/选库沿用总连接预算；失败保留原错误、关闭且不重拨，不删除可能已创建的库。Full reset 替换会重新执行；ChangeUser/CancelQuery 的派生配置清除创建选项，不改原 Connector。两项隔离回归均在临时移除保护时捕获错误 CREATE，恢复后通过；握手/初始化也有先失败再通过证据。
+- TestCreateDatabase* / TestDSNCreateDatabase 和外部 ExampleNewConnector_createDatabase 覆盖普通/压缩/OB20、UTF-8/GBK、转义、顺序、认证/权限/选库失败、超时、两模式门禁及生命周期。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
+- TestCreateDatabaseSessions 及手动 CI 已补：MySQL 直连/代理需专用 CREATE_DATABASE_DSN 与 CREATE/DROP DATABASE、目录读取和库内建表权限，使用随机独占库名，关闭业务会话后有界清理；验证缺失库、既有数据、InitSQL 及物理替换。Oracle 只验证配置拒绝；集成源码仅编译，未连接数据库。go mod tidy -diff 无差异；七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合、CI YAML/fixture/selector 及 Go 格式/diff 检查通过。D32 保持进行中，实现28/32、验收0/32；真实 DDL/权限、Linux 运行、远程 CI 和成功 race 仍未验证。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

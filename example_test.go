@@ -37,3 +37,13 @@ func ExampleNewConnector_proxyUser() {
 	fmt.Println(connector != nil, err == nil)
 	// Output: true true
 }
+
+func ExampleNewConnector_createDatabase() {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{
+		User: "app@tenant", Database: "demo", Mode: oceanbase.ModeMySQL,
+		CreateDatabaseIfMissing: true,
+	})
+	// Creating a Connector validates the policy; it does not create a database.
+	fmt.Println(connector != nil, err == nil)
+	// Output: true true
+}

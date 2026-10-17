@@ -58,6 +58,7 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	cfg.User, cfg.Password, cfg.Credentials = request.credentials.User, request.credentials.Password, nil
 	cfg.ProxyUser = request.credentials.ProxyUser
 	cfg.Database, cfg.Mode = request.database, c.session.mode
+	cfg.CreateDatabaseIfMissing = false
 	authenticator := &connector{cfg: cfg}
 	credentials, err := authenticator.credentials(ctx)
 	if err != nil {

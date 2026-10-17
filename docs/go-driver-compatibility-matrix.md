@@ -51,6 +51,16 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 
 TestProxyUserSessions 已接手动 CI，仅编译。Oracle 两目标使用 OB_ORACLE / OBPROXY_ORACLE 前缀的 PROXY_DSN、PROXY_AUTH_USER、PROXY_SESSION_USER 三项 fixture；DSN 必须显式含 proxyUser，两个预期用户名使用实际服务端返回值且应不同。测试读取 SYS_CONTEXT 的 CURRENT_USER/PROXY_USER/SESSION_USER，验证登录、ChangeUser 重发/清除及新池恢复；启用 OB_TEST_REQUIRE 时缺失 fixture 为失败。MySQL 两目标仅验证配置拒绝，不据此声明完整兼容。契约见架构 §6.3。
 
+### 1.4 D32 初始数据库创建
+
+| 能力 | Go 当前行为 | 本地证据 / 待验证 |
+| --- | --- | --- |
+| MySQL 显式创建 | Config.CreateDatabaseIfMissing/DSN createDatabaseIfMissing，默认 false；认证时不选库，认证后创建并用 COM_INIT_DB 选择，再运行 InitSQL | 握手位与名称、UTF-8/GBK、反引号转义、普通/压缩/OB20、失败关闭及总预算本地覆盖；真实 CREATE 权限/默认属性待联调 |
+| 生命周期隔离 | 新物理连接可重复执行 IF NOT EXISTS；ChangeUser/取消辅助连接清除派生配置中的创建选项，不改原 Connector | 两项误建库回归有先失败再通过证据；创建或选库失败不重试、不自动删除可能已创建的库 |
+| Oracle/空目标 | 显式 Oracle 或空 Database 在配置阶段拒绝；Auto 实际 Oracle 在初始化 SQL 前拒绝 | 负向契约本地覆盖，不以拒绝代表 MySQL 正向验收 |
+
+TestCreateDatabaseSessions 已加入手动 CI，MySQL 直连/代理需要专用 CREATE/DROP DATABASE fixture，验证缺失库、既有库、InitSQL 和物理替换；Oracle 只验证配置拒绝。本阶段仅编译，没有执行真实 DDL。完整契约与 Java 对照见架构 §6.4。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |
