@@ -566,6 +566,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestReadTimeout* / TestDSNReadTimeout 和外部 ExampleNewConnector_readTimeout 覆盖握手/初始化、TLS 握手/查询、两模式及普通/压缩/OB20、响应/行停顿、context 优先、并发刷新、旧 deadline、分段消息和写预算、逐项/流水线批量。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
 - TestReadTimeoutSessions 四目标及手动 CI/只读慢 SQL fixture 已补，本阶段仅编译，未连接数据库；不能用本地超时证明真实代理缓冲效果或服务端查询已停止。七文档及 README 的 UTF-8/相对链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合、CI YAML/四项 fixture/selector、Go 格式/diff 检查通过。D32 保持进行中，实现28/32、验收0/32；Shared Memory/VC、其他配置与完整基准/资源曲线，以及真实数据库、Linux 运行、远程 CI 和成功 race 仍待完成。
 
+#### D32 TCP 原生配置
+
+- 七项 Java TCP 配置已核对，使用现有 Config.DialContext 与标准 net.Dialer/net.TCPConn 承载；新增可编译 ExampleConfig_tcpOptions 和本地 TCP 测试，不增加公开配置结构、DSN 开关、包或依赖，不改变内置默认。Go/Java 默认差异、回调并发归属、setter 失败关闭及平台边界见架构 §9.0.2；同名 Java DSN 参数继续严格拒绝。
+- TestTCPDialContext* 覆盖源接口、选中入口、工厂调用次数、握手/初始化/Ping/QUIT、明文认证门禁、已取消 context、非 TCP 拒绝与显式 abortive close。示例在拨号后显式检查 keep-alive 设置错误，避免将 Dialer 的 best effort 当作策略已生效；缓冲及探测参数仅为示范。TCP 门禁回归在临时移除保护时失败，恢复后通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TCP 目标与示例各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。最终复核同步修正既有 failover 测试的一处重复字符串常量引用，Failover/TCP/示例定向测试通过。
+- 七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合及 Go 格式/diff 检查通过。未连接数据库，未验证远端接口、真实 OS 缓冲/探测参数、Linux 运行、远程 CI 或成功 race；SetLinger(0) 可能丢弃待发送数据，不能保证 QUIT 送达或回滚 SQL。D32 保持进行中，实现28/32、验收0/32；D28 Shared Memory/VC、其余配置及完整基准/资源曲线仍未闭环。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

@@ -70,6 +70,12 @@ TestCreateDatabaseSessions 已加入手动 CI，MySQL 直连/代理需要专用 
 
 TestReadTimeoutSessions 四目标要求显式只读慢 SQL fixture，验证独立网络超时和物理替换；仅编译，未执行。它不保证服务端查询已停止，完整命令时限仍使用调用 context。契约见架构 §12.5.1。
 
+### 1.6 D32 TCP 原生配置
+
+七项 Java 配置（tcpNoDelay、tcpAbortiveClose、localSocketAddress、tcpKeepAlive、tcpRcvBuf、tcpSndBuf、socketFactory）对应现有 DialContext 与标准 net.Dialer/net.TCPConn，不添加重复驱动配置；默认值和错误/资源归属见架构 §9.0.2。可编译 ExampleConfig_tcpOptions 及 TestTCPDialContext* 覆盖本地原生 TCP、源地址、选中入口、协议收发、认证门禁、取消、关闭与 Java DSN 参数拒绝。显式 abortive close 不保证 QUIT 送达或服务端 SQL 回滚；内置默认关闭。
+
+这里只证明应用可通过同一驱动入口使用标准 TCP 能力；远端 OS 调优、真实探测/缓冲数值、网络中间件与数据库部署未验收。不改变 Shared Memory/VC 等 D28 缺口，也不以 API 映射计作整个 D32 完成。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

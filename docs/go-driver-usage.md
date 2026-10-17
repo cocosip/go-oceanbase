@@ -51,6 +51,8 @@ cfg.TLSConfig = &tls.Config{
 
 不以 `InsecureSkipVerify` 代替 CA/主机名校验。未设置 `TLSConfig` 不代表加密连接；按部署要求显式配置 TLS。认证插件、凭据回调及各平台要求见[架构设计](go-driver-architecture-design.md)。
 
+TCP 源接口、keep-alive、缓冲和 NODELAY 使用标准 `net.Dialer` / `net.TCPConn` 配合 `Config.DialContext`；不需要额外驱动配置结构。例如 `cfg.DialContext = (&net.Dialer{KeepAlive: -1}).DialContext` 可禁用默认 TCP keep-alive，仍由驱动处理后续 TLS 与初始化。完整[可编译示例](../tcp_example_test.go)展示显式 LocalAddr、KeepAliveConfig 和 setter 错误清理；示例只在程序化配置中使用，Java 的 TCP DSN 参数不会生效。源 IP 必须属于本机接口；回调捕获的配置应不可变并支持并发调用。详见[架构 §9.0.2](go-driver-architecture-design.md#902-d32-tcp-配置的-go-原生承载)。
+
 `Credentials` 回调返回的 `User`、`Password`、`ProxyUser` **完整替换**静态身份。Oracle 代理登录使用独立 `ProxyUser` 字段，认证用户和代理目标分开；不支持括号用户名语法，普通连接属性不能覆盖代理目标。结构体建议使用命名字段，避免新增字段破坏位置字面量。完整契约见[架构 §6.3](go-driver-architecture-design.md#63-d32-已实现的代理用户登录)。
 
 `Session.Collation` 只适用于 MySQL 兼容模式，且必须与 `Session.Charset` 匹配；Oracle 显式拒绝。`Interactive` 请求服务端交互超时策略，不是客户端保活。`ConnectionAttributes` 只能传应用元数据，不得注入协议保留键。

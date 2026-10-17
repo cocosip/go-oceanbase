@@ -678,6 +678,8 @@ D32 初始建库子项已补 Config.CreateDatabaseIfMissing / DSN createDatabase
 
 D32 网络读取预算子项已补 Config.ReadTimeout / DSN readTimeout，默认0关闭；两模式复用底层 net.Conn 的独立读取上限，兼容 TLS、三种包流、Rows 与批量流水线。context 较早期限生效，写后超时不重放，具体契约见架构 §12.5.1。TestReadTimeoutSessions 四目标入口仅编译，真实慢 SQL/代理缓冲与断连后的执行状态待联调；D32 整项继续进行中。
 
+D32 TCP 配置已核对七个 Java 选项，使用现有 DialContext 与标准 net.Dialer/net.TCPConn 承载，保持单一公开 Config 和默认行为；不新增重复 TCP 配置或同名 DSN 开关。可编译示例及本地真实 TCP 对端的协议/取消/认证门禁/显式关闭测试已补，默认差异和边界见架构 §9.0.2。远端网络及数据库部署未验证，D32 整项继续进行中。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。

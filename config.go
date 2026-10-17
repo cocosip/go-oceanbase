@@ -82,6 +82,7 @@ type SessionOptions struct {
 type Config struct {
 	// Network defaults to tcp; unix and pipe use Addr as the local endpoint.
 	// DialContext receives the selected network and address without TLS exemptions.
+	// It can use net.Dialer and net.TCPConn to configure TCP before returning the raw transport.
 	Network  string
 	Addr     string
 	User     string

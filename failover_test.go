@@ -94,7 +94,7 @@ func TestFailoverAllDown(t *testing.T) {
 			var calls atomic.Int32
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
-			injected := &net.OpError{Op: routeDialOperation, Net: "tcp", Err: errors.New("refused")}
+			injected := &net.OpError{Op: routeDialOperation, Net: networkTCP, Err: errors.New("refused")}
 			o := RoutingOptions{MaxAttempts: 3, RetryDelay: time.Millisecond, BlacklistTimeout: time.Millisecond}
 			if cancelled {
 				o.RetryDelay = time.Hour

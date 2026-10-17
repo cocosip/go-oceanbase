@@ -321,6 +321,27 @@ DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，
 
 Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory、OBProxy VC 继续独立开发，不计入此处支持声明。
 
+### 9.0.2 D32 TCP 配置的 Go 原生承载
+
+TCP 的七个 Java 配置项通过现有 `Config.DialContext` 与 Go 标准库完成适配，不增加 TCPOptions、第二套拨号器接口或全局工厂。回调收到当前候选入口的 network/address 和剩余建连 context，返回原始 net.Conn；驱动随后执行相同 TLS、模式协商和初始化，回调不能通过包装连接取得明文认证豁免。回调及其捕获的 Dialer/地址由调用方管理，Connector 不复制函数内部对象，应在使用期间保持配置不可变、允许并发拨号。
+
+| Java option | Go 承载和默认差异 |
+| --- | --- |
+| tcpNoDelay | `(*net.TCPConn).SetNoDelay(bool)`；Go 1.25/1.26 的内置 TCP 连接默认 true，与 Java 相同 |
+| tcpAbortiveClose | `SetLinger(0)` 显式开启，`SetLinger(-1)` 保持正常后台发送/关闭；默认不强制 RST，与 Java false 对应 |
+| localSocketAddress | `net.Dialer.LocalAddr = &net.TCPAddr{IP: localIP}`，端口0由系统分配；这是 TCP 源接口绑定，不是 Unix socket 地址 |
+| tcpKeepAlive | `net.Dialer.KeepAliveConfig`；禁用可用 KeepAlive=-1 且 KeepAliveConfig.Enable=false。Go 默认尝试启用，idle/interval 各15秒、count9；Java 默认 true，但没有在此项固定相同探测参数 |
+| tcpRcvBuf / tcpSndBuf | `SetReadBuffer` / `SetWriteBuffer`；内置驱动保持 OS 默认/自动调优，不硬编码缓冲大小；OS 可调整实际值 |
+| socketFactory | `Config.DialContext` 函数注入；不解析 Java 类名、反射加载或注册进程级工厂 |
+
+完整[可编译示例](../tcp_example_test.go)使用 LocalAddr/KeepAliveConfig、TCP_NODELAY、读写缓冲和 linger，并检查 setter 错误、在失败时关闭已取得连接。示例的64KiB缓冲与30秒/10秒/3次 keep-alive 只是应用配置示范；内置默认不因此改变。net.Dialer 对 keep-alive 设置采用 best effort，若应用必须确认显式策略，应在取得 TCPConn 后调用 SetKeepAliveConfig 并检查错误，示例已包含此步骤。需要在 SYN 之前设置 socket option 时使用标准 `net.Dialer.ControlContext`，其原生选项与支持条件由平台决定。
+
+`SetLinger(0)` 可能丢弃待发送数据并使对端观察到连接重置；它不证明 COM_QUIT 已送达，也不回滚已执行/提交的 SQL，不能作为防重放或未知结果恢复策略。示例默认关闭此选项，独立用例只检查显式关闭终止本地传输，不强求跨平台相同的 RST 错误码。keep-alive 探测也不替代 ReadTimeout、调用 context、池空闲/生命周期配置或业务状态确认。
+
+这些策略只通过程序化 Config 注入，七个同名 Java DSN 参数继续明确拒绝，不静默透传。TCP 专用示例对 unix/pipe 返回 ErrUnsupported，不回退 TCP；原有 IPC 实现保持独立。TestTCPDialContext* 在本地原生 TCP 对端验证源地址、选中入口、单次工厂调用、握手/初始化/Ping/QUIT、明文认证拒绝、取消及显式 abortive close；ExampleConfig_tcpOptions 本身不联网。实际远端接口、OS 缓冲/探测行为与数据库部署仍待验证。
+
+固定 Java 依据：DefaultOptions 的 tcpNoDelay/tcpAbortiveClose/localSocketAddress（L100–L116）、tcpKeepAlive/tcpRcvBuf/tcpSndBuf/socketFactory（L225–L249），以及 AbstractConnectProtocol.createSocket（L249–L285）。默认 Go 行为以1.25/1.26标准库 net.Dialer/newTCPConn 为依据；不把 Java 选项有对应 Go API 当作真实网络验收已完成。
+
 ### 9.1 已实现的包流与协商（D23）
 
 `ProtocolOptions` 的六项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata`、`fullLinkTrace` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
