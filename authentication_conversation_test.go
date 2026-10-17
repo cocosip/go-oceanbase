@@ -12,6 +12,9 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
+const authNilOutputPath = "nil-output"
+const authEmptyOutputPath = "empty-output"
+
 const testGSSPlugin = "auth_gssapi_client"
 const rejectExtraTokenPath = "reject-extra-token"
 const requiresFinalOKPath = "requires-final-ok"
@@ -99,10 +102,10 @@ func TestAuthPluginConversationRawTokens(t *testing.T) {
 }
 
 func TestAuthPluginConversationCompletion(t *testing.T) {
-	for _, path := range []string{"nil-output", "empty-output", requiresFinalOKPath, rejectExtraTokenPath} {
+	for _, path := range []string{authNilOutputPath, authEmptyOutputPath, requiresFinalOKPath, rejectExtraTokenPath} {
 		t.Run(path, func(t *testing.T) {
 			p := &scriptedConversation{seed: []byte("service/db.example\x00Kerberos\x00"), token: []byte{0x60, 1, 2}}
-			if path == "empty-output" {
+			if path == authEmptyOutputPath {
 				p.output = []byte{}
 			}
 			_, err := runAuthConnTest(t, Config{User: testUser, Auth: AuthOptions{Plugins: map[string]AuthFactory{testGSSPlugin: func() AuthPlugin { return p }}}}, nil, func(ctx context.Context, raw net.Conn, packets *wire.PacketIO) {
@@ -138,7 +141,7 @@ func TestAuthPluginConversationCompletion(t *testing.T) {
 					t.Error(e)
 					return
 				}
-				if path == "nil-output" {
+				if path == authNilOutputPath {
 					checkCtx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 					defer cancel()
 					_, e := packets.ReadMessage(checkCtx)

@@ -628,7 +628,7 @@ D29 本地实现：`Import` + 一次性 `LocalInfile`，精确名称 Reader/授�
 
 交付：固定 *sql.Conn 的 schema/catalog、客户端信息/变量、结构化 warning、用户切换；显式 CancelQuery 使用已取到的连接身份/代次及已配置 Connector 的辅助通道。
 
-- [x] 测试 `TestChangeUserIsolation`、`TestWarnings`、`TestCancelQueryIdentity`：旧 statement/LOB/Cursor 失效、换用户物理连接不回原池；nil logger 不丢 warning；本地会话/命令代次防止旧令牌命中下一操作，服务端 ID 复用的协议边界见架构 §16.3.4。
+- [x] 测试 `TestChangeUserIsolation`、`TestChangeUserConversation`、`TestWarnings`、`TestCancelQueryIdentity`：旧 statement/LOB/Cursor 失效、换用户物理连接不回原池；多轮重新认证、显式凭据隔离和失败关闭；nil logger 不丢 warning；本地会话/命令代次防止旧令牌命中下一操作，服务端 ID 复用的协议边界见架构 §16.3.4。
 - [x] 执行 `go test . -run 'Test(ChangeUser|Warnings|CancelQuery)' -count=1`，公开 API 缺失先失败，各子项再通过。
 - [x] 用封闭函数而非任意私有指令接口公开；ChangeUser 重走认证门禁并重建基线，KILL 成功不表示原查询未执行。
 - [ ] 同命令通过；`TestSessionOperations` 验证身份、警告、辅助通道 TLS 和池隔离；缺权限返回明确错误。
