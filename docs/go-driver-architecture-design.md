@@ -341,6 +341,8 @@ const (
 
 `Config.Network` 默认 `tcp`；`unix` 使用 `net.Dialer.DialContext` 连接 `Addr` 中的 Unix socket 字面地址，路径不做环境变量或用户目录展开。`pipe` 在 Windows 使用 `github.com/Microsoft/go-winio v0.6.2`，Addr 为显式 UNC Named Pipe 名称。已建立管道的收发使用 overlapped I/O 和 deadline；拨号时检查 context，并在管道忙时轮询。非 Windows 的内置 pipe 拨号返回 ErrUnsupported；调用方自定义 DialContext 仍可以接管相同 network/address。平台实现以 build tags 隔离，不加载额外本地库；直接使用 `golang.org/x/sys/windows` 识别管道暂时不存在的错误，让其进入已有重试流程，权限错误仍直接返回。
 
+Named Pipe 的 UNC 地址必须是有效 UTF-8，Config/DSN 在建连前统一拒绝无效字节，包括主机名和管道名；避免 Windows UTF-16 转换替换字节后访问不同的端点。合法中文、补充平面字符和实际的 U+FFFD 保留，不将有效替换字符本身判为错误。Unix socket 继续使用 Go/OS 的字面地址语义。
+
 IPC 是一个显式固定端点，拒绝与 Routing.Endpoints 或 Discovery 混用；次数、单次/总建连预算、初始化、空闲验证与后续命令继续使用既有流程。不会因 IPC 失败自动回退 TCP。TLSConfig 非 nil 时，IPC 必须显式指定证书 ServerName，不能把文件路径或管道名当证书主机名；nil TLS 不构成明文密码豁免。DialContext 收到实际 Network 和 Addr，并继续承担 context/失败资源所有权契约。
 
 DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，tcp/默认网络禁止 socket。URL authority 不再是 IPC 拨号地址；database path 仍是数据库名。程序化 Config 直接指定 Network/Addr，无需伪造 TCP 主机。解析后再次传入 NewConnector 的配置保持可用。

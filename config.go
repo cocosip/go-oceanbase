@@ -84,6 +84,7 @@ type SessionOptions struct {
 // Config is copied by NewConnector. A nil Logger produces no driver logs.
 type Config struct {
 	// Network defaults to tcp; unix, pipe and sharedmemory use Addr as the IPC endpoint.
+	// Named pipe addresses must be valid UTF-8 to preserve their Windows UTF-16 identity.
 	// Shared memory allocation waits for the server's uncorrelated answer even after cancellation;
 	// an unresponsive server can exceed the connection timeout in that phase.
 	// DialContext receives the selected network and address without TLS exemptions.

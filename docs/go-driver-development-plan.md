@@ -599,6 +599,8 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 
 D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe/Shared Memory 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory 的无关联分配取消/软预算和单缓冲批量回退见 §9.0.5；OBProxy VC 独立宿主见 §9.0.6，真实平台待验证。D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
 
+Named Pipe 地址校验同时覆盖 Config/DSN 的非法 UTF-8 主机/管道名拒绝，以及合法 Unicode 的保持与本机原生管道收发；对应 TestPlatformTransportPipeUTF8、TestPlatformTransportNamedPipeUTF8，避免 Windows UTF-16 转换造成端点别名。
+
 D28 VC 子批次按架构 §9.0.6 实施：根包 obproxy.go 管理 DialContext 工厂、固定入口及初始化单例；obproxy_host.go 用标准 os/exec 和管道启动独立 C 宿主 tools/obproxy-host/main.c，按 build tags 限制生产支持平台。宿主绑定官方 init/close，将原生信号/locale/allocator 与 Go 隔离；Go 复用 Unix net.Conn。TestOBProxy* 验证配置拒绝、并发一次初始化/冲突/取消/失败缓存、两模式/三包流及 TLS 门禁；独立 C 共享库和宿主夹具验证 JSON/void**/返回码、临时句柄、坏握手/缺库/缺符号和父进程 EOF（含 init 卡住）。普通构建不要求 C 编译器；obproxytest 用本机 gcc 构建夹具。真实 Linux 库/版本/信号/生命周期及服务仍需运行验收，不能凭 Windows 合成 ABI 或交叉编译勾选 D28。
 
 ### D29 LOCAL INFILE 受控导入

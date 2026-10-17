@@ -95,7 +95,7 @@ func validSharedMemoryName(name string) bool {
 }
 
 func validPipeAddress(addr string) bool {
-	if !strings.HasPrefix(addr, `\\`) {
+	if !utf8.ValidString(addr) || !strings.HasPrefix(addr, `\\`) {
 		return false
 	}
 	parts := strings.SplitN(addr[2:], `\`, 3)

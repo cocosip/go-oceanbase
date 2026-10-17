@@ -751,6 +751,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestAllScalarTypes 已增加 BINARY(4)列，与 VARBINARY(100)检查名称、ScanType、字节长度与内容；固定输入自身包含补零，不把本地对端当作服务端补零证据。两工具链仅编译该集成源码，未连接数据库。独立只读走查无确认问题，不另存报告；D28/D30/D31/D32及28/32实现、0/32验收保持。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过；初次 lint 的重复状态字符串已移除，最终两版本普通及 integration 标签 golangci-lint 各0 issues。Go1.25 实际 Windows/386 新目标、文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过；Linux/macOS、远程 CI、成功 race 与真实服务端列元数据仍未验证。
 
+#### D28 Named Pipe 地址 UTF-8 校验
+
+- 原 Named Pipe 地址校验未检查 UTF-8，Windows UTF-16 转换可让非法字节访问不同的管道名。本机独立 go-winio 对端已确认：地址末尾的0xff连接到实际名称末尾为 U+FFFD 的管道。共享 validPipeAddress 已增加 UTF-8 校验，Config/DSN 在拨号及凭据请求前统一返回 Addr 配置错误；合法 Unicode 与 Unix 字面地址语义保持，不新增 API、配置、包或依赖。
+- TestPlatformTransportPipeUTF8 覆盖五种非法编码 × 主机/管道名，共10组，每组同时检查 NewConnector 和百分号编码 DSN；修复前20个入口断言失败，修复后通过。另检查合法中文、补充平面字符及实际 U+FFFD 的地址保持；TestPlatformTransportNamedPipeUTF8 使用本机原生 Unicode 管道完成实际 database/sql 握手、初始化、Ping 和 QUIT/关闭。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过，两版本普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。独立只读走查无确认问题，不另存报告；文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，远端 UNC 权限、真实 Linux VC、远程 CI 与成功 race 仍未取证，D28/D30/D31/D32及计数保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

@@ -23,6 +23,15 @@ func TestPlatformTransportNamedPipe(t *testing.T) {
 	runPlatformPeer(t, listener, Config{Network: networkPipe, Addr: path, User: testUser})
 }
 
+func TestPlatformTransportNamedPipeUTF8(t *testing.T) {
+	path := fmt.Sprintf(`\\.\pipe\go-oceanbase-数据库-😀-�-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	listener, err := winio.ListenPipe(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runPlatformPeer(t, listener, Config{Network: networkPipe, Addr: path, User: testUser})
+}
+
 func TestPlatformTransportNamedPipeRetry(t *testing.T) {
 	path := fmt.Sprintf(`\\.\pipe\go-oceanbase-retry-%d-%d`, os.Getpid(), time.Now().UnixNano())
 	listener, err := winio.ListenPipe(path, nil)
