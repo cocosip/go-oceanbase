@@ -243,7 +243,7 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: true
-      - run: go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
+      - run: go test . -run '^TestDriver(Resource|Session)Stability$' -count=1 -v -timeout 10m
         env:
           OB_TEST_STABILITY_ITERATIONS: '4096'
 

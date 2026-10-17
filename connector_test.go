@@ -21,11 +21,15 @@ const readySQL = "SET @ready=1"
 const escapedValue = "x\\'y"
 const tlsStage = "tls"
 
-func peerDial(t *testing.T, serve func(context.Context, *wire.PacketIO)) func(context.Context, string, string) (net.Conn, error) {
+func peerDial(t *testing.T, serve func(context.Context, *wire.PacketIO), budget ...time.Duration) func(context.Context, string, string) (net.Conn, error) {
 	t.Helper()
+	timeout := 3 * time.Second
+	if len(budget) > 0 {
+		timeout = budget[0]
+	}
 	return func(ctx context.Context, _, _ string) (net.Conn, error) {
 		client, server := net.Pipe()
-		if err := server.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		if err := server.SetDeadline(time.Now().Add(timeout)); err != nil {
 			t.Fatal(err)
 		}
 		done := make(chan struct{})

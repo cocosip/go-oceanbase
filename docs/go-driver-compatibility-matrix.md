@@ -393,3 +393,5 @@ TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手�
 两模式 CRUD、每次/复用预处理、缓存命中、逐项/multi-send 批量、16KiB BLOB 和32行 fetch 基础16场景，另含 MySQL 批量改写和 Oracle 原生数组绑定，共18场景已有本地协议对端及普通单测正确性检查。Go1.25.0/1.26.0 Windows amd64 短样本与复现方式见[本地基准](go-driver-benchmarks.md)。进程内对端、断言和调度开销计入统计；没有真实 SQL/网络/服务端工作量，也不覆盖全部传输/优化组合。真实数据库性能、LOB 远端流式和长期资源稳定性仍未验证，不构成任何组合的性能验收，D32 保持进行中。
 
 `TestDriverResourceStability` 在固定8轮复用上述场景，检查每轮会话/statement/LOB/游标清理及缓存、池边界，记录 GC 后的进程级堆/goroutine；手动 `stability` CI 独立于数据库集成入口。只覆盖串行 net.Pipe 基础路径，不能证明真实句柄、完整并发/故障路径或生产长期稳定性，样本及运行方式见本地基准 §6。
+
+`TestDriverSessionStability` 补充两模式/三包流的同一物理会话持续混合执行：缓存及类型复用、Rows 提前关闭、事务提交/回滚、明确 SQL 错误后的 statement 释放与 Ping。各组合只允许一次拨号，逐轮直接检查原会话资源和池；进程样本保留活动的闲置连接，定义见本地基准 §7。有限离线检查不代替真实平台、并发多连接、完整高级能力/故障或生产长期验收。
