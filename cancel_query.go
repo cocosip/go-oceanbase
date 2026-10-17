@@ -20,6 +20,7 @@ type cancelIdentity struct {
 	mode          Mode
 	network, addr string
 	user          string
+	proxyUser     string
 	tlsVerified   bool
 }
 
@@ -52,7 +53,7 @@ func (c *conn) queryTargetLocked() CancelTarget {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.target = &cancelIdentity{conn: c, id: c.session.hello.ConnectionID, mode: c.session.mode,
-		network: c.cfg.Network, addr: c.cfg.Addr, user: c.session.user, tlsVerified: c.session.tlsVerified}
+		network: c.cfg.Network, addr: c.cfg.Addr, user: c.session.user, proxyUser: c.session.proxyUser, tlsVerified: c.session.tlsVerified}
 	s.used, s.active, s.attempted = false, false, false
 	return CancelTarget{identity: s.target}
 }
@@ -124,7 +125,7 @@ func (c *conn) cancelQuery(ctx context.Context, configuredConn *connector, id *c
 		return err
 	}
 	defer func() { _ = aux.Close() }()
-	if aux.session.user != id.user || aux.session.mode != id.mode || id.tlsVerified && !aux.session.tlsVerified || aux.session.hello.ConnectionID == id.id {
+	if aux.session.user != id.user || aux.session.proxyUser != id.proxyUser || aux.session.mode != id.mode || id.tlsVerified && !aux.session.tlsVerified || aux.session.hello.ConnectionID == id.id {
 		return fmt.Errorf("%w: auxiliary connection identity differs or aliases target", ErrResource)
 	}
 	if err = aux.lock(ctx); err != nil {

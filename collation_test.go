@@ -162,7 +162,7 @@ func TestCollationLifecycle(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer func() { _ = pinned.Close() }()
-				if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
+				if err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, ""); err != nil {
 					t.Fatal(err)
 				}
 				var got string

@@ -81,7 +81,7 @@
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 本地子项通过，待依赖 | D28 Shared Memory/VC | Codex；辅助函数、warning、ChangeUser 和单次显式取消已补；整项不提前计完成；见 §5.6 D30 |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 进行中 | 本地子项通过，待依赖 | D30/D28 Shared Memory/VC | Codex；见 §5.6 D31；集成源码仅编译 |
-| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接属性/交互标志、排序规则已补，见 §5.6 D32 |
+| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接属性/交互标志、排序规则、代理登录已补，见 §5.6 D32 |
 
 ## 4. 里程碑
 
@@ -537,6 +537,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestCollationConfig/ModeGuard/ServerFailure/Lifecycle/FullReset、TestDSNCollation 与 ExampleSessionOptions_collation 覆盖严格标识符、DSN、两模式正/负向、服务端错误、UTF-8/GBK/utf8mb3、普通/压缩/OB20 及连接生命周期。ASCII 校验前转小写会接受 Kelvin 非 ASCII 字符的缺陷已有先失败再通过的回归。独立只读走查无遗留已确认重要问题，不保存独立报告。
 - 已通过 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试及两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）。TestSessionCollation 四目标集成源码已接入手动 CI，本次仅编译；真实排序/比较/预处理参数效果仍待联调。D32 保持进行中，实现28/32、验收0/32，D28 平台依赖及其余配置/交付项继续保留。
 - 两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；六文档 UTF-8/相对链接/代码块/无机器路径、32任务/28实现/0验收、160项名称与固定 Java 源码集合一致、CI YAML/改动 Go 格式/diff 检查通过。未连接数据库，未运行 Linux 目标或远程 CI，race 仍无成功证据。
+
+#### D32 代理用户登录
+
+- Config.ProxyUser / Credentials.ProxyUser / DSN proxyUser 已补，使用固定 Java 的专用认证属性，不通过普通 map 冒充代理身份，不解析括号用户名。目标编码/长度预算、两模式与能力拒绝、动态凭据完整替换/清除、TLS、ChangeUser 清除与原池隔离、CancelQuery 认证用户及代理目标共同校验见架构 §6.3；无新增包、依赖或循环依赖。
+- TestProxyUserConfig/Handshake/Rejection/CallbackClearsTarget/VerifiedTLS/ChangeUserPreflight/EncodedBudget/ChangeUser/CancelIdentity 和外部 ExampleNewConnector_proxyUser 已补；普通/压缩/OB20、UTF-8/GBK 与身份取消有本地证据。取消比较回归在临时移除目标比较时明确失败，恢复后通过，证明不同目标不会被当成同一身份发送 KILL。Credentials 新增字段要求旧非命名双字段字面量改为命名字段构造，仓库调用点已更新。
+- TestProxyUserSessions 四目标源码和手动 CI 已补，仅编译。Oracle 两目标需要专用代理 DSN 及两个不同的服务端预期用户名，验证实际身份、ChangeUser 重发/清除及原池重建；MySQL 两目标仅验证配置拒绝。未连接真实数据库，真实代理授权、版本与目标身份仍待联调。D32 保持进行中，实现28/32、验收0/32；Shared Memory/VC、其余选项、README/其他示例、完整基准与资源稳定性未完成。
+- 最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、代理用户及外部示例各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。独立只读走查无已确认遗留重要问题，未保存独立报告。六文档 UTF-8/链接/代码块/无机器路径、32任务/28实现/0验收、固定 Java 的160项名称集合及 CI YAML/六项代理 fixture、Go 格式/diff 检查通过。Linux 运行、远程 CI 与成功 race 仍无新证据。
 
 ## 6. 待取证条件与推进方式
 

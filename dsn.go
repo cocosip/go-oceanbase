@@ -58,6 +58,9 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		}
 		cfg.Interactive = value == dsnTrue
 		return nil
+	case "proxyUser":
+		cfg.ProxyUser = value
+		return nil
 	case "charset", "collation", "ncharset", "location", "parseTime":
 		return cfg.Session.applyDSNOption(name, value)
 	case "allowOldPassword", "passwordCharset", "servicePrincipalName":

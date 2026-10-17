@@ -38,7 +38,8 @@ const (
 )
 
 // Credentials are obtained for each new authentication, never during a transaction.
-type Credentials struct{ User, Password string }
+// ProxyUser selects an Oracle proxy-login target; empty authenticates as User alone.
+type Credentials struct{ User, Password, ProxyUser string }
 
 // AuthSecurity describes the transport needed before a plugin sees credentials.
 type AuthSecurity uint8
@@ -108,6 +109,7 @@ type handshakeSession struct {
 	capabilities  uint64
 	tlsVerified   bool
 	user          string
+	proxyUser     string
 	obVersion     string
 	newMetadata   bool
 	authPlugin    string
@@ -141,16 +143,16 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 		return nil, err
 	}
 	response := wire.HandshakeResponse{Capabilities: s.capabilities, MaxPacketBytes: uint32(min(c.cfg.Limits.MaxMessageBytes, math.MaxUint32)), Charset: charset, Database: c.cfg.Database}
-	response.Attributes, err = c.connectionAttributes()
-	if err != nil {
-		return nil, err
-	}
 	if c.cfg.TLSConfig != nil {
 		if err = c.upgradeTLS(ctx, s, response); err != nil {
 			return nil, err
 		}
 	}
 	credentials, err := c.credentials(ctx)
+	if err != nil {
+		return nil, err
+	}
+	response.Attributes, err = c.authenticationAttributes(credentials, s.capabilities)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +185,7 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 	if err = c.selectProtocol(s); err != nil {
 		return nil, err
 	}
-	s.user = credentials.User
+	s.user, s.proxyUser = credentials.User, credentials.ProxyUser
 	return s, nil
 }
 
@@ -192,7 +194,7 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	if server&required != required {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
-	if len(c.cfg.ConnectionAttributes) != 0 && server&wire.ClientConnectAttrs == 0 {
+	if (len(c.cfg.ConnectionAttributes) != 0 || c.cfg.Credentials == nil && c.cfg.ProxyUser != "") && server&wire.ClientConnectAttrs == 0 {
 		return 0, fmt.Errorf("%w: connection attributes", ErrUnsupported)
 	}
 	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF | wire.ClientConnectAttrs
@@ -290,7 +292,7 @@ func (c *connector) credentials(ctx context.Context) (Credentials, error) {
 	if err := ctx.Err(); err != nil {
 		return Credentials{}, err
 	}
-	credentials := Credentials{User: c.cfg.User, Password: c.cfg.Password}
+	credentials := Credentials{User: c.cfg.User, Password: c.cfg.Password, ProxyUser: c.cfg.ProxyUser}
 	if c.cfg.Credentials != nil {
 		var err error
 		credentials, err = c.cfg.Credentials(ctx)
@@ -420,11 +422,8 @@ func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSessio
 			if s.ok.Status&4 != 0 {
 				s.mode = ModeOracle
 			}
-			if c.cfg.Mode != ModeAuto && s.mode != c.cfg.Mode {
-				return ErrModeMismatch
-			}
-			if s.mode == ModeOracle && c.cfg.RowsAffectedMode == ChangedRows {
-				return &ConfigError{Field: "RowsAffectedMode"}
+			if err := c.checkAuthenticationMode(s.mode, credentials); err != nil {
+				return err
 			}
 			s.authPlugin, s.authChallenge = name, slices.Clone(challenge.Nonce)
 			return nil
@@ -459,6 +458,19 @@ func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSessio
 		}
 	}
 	return fmt.Errorf("%w: too many authentication exchanges", ErrUnsupported)
+}
+
+func (c *connector) checkAuthenticationMode(mode Mode, credentials Credentials) error {
+	if c.cfg.Mode != ModeAuto && mode != c.cfg.Mode {
+		return ErrModeMismatch
+	}
+	if mode == ModeOracle && c.cfg.RowsAffectedMode == ChangedRows {
+		return &ConfigError{Field: "RowsAffectedMode"}
+	}
+	if credentials.ProxyUser != "" && mode != ModeOracle {
+		return fmt.Errorf("%w: proxy login requires Oracle compatibility mode", ErrUnsupported)
+	}
+	return nil
 }
 
 func (c *connector) switchAuthentication(s *handshakeSession, use *authPluginUse, data []byte) (string, AuthChallenge, error) {

@@ -22,6 +22,7 @@ type changeUserRequest struct {
 // An empty database selects no MySQL database or the new Oracle user's default schema.
 // After sending the change, failure closes the session; success remains usable until
 // pinned.Close discards it. The original Connector and its credentials are not changed.
+// Credentials.ProxyUser explicitly selects the proxy target; empty clears proxy login.
 func ChangeUser(ctx context.Context, pinned *sql.Conn, credentials Credentials, database string) error {
 	if pinned == nil {
 		return fmt.Errorf("oceanbase: a non-nil *sql.Conn is required")
@@ -55,6 +56,7 @@ func (c *conn) execChangeUser(ctx context.Context, request changeUserRequest) (d
 func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) (err error) {
 	cfg := c.cfg
 	cfg.User, cfg.Password, cfg.Credentials = request.credentials.User, request.credentials.Password, nil
+	cfg.ProxyUser = request.credentials.ProxyUser
 	cfg.Database, cfg.Mode = request.database, c.session.mode
 	authenticator := &connector{cfg: cfg}
 	credentials, err := authenticator.credentials(ctx)
@@ -73,7 +75,7 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	if err != nil {
 		return err
 	}
-	attributes, err := authenticator.connectionAttributes()
+	attributes, err := authenticator.authenticationAttributes(credentials, c.session.capabilities)
 	if err != nil {
 		return err
 	}
@@ -140,7 +142,7 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	if err = use.close(); err != nil {
 		return err
 	}
-	c.session.user = credentials.User
+	c.session.user, c.session.proxyUser = credentials.User, credentials.ProxyUser
 	// The explicit call owns these credentials; never retain its password or invoke the old provider.
 	cfg.Password = ""
 	c.cfg = cfg

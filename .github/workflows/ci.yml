@@ -100,6 +100,12 @@ jobs:
       OB_ORACLE_CHANGE_USER_DSN: ${{ secrets.OB_ORACLE_CHANGE_USER_DSN }}
       OBPROXY_MYSQL_CHANGE_USER_DSN: ${{ secrets.OBPROXY_MYSQL_CHANGE_USER_DSN }}
       OBPROXY_ORACLE_CHANGE_USER_DSN: ${{ secrets.OBPROXY_ORACLE_CHANGE_USER_DSN }}
+      OB_ORACLE_PROXY_DSN: ${{ secrets.OB_ORACLE_PROXY_DSN }}
+      OB_ORACLE_PROXY_AUTH_USER: ${{ secrets.OB_ORACLE_PROXY_AUTH_USER }}
+      OB_ORACLE_PROXY_SESSION_USER: ${{ secrets.OB_ORACLE_PROXY_SESSION_USER }}
+      OBPROXY_ORACLE_PROXY_DSN: ${{ secrets.OBPROXY_ORACLE_PROXY_DSN }}
+      OBPROXY_ORACLE_PROXY_AUTH_USER: ${{ secrets.OBPROXY_ORACLE_PROXY_AUTH_USER }}
+      OBPROXY_ORACLE_PROXY_SESSION_USER: ${{ secrets.OBPROXY_ORACLE_PROXY_SESSION_USER }}
       OB_MYSQL_CANCEL_SQL: ${{ secrets.OB_MYSQL_CANCEL_SQL }}
       OB_MYSQL_CANCEL_CODE: ${{ secrets.OB_MYSQL_CANCEL_CODE }}
       OB_ORACLE_CANCEL_SQL: ${{ secrets.OB_ORACLE_CANCEL_SQL }}
@@ -142,4 +148,4 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: false
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1
+      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|ProcedureResources|LongParameters|BatchExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1

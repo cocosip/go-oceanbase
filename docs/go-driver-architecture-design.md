@@ -180,7 +180,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | 连接声明 | `Interactive` 默认 false；`ConnectionAttributes` 默认 nil，仅显式提供应用元数据；见 §6.1 |
 | 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
 | 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
-| 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password |
+| 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password/ProxyUser；代理登录见 §6.3 |
 | 协议 | `Config.Protocol`：Compression、OB20、Checksum、ProxyChecksum、NewMetadata；零值 FeatureAuto，另有 FeatureOff/FeatureRequired；以建连协商结果为准 |
 | 执行 | 自动选用服务端预处理；显式支持客户端预处理、合并执行、缓存和批量策略；`AllowMultiStatements` 默认 false；`RowsAffectedMode` 默认 `MatchedRows`，见 §11.4 |
 | 会话 | 字符集、NCHAR 字符集、Location、会话初始化设置、Managed/Full 两种 reset 策略 |
@@ -204,11 +204,11 @@ func NewConnector(cfg Config) (driver.Connector, error)
 
 `Config.Interactive` 对应 Java `interactiveClient`，两者默认均为 false；DSN 使用 `interactive=true/false`。启用时发送 CLIENT_INTERACTIVE 客户端请求位，不要求 greeting 先声明该位；实际空闲超时由服务端的 interactive_timeout 配置决定，不改变 Go context 或查询超时。
 
-`Config.ConnectionAttributes map[string]string` 仅程序化提供，默认 nil；键和值使用 Go UTF-8 字符串，由驱动快照并按 `Session.Charset` 严格编码，握手和 ChangeUser 共用该路径。允许空值，拒绝空键、NUL、无效 UTF-8、不可表示字符和编码后键冲突。以下划线开头的键及 `ob_capability_flag` 保留给协议，不允许借此覆盖能力位或代理身份；`useProxyUser` 的认证适配仍是独立待完成项。
+`Config.ConnectionAttributes map[string]string` 仅程序化提供，默认 nil；键和值使用 Go UTF-8 字符串，由驱动快照并按 `Session.Charset` 严格编码，握手和 ChangeUser 共用该路径。允许空值，拒绝空键、NUL、无效 UTF-8、不可表示字符和编码后键冲突。以下划线开头的键及 `ob_capability_flag` 保留给协议，不允许借此覆盖能力位或代理身份；代理登录使用独立的 §6.3 身份字段。
 
 属性区（包含驱动声明、键值及全部长度前缀）累计受 `Limits.MaxMessageBytes` 限制；编码前按字符数检查最小空间，编码后逐项扣减预算，避免 GBK 收缩误拒与无界聚合。完整握手仍受原有消息限额约束。配置错误只返回字段名；目标未声明 CLIENT_CONNECT_ATTRS 时，显式非空属性在请求凭据前返回 ErrUnsupported，不静默丢弃。
 
-Go 不自动采集 Java 的 PID、线程、OS、主机等动态属性，因此 Java `sendConnectionAttributes`/默认属性排除列表映射为调用方控制该 map 的内容，而不是复制全局开关。nil/空 map 不发送应用属性，但保留驱动内部协议声明。属性不会被驱动日志或诊断回调输出；是否保护传输仍遵循 `TLSConfig`，启用 TLS 时属性只存在于验证成功后的握手响应内。
+Go 不自动采集 Java 的 PID、线程、OS、主机等动态属性，因此 Java `sendConnectionAttributes`/默认属性排除列表映射为调用方控制该 map 的内容，而不是复制全局开关。nil/空 map 不发送应用属性，驱动协议声明及显式代理身份仍由各自配置产生。属性不会被驱动日志或诊断回调输出；是否保护传输仍遵循 `TLSConfig`，启用 TLS 时属性只存在于验证成功后的握手响应内。
 
 本地覆盖两模式、UTF-8/GBK、GB18030 扩展编码、长度前缀阈值、配置快照、保留键、能力缺失、TLS，以及普通/压缩/OB20 的 ChangeUser 重发；不代表已验证服务端属性表可见性或 interactive_timeout 的实际效果。
 
@@ -223,6 +223,22 @@ MySQL 兼容模式初始化使用 `SET NAMES <Charset> COLLATE <Collation>`，�
 Java 在 Oracle 兼容模式忽略该选项，Go 显式配置则拒绝：已指定 ModeOracle 时 NewConnector 返回 `ConfigError{Field:"Session.Collation"}`；ModeAuto 认证后识别为 Oracle 时，在任何初始化 SQL 前返回 ErrUnsupported。此字段不替代 Oracle 的 NLS 设置。
 
 本地覆盖配置/DSN、UTF-8/GBK/utf8mb3 别名、初始化恢复、ChangeUser、Full reset 替换连接、普通/压缩/OB20、服务端错误及 Oracle 拒绝。`ExampleSessionOptions_collation` 可运行且不建立网络连接。四目标 TestSessionCollation 集成源码已接手动 CI：MySQL 正向验证会话状态、比较效果、预处理 Unicode 和重建基线，Oracle 验证配置拒绝；本阶段仅编译，不提供真实效果或版本兼容承诺。
+
+### 6.3 D32 已实现的代理用户登录
+
+`Config.ProxyUser string` / DSN `proxyUser` 是 Oracle 兼容模式的代理目标，`User`/`Password` 始终是认证账户及其密码。零值为空，关闭代理登录，对应 Java `useProxyUser=false`；非空直接给出目标，不解析 Java `padmin[admin]@tenant` 用户名语法，不自动大小写折叠或去引号。驱动不生成代理授权 SQL，目标身份及授权关系由服务端确认。
+
+`Credentials` 增加同名 `ProxyUser` 字段；凭据回调每次完整替换 User/Password/ProxyUser，包括用空 ProxyUser 清除静态目标。静态字段仍须通过 NewConnector 配置校验，回调不用于绕过错误配置（例如 ModeMySQL 的非空静态目标）。构造该公开结构体应使用命名字段；已有非命名双字段字面量需要改为 `Credentials{User: user, Password: password}`，不能把新增字段称为对该用法的源码兼容。字符串配置快照、回调并发/context 契约、密码与 TLS 门禁沿用原规则。
+
+目标按 Session.Charset 严格编码到专用 `__ob_client_proxy_user_name` 属性，拒绝 NUL、无效 UTF-8、不可表示字符；与应用属性、协议声明和全部长度前缀共用属性区预算，并继续受整条认证消息的上限约束。应用 map 不能覆盖该键。静态配置在 NewConnector 校验，动态凭据在创建认证插件/发送响应之前校验；启用 TLS 时仅在成功验证后的认证响应中发送目标。
+
+目标非空而没有 CLIENT_CONNECT_ATTRS 时返回 ErrUnsupported。静态目标且无回调时在请求凭据前拒绝；有回调时先取得完整凭据，允许它清除目标，仍非空才拒绝。显式 ModeMySQL 在配置/ChangeUser 预检拒绝；ModeAuto 最终识别 MySQL 时在初始化 SQL 前返回 ErrUnsupported 并关闭连接。服务端拒绝（包括1235）保留原错误，不自动重试普通登录；属性能力和认证 OK 不是独立的代理目标证明，实际身份仍需目标联调验证。
+
+ChangeUser 每次显式传入代理目标，空值清除，不继承旧目标或调用原凭据回调。成功后记录认证用户与代理目标，重新初始化会话；默认 Oracle schema 仍按认证用户名的 @ 前部分构造，与固定 Java sendChangeUser 路径一致，代理目标不隐式替代显式 Database。旧句柄/CancelTarget 失效、失败淘汰和切换后不回原池的规则不变。新池连接仍使用原 Connector 的目标。
+
+CancelQuery 除原有入口、认证用户、模式、TLS 与连接 ID 检查外，还比较两条连接认证成功时的代理目标；辅助凭据回调返回不同目标或清除目标时，拒绝发送 KILL。拒绝不会改变原查询的身份或自动重放业务。用户名/目标不写入驱动日志或诊断。
+
+固定源码依据：`Credential.java` 的目标分离、`SendHandshakeResponsePacket.java` 的专用属性（L88、L399）和 ChangeUser 重发（L280）、`ConnectionOracleTest.testProxyUser` 的代理与实际用户断言。`TestProxyUser*` 覆盖配置、DSN、动态覆盖/清除、能力/模式/编码/预算、TLS、普通/压缩/OB20 的 ChangeUser、池隔离及取消身份。外部 ExampleNewConnector_proxyUser 可离线运行。TestProxyUserSessions 提供 Oracle 直连/代理的真实身份、切换/清除与新池恢复用例，MySQL 验证配置拒绝；本阶段仅编译。
 
 ## 7. 标准库接口实现表
 
@@ -1050,7 +1066,7 @@ func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
 func ChangeUser(ctx context.Context, conn *sql.Conn, credentials Credentials, database string) error
 ```
 
-ChangeUser 在原物理连接、原 TLS 与原标准/压缩/OB20 包流上重新认证，不拨号、不重放业务、不修改原 Connector。调用方传入本次凭据与确切数据库名；空数据库表示 MySQL 不选择数据库，Oracle 使用新用户名的 @ 前部分作为默认 schema（没有 @ 时使用完整用户名）。不自动折叠显式名称大小写，用户名和数据库严格按连接字符集编码；服务端校验权限/名称。旧 Config.Credentials 回调不参与显式切换，切换凭据密码不保存在连接配置中。
+ChangeUser 在原物理连接、原 TLS 与原标准/压缩/OB20 包流上重新认证，不拨号、不重放业务、不修改原 Connector。调用方传入本次凭据与确切数据库名；ProxyUser 每次显式给出，空值清除旧目标（§6.3）。空数据库表示 MySQL 不选择数据库，Oracle 使用新认证用户名的 @ 前部分作为默认 schema（没有 @ 时使用完整用户名）。不自动折叠显式名称大小写，用户名和数据库严格按连接字符集编码；服务端校验权限/名称。旧 Config.Credentials 回调不参与显式切换，切换凭据密码不保存在连接配置中。
 
 - 必须先消费/关闭 Rows，串行使用固定 sql.Conn。活动托管事务、服务端事务或 autocommit 关闭时拒绝切换；不会隐式提交或回滚业务事务。
 - 复用 D28 的插件工厂、初始/多轮/切换认证、密码编码、每轮 TLS 门禁及 io.Closer 生命周期。会话保留最终协商插件和 nonce，下一次切换创建新插件实例；不复用已完成的插件状态。认证全过程仍受调用 context 和 ConnectTimeout 中较早的期限限制，回调和平台同步调用仍须配合取消。

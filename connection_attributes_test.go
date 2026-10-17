@@ -31,7 +31,7 @@ func TestConnectionAttributesSnapshot(t *testing.T) {
 	delete(attributes, "应用")
 	c := created.(*connector)
 	for range 2 {
-		got, err := c.connectionAttributes()
+		got, err := c.connectionAttributes("")
 		if err != nil || got[testAttributeKey] != testAttributeValue || got["\xd3\xa6\xd3\xc3"] != testAttributeGBKValue || got[testClientAttributeCapability] != "3" {
 			t.Fatalf("attributes not encoded from immutable snapshot: %v", err)
 		}
@@ -94,7 +94,7 @@ func TestConnectionAttributesEncodedBudget(t *testing.T) {
 			if err != nil {
 				t.Fatal("exact encoded attribute budget rejected", err)
 			}
-			attrs, err := created.(*connector).connectionAttributes()
+			attrs, err := created.(*connector).connectionAttributes("")
 			if err != nil || attrs[testAttributeKey] != tc.encoded {
 				t.Fatal("encoded attribute bytes differ", err)
 			}
@@ -268,7 +268,7 @@ func TestConnectionAttributesChangeUser(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer func() { _ = pinned.Close() }()
-				if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
+				if err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, ""); err != nil {
 					t.Fatal(err)
 				}
 				if err = pinned.PingContext(ctx); err != nil {

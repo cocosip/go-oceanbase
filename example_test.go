@@ -3,6 +3,7 @@ package oceanbase_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -25,4 +26,14 @@ func ExampleNewConnector() {
 	if err = db.QueryRowContext(context.Background(), "SELECT 42 FROM dual").Scan(&answer); err != nil {
 		panic(err)
 	}
+}
+
+func ExampleNewConnector_proxyUser() {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{
+		User: "proxy@tenant", Password: "proxy-password", ProxyUser: "client_user",
+		Mode: oceanbase.ModeOracle,
+	})
+	// NewConnector validates configuration without opening a network connection.
+	fmt.Println(connector != nil, err == nil)
+	// Output: true true
 }

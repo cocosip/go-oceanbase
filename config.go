@@ -80,10 +80,13 @@ type SessionOptions struct {
 type Config struct {
 	// Network defaults to tcp; unix and pipe use Addr as the local endpoint.
 	// DialContext receives the selected network and address without TLS exemptions.
-	Network              string
-	Addr                 string
-	User                 string
-	Password             string
+	Network  string
+	Addr     string
+	User     string
+	Password string
+	// ProxyUser is an Oracle proxy-login target, separate from the authenticating User.
+	// Empty disables proxy login. Credentials callbacks replace all three identity fields.
+	ProxyUser            string
 	Database             string
 	Mode                 Mode
 	Logger               *slog.Logger
@@ -106,8 +109,8 @@ type Config struct {
 	// Interactive requests the server's interactive session timeout; default false.
 	Interactive bool
 	// ConnectionAttributes supplies application metadata, encoded using Session.Charset.
-	// Keys starting with "_" and "ob_capability_flag" are reserved. Nil sends only
-	// driver protocol declarations, without collecting host or process information.
+	// Keys starting with "_" and "ob_capability_flag" are reserved. Nil adds no
+	// application attributes; protocol and proxy identity attributes are generated separately.
 	ConnectionAttributes map[string]string
 }
 
@@ -181,7 +184,7 @@ func cloneConfigOptions(cfg Config) (Config, error) {
 	if cfg.Mode == ModeOracle && cfg.Session.Collation != "" {
 		return Config{}, &ConfigError{Field: "Session.Collation"}
 	}
-	if _, err = (&connector{cfg: cfg}).connectionAttributes(); err != nil {
+	if _, err = (&connector{cfg: cfg}).connectionAttributes(cfg.ProxyUser); err != nil {
 		return Config{}, err
 	}
 	cfg.ConnectionAttributes = maps.Clone(cfg.ConnectionAttributes)

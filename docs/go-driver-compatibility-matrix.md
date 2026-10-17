@@ -41,6 +41,16 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 
 四目标 TestSessionCollation 已加入手动 CI，仅编译；MySQL 直连/代理需要真实正向验证，Oracle 对应本功能的负向契约，不据此宣称整体兼容。默认差异与生命周期见架构 §6.2。
 
+### 1.3 D32 代理身份
+
+| 能力 | Go 当前行为 | 本地证据 / 待验证 |
+| --- | --- | --- |
+| useProxyUser | Config.ProxyUser / Credentials.ProxyUser / DSN proxyUser；空值禁用；不解析括号用户名 | 静态/回调完整覆盖及清除、编码和预算、专用属性与 TLS 本地通过；真实授权/目标身份待联调 |
+| 模式与能力 | 仅 Oracle；显式 MySQL 预检拒绝，Auto 实际 MySQL 认证后初始化前拒绝；缺少 CONNECT_ATTRS 拒绝 | 不回退普通身份、服务端错误保留本地通过；旧版本与代理支持待确认 |
+| 生命周期 | ChangeUser 显式替换目标、空值清除、原池恢复原配置；CancelQuery 比较认证用户和代理目标 | 普通/压缩/OB20、UTF-8/GBK、目标不匹配不发 KILL 本地覆盖；真实 KILL 权限/代理路径待联调 |
+
+TestProxyUserSessions 已接手动 CI，仅编译。Oracle 两目标使用 OB_ORACLE / OBPROXY_ORACLE 前缀的 PROXY_DSN、PROXY_AUTH_USER、PROXY_SESSION_USER 三项 fixture；DSN 必须显式含 proxyUser，两个预期用户名使用实际服务端返回值且应不同。测试读取 SYS_CONTEXT 的 CURRENT_USER/PROXY_USER/SESSION_USER，验证登录、ChangeUser 重发/清除及新池恢复；启用 OB_TEST_REQUIRE 时缺失 fixture 为失败。MySQL 两目标仅验证配置拒绝，不据此声明完整兼容。契约见架构 §6.3。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

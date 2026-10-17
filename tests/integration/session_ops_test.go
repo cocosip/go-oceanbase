@@ -65,7 +65,7 @@ func testChangeUserSession(t *testing.T, p profile) {
 		failOperation(t, "prepare before change", err)
 	}
 	defer func() { _ = old.Close() }()
-	if err = oceanbase.ChangeUser(ctx, pinned, oceanbase.Credentials{User: next.User, Password: next.Password}, next.Database); err != nil {
+	if err = oceanbase.ChangeUser(ctx, pinned, oceanbase.Credentials{User: next.User, Password: next.Password, ProxyUser: next.ProxyUser}, next.Database); err != nil {
 		failOperation(t, "change identity", err)
 	}
 	var changed string
@@ -73,6 +73,9 @@ func testChangeUserSession(t *testing.T, p profile) {
 		failOperation(t, "read changed identity", err)
 	}
 	want, _, _ := strings.Cut(next.User, "@")
+	if next.ProxyUser != "" {
+		want = next.ProxyUser
+	}
 	actual := changed
 	if p.mode == oceanbase.ModeMySQL {
 		actual, _, _ = strings.Cut(changed, "@")

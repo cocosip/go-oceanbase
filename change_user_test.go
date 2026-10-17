@@ -89,7 +89,7 @@ func testChangeUserIsolation(t *testing.T, mode Mode, prepare PrepareMode) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
+	if err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if target.identity.conn.beginCancelExecution() {
@@ -169,7 +169,7 @@ func TestChangeUserFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = pinned.Close() }()
-			err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, "")
+			err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, "")
 			if err == nil || path == authTLSDeniedPath && !errors.Is(err, ErrTLSRequired) || path == changeUserModeChange && !errors.Is(err, ErrModeMismatch) {
 				t.Fatalf("change failure=%v", err)
 			}
@@ -262,7 +262,7 @@ func TestChangeUserDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = pinned.Close() }()
-			if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, "NewSchema"); err != nil {
+			if err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, "NewSchema"); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -323,10 +323,10 @@ func TestChangeUserPluginLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = pinned.Close() }()
-			if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
+			if err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, ""); err != nil {
 				t.Fatal(err)
 			}
-			err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, "")
+			err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, "")
 			if !requireTLS && err != nil || requireTLS && !errors.Is(err, ErrTLSRequired) {
 				t.Fatal(err)
 			}
@@ -360,7 +360,9 @@ func TestChangeUserCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, "") }()
+	go func() {
+		done <- ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, "")
+	}()
 	<-received
 	cancel()
 	if err = <-done; !errors.Is(err, context.Canceled) {
@@ -425,7 +427,7 @@ func TestChangeUserVerifiedTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = pinned.Close() }()
-	if err = ChangeUser(context.Background(), pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
+	if err = ChangeUser(context.Background(), pinned, Credentials{User: changeUserName, Password: changeUserPassword}, ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -460,7 +462,7 @@ func TestChangeUserFraming(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = pinned.Close() }()
-			if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
+			if err = ChangeUser(ctx, pinned, Credentials{User: changeUserName, Password: changeUserPassword}, ""); err != nil {
 				t.Fatal(err)
 			}
 			if err = pinned.PingContext(ctx); err != nil {

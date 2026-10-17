@@ -77,9 +77,28 @@ func (c *connector) protocolAttributes() map[string]string {
 	return attrs
 }
 
-func (c *connector) connectionAttributes() (map[string]string, error) {
+const proxyUserAttribute = "__ob_client_proxy_user_name"
+
+func (c *connector) authenticationAttributes(credentials Credentials, capabilities uint64) (map[string]string, error) {
+	if credentials.ProxyUser != "" && capabilities&wire.ClientConnectAttrs == 0 {
+		return nil, fmt.Errorf("%w: proxy login requires connection attributes", ErrUnsupported)
+	}
+	return c.connectionAttributes(credentials.ProxyUser)
+}
+
+func (c *connector) connectionAttributes(proxyUser string) (map[string]string, error) {
 	attrs := c.protocolAttributes()
-	if len(c.cfg.ConnectionAttributes) == 0 {
+	if proxyUser != "" {
+		if c.cfg.Mode == ModeMySQL || strings.ContainsRune(proxyUser, 0) || int64(utf8.RuneCountInString(proxyUser)) > c.cfg.Limits.MaxMessageBytes {
+			return nil, &ConfigError{Field: "ProxyUser"}
+		}
+		encoded, err := charset.Encode(c.cfg.Session.Charset, proxyUser)
+		if err != nil {
+			return nil, &ConfigError{Field: "ProxyUser"}
+		}
+		attrs[proxyUserAttribute] = string(encoded)
+	}
+	if len(c.cfg.ConnectionAttributes) == 0 && proxyUser == "" {
 		return attrs, nil
 	}
 	invalid := &ConfigError{Field: "ConnectionAttributes"}
