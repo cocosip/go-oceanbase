@@ -109,6 +109,12 @@ Session.SkipVersionProbe（DSN skipVersionProbe）默认 false，显式跳过初
 
 TestVersionProbe* / TestDSNSkipVersionProbe 覆盖两模式/三包流、快照和池复用、ChangeUser、取消辅助连接、默认探测失败及必要基线失败不重试、自定义初始化保留。未知版本的标准预处理回退、SQL checksum 禁用、敏感游标/Oracle OUT/长参数/XA 拒绝有本地证据；显式查询不被抑制或用来提升内部版本。TestVersionProbeSessions 集成源码覆盖四目标连接/只读事务/查询/回滚及能力门禁，本阶段仅编译。真实代理基线 SQL 支持和版本组合待验证，实现28/32、验收0/32不变。
 
+### 1.12 D32 标准连接池
+
+八项 Java pool/poolName/maxPoolSize/minPoolSize/maxIdleTime/poolValidMinDelay/staticGlobal/registerJmxPool 的实际语义和默认差异见[架构 §5.1](go-driver-architecture-design.md#51-d32-标准连接池与生命周期)。Go 使用 sql.DB setter、业务 context、外部 slog 与 Stats；没有第二个驱动池或 JMX。minPoolSize 无标准库等价保底，示例只做一次性多会话就绪检查；staticGlobal 的服务端全局变量缓存不迁移为布尔开关，每条新会话仍执行必要基线。
+
+TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模式延迟建连、限额等待/取消、初始化/复用/QUIT、预热失败和 PING 拒绝清理、寿命与空闲回收、借用校验默认/启用、独立 Auto 模式池及 Java DSN 拒绝。示例只编译；真实数据库空闲超时、容量、长期资源/监控及跨平台运行未验收，D32 继续进行中，实现28/32、验收0/32保持。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

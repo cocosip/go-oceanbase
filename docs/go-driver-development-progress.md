@@ -81,7 +81,7 @@
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 本地子项通过，待依赖 | D28 VC | Codex；辅助函数、warning、ChangeUser 和单次显式取消已补；整项不提前计完成；见 §5.6 D30 |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 进行中 | 本地子项通过，待依赖 | D30/D28 VC | Codex；见 §5.6 D31；集成源码仅编译 |
-| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接属性/交互标志、排序规则、代理登录已补，见 §5.6 D32 |
+| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接声明、排序规则、代理登录及标准池示例/生命周期等已补，见 §5.6 D32 |
 
 ## 4. 里程碑
 
@@ -634,6 +634,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 分配发请求后的取消为软预算：必须持锁等无关联 ID 的答案，取消后关闭分配的会话，不发送数据库凭据；永久不答会占用本次拨号及一个 OS 线程。单区不能承载 pipeline，Auto/MultiSend 回退 Sequential；最终通知块不保证 Close 前已被对端消费。以上原生协议限制及混合客户端互操作要求已写入架构 §9.0.5、配置注释、使用指南、映射及矩阵，不隐藏为严格超时或完整平台验收。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、原生目标各10次、两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）、integration 仅编译、go mod tidy -diff 通过；Go1.25 实际 Windows/386 全包测试通过。两版本 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过。文档 UTF-8/链接/锚点/围栏/无机器路径、160项选项与32任务/28实现/0验收、Go 格式和 diff 检查通过。
 - 未连接数据库；本机对端不等于真实服务/对象 ACL/多用户/混合客户端验收，Linux/Darwin 实际运行、远程 CI、成功 race 及长期资源曲线仍缺。OBProxy VC 尚需原生 ABI 取证，D28 整项及 D30/D31 平台依赖不提前勾选，实现28/32、验收0/32保持。
+
+#### D32 标准连接池与生命周期
+
+- 八项 Java 池配置已按固定源码核对：使用 sql.DB 原生 setter/context/Stats、应用名称和外部 slog，不新增生产 API、包、依赖或驱动池。minPoolSize 无标准库等价保底；SetMaxIdleConns 是上限，示例只做一次性多会话就绪检查。staticGlobal 实际是服务端全局变量缓存假设，Go 每条新物理会话保留必要基线；默认值、零值校验差异及共享 Connector 的关闭边界见架构 §5.1。
+- pool_example_test.go 提供 ExampleNewConnector_pool 和应用侧 helper；TestPool* 覆盖两模式延迟建连、多会话预热/复用、拨号及 PING 拒绝清理、取消释放、池限额等待与零额外发送、初始化基线、QUIT/寿命/空闲回收、ValidationInterval 启用/关闭、独立 Auto 模式池及 Java DSN 拒绝。缺 helper 时先编译失败，实现后通过；Windows 时间等待与夹具清理顺序已校正。关闭对端观测/池统计间的合法调度交错先在全量及重复运行中复现，改为同时等待观测完成后通过；独立只读走查无其他已确认遗留问题，不另存报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TestPool 各10次、普通及 integration 标签 golangci-lint（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、go mod tidy -diff，以及 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建和根包测试交叉编译通过。lint 共用锁使一次并发启动被拒，随后顺序运行通过。
+- 六份相关文档同步；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项 Java 选项集合和32任务/28实现/0验收、Go 格式及 diff 检查通过。未连接数据库；真实空闲超时、容量/长期资源、监控部署、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证，D28/D32 及 D30/D31 平台依赖保持未完成。
 
 ## 6. 待取证条件与推进方式
 

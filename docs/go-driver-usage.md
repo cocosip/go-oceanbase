@@ -31,6 +31,10 @@ cfg.Logger = logger
 
 应用设置 `db.SetMaxOpenConns`、`SetMaxIdleConns`、`SetConnMaxLifetime` 等标准池参数。每次调用传入业务 `context`，不要用共享的无限期 context 替代调用超时。连接失效或提交失败时，应先判断业务状态，不能无条件重放非幂等写入。
 
+完整[连接池示例](../pool_example_test.go)展示标准 setter、外部 slog、一次性多连接就绪检查和 db.Stats。Go 默认最大连接数不限、最多保留2条空闲连接、空闲/寿命回收关闭；按部署容量显式设置。SetMaxIdleConns 是上限，不是最小连接数；多次 DB.Ping 也不等于预热多个会话。示例在启动阶段同时持有多个 sql.Conn 并逐一 Ping，失败/取消统一归还租约，健康会话可能继续留池；超时应覆盖等待池容量。它不维护长期最小连接数。
+
+DB 应长期复用，退出时 Close；sql.Conn.Close 只归还租约，不能代表远端物理会话已经关闭。空闲和寿命回收是延后触发，持有中的事务/结果不会因寿命到期被主动打断。需要隔离身份、兼容模式和生命周期时分别创建 Connector/DB；不要复用同一 Connector 创建独立池，关闭其中一个 DB 会关闭共享 Connector 并阻止其他 DB 后续建连。Routing.ValidationInterval 默认0关闭借用校验，与 Java poolValidMinDelay=0 每次校验的含义不同；Managed reset 不清理任意会话变量，完全隔离用 ResetFull。默认差异及 staticGlobal 的真实含义见[架构 §5.1](go-driver-architecture-design.md#51-d32-标准连接池与生命周期)。
+
 Windows Shared Memory 使用 `Config{Network: "sharedmemory", Addr: "MYSQL"}` 或 DSN `network=sharedmemory&socket=MYSQL`，Addr 为服务端对象基名，可带 Local/Global 命名空间前缀；不与多地址/发现混用、不回退 TCP。TLS 必须显式配置证书 ServerName；共享内存不获得明文认证豁免。**分配请求发出后需持锁等待无关联 ID 的答案，取消/建连超时为软预算，服务端不答可持续阻塞该拨号**；建成后的 I/O 支持 deadline/Close。批量 Auto/MultiSend 回退顺序，尾块 Close 不保证送达。完整资源及互操作限制见[架构 §9.0.5](go-driver-architecture-design.md#905-d28-windows-shared-memory)，真实服务尚未验收。
 
 如需独立限制网络读取等待，可设置 `Config.ReadTimeout = 5 * time.Second` 或 DSN `readTimeout=5s`；默认0关闭，两种兼容模式都适用。它按每次底层 Read 重新计时，context 的较早期限仍生效；持续收到数据的长结果仍需业务 context 限制总时长。超时会关闭连接并保留网络错误（errors.As 到 net.Error 检查 Timeout），不自动重放已写出的业务。详见[架构 §12.5.1](go-driver-architecture-design.md#1251-d32-已实现的网络读取超时)。

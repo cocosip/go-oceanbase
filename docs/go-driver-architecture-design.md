@@ -170,6 +170,22 @@ func NewConnector(cfg Config) (driver.Connector, error)
 
 不再提供另一个 DB、Connection、Transaction 或 Pool 包装类。直接使用 `sql.OpenDB`，避免重复维护 Go 标准库已经提供的构造和连接池配置。
 
+### 5.1 D32 标准连接池与生命周期
+
+`sql.Open` / `sql.OpenDB` 返回并发安全、延迟建连的 `*sql.DB`，应用长期复用并在退出时关闭。`sql.Conn.Close` 归还租约，`sql.DB.Close` 关闭池；不能用每次请求创建/关闭 DB 的方式模拟 Java Connection。模式绑定属于 Connector；需要独立模式、身份、配置或生命周期时分别创建 Connector 和 DB，不共享可变配置。使用同一 Connector 创建多个 DB 时会共享其模式锁定、路由/发现和关闭状态；关闭任意 DB 会关闭该 Connector，其他 DB 随后不能再建立物理会话，因此不要复用 Connector 创建独立池。
+
+| 能力 | Go 原生契约与默认差异 |
+| --- | --- |
+| 最大连接数 | `SetMaxOpenConns(n)` 限制物理连接数，`n<=0` 无上限，Go 默认0；Java maxPoolSize 默认8。达到上限的借用等待业务 context，不额外建连，也不重放 SQL |
+| 空闲连接数 | `SetMaxIdleConns(n)` 是空闲上限，Go 默认2，`n<=0` 不保留空闲会话，正数受 MaxOpenConns 上限约束；不是 Java minPoolSize 的保底，也不主动预热 |
+| 一次性就绪 | 应用可同时持有 N 个 sql.Conn，逐个 Ping 后统一归还，见[示例](../pool_example_test.go)。这样检查多个物理会话；连续调用 DB.Ping 可能始终复用一个会话。示例 helper 检查 N 不超过当前最大连接数，必须在池配置稳定的启动阶段配合超时使用；失败/取消释放已借租约，健康连接仍可留在池中，不回滚已经完成的建连 |
+| 空闲与寿命 | `SetConnMaxIdleTime` / `SetConnMaxLifetime` 都是 duration，默认0关闭；Java maxIdleTime 默认600秒、最小60秒。过期回收由标准库触发，非精确定时器；持有中的 Conn/Tx/Rows 不因寿命到期被主动打断，归还或下次借用时淘汰/替换 |
+| 校验 | `PingContext` 显式访问服务端；Validator 只判断本地会话有效性。Routing.ValidationInterval 正数在复用的 ResetSession 中按上次操作完成后的空闲时长决定是否发送 PING，0关闭；Java poolValidMinDelay 默认1000毫秒，0则每次借用都校验，两者零值语义不同。没有复制 Java 后台定时校验池 |
+| 会话基线与缓存 | 每条新物理会话都执行必要初始化；Managed reset 只恢复已跟踪的事务/autocommit 状态，任意业务 SQL 的会话变量不会被完整清除，需要完全隔离时用 ResetFull 淘汰。Java staticGlobal 默认false，true 表示假定服务端全局变量恒定并缓存初始化信息，不是进程静态配置开关；Go 不实现这种跨会话全局变量缓存，不由其他池提供初始化值 |
+| 标识与监控 | 应用变量/外部 logger.With("pool", name) 标识池，db.Stats 提供 OpenConnections/InUse/Idle、累计 WaitCount/WaitDuration、三类关闭计数；由应用接入监控，不自动注册 JMX、exporter 或日志后台任务。Logger=nil 仍静默 |
+
+本地 TestPool* 直接使用实际驱动与 database/sql，协议对端检查两模式初始化、同会话 PING/QUIT、取消零发送和物理连接计数；涵盖预热/失败/取消/服务端拒绝、限额等待、复用、空闲/寿命回收和独立 Auto 模式池。旧 Java 池 DSN 名称明确拒绝，没有新增公共包、生产配置或驱动池。真实服务端空闲超时、容量、长期负载及监控部署仍待联调；示例不维持最小连接数，也不构成 D32 整项完成。
+
 ## 6. 配置模型和默认值
 
 `Config` 的常用字段置于第一层：`Addr`、`User`、`Password`、`Database`、`Mode`、`Logger`、`TLSConfig`、`ConnectTimeout`。高级选项按真实职责分组，不照搬 Java 的全部布尔开关。
