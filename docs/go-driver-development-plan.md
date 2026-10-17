@@ -672,6 +672,8 @@ D32 排序规则子项已补 Session.Collation/DSN collation，MySQL 同一 SET 
 
 D32 代理登录子项已补 Config.ProxyUser/Credentials.ProxyUser/DSN proxyUser，不解析括号用户名；严格编码、模式/能力拒绝、ChangeUser 清除/池隔离、CancelQuery 双身份比较及外部离线示例见架构 §6.3。TestProxyUserSessions 已接手动 CI，真实身份/权限待联调；不因此关闭平台依赖或 D32 的其余范围。
 
+D32 交付入口已补 README、[使用指南](go-driver-usage.md)和 `examples/usage`：覆盖标准查询/事务、预处理、过程 OUT/INOUT、多结果、批量、两模式表内 BLOB、Oracle locator/OBJECT/ARRAY、Forward 游标；XA 沿用独立示例。示例只依赖公开根包及标准库，要求显式模式和可清理的测试 schema，当前仅编译，未执行联网步骤；不勾选示例运行、完整基准或整项交付完成。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。

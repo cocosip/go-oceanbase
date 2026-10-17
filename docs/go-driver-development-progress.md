@@ -545,6 +545,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestProxyUserSessions 四目标源码和手动 CI 已补，仅编译。Oracle 两目标需要专用代理 DSN 及两个不同的服务端预期用户名，验证实际身份、ChangeUser 重发/清除及原池重建；MySQL 两目标仅验证配置拒绝。未连接真实数据库，真实代理授权、版本与目标身份仍待联调。D32 保持进行中，实现28/32、验收0/32；Shared Memory/VC、其余选项、README/其他示例、完整基准与资源稳定性未完成。
 - 最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、代理用户及外部示例各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。独立只读走查无已确认遗留重要问题，未保存独立报告。六文档 UTF-8/链接/代码块/无机器路径、32任务/28实现/0验收、固定 Java 的160项名称集合及 CI YAML/六项代理 fixture、Go 格式/diff 检查通过。Linux 运行、远程 CI 与成功 race 仍无新证据。
 
+#### D32 使用入口与示例
+
+- 新增 README 和[使用指南](go-driver-usage.md)，说明 Go 1.25/1.26、两种 OceanBase 兼容模式、Config/DSN/TLS、外部 slog、标准池/事务、精确类型、资源关闭与错误/未知结果边界。文档增为七份；README 为项目入口。未新增公开 API、驱动内部包或依赖。
+- `examples/usage` 直接使用公开根包：覆盖查询/本地事务、服务端预处理、批量、OUT/INOUT、Execute 多结果、两模式表内 BLOB、Oracle 原生 locator/OBJECT/ARRAY 和 Forward 游标。要求显式模式、专用测试 schema 和建表/过程/类型权限；随机对象名，资源在事务/连接结束前释放，DDL 逆序有界清理并保留错误。XA 沿用独立示例。普通全包 CI 自动编译 main，不执行联网示例。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）通过；新增示例及 README 完整 Go 片段在双版本编译通过，两个 main 示例的 Windows/386 编译和 Linux/amd64 CGO_ENABLED=0 交叉构建通过。integration 仅编译，go mod tidy -diff 无差异。Go1.25 实际运行综合示例缺 DSN/Auto 模式两个预检，均在联网前拒绝；不把这些预检计作联网功能运行证据。
+- 七文档及 README 的 UTF-8、相对链接/锚点、代码围栏、无机器盘符路径检查通过，任务仍为32项、实现28项、验收0项。独立只读走查未发现已确认重要问题，不保存独立报告。数据库上的示例运行、完整基准/资源曲线、Shared Memory/VC 和其他配置仍未闭环；Linux 实际运行、远程 CI 和成功 race 证据仍缺。D32 继续进行中，不勾选完整交付。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
