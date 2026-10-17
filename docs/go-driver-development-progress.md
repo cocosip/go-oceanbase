@@ -573,6 +573,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TCP 目标与示例各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。最终复核同步修正既有 failover 测试的一处重复字符串常量引用，Failover/TCP/示例定向测试通过。
 - 七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合及 Go 格式/diff 检查通过。未连接数据库，未验证远端接口、真实 OS 缓冲/探测参数、Linux 运行、远程 CI 或成功 race；SetLinger(0) 可能丢弃待发送数据，不能保证 QUIT 送达或回滚 SQL。D32 保持进行中，实现28/32、验收0/32；D28 Shared Memory/VC、其余配置及完整基准/资源曲线仍未闭环。
 
+#### D32 TLS 原生配置
+
+- 已核对固定 Java 的12个 TLS 选项与注释列出的5个历史别名；使用现有 TLSConfig、crypto/tls 与 crypto/x509 承载，不增加配置层、公开 API、运行时包或依赖，不改变驱动默认。新增 ExampleNewConnector_mutualTLS 及文件加载示例；标准 PEM 加载、Java store 解锁转换、动态证书与验证回调、版本及 TLS1.3 套件边界见架构 §17.2.1。
+- TestTLSNativePolicy/Rejection/Snapshot/RootSnapshot/Cancellation、TestTLSExampleFiles 和 TestTLSJavaDSNRejected 已补：两模式/TLS1.2/1.3、静态/动态客户端链、额外验证、版本/套件拒绝、凭据门禁、握手取消、初始化/Ping/QUIT、配置后续变更与根池新增信任隔离。示例加载函数缺失时先编译失败，再实现通过；临时移除 CipherSuites 切片克隆时快照测试明确失败，按字节恢复后通过。独立只读走查无已确认遗留重要问题，不保存独立报告。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TLS/路由证书拒绝/伪造 TLS/读取超时目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。首次 lint 曾误用全局缓存产生权限警告，改用仓库缓存后最终检查通过。
+- 七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合及 Go 格式/diff 检查通过。示例通过临时 PEM 文件执行加载测试，Example 本身只编译；未读取项目外证书或连接数据库。真实数据库/代理的证书部署、双向身份映射、系统信任源和 store 转换未验收，Linux 运行、远程 CI 与成功 race 仍待验证。D32 保持进行中，实现28/32、验收0/32；D28 Shared Memory/VC、其他配置及完整基准/资源曲线未闭环。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

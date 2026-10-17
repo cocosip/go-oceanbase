@@ -1323,6 +1323,28 @@ Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER
 
 当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI 及 §9.0.1 的 Unix/Named Pipe；Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 
+### 17.2.1 D32 TLS 配置的 Go 原生承载
+
+Java 的12项 TLS 配置通过现有 `Config.TLSConfig` 与 `crypto/tls`、`crypto/x509` 完成适配；驱动不增加证书文件、store 密码、JVM 类型或 TLS 工厂配置层。两种 OceanBase 兼容模式采用相同的 SSLRequest、驱动内 TLS 握手和认证门禁。TLSConfig=nil 不主动使用 TLS；非 nil 时必须完成标准链/名称验证，服务端不支持、验证失败、版本/套件不匹配或回调报错均终止，不回退明文。
+
+| Java option | Go 承载与差异 |
+| --- | --- |
+| useSsl | 非 nil TLSConfig 显式要求 TLS；仅程序化配置，没有自动安全降级 |
+| serverSslCert / trustStore / trustStoreType | 应用用 x509.NewCertPool/AppendCertsFromPEM 或 AddCert 构建 RootCAs；nil 使用 Go/OS 系统信任源。自定义池替换默认根，若要追加，应先取得 x509.SystemCertPool 并检查错误。DER 先 ParseCertificate；没有 classpath、JVM 系统属性或 Java store 类型解释 |
+| keyStore / keyStoreType | 应用用 tls.LoadX509KeyPair/X509KeyPair 加载 PEM 证书链与私钥，传 Certificates；动态证书使用 GetClientCertificate。证书链按叶证书在前排列；硬件私钥可由实现 crypto.Signer 的对象提供，具体实现由应用负责 |
+| trustStorePassword / keyStorePassword / keyPassword | Java store 的解锁/格式转换由应用或部署侧完成；驱动接收已加载的池/证书/签名器，不获取这些密码。Go 标准加载器不直接解码 JKS/PKCS12 或加密 PEM 私钥；不得将忽略密码、加载失败后空证书连接当作等价支持 |
+| enabledSslProtocolSuites | MinVersion/MaxVersion 控制连续版本范围；Go 1.25/1.26 默认最低 TLS1.2、最高当前支持的 TLS1.3，建议应用显式设 MinVersion。Java 未配置时沿用其 JSSE 运行时，不能从旧注释推断实际默认。离散版本集合可额外用 VerifyConnection 拒绝不在集合内的结果，不能关闭标准验证 |
+| enabledSslCipherSuites | CipherSuites 只控制 TLS1.0–1.2，列表顺序由 Go 忽略；TLS1.3 套件不可通过该字段配置。应用可在 VerifyConnection 检查实际协商结果并拒绝，但不能用它改变 ClientHello 的 TLS1.3 套件列表。TLS1.2 及以下无共同可用套件、或无共同版本时由标准 TLS 握手失败；未知套件 ID 不会增加支持能力，TLS1.3 仍忽略该字段 |
+| tlsSocketType | 固定 Java 注册的默认 TLS provider 对应 Go crypto/tls；额外验证及客户端证书选择由 tls.Config 回调承载，不迁移类名/SPI 加载，也不允许 DialContext 声称连接已验证。替换整个 TLS 引擎不属于该回调能力 |
+
+完整[可编译文件加载示例](../tls_example_test.go)在应用侧读取 CA/客户端证书和私钥，遇到读文件、空信任池、证书或私钥错误立即返回；不会在加载失败后改用无 TLS 配置。示例仅编译，不读取项目外文件、不联网；TestTLSExampleFiles 用临时文件实际执行同一加载函数。真实证书、私钥访问权限及轮换由调用方管理，不把敏感材料或完整配置交给日志。
+
+NewConnector 快照 TLS 配置的证书字节、证书池及可变切片/map；回调、私钥、已解析 x509.Certificate（包括 Leaf 和通过 AddCert 加入池的证书）、ClientSessionCache 等引用对象由调用方保证不可变或并发安全。证书池 Clone 隔离后续 AddCert，不深复制其中已解析证书对象。每个物理连接再克隆配置；回调不能改写共享配置。GetClientCertificate 应配合其 CertificateRequestInfo.Context 的取消；额外验证回调应及时返回，驱动不能中断应用中无界阻塞的同步回调。VerifyConnection/VerifyPeerCertificate 只在标准验证后收紧策略，错误保留给调用方；TLS 拒绝时不会先取数据库 Credentials。
+
+TestTLSNativePolicy 覆盖两模式、TLS1.2/1.3、静态/动态客户端证书、服务端验证的完整客户端链及加密认证；TestTLSNativeRejection 覆盖 TLS1.2 的验证/选证书回调错误、无共同版本/套件，均在获取数据库凭据前拒绝。TestTLSNativeSnapshot 经完整初始化/Ping/QUIT 验证原配置后续变更不污染会话；TestTLSNativeCancellation 验证选证书回调的 context 取消。原有 TestTLSVerifiedAuthentication、TestTLSRequired、TestFailoverTLS、TestFailoverClientCertificateReject、TestAuthRejectsForgedTLS 与 ReadTimeout TLS 用例继续覆盖链/名称/降级/路由/缺失客户端身份及读取预算。
+
+12个同名 Java DSN 参数、禁用校验开关及 DefaultOptions 注释列出的5个历史别名均明确拒绝；不通过 URL 读取证书/私钥文件。固定证据为 DefaultOptions（L188、L263、L385–L434、L682–L693、L740）、AbstractConnectProtocol（L350–L404、L673–L716）、DefaultTlsSocketPlugin 和 OceanBaseX509TrustManager；Java provider 注册清单只有默认实现。这里的本地 TLS 证据不代表真实 OceanBase/OBProxy 的证书部署、双向身份映射、系统信任源或 Java store 转换已经验收。
+
 ### 17.3 LOCAL INFILE
 
 保留本地导入功能，默认不允许服务端按任意文件名读取本机文件。调用方显式传入 Reader 或按请求名解析 Reader 的回调；采用请求级或 Connector 级配置，不使用全局文件白名单。
