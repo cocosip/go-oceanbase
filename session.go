@@ -89,7 +89,9 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 	if err := c.initSQL(ctx, "SET autocommit=1"); err != nil {
 		return err
 	}
-	if err := c.readOceanBaseVersion(ctx); err != nil {
+	if c.cfg.Session.SkipVersionProbe {
+		c.session.obVersion = ""
+	} else if err := c.readOceanBaseVersion(ctx); err != nil {
 		return err
 	}
 	zone, err := sessionTimeZone(c.cfg.Session.Location)

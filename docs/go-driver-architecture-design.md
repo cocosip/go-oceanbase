@@ -350,9 +350,17 @@ Java socksProxyHost 默认 null、socksProxyPort 默认1080；Go 默认仍直连
 
 代理用户名/密码使用独立的 `proxy.Auth`，与 OceanBase Credentials/ProxyUser 无关；nil 表示仅请求无认证方式。非 nil 时该库同时允许服务器选择无认证或用户名密码，不能把它当作“必须使用用户名密码”的策略。SOCKS5 用户名密码协商本身是明文，随后建立的数据库 TLS 不保护先前的代理协商；部署侧决定代理链路保护，不能因代理已认证而放宽数据库 TLS 门禁。数据库 TLS 仍验证选中数据库入口或调用方显式 ServerName，不使用代理主机名代替。
 
-ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协商、后续数据库握手/初始化；取消或失败由拨号器关闭隧道。预算到期时 socket deadline 可能先于 context 定时器触发，错误可能为 context.DeadlineExceeded 或 net.Error.Timeout；不要求所有自定义拨号器归一成同一个错误。成功返回的连接不继承建连 context 的寿命，后续命令继续使用各自的 context/ReadTimeout。仅支持 TCP 目标，IPC 不享有代理豁免。`connectProxy` 是另一项 Java 初始化策略，不是 SOCKS 或 HTTP CONNECT 开关，本子项不改变其待完成状态。
+ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协商、后续数据库握手/初始化；取消或失败由拨号器关闭隧道。预算到期时 socket deadline 可能先于 context 定时器触发，错误可能为 context.DeadlineExceeded 或 net.Error.Timeout；不要求所有自定义拨号器归一成同一个错误。成功返回的连接不继承建连 context 的寿命，后续命令继续使用各自的 context/ReadTimeout。仅支持 TCP 目标，IPC 不享有代理豁免。`connectProxy` 是另一项 Java 初始化策略，不是 SOCKS 或 HTTP CONNECT 开关，其显式初始化策略见 §9.0.4，不由 SOCKS 自动启用。
 
 示例和本地测试使用 x/net v0.58.0；核对时 v0.59.0 及更新版要求 Go1.26，故保留 Go1.25 基线。模块最小版本选择同步提升 x/sys 至 v0.47.0、x/text 至 v0.41.0，需全包及跨平台回归；驱动生产包不导入 x/net，公开 API 和生产包依赖方向不变。本地 TestSOCKS* 覆盖两模式/三种包流、域名远端解析、认证、失败前零数据库凭据、路由切换、取消与连接关闭、TLS 正反向和目标身份；真实代理部署、DNS/权限、吞吐及数据库联调未验收。
+
+### 9.0.4 D32 显式跳过版本探测
+
+`Session.SkipVersionProbe`（DSN `skipVersionProbe`）默认 false；只有应用确认目标不提供 `ob_version()` 等初始化探测时才显式开启。开启后初始建连、ChangeUser 和取消查询辅助连接均不发版本查询，内部 OceanBase 版本保持未知；仍以认证结果确认兼容模式，保留字符集、自动提交、时区、NCharset、Variables 和 InitSQL 的全部初始化与错误处理。不得从 TCP/SOCKS/OBProxy 地址推断此策略，也不把握手协议版本、应用 InitSQL 或元数据查询结果当作已确认 OceanBase 版本。
+
+未知版本不启用 PrepareExecute、offset fetch 或版本受限的 SQL checksum；Oracle 原生 OUT/LOB 操作、敏感游标、流式长参数及 XA 按既有能力门禁返回 ErrUnsupported，普通 CRUD、标准预处理及事务继续使用原路径。MetadataServerInfo 是显式业务请求，仍执行其版本查询，不受初始化策略抑制。默认探测失败必须关闭连接并保留错误，不能自动降级成“跳过探测”；必要基线或 InitSQL 失败时同样不发布连接。
+
+Java connectProxy 默认 false，跳过部分 session 变量读取、ob_version 和 auto_increment_increment 探测；Go 无对应的隐式变量/自增步长读取，只映射实际存在的可选版本探测，不迁移一个含义模糊的 connectProxy 布尔字段，也不接受其 Java DSN 名称。此策略不保证某个代理接受其他必要基线 SQL，真实部署仍需验证；使用前应评估上述高级能力限制。
 
 ### 9.1 已实现的包流与协商（D23）
 

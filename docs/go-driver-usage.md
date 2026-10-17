@@ -65,6 +65,8 @@ TCP 源接口、keep-alive、缓冲和 NODELAY 使用标准 `net.Dialer` / `net.
 
 SOCKS5 使用现有 `Config.DialContext`，应用通过 `golang.org/x/net/proxy.SOCKS5` 创建显式代理，再取 `proxy.ContextDialer.DialContext`，见[可编译示例](../socks_example_test.go)。代理地址明确写端口（例如1080）；不要丢弃驱动传入的候选 address，也不要改用无 context 的 Dial。示例不读取 ALL_PROXY/NO_PROXY，失败不绕过代理；目标域名由代理解析。可选 `proxy.Auth` 只用于代理，不能复用数据库 Credentials/ProxyUser；其协商不提供加密，数据库 TLS 仍独立验证目标入口。默认驱动仍直连，无 Java 同名 DSN 开关；完整边界及 Go1.25 依赖约束见[架构 §9.0.3](go-driver-architecture-design.md#903-d32-socks5-代理的-go-承载)。
 
+目标不提供初始化版本查询时，可显式设置 `Session.SkipVersionProbe = true` 或 DSN `skipVersionProbe=true`；默认仍探测版本，失败不会自动跳过。该选项只省略初始化 `ob_version()`，保留认证、实际兼容模式和必要基线；不会隐含启用 SOCKS 或其他代理。未知版本下普通 SQL/事务和标准预处理可继续使用，Oracle OUT、敏感游标、原生长参数及 XA 等版本受限能力会拒绝，优化路径保守回退。显式业务查询不受抑制，部署前需评估限制，见[架构 §9.0.4](go-driver-architecture-design.md#904-d32-显式跳过版本探测)。
+
 ## 3. 查询、参数与本地事务
 
 查询优先用 `QueryRowContext` / `QueryContext`，写入用 `ExecContext`。两模式均可使用 `?`；Oracle 还可用 `:name` 与 `sql.Named`。占位符只绑定值，不能绑定表名、列名或关键字；动态标识符需要独立可信校验。不要把业务值拼入 SQL。

@@ -620,6 +620,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - x/net v0.58.0 为核对时最新的 Go1.25 兼容版本，仅示例/测试导入；模块选择同步提升 x/sys 至 v0.47.0、x/text 至 v0.41.0，生产包依赖图无 x/net。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、SOCKS 目标各10次、普通及 integration 标签 golangci-lint2.14.0（各0 issues）、integration 仅编译、go mod tidy -diff 和 go mod verify 通过。实际 Windows/386 全包测试通过；首次并行检查期间既有 ReadTimeoutCommands 出现一次100ms 元数据超时，单独重复10次及最终全量重跑通过，未修改该测试或生产逻辑。
 - 两版本 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过。文档保持八份及 README，链接/锚点/UTF-8/围栏/无机器路径、160项 Java 选项集合及32任务/28实现/0验收检查通过；未连接数据库。真实代理的 DNS/认证/网络策略及吞吐、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证。D28/D32 其余范围继续进行，D30/D31 平台依赖未闭环。
 
+#### D32 版本探测策略
+
+- 新增 Session.SkipVersionProbe 与严格布尔 DSN skipVersionProbe，默认 false；只跳过可选初始化 ob_version()，必要基线/Variables/InitSQL 与实际模式检测保持。每次相应初始化将版本保持未知，不使用握手或显式业务查询推断高级能力。Java connectProxy 的隐式变量和自增步长探测在 Go 中不存在，按架构 §9.0.4 映射其实际承载，旧 Java DSN 名称仍拒绝；无新增包或依赖。
+- TestVersionProbeSessions/ChangeUser/UnknownCapabilities/Failure/CancelQuery/Initialization 及 TestDSNSkipVersionProbe 覆盖两模式/三包流、配置快照、池复用、重新认证、取消辅助连接、初始化失败不发布/不重试、自定义基线保留。真实协议对端核对标准 prepare/execute 无合并命令或 SQL checksum，未知版本拒绝 Oracle OUT/敏感游标/长参数/XA；长参数来源不被读取，显式版本查询仍执行且不升级内部能力。缺少公开字段时先编译失败，实现后通过；测试对端改用独立 context，避免把建连预算取消误当作会话终止。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。初轮 lint 的重复 SQL/版本文本已改为复用既有测试常量。两版本 Linux/amd64 与 Darwin/amd64 CGO_ENABLED=0 全包构建、根包测试源码交叉编译及 go mod tidy -diff 通过。独立只读走查无已确认遗留问题，不保存独立报告。
+- 四目标 TestVersionProbeSessions 集成源码与手动 CI 选择器已补，仅编译，未连接数据库。八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项 Java 选项集合及32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。真实代理基线 SQL 支持、版本/权限组合、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证；D28 Shared Memory/VC、D32 其余收口及 D30/D31 平台依赖继续推进。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

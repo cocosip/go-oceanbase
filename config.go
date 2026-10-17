@@ -67,6 +67,9 @@ type Limits struct {
 
 // SessionOptions describes the initial session baseline.
 type SessionOptions struct {
+	// SkipVersionProbe omits ob_version() during initialization; default false.
+	// Version-dependent features stay disabled or unsupported when the version is unknown.
+	SkipVersionProbe bool
 	// ParseTime converts unzoned dates and timestamps using Location; invalid or ambiguous times fail.
 	ParseTime bool
 	Charset   string

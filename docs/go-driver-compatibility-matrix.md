@@ -101,7 +101,13 @@ TestMetadataCatalog 已补真实来源检查源码，仅编译；允许未提供
 
 既有 DialContext 直接接入 x/net/proxy.ContextDialer，保持标准连接池与 TLS/认证门禁；本地真实 TCP SOCKS 对端覆盖两模式/三包流、远端域名、匿名/用户名密码、拒绝和畸形响应、取消/总预算/关闭、候选切换、TLS 目标身份与未验证目标零数据库凭据。示例只编译，普通单测不连接外部代理或数据库；代理认证不提供加密或数据库身份保证，细节见架构 §9.0.3。
 
-真实代理的 DNS、身份/网络策略、负载及数据库组合未验收。两项 Java 配置已映射；connectProxy、平台 Shared Memory/VC 仍分别待完成，实现28/32、验收0/32保持。
+真实代理的 DNS、身份/网络策略、负载及数据库组合未验收。两项 Java 配置已映射；connectProxy 的初始化策略另见 §1.11，平台 Shared Memory/VC 仍待完成，实现28/32、验收0/32保持。
+
+### 1.11 D32 版本探测策略
+
+Session.SkipVersionProbe（DSN skipVersionProbe）默认 false，显式跳过初始化 ob_version()，保留实际模式、字符集/自动提交/时区及自定义初始化。对应 Java connectProxy 中 Go 实际存在的探测，不表示跳过认证或任意初始化错误，详见架构 §9.0.4。
+
+TestVersionProbe* / TestDSNSkipVersionProbe 覆盖两模式/三包流、快照和池复用、ChangeUser、取消辅助连接、默认探测失败及必要基线失败不重试、自定义初始化保留。未知版本的标准预处理回退、SQL checksum 禁用、敏感游标/Oracle OUT/长参数/XA 拒绝有本地证据；显式查询不被抑制或用来提升内部版本。TestVersionProbeSessions 集成源码覆盖四目标连接/只读事务/查询/回滚及能力门禁，本阶段仅编译。真实代理基线 SQL 支持和版本组合待验证，实现28/32、验收0/32不变。
 
 ## 2. 后续高级协议条件
 

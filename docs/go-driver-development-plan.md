@@ -692,6 +692,8 @@ D32 结果列来源已通过现有 Execute.Snapshot 承载，补 ResultColumn �
 
 D32 SOCKS5 已通过既有 DialContext 与 x/net/proxy 的 ContextDialer 承载，应用示例和两模式/三包流/远端 DNS/代理认证/取消/路由/TLS 本地测试已补。无新增生产 API 或配置；x/net v0.58.0 仅示例/测试导入，模块选择同步提升 x/sys/x/text，完整契约见架构 §9.0.3。真实代理部署和性能未联调，D28/D32 整体状态保持。
 
+D32 connectProxy 的 Go 适配使用 Session.SkipVersionProbe / skipVersionProbe，仅跳过现有的可选版本探测；必要初始化、模式与未知版本门禁保留，默认探测失败不自动降级。两模式/三包流/复用/ChangeUser/取消辅助连接及能力拒绝测试已补，四目标 TestVersionProbeSessions 集成源码仅编译，架构 §9.0.4 记录语义差异；D28/D32 整体状态不变。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。

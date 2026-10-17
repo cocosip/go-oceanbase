@@ -276,7 +276,7 @@ func TestCreateDatabaseChangeUser(t *testing.T) {
 }
 
 func TestCreateDatabaseCancelQuery(t *testing.T) {
-	testCancelQueryIdentity(t, 2, true)
+	testCancelQueryIdentity(t, 2, true, false)
 }
 
 func TestCreateDatabaseFullReset(t *testing.T) {

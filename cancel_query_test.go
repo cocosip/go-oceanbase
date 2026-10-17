@@ -20,23 +20,23 @@ const cancelPermissionPath = "permission"
 
 func TestCancelQueryIdentity(t *testing.T) {
 	for _, status := range []byte{2, 6} {
-		t.Run(fmt.Sprint(modeFromStatus(status)), func(t *testing.T) { testCancelQueryIdentity(t, status, false) })
+		t.Run(fmt.Sprint(modeFromStatus(status)), func(t *testing.T) { testCancelQueryIdentity(t, status, false, false) })
 	}
 }
 
-func testCancelQueryIdentity(t *testing.T, status byte, createDatabase bool) {
+func testCancelQueryIdentity(t *testing.T, status byte, createDatabase, skipVersion bool) {
 	t.Helper()
 	started, killed := make(chan struct{}), make(chan struct{})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var dials atomic.Int32
-	cfg := Config{User: testUser, DialContext: peerDial(t, func(_ context.Context, p *wire.PacketIO) {
+	cfg := Config{User: testUser, Session: SessionOptions{SkipVersionProbe: skipVersion}, DialContext: peerDial(t, func(_ context.Context, p *wire.PacketIO) {
 		aux := dials.Add(1) > 1
 		id := uint32(42)
 		if aux {
 			id++
 		}
-		if !serveCancelConnect(ctx, t, p, status, id) || !serveBaseline(ctx, t, p, status) {
+		if !serveCancelConnect(ctx, t, p, status, id) || !serveVersionProbeBaseline(ctx, t, p, status, skipVersion) {
 			return
 		}
 		if !aux && createDatabase {

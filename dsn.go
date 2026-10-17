@@ -67,7 +67,7 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		}
 		cfg.CreateDatabaseIfMissing = value == dsnTrue
 		return nil
-	case "charset", "collation", "ncharset", "location", "parseTime":
+	case "charset", "collation", "ncharset", "location", "parseTime", "skipVersionProbe":
 		return cfg.Session.applyDSNOption(name, value)
 	case "allowOldPassword", "passwordCharset", "servicePrincipalName":
 		return cfg.Auth.applyDSNOption(name, value)
@@ -171,6 +171,11 @@ func (o *SessionOptions) applyDSNOption(name, value string) error {
 			return &ConfigError{Field: name}
 		}
 		o.ParseTime = value == dsnTrue
+	case "skipVersionProbe":
+		if value != dsnTrue && value != dsnFalse {
+			return &ConfigError{Field: name}
+		}
+		o.SkipVersionProbe = value == dsnTrue
 	default:
 		return &ConfigError{Field: name}
 	}
