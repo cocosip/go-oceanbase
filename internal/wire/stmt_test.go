@@ -90,6 +90,7 @@ func TestBinaryRowsMalformed(t *testing.T) {
 
 func FuzzStmt(f *testing.F) {
 	f.Add([]byte{0, 0, 1}, byte(1))
+	f.Add([]byte{0, 0, 92, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0}, byte(163))
 	f.Add([]byte{0, 0, 4, 't', 'e', 's', 't'}, byte(253))
 	f.Fuzz(func(t *testing.T, data []byte, typ byte) {
 		if len(data) > 4096 {

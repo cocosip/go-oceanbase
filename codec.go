@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	typeNameRefCursor    = "REF CURSOR"
 	typeNameObject       = "OBJECT"
 	typeNameArray        = "ARRAY"
 	typeNameNumeric      = "NUMERIC"
@@ -76,6 +77,8 @@ func (*UnsupportedTypeError) Unwrap() error { return ErrUnsupported }
 func textTypeName(c wire.Column, mode Mode) string {
 	if mode == ModeOracle {
 		switch c.Type {
+		case 163:
+			return typeNameRefCursor
 		case 160:
 			return "OBJECT/ARRAY"
 		case 3:

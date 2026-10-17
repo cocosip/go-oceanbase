@@ -1,6 +1,7 @@
 package oceanbase
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -47,6 +48,8 @@ type outBinding struct {
 	input     any
 	custom    bool
 	parameter int
+	resource  byte
+	handle    *resourceHandle
 }
 
 func (b *outBinding) parameterNumber(fallback int) int {
@@ -60,6 +63,9 @@ func makeOutput(out Out) (*outBinding, error) {
 	v := reflect.ValueOf(out.Dest)
 	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() || !v.Elem().CanSet() {
 		return nil, ErrOut
+	}
+	if binding, handled, err := makeResourceOutput(out); handled {
+		return binding, err
 	}
 	_, scanner := out.Dest.(sql.Scanner)
 	inferred := inferOutputType(v.Elem().Type())
@@ -114,6 +120,9 @@ func (b *outBinding) validateMode(mode Mode) error {
 		default:
 			return fmt.Errorf("%w: length requires a text or binary output type", ErrOut)
 		}
+	}
+	if b.resource != 0 && mode != ModeOracle {
+		return ErrUnsupported
 	}
 	if mode == ModeOracle {
 		if b.Precision > 38 {
@@ -203,11 +212,26 @@ func inferOutputType(t reflect.Type) string {
 }
 
 func (c *conn) assignOutputs(bindings []*outBinding, values []driver.Value) error {
+	return c.assignOutputsContext(context.Background(), bindings, values)
+}
+
+func (c *conn) assignOutputsContext(ctx context.Context, bindings []*outBinding, values []driver.Value) error {
 	if len(bindings) != len(values) {
 		return ErrOut
 	}
 	staged := make([]reflect.Value, len(bindings))
 	for i, b := range bindings {
+		if b.resource != 0 {
+			if !reflect.ValueOf(b.Dest).Elem().IsNil() {
+				return ErrOut
+			}
+			if b.handle != nil {
+				if _, err := c.resourceLocked(b.handle); err != nil {
+					return err
+				}
+			}
+			continue
+		}
 		if err := c.validateOutputValue(b, values[i]); err != nil {
 			return &OutError{Parameter: b.parameterNumber(i + 1), Err: err}
 		}
@@ -223,12 +247,42 @@ func (c *conn) assignOutputs(bindings []*outBinding, values []driver.Value) erro
 		staged[i] = temp.Elem()
 	}
 	for i, b := range bindings {
+		if b.resource != 0 {
+			continue
+		}
 		if b.custom {
 			if err := b.Dest.(sql.Scanner).Scan(values[i]); err != nil {
 				return &OutError{Parameter: b.parameterNumber(i + 1), Partial: true, Err: err}
 			}
 		} else {
 			reflect.ValueOf(b.Dest).Elem().Set(staged[i])
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.activeTx != nil && c.activeTx.ctx.Err() != nil {
+		return c.activeTx.ctx.Err()
+	}
+	for _, b := range bindings {
+		if b.resource == 0 {
+			continue
+		}
+		if b.handle != nil {
+			if _, err := c.resourceLocked(b.handle); err != nil {
+				return err
+			}
+		}
+	}
+	for i, b := range bindings {
+		if b.resource == 0 {
+			continue
+		}
+		if b.handle != nil {
+			c.resources.records[b.handle.id].published = true
+		}
+		if values[i] != nil {
+			reflect.ValueOf(b.Dest).Elem().Set(reflect.ValueOf(values[i]))
 		}
 	}
 	return nil

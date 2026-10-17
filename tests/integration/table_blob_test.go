@@ -42,7 +42,7 @@ func testTableBlobProfile(t *testing.T, p profile) {
 	table := fmt.Sprintf("OBGTB_%d", time.Now().UnixNano())
 	typ, empty, suffix := "LONGBLOB", "X''", " ENGINE=InnoDB"
 	if p.mode == oceanbase.ModeOracle {
-		typ, empty, suffix = "BLOB", "EMPTY_BLOB()", ""
+		typ, empty, suffix = integrationBlobType, "EMPTY_BLOB()", ""
 	}
 	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" (ID INTEGER,PART VARCHAR(20),B "+typ+",PRIMARY KEY(ID,PART))"+suffix); err != nil {
 		failOperation(t, "create table BLOB fixture", err)

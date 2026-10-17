@@ -115,6 +115,10 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 	} else if header.ID != prepared.id {
 		return nil, r.fail(wire.ErrMalformed, true)
 	}
+	outputs.parent = prepared
+	if outputs.parent == nil {
+		outputs.parent = r.autoStmt
+	}
 	if int(header.Parameters) != len(plan.slots) || header.Columns > maxTextColumns || header.Flags&^uint32(7) != 0 || header.Flags == 2 || header.Flags == 6 {
 		return nil, r.fail(wire.ErrMalformed, true)
 	}

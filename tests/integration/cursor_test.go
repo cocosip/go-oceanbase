@@ -41,7 +41,7 @@ func cursorFixture(t *testing.T, p profile) (*sql.DB, string) {
 	table := fmt.Sprintf("OBGCU_%d", time.Now().UnixNano())
 	typ, blob, suffix := "LONGBLOB", "X'616263'", " ENGINE=InnoDB"
 	if p.mode == oceanbase.ModeOracle {
-		typ, blob, suffix = "BLOB", "TO_BLOB(HEXTORAW('616263'))", ""
+		typ, blob, suffix = integrationBlobType, "TO_BLOB(HEXTORAW('616263'))", ""
 	}
 	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(20),B "+typ+")"+suffix); err != nil {
 		failOperation(t, "create cursor fixture", err)

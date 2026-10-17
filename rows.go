@@ -2,7 +2,9 @@ package oceanbase
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -66,42 +68,40 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 		if r.stopCancel != nil && !r.stopCancel() {
 			<-r.cancelDone
 		}
-		if r.autoStmt != nil {
+
+		if r.autoStmt != nil && !r.outputs.hasResources() {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			r.err = errors.Join(r.err, r.autoStmt.closeLocked(ctx))
+			cancel()
+		}
+
+		r.finalizeOutputsLocked(opCtx)
+		if r.autoStmt != nil && r.outputs.hasResources() {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
 			if err := r.autoStmt.closeLocked(ctx); err != nil && r.err == nil {
 				r.err = err
 			}
 			cancel()
 		}
-		if r.outputs != nil {
-			if r.err == nil {
-				r.err = r.outputs.decodeComplexLocked(opCtx, r.conn)
-				if r.err != nil {
-					r.conn.discard()
-				}
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
-			r.err = errors.Join(r.err, r.outputs.finishLocked(ctx, r.conn, r.err == nil))
-			cancel()
-			if !r.outputs.internal && r.err == nil {
-				r.err = r.conn.materializeLOBValuesLocked(opCtx, r.outputs.columns, r.outputs.values, r.conn.cfg.Limits.MaxMessageBytes)
-				if r.err != nil {
-					r.conn.discard()
-				}
-			}
-		}
-		if !r.keepGate {
-			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
-			r.err = errors.Join(r.err, r.conn.cleanupResourcesLocked(ctx, false))
-			cancel()
-		}
 		if cause := r.contextError(); cause != nil && !errors.Is(r.err, cause) {
 			r.err = errors.Join(r.err, cause)
 			r.conn.discard()
 		}
-		if r.outputs != nil && !r.outputs.internal && r.err == nil {
-			r.err = r.conn.assignOutputs(r.outputs.bindings, r.outputs.values)
+		if !r.keepGate {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			r.err = errors.Join(r.err, r.conn.cleanupResourcesLocked(ctx, false, r.outputs.pendingHandles()...))
+			cancel()
 		}
+		if r.outputs != nil && !r.outputs.internal && r.err == nil {
+			r.err = r.conn.assignOutputsContext(opCtx, r.outputs.bindings, r.outputs.values)
+		}
+
+		if r.err != nil && !r.keepGate {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			r.err = errors.Join(r.err, r.conn.cleanupResourcesLocked(ctx, false))
+			cancel()
+		}
+
 		if r.stopTx != nil {
 			r.stopTx()
 		}
@@ -111,6 +111,27 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 		}
 	}
 }
+func (r *textRows) finalizeOutputsLocked(opCtx context.Context) {
+
+	if r.outputs != nil {
+		if r.err == nil {
+			r.err = r.outputs.decodeComplexLocked(opCtx, r.conn)
+			if r.err != nil {
+				r.conn.discard()
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+		r.err = errors.Join(r.err, r.outputs.finishLocked(ctx, r.conn, r.err == nil))
+		cancel()
+		if !r.outputs.internal && !r.conn.closed.Load() && (r.err == nil || r.outputs.hasResources() && r.outputs.seen) {
+			if err := r.outputs.prepareResourcesLocked(opCtx, r); err != nil {
+				r.err = errors.Join(r.err, err)
+				r.conn.discard()
+			}
+		}
+	}
+}
+
 func (r *textRows) fail(err error, broken bool) error {
 	if !r.released {
 		if cause := r.contextError(); cause != nil && !errors.Is(err, cause) {
@@ -320,6 +341,19 @@ func (r *textRows) decodeRow(data []byte, dest []driver.Value) error {
 	}
 	if dest != nil {
 		for i, field := range fields {
+			if r.columns[i].Type == 163 {
+				if r.conn.session.mode != ModeOracle || !r.binary {
+					return r.fail(ErrUnsupported, true)
+				}
+				if field != nil {
+					id := binary.LittleEndian.Uint32(field)
+					if id == 0 {
+						return r.fail(ErrCursor, true)
+					}
+					dest[i] = refCursorID(id)
+				}
+				continue
+			}
 			if r.columns[i].Type == 160 {
 				if !r.binary {
 					return r.fail(fmt.Errorf("%w: complex rows require server prepared statements", ErrUnsupported), true)
@@ -508,6 +542,9 @@ func columnPrecisionScale(c wire.Column, mode Mode) (int64, int64, bool) {
 }
 func (r *textRows) ColumnTypeScanType(index int) reflect.Type {
 	c := r.columns[index]
+	if c.Type == 163 && r.conn.session.mode == ModeOracle {
+		return reflect.TypeFor[sql.Rows]()
+	}
 	if c.Type == 210 && r.conn.session.mode == ModeOracle {
 		return reflect.TypeFor[[]byte]()
 	}

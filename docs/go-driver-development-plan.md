@@ -461,14 +461,16 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 
 依赖：D14、D16、D19。对应：M08、M10；架构 §13.2。
 
-文件：修改 `call.go`、`execution.go`、`cursor.go`、`lob.go`；新增 `cursor_out_test.go`、`tests/integration/cursor_out_test.go`。
+文件：新增 `cursor_out.go`、`cursor_out_test.go`、`cursor_child_test.go`、`tests/integration/cursor_out_test.go`；修改输出最终化、Execution、游标协议、资源租约、二进制行解码及 CI。
 
 交付：CursorOut 与显式 Out 到 **Blob/**Clob；只有 Execute 接受连接句柄输出；普通 REF CURSOR 列继续使用标准子 driver.Rows 寿命。
 
-- [ ] 测试 `TestCursorOutPublish`、`TestOutputLease`：目的初始 nil、多个输出、提前 Close 成功发布、读取失败不发布；Execution.Close 后 Cursor 可用；最后句柄释放父 statement；后续 Fetch 不继承旧 context。
-- [ ] 执行 `go test . -run 'Test(CursorOut|OutputLease)' -count=1`，确认失败。
-- [ ] 复用 D11 最终化与 D15 租约；输出转换及最终响应成功后再原子发布内置句柄。
-- [ ] 同命令通过；`TestProcedureResources` 验证混合普通结果/计数/多个游标/LOB，关闭与失败不泄漏资源。
+- [x] 测试 `TestCursorOutPublish`、`TestOutputLease`：目的初始 nil、多个输出、提前 Close 成功发布、读取失败不发布；Execution.Close 后 Cursor 可用；最后句柄释放父 statement；后续 Fetch 不继承旧 context。
+- [x] 执行 `go test . -run 'Test(CursorOut|OutputLease)' -count=1`，确认失败。
+- [x] 复用 D11 最终化与 D15 租约；输出转换及最终响应成功后再原子发布内置句柄。
+- [x] 同命令通过；`TestProcedureResources` 验证混合普通结果/计数/多个游标/LOB，关闭与失败不泄漏资源。
+
+当前实现的模式、版本、子 Rows 缓冲/深度和发布边界见架构 §13.2；本地实现与协议测试完成，集成源码仅编译，真实环境验收不计通过。
 
 ### D21 长参数和分段上传
 

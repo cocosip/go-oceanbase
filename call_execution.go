@@ -14,6 +14,7 @@ import (
 )
 
 type outputState struct {
+	parent         *stmt
 	complexColumns []wire.Column
 	complexRows    [][]byte
 	complexBytes   int64
@@ -30,7 +31,7 @@ type outputState struct {
 func hasOutputArguments(args []driver.NamedValue) bool {
 	for _, arg := range args {
 		switch arg.Value.(type) {
-		case sql.Out, Out, *outBinding:
+		case sql.Out, Out, CursorOut, *outBinding:
 			return true
 		}
 	}
@@ -73,6 +74,14 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	outputs, err := c.outputBindings(plan, values)
 	if err != nil {
 		return nil, err
+	}
+	for _, b := range outputs.bindings {
+		if b.resource != 0 {
+			e, _ := ctx.Value(executionContextKey{}).(*Execution)
+			if e == nil || !validSession(e.session) {
+				return nil, ErrOut
+			}
+		}
 	}
 	if c.session.mode == ModeOracle {
 		payload, err := c.outputPrepareExecute(ctx, plan, values, prepared)

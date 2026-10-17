@@ -53,6 +53,7 @@ type ExecutionSnapshot struct {
 // Execution owns standard Rows and records command and row results as they are consumed.
 // Snapshot may be called concurrently; row iteration follows database/sql's contract.
 type Execution struct {
+	session  Session
 	mu       sync.RWMutex
 	rows     *sql.Rows
 	snapshot ExecutionSnapshot
@@ -80,7 +81,7 @@ func Execute(ctx context.Context, session Session, query string, args ...any) (*
 	if err != nil {
 		return nil, err
 	}
-	e := &Execution{}
+	e := &Execution{session: session}
 	rows, err := session.QueryContext(ctx, "", executionRequest{query: query, args: values, execution: e})
 	e.mu.Lock()
 	e.rows = rows

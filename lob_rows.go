@@ -80,7 +80,7 @@ func (r *textRows) bufferLOBResponse(ctx context.Context) error {
 	}
 	found := false
 	for _, column := range r.columns {
-		found = found || column.Type == 210 || column.Type == 211 || column.Type == 160
+		found = found || column.Type == 210 || column.Type == 211 || column.Type == 160 || column.Type == 163
 	}
 	if !found {
 		return nil
@@ -109,6 +109,13 @@ func (r *textRows) bufferLOBResponse(ctx context.Context) error {
 			}
 		}
 	}
+	if err == nil {
+		for i := range sets {
+			if err = r.conn.materializeRefCursorsLocked(ctx, r.iterationCtx, &sets[i], 0, &r.bufferBytes, make(map[refCursorID]bool)); err != nil {
+				break
+			}
+		}
+	}
 	r.holdRelease = false
 	if err != nil {
 		return r.fail(err, true)
@@ -132,10 +139,7 @@ func (r *textRows) collectLOBResponse(ctx context.Context) ([]lobRowset, error) 
 		if hasComplex && !r.binary {
 			return nil, fmt.Errorf("%w: complex rows require server prepared statements", ErrUnsupported)
 		}
-		r.bufferBytes += 32
-		for _, column := range r.columns {
-			r.bufferBytes += 128 + int64(len(column.Catalog)) + int64(len(column.Schema)) + int64(len(column.Table)) + int64(len(column.OriginalTable)) + int64(len(column.Name)) + int64(len(column.OriginalName))
-		}
+		r.bufferBytes += rowsetMetadataSize(r.columns)
 		if r.bufferBytes > r.conn.cfg.Limits.MaxMessageBytes {
 			return nil, wire.ErrMessageTooLarge
 		}
@@ -246,4 +250,12 @@ func (c *conn) materializeLOBLocked(ctx context.Context, lob *nativeLOBResource,
 	}
 	_, err := c.readLOBBytesLocked(ctx, lob, data, 0)
 	return data, err
+}
+
+func rowsetMetadataSize(columns []wire.Column) int64 {
+	n := int64(32)
+	for _, col := range columns {
+		n += 128 + int64(len(col.Catalog)+len(col.Schema)+len(col.Table)+len(col.OriginalTable)+len(col.Name)+len(col.OriginalName)+len(col.Extra)+len(col.ComplexSchema)+len(col.ComplexName)+len(col.ElementSchema)+len(col.ElementName))
+	}
+	return n
 }

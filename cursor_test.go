@@ -100,7 +100,7 @@ func TestCursorPreSendValidation(t *testing.T) {
 
 func TestCursorStatic(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	for _, limit := range []int64{0, 140} {
+	for _, limit := range []int64{0, 180} {
 		t.Run(map[bool]string{false: "scroll", true: "budget"}[limit != 0], func(t *testing.T) {
 			db := txDB(t, ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !servePrepare(ctx, t, p, query, 52, 0, nil) || !readCommand(ctx, t, p, cursorExecuteFixture(52)) ||

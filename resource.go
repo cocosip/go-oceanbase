@@ -136,6 +136,9 @@ func (c *conn) execResource(ctx context.Context, request resourceRequest) (drive
 func (c *conn) releaseResourceLocked(ctx context.Context, id *resourceEpoch, record *resourceRecord) error {
 	delete(c.resources.records, id)
 	var err error
+	if record.cursor != nil && record.cursor.refID != 0 {
+		err = (&stmt{conn: c, id: record.cursor.refID}).closeLocked(ctx)
+	}
 	if record.lob != nil {
 		err = c.freeLOBLocked(ctx, record.lob)
 	}
@@ -149,9 +152,19 @@ func (c *conn) releaseResourceLocked(ctx context.Context, id *resourceEpoch, rec
 }
 
 // Only complete response boundaries may release server resources.
-func (c *conn) cleanupResourcesLocked(ctx context.Context, all bool) error {
+func (c *conn) cleanupResourcesLocked(ctx context.Context, all bool, keep ...*resourceHandle) error {
 	var err error
 	for id, record := range c.resources.records {
+		retained := false
+		for _, h := range keep {
+			if h.id == id && record.key == c.resources.key {
+				retained = true
+				break
+			}
+		}
+		if retained && !all {
+			continue
+		}
 		if all || !record.published || record.key != c.resources.key {
 			err = errors.Join(err, c.releaseResourceLocked(ctx, id, record))
 		}

@@ -14,6 +14,7 @@ import (
 )
 
 type cursorResource struct {
+	refID      uint32
 	columns    []wire.Column
 	options    CursorOptions
 	position   int64
@@ -179,6 +180,9 @@ func (c *conn) queryCursorFetch(ctx context.Context, request cursorFetchRequest)
 	var rows [][]driver.Value
 	if cur.options.Mode == CursorStatic {
 		rows, err = staticCursorRows(cur, request.position, request.count)
+		if err == nil {
+			rows = cloneCursorSnapshot(ctx, rows)
+		}
 	} else if cur.options.Mode == CursorSensitive {
 		var start int64
 		start, err = cursorStart(cur.position, request.position)
@@ -221,7 +225,26 @@ func (c *conn) fetchNativeCursorLocked(ctx context.Context, handle *resourceHand
 	if err != nil {
 		return nil, err
 	}
-	payload := binary.LittleEndian.AppendUint32([]byte{28}, record.parent.id)
+	id := record.parent.id
+	if cur.refID != 0 {
+		id = cur.refID
+	}
+	rows, err := c.fetchCursorResponseLocked(ctx, id, cur, count, start)
+	if err != nil {
+		return nil, err
+	}
+	set := lobRowset{columns: cur.columns, rows: rows}
+	used := rowsetMetadataSize(cur.columns) + cursorSnapshotSize(rows)
+	if err = c.materializeRefCursorsLocked(ctx, ctx, &set, 0, &used, make(map[refCursorID]bool)); err != nil {
+		c.discard()
+		return nil, err
+	}
+	return set.rows, nil
+}
+
+func (c *conn) fetchCursorResponseLocked(ctx context.Context, id uint32, cur *cursorResource, count int, start int64) ([][]driver.Value, error) {
+	var err error
+	payload := binary.LittleEndian.AppendUint32([]byte{28}, id)
 	payload = binary.LittleEndian.AppendUint32(payload, uint32(count))
 	if cur.offset {
 		orientation, offset := uint16(2), uint32(0)
@@ -254,7 +277,7 @@ func (c *conn) fetchNativeCursorLocked(ctx context.Context, handle *resourceHand
 	if err != nil {
 		return nil, r.fail(err, true)
 	}
-	if len(sets) != 1 || len(sets[0].rows)+len(sets[0].rawRows) > count || len(sets[0].columns) != len(cur.columns) {
+	if len(sets) != 1 || len(sets[0].rows)+len(sets[0].rawRows) > count || cur.columns != nil && len(sets[0].columns) != len(cur.columns) {
 		return nil, r.fail(ErrCursor, true)
 	}
 	err = r.materializeCursorSetLocked(ctx, &sets[0])
@@ -286,9 +309,7 @@ func (c *conn) cacheCursorLocked(ctx context.Context, handle *resourceHandle, cu
 	if limit == 0 {
 		limit = c.cfg.Limits.MaxMessageBytes
 	}
-	for _, column := range cur.columns {
-		cur.cacheBytes += 128 + int64(len(column.Name)+len(column.OriginalName)+len(column.Schema)+len(column.Table)+len(column.OriginalTable))
-	}
+	cur.cacheBytes = rowsetMetadataSize(cur.columns)
 	if cur.cacheBytes > limit {
 		return wire.ErrMessageTooLarge
 	}
@@ -302,7 +323,7 @@ func (c *conn) cacheCursorLocked(ctx context.Context, handle *resourceHandle, cu
 			return err
 		}
 		for _, row := range rows {
-			cur.cacheBytes += 24 + int64(len(row))*16 + lobValuesSize(row)
+			cur.cacheBytes += cursorSnapshotSize([][]driver.Value{row})
 			if cur.cacheBytes > limit {
 				return wire.ErrMessageTooLarge
 			}

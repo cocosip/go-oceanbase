@@ -128,7 +128,7 @@ func DecodeBinaryRow(data []byte, columns []Column) ([][]byte, error) {
 			fields[i] = r.take(1)
 		case 2, 13:
 			fields[i] = r.take(2)
-		case 3, 4, 9:
+		case 3, 4, 9, 163:
 			fields[i] = r.take(4)
 		case 5, 8:
 			fields[i] = r.take(8)

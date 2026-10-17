@@ -124,3 +124,15 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 批次值与寿命 | 完整响应后原 gate 解码复杂值/物化 LOB；批次受 MaxMessageBytes/MaxLOBBytes，Close/事务/reset 释放父 statement 租约 | Oracle LOB fetch、EOF 两路径、旧版9字节及新版19字节、事务/reset 生命周期本地通过 |
 
 具体公开契约和限制见架构 §15。当前没有仅 ROWID 的可更新后端；完整 PK 不可靠时拒绝。Refresh 随 Updatable 开放，返回当前基表行，不重跑原过滤条件。修改 warning/未知结果由调用方回滚；缺行能安全关闭游标并保留事务。`TestCursorModes`、`TestCursorUpdates` 覆盖直连/代理两模式的源码已加入 CI 手动入口，本阶段仅编译，未连接数据库。
+
+
+## 11. REF CURSOR 与流式输出（D20）
+
+| 能力 | Go 当前行为 | 验证状态 |
+| --- | --- | --- |
+| 显式输出 | Execute + CursorOut / Out 到 **Blob/**Clob；Oracle 已知 >=2.2.76；初始 nil、非 INOUT | 正向、NULL、多个/混合资源及普通入口/旧版/模式拒绝本地通过；真实目标未验证 |
+| 协议及租约 | CURSOR163 固定 LE4 ID；独立九字节 FETCH/COM_STMT_CLOSE；多个资源共同保留父 statement | 对端逐命令核验；最后资源释放父 statement、Execution.Close 后读取/新 context、事务失效通过 |
+| 发布与失败 | 完整响应和所有内置/Scanner 转换成功后统一发布资源；发布前复核 context/代次；失败清理 | 尾错、损坏响应、Scanner 错误、转换中取消及无输出泄漏本地通过 |
+| 普通子 Rows | 二进制 REF CURSOR 列在完整父响应后按共享消息预算缓存；标准父子 Rows 寿命，16 层/循环门禁 | 原会话/事务、嵌套/取消/元数据总预算本地通过；static 子快照跨批计量和回看独立性通过 |
+
+源码依据为同一 Java 基线的 [类型编号](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java)、[REF CURSOR](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/RefCursor.java)、[二进制读取](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/rowprotocol/BinaryRowProtocol.java) 和 [释放命令](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java)。`TestProcedureResources` 与 CI 手动入口已加入，本阶段只编译、不连接数据库；实际过程语法、临时 LOB、版本/权限及 OBProxy 行为仍待验证。
