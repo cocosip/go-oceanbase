@@ -10,13 +10,16 @@ import (
 )
 
 type stmt struct {
-	conn           *conn
-	id             uint32
-	plan           bindPlan
-	closed         bool // guarded by the owning connection's gate
-	closeRequested bool
-	leases         int
-	parameters     []wire.Column
+	conn                    *conn
+	id                      uint32
+	plan                    bindPlan
+	closed                  bool // guarded by the owning connection's gate
+	closeRequested          bool
+	leases                  int
+	parameters              []wire.Column
+	automatic               bool
+	cacheNoBackslash        bool
+	lastTypes, pendingTypes []wire.Parameter
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
@@ -175,7 +178,7 @@ func (s *stmt) closeLocked(ctx context.Context) error {
 		return nil
 	}
 	s.closed = true
-	if s.conn.closed.Load() {
+	if s.conn.closed.Load() || s.id == 0 {
 		return nil
 	}
 	s.conn.session.packets.ResetSequence()
@@ -241,6 +244,19 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	if s.conn.closed.Load() {
 		return nil, driver.ErrBadConn
 	}
+	if !s.conn.cacheableSQL(s.plan.query) {
+		if err = s.conn.clearStatementsLocked(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if s.conn.usePrepareExecute() && !longValues(values) {
+		payload, encodeErr := s.conn.outputPrepareExecute(ctx, s.plan, values, s)
+		if encodeErr != nil {
+			return nil, encodeErr
+		}
+		gateOwned = false
+		return s.conn.queryPrepareExecuteLocked(ctx, payload, s.plan, nil, s)
+	}
 	params := make([]wire.Parameter, len(values))
 	budget := s.conn.cfg.Limits.MaxMessageBytes - 10
 	if len(values) > 0 {
@@ -264,7 +280,12 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 		}
 		budget -= (params[i].EncodedSize() + int64(len(params[i].TypeMetadata)))
 	}
-	payload, err := wire.EncodeStmtExecute(s.id, params, s.conn.cfg.Limits.MaxMessageBytes)
+	queryBytes, err := s.conn.encodeSQL(s.plan.sql)
+	if err != nil {
+		return nil, err
+	}
+	options := s.parameterOptions(queryBytes, params, false)
+	payload, err := wire.EncodeStmtExecuteOptions(s.id, params, s.conn.cfg.Limits.MaxMessageBytes, options)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +297,7 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	if auto {
 		owned = s
 	}
-	return s.conn.queryCommandLocked(ctx, payload, true, owned)
+	return s.conn.queryCommandStateLocked(ctx, payload, true, owned, false, nil, s)
 }
 
 var (

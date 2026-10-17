@@ -10,6 +10,9 @@ var ErrChecksum = errors.New("wire: frame checksum mismatch")
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
+// SQLChecksum is the raw CRC32C used by OceanBase's Oracle statement protocol.
+func SQLChecksum(query []byte) uint32 { return obCRC32(query) }
+
 func obCRC32(data []byte) uint32 {
 	var sum uint32
 	// OceanBase uses the uncomplemented CRC32C state with a zero initial value.

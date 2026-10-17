@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+const (
+	dsnTrue  = "true"
+	dsnFalse = "false"
+)
+
 // ParseDSN parses an oceanbase URL and applies the same defaults as NewConnector.
 func ParseDSN(dsn string) (Config, error) {
 	u, err := url.Parse(dsn)
@@ -37,6 +42,8 @@ func applyDSNOption(cfg *Config, name, value string) error {
 	switch name {
 	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum":
 		return cfg.Protocol.applyDSNOption(name, value)
+	case "prepareExecute", "statementCacheSize", "statementCacheSQLLimit", "reuseParameterTypes", "statementChecksum":
+		return cfg.Execution.applyDSNOption(name, value)
 	default:
 		return applyConnectionDSNOption(cfg, name, value)
 	}
@@ -76,9 +83,9 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 		cfg.Session.Location, err = time.LoadLocation(value)
 	case "parseTime":
 		switch value {
-		case "true":
+		case dsnTrue:
 			cfg.Session.ParseTime = true
-		case "false":
+		case dsnFalse:
 			cfg.Session.ParseTime = false
 		default:
 			err = &ConfigError{Field: "parseTime"}
@@ -112,9 +119,9 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 		}
 	case "allowMultiStatements":
 		switch value {
-		case "true":
+		case dsnTrue:
 			cfg.AllowMultiStatements = true
-		case "false":
+		case dsnFalse:
 			cfg.AllowMultiStatements = false
 		default:
 			err = &ConfigError{Field: "allowMultiStatements"}

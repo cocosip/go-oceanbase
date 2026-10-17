@@ -19,6 +19,7 @@ type conn struct {
 	responseActive  bool                              // guarded by mu; internal commands require a complete response boundary
 	descriptors     map[descriptorKey]*typeDescriptor // guarded by mu; one command lifetime
 	descriptorBytes int64
+	statements      statementCache
 }
 
 func (c *conn) Close() error {
@@ -34,6 +35,9 @@ func (c *conn) Close() error {
 	defer c.unlock()
 	if c.closed.Load() {
 		return nil
+	}
+	if err := c.clearStatementsLocked(ctx); err != nil {
+		return err
 	}
 	c.session.packets.ResetSequence()
 	err := c.session.packets.WriteMessage(ctx, []byte{1})

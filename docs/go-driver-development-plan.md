@@ -518,14 +518,18 @@ D23 已本地实现，验收未完成。独立五项配置及协议边界见架�
 
 依赖：D08、D11、D14、D21、D23。对应：M06、M07；架构 §3、§10。
 
-文件：扩展 D14 的 `prepare_execute.go`，修改 `stmt.go`、`execute.go`、`capabilities.go`；新增 `prepare_execute_test.go`、`stmt_cache_test.go`、相关 benchmark。
+文件：扩展 D14 的 `prepare_execute.go`，修改 `stmt.go`、`execute.go`、`rows.go` 和批量/游标调用点；新增 `execution_options.go`、`stmt_cache.go`、`stmt_types.go` 及测试、编码 benchmark。
 
 交付：复用 D14 的必要合并基础协议，扩展 Java 对应的通用 prepare/execute 策略、参数类型头复用、checksum/cache、按能力选择的优化路径；缓存按物理会话有界 LRU。OUT 回归以已完成的 D14 为显式前置。
 
-- [ ] 测试 `TestPrepareExecuteGate`、`TestStatementCache`：边界版本/未知版本保守选择、类型变化/缓存驱逐/Full reset、合并路径错误不双执行；结果与普通服务端执行等价。
-- [ ] 执行 `go test . -run 'Test(PrepareExecute|StatementCache)' -count=1`，确认失败。
-- [ ] 每项优化先在兼容矩阵登记条件，再接入已存在的执行计划；只在业务发送前降级。
-- [ ] 同命令通过；`TestExecuteStrategies` 验证真实返回值、OUT、错误及资源关闭；正确性相同后比较性能，不预设吞吐指标。
+- [x] 测试 `TestPrepareExecuteGate`、`TestStatementCache`：边界版本/未知版本保守选择、类型变化/缓存驱逐/Full reset、合并路径错误不双执行；结果与普通服务端执行等价。
+- [x] 执行 `go test . -run 'Test(PrepareExecute|StatementCache)' -count=1`，确认失败。
+- [x] 按固定源码在兼容矩阵登记各优化条件，接入既有执行计划；只在业务发送前降级。
+- [x] 本地命令及参数类型/SQL CRC 黄金包测试通过；完成编码 benchmark，不据此宣称服务端吞吐提升；四目标 `TestExecuteStrategies` 源码仅编译。
+
+- [ ] 固定两模式及代理实际版本后执行 `TestExecuteStrategies`，验证返回值、OUT、错误及资源关闭；当前按用户要求不联调。
+
+D24 已本地实现，真实验收未完成；配置、缓存及句柄边界见架构 §10.1.1，门禁见兼容矩阵 §15，执行证据见开发进度 §5.6 D24。
 
 ### D25 slog 诊断、profiling 与 Full Link Trace
 

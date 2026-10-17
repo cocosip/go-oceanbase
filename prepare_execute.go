@@ -70,23 +70,27 @@ func (c *conn) outputPrepareExecute(ctx context.Context, plan bindPlan, values [
 		budget -= (params[i].EncodedSize() + int64(len(params[i].TypeMetadata)))
 	}
 	var id uint32
+	options := c.executeOptions(query, true)
 	if prepared != nil {
 		id = prepared.id
+		options = prepared.parameterOptions(query, params, true)
 	}
-	return wire.EncodePrepareExecute(id, query, params, c.cfg.Limits.MaxMessageBytes)
+	return wire.EncodePrepareExecuteOptions(id, query, params, c.cfg.Limits.MaxMessageBytes, options)
 }
 
 func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, plan bindPlan, outputs *outputState, prepared *stmt) (*textRows, error) {
 	r := c.startRows(ctx, true, nil)
-	if outputs.temporary {
+	r.parameterStmt = prepared
+	if prepared != nil && prepared.automatic || outputs != nil && outputs.temporary {
 		r.autoStmt = prepared
 	}
 	r.outputs = outputs
-	if outputs.internal {
+	if outputs != nil && outputs.internal {
 		r.keepGate, r.captureLOB = true, true
 	} else {
 		r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
 	}
+	r.captureLOBOpen()
 	ctx = r.ctx
 	p := c.session.packets
 	p.ResetSequence()
@@ -109,24 +113,8 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 		}
 		return nil, r.fail(err, err == wire.ErrMalformed)
 	}
-	header, err := wire.DecodePrepareExecuteOK(data)
+	header, budget, err := r.prepareExecuteMetadata(ctx, data, plan, prepared)
 	if err != nil {
-		return nil, r.fail(err, true)
-	}
-	if prepared == nil {
-		r.autoStmt = &stmt{conn: c, id: header.ID}
-	} else if header.ID != prepared.id {
-		return nil, r.fail(wire.ErrMalformed, true)
-	}
-	outputs.parent = prepared
-	if outputs.parent == nil {
-		outputs.parent = r.autoStmt
-	}
-	if int(header.Parameters) != len(plan.slots) || header.Columns > maxTextColumns || header.Flags&^uint32(7) != 0 || header.Flags == 2 || header.Flags == 6 {
-		return nil, r.fail(wire.ErrMalformed, true)
-	}
-	budget := int64(len(data))
-	if _, err = c.prepareMetadata(ctx, int(header.Parameters), &budget); err != nil {
 		return nil, r.fail(err, true)
 	}
 	r.nativeTail = true
@@ -153,4 +141,36 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 		return nil, err
 	}
 	return r, r.err
+}
+
+func (r *textRows) prepareExecuteMetadata(ctx context.Context, data []byte, plan bindPlan, prepared *stmt) (wire.PrepareExecuteOK, int64, error) {
+	header, err := wire.DecodePrepareExecuteOK(data)
+	if err != nil {
+		return header, 0, err
+	}
+	if prepared == nil {
+		r.autoStmt = &stmt{conn: r.conn, id: header.ID}
+	} else if prepared.id == 0 {
+		prepared.id = header.ID
+	} else if header.ID != prepared.id {
+		return header, 0, wire.ErrMalformed
+	}
+	if r.outputs != nil {
+		r.outputs.parent = prepared
+		if r.outputs.parent == nil {
+			r.outputs.parent = r.autoStmt
+		}
+	}
+	if header.ID == 0 || int(header.Parameters) != len(plan.slots) || header.Columns > maxTextColumns || header.Flags&^uint32(7) != 0 || header.Flags == 2 || header.Flags == 6 || r.outputs == nil && header.Flags != 0 {
+		return header, 0, wire.ErrMalformed
+	}
+	budget := int64(len(data))
+	parameters, err := r.conn.prepareMetadata(ctx, int(header.Parameters), &budget)
+	if err != nil {
+		return header, 0, err
+	}
+	if prepared != nil {
+		prepared.parameters = parameters
+	}
+	return header, budget, nil
 }

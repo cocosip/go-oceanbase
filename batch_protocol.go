@@ -142,7 +142,11 @@ func (c *conn) encodeBatchItemLocked(ctx context.Context, prepared *stmt, args [
 	if err != nil {
 		return nil, err
 	}
-	return wire.EncodeStmtExecute(prepared.id, params, c.cfg.Limits.MaxMessageBytes)
+	query, err := c.encodeSQL(prepared.plan.sql)
+	if err != nil {
+		return nil, err
+	}
+	return wire.EncodeStmtExecuteOptions(prepared.id, params, c.cfg.Limits.MaxMessageBytes, c.executeOptions(query, false))
 }
 
 func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, payloads [][]byte, indices []int) bool {

@@ -62,6 +62,9 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	if prepared != nil && (prepared.closed || prepared.closeRequested) {
 		return nil, fmt.Errorf("oceanbase: statement closed")
 	}
+	if err := c.clearStatementsLocked(ctx); err != nil {
+		return nil, err
+	}
 	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return nil, wire.ErrMessageTooLarge
 	}
@@ -132,7 +135,7 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	if len(outputs.longArgs) > 0 {
 		return c.queryMySQLLongOutputsLocked(ctx, queryBytes, outputs)
 	}
-	return c.queryCommandStateLocked(ctx, append([]byte{3}, queryBytes...), false, nil, false, outputs)
+	return c.queryCommandStateLocked(ctx, append([]byte{3}, queryBytes...), false, nil, false, outputs, nil)
 }
 
 func (c *conn) outputBindings(plan bindPlan, values []boundValue) (*outputState, error) {

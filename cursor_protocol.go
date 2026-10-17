@@ -450,7 +450,11 @@ func (c *conn) executeCursorOpenLocked(ctx context.Context, prepared *stmt, requ
 	if err != nil {
 		return nil, false, err
 	}
-	payload, err := wire.EncodeStmtExecute(prepared.id, params, c.cfg.Limits.MaxMessageBytes)
+	query, err := c.encodeSQL(prepared.plan.sql)
+	if err != nil {
+		return nil, false, err
+	}
+	payload, err := wire.EncodeStmtExecuteOptions(prepared.id, params, c.cfg.Limits.MaxMessageBytes, c.executeOptions(query, false))
 	if err != nil {
 		return nil, false, err
 	}

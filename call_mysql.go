@@ -101,7 +101,7 @@ func (c *conn) queryMySQLLongOutputsLocked(ctx context.Context, query []byte, ou
 		return nil, err
 	}
 	owned = false
-	return c.queryCommandStateLocked(ctx, payload, true, prepared, false, outputs)
+	return c.queryCommandStateLocked(ctx, payload, true, prepared, false, outputs, nil)
 }
 
 func (s *outputState) clearSQL() string {

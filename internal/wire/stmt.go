@@ -49,8 +49,20 @@ func (p Parameter) EncodedSize() int64 {
 	}
 }
 
+// ExecuteOptions selects statement-local optimizations confirmed by the caller.
+type ExecuteOptions struct {
+	ReuseTypes  bool
+	UseChecksum bool
+	SQLChecksum uint32
+}
+
 // EncodeStmtExecute includes fresh type headers on every execution.
 func EncodeStmtExecute(id uint32, params []Parameter, limit int64) ([]byte, error) {
+	return EncodeStmtExecuteOptions(id, params, limit, ExecuteOptions{})
+}
+
+// EncodeStmtExecuteOptions omits type headers only when their preceding declaration is known.
+func EncodeStmtExecuteOptions(id uint32, params []Parameter, limit int64, options ExecuteOptions) ([]byte, error) {
 	if len(params) > 65535 {
 		return nil, ErrMalformed
 	}
@@ -59,10 +71,16 @@ func EncodeStmtExecute(id uint32, params []Parameter, limit int64) ([]byte, erro
 	}
 	n := int64(10)
 	if len(params) > 0 {
-		n += int64((len(params)+7)/8 + 1 + 2*len(params))
+		n += int64((len(params)+7)/8 + 1)
+		if !options.ReuseTypes {
+			n += int64(2 * len(params))
+		}
 	}
 	for _, p := range params {
-		size := p.EncodedSize() + int64(len(p.TypeMetadata))
+		size := p.EncodedSize()
+		if !options.ReuseTypes {
+			size += int64(len(p.TypeMetadata))
+		}
 		if size > limit-n {
 			return nil, ErrMessageTooLarge
 		}
@@ -75,18 +93,26 @@ func EncodeStmtExecute(id uint32, params []Parameter, limit int64) ([]byte, erro
 	b[0] = 23
 	binary.LittleEndian.PutUint32(b[1:], id)
 	b[6] = 1
+	if options.UseChecksum {
+		binary.LittleEndian.PutUint32(b[6:], options.SQLChecksum)
+	}
 	if len(params) == 0 {
 		return b, nil
 	}
 	bitmap := len(b)
 	b = append(b, make([]byte, (len(params)+7)/8)...)
 	b = append(b, 1)
+	if options.ReuseTypes {
+		b[len(b)-1] = 0
+	}
 	for i, p := range params {
 		if byte(p.Type) == 6 {
 			b[bitmap+i/8] |= 1 << uint(i%8)
 		}
-		b = binary.LittleEndian.AppendUint16(b, p.Type)
-		b = append(b, p.TypeMetadata...)
+		if !options.ReuseTypes {
+			b = binary.LittleEndian.AppendUint16(b, p.Type)
+			b = append(b, p.TypeMetadata...)
+		}
 	}
 	for _, p := range params {
 		if byte(p.Type) == 6 || p.LongData {

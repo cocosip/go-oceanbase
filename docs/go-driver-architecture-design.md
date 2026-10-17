@@ -295,6 +295,35 @@ Oracle RETURNING 所需的 COM_STMT_PREPARE_EXECUTE 基础编码、输出解码�
 
 多语句文本必须显式启用 `AllowMultiStatements`；过程调用或 Oracle 匿名块内部的分号不等于多个顶层语句。带参数的多语句若不能走服务端预处理，应在发送前报能力错误，或使用调用方已显式选择的客户端预处理；不能为支持多语句而偷偷打开文本插值。需要保留混合结果的完整顺序和逐项计数时使用 §11.4 的 Execute。
 
+### 10.1.1 已实现的可选执行策略（D24）
+
+通过 `Config.Execution ExecutionOptions` 显式启用；零值保留原有分开 prepare/execute、不缓存、每次发送类型头、不发送 SQL checksum。普通业务仍使用 `database/sql`，没有第二套连接池或 Statement API。
+
+```go
+cfg.Execution = oceanbase.ExecutionOptions{
+    PrepareExecute:         true,
+    StatementCacheSize:     64,
+    StatementCacheSQLLimit: 1024,
+    ReuseParameterTypes:    true,
+    StatementChecksum:      true,
+}
+```
+
+五项 DSN 为 `prepareExecute`、`statementCacheSize`、`statementCacheSQLLimit`、`reuseParameterTypes`、`statementChecksum`；布尔只接受 `true|false`，负缓存限制在拨号前拒绝。缓存容量 0 关闭；SQL 长度上限 0 归一为 1024，按原 Go SQL 字符串的 UTF-8 字节数计算。
+
+| 策略 | 已实现选择与边界 |
+| --- | --- |
+| 通用 PrepareExecute | Oracle 兼容模式、显式启用且实际 ob_version >= 2.2.76；普通带参数调用直接用 ID 0 合并，后续复用取得的 ID；显式 sql.Stmt 保留标准 Prepare 与 Close 所有权 |
+| 能力缺失 | MySQL、未知或旧实际版本在发送前保留标准 prepare/execute；不把 greeting 版本当作实际 OceanBase 版本。显式客户端预处理保持客户端路径 |
+| OUT 与长参数 | D14 必需 OUT 合并协议不受通用优化开关影响；长参数先取得 ID 再上传，普通执行保留标准 execute；原生 OUT/游标使用其必需扩展命令。没有上传后的重新选择或业务重放 |
+| SQL checksum | 原始零初始、无取反 CRC32C，输入为实际发送字符集编码后的重写 SQL；标准 execute 仅 Oracle 且实际版本 >= 4.1.2，占原 iteration 字段；合并命令放尾部专用字段，iteration 仍为 1。与 OB20/代理 checksum 独立，批量和游标的标准 execute 应用同一门禁 |
+| 类型头复用 | 同一 statement、完整响应成功后才保存类型向量；类型含 unsigned 位及复杂描述字节，任何变化或执行失败后重发。只保留类型/描述，不保留上次参数数据；NULL bitmap 和值仍逐次编码 |
+| 自动 statement 缓存 | 每物理会话各有有界 LRU；仅完整成功且无资源租约的自动 SELECT/INSERT/UPDATE/DELETE/REPLACE 回收。SQL 文本为键，借出的 handle 不在空闲缓存内；失败、超长、驱逐及连接关闭释放服务端 ID |
+| 会话变化 | 普通文本及 OUT 路径开始前清空空闲缓存；非缓存类 prepared SQL 同样清空，NO_BACKSLASH_ESCAPES 变化拒绝复用。Full reset 淘汰物理会话，旧缓存和 ID 不迁移到新连接 |
+| 过程及连接资源 | CALL/匿名块不进入透明 LRU，避免过程会话副作用使旧缓存失效；重复调用使用显式 sql.Stmt，由标准库和调用方管理寿命。OpenBlob/OpenClob、普通复杂结果、REF CURSOR 和 Execution 摘要沿用完整响应及同会话资源边界 |
+
+不另建 Java 式 callable facade、全局 SQL 字符串缓存或共享服务端 ID。发送后失败直接报告，SQL 错误不回退另一种策略；响应损坏、取消及传输失同步淘汰连接。本地字节协议测试与编码 benchmark 不证明真实数据库性能或版本兼容；四目标 `TestExecuteStrategies` 源码及 CI 入口已提供，当前只编译。
+
 ### 10.2 占位符与名称绑定
 
 | 模式 | 支持规则 |

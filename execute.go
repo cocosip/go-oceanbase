@@ -112,11 +112,13 @@ func (c *conn) prepareArguments(ctx context.Context, query string, args []driver
 	if err := c.validatePrepareArguments(query, args); err != nil {
 		return nil, err
 	}
-	prepared, err := c.PrepareContext(ctx, query)
-	if err != nil {
-		return nil, err
+	combined := c.usePrepareExecute()
+	for _, arg := range args {
+		if _, ok := arg.Value.(*LongData); ok {
+			combined = false
+		}
 	}
-	return prepared.(*stmt), nil
+	return c.prepareAutomatic(ctx, query, combined)
 }
 
 func (c *conn) validatePrepareArguments(query string, args []driver.NamedValue) error {
@@ -168,6 +170,10 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 		c.unlock()
 		return nil, driver.ErrBadConn
 	}
+	if err := c.clearStatementsLocked(ctx); err != nil {
+		c.unlock()
+		return nil, err
+	}
 	return c.queryCommandLocked(ctx, append([]byte{3}, encoded...), false, nil)
 }
 
@@ -218,21 +224,17 @@ func (c *conn) queryCommandLocked(ctx context.Context, payload []byte, binary bo
 
 // keepGate lets an internal query finish without releasing its caller's operation gate.
 func (c *conn) queryCommandOwnedLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool) (*textRows, error) {
-	return c.queryCommandStateLocked(ctx, payload, binary, auto, keepGate, nil)
+	return c.queryCommandStateLocked(ctx, payload, binary, auto, keepGate, nil, nil)
 }
 
-func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool, outputs *outputState) (*textRows, error) {
+func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, binary bool, auto *stmt, keepGate bool, outputs *outputState, parameterStmt *stmt) (*textRows, error) {
 	if !keepGate {
 		c.clearDescriptors()
 	}
 	r := c.startRows(ctx, binary, auto)
+	r.parameterStmt = parameterStmt
 	r.keepGate = keepGate
-	if state, _ := ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil {
-		r.captureLOB = true
-		if !keepGate {
-			state.gate, r.keepGate = true, true
-		}
-	}
+	r.captureLOBOpen()
 	r.outputs = outputs
 	ctx = r.ctx
 	if !keepGate {
@@ -258,6 +260,15 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 		return nil, err
 	}
 	return r, nil
+}
+
+func (r *textRows) captureLOBOpen() {
+	if state, _ := r.ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil {
+		r.captureLOB = true
+		if !r.keepGate {
+			state.gate, r.keepGate = true, true
+		}
+	}
 }
 
 func errorsPreSend(err error) bool {

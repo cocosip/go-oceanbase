@@ -25,7 +25,7 @@ D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化�
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |
 | --- | --- | --- |
 | INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
-| PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 通用策略未实现；真实版本待联调 |
+| PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 已实现显式可选通用策略，见 §15；真实版本待联调 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19 已实现 Oracle 已知 >=2.2.5 的 offset/尾 OK；旧/未知版本向前 fetch，真实版本待联调 |
 | LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后声明 locator-v2 掩码 1；D23 新元数据掩码 2 另行协商；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset、原生 array binding 未实现；D23 OB20 已本地实现，见 §14；D22 当前按 §13 回退逐项 |
 
@@ -174,3 +174,15 @@ D13 已补齐标准 RowsColumnType 的长度/精度接口及统一 Metadata 查�
 | 批量与错误 | framed multi-send 发送前回退逐项；不因协议错误重试业务，错误保留实际网络字节数 | 两模式/两类 framing 批量预处理及清理、取消与损坏测试通过 |
 
 完整策略/位号/源码见架构 §9.1。`TestPacketModes` 四目标集成源码及 CI 已加入，仅完成编译；标准/auto/压缩登记为四目标正向，OB20/OB20 CRC/代理 checksum 登记为两代理目标正向，新元数据登记 Oracle 两目标正向；其他目标允许明确能力拒绝并记录。执行前必须固定支持这些条件的服务端与代理版本，不能以全为拒绝宣告兼容。当前所有真实目标均未验证，FLT 业务字段归 D25。
+
+## 15. D24 执行策略条件与验证边界
+
+| 能力 | 发送前条件 | 当前证据 |
+| --- | --- | --- |
+| 通用 PrepareExecute | Oracle + Execution.PrepareExecute + 实际 ob_version >= 2.2.76；未知/旧版走标准路径 | 合并查询、显式 statement DML、重复 ID/类型、错误不重放及 Blob/Clob 捕获本地通过；真实服务端待联调 |
+| 标准 SQL checksum | Oracle + Execution.StatementChecksum + 实际 ob_version >= 4.1.2 | 边界门禁、独立 CRC 向量及标准包字段本地通过；批量/游标共享门禁 |
+| 合并 SQL checksum | 已选择的 Oracle 合并路径 + Execution.StatementChecksum | 尾部字段本地验证；不改 iteration，不等于 OB20 CRC |
+| 类型头复用 | Execution.ReuseParameterTypes + 同 statement 上次完整成功 + 类型及描述相同 | NULL、unsigned、复杂描述变化及 SQL 失败后重发本地验证；只保留类型元数据 |
+| 有界缓存 | StatementCacheSize > 0、SQL UTF-8 字节数 <= StatementCacheSQLLimit、可缓存普通 SQL | 两模式 LRU、错误驱逐、SQL 长度、会话 SQL 失效和 Full reset 物理淘汰本地通过；显式 statement/过程/连接资源按架构 §10.1.1 管理 |
+
+`TestExecuteStrategies` 对 mysql/oracle/proxy-mysql/proxy-oracle 各定义普通及优化配置，对照返回值、NULL/类型变化、OUT、重复键错误、计数与资源关闭。Oracle 优化目标需固定 >= 4.1.2 的实际服务端以覆盖两项门禁；MySQL 保持标准命令并覆盖缓存及类型头复用。当前仅编译集成源码，没有运行数据库联调，也没有服务端吞吐结论。

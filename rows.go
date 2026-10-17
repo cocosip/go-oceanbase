@@ -32,6 +32,7 @@ type textRows struct {
 	stopTx               func()
 	binary               bool
 	autoStmt             *stmt
+	parameterStmt        *stmt
 	execution            *Execution
 	keepGate             bool
 	outputs              *outputState
@@ -74,12 +75,11 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 			<-r.cancelDone
 		}
 
-		if r.autoStmt != nil && !r.outputs.hasResources() {
+		if r.autoStmt != nil && r.outputs != nil && !r.outputs.hasResources() {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
 			r.err = errors.Join(r.err, r.autoStmt.closeLocked(ctx))
 			cancel()
 		}
-
 		r.finalizeOutputsLocked(opCtx)
 		if r.autoStmt != nil && r.outputs.hasResources() {
 			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
@@ -110,7 +110,19 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 		if r.stopTx != nil {
 			r.stopTx()
 		}
+		if r.autoStmt != nil && r.outputs == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), r.conn.cfg.Limits.CleanupTimeout)
+			r.err = errors.Join(r.err, r.conn.recycleStatementLocked(ctx, r.autoStmt, r.err == nil))
+			cancel()
+		}
 		r.execution.finish(r.err)
+		if s := r.parameterStmt; s != nil {
+			s.lastTypes = nil
+			if r.err == nil {
+				s.lastTypes = s.pendingTypes
+			}
+			s.pendingTypes = nil
+		}
 		if !r.keepGate {
 			r.conn.unlock()
 		}

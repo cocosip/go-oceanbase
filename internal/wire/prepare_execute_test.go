@@ -51,5 +51,15 @@ func FuzzPrepareExecute(f *testing.F) {
 		if _, err = EncodePrepareExecute(9, query, []Parameter{{Type: 253, Data: value, LengthEncoded: true}}, int64(len(payload)-1)); !errors.Is(err, ErrMessageTooLarge) {
 			t.Fatal("limit ignored", err)
 		}
+		for _, reuse := range []bool{false, true} {
+			options := ExecuteOptions{ReuseTypes: reuse, UseChecksum: true, SQLChecksum: SQLChecksum(query)}
+			encoded, e := EncodePrepareExecuteOptions(9, query, []Parameter{{Type: 253, Data: value, LengthEncoded: true}}, 8192, options)
+			if e != nil || len(encoded) > 8192 || binary.LittleEndian.Uint32(encoded[6:]) != 1 || binary.LittleEndian.Uint32(encoded[len(encoded)-8:]) != options.SQLChecksum {
+				t.Fatal("optimized layout", e)
+			}
+			if _, e = EncodePrepareExecuteOptions(9, query, []Parameter{{Type: 253, Data: value, LengthEncoded: true}}, int64(len(encoded)-1), options); !errors.Is(e, ErrMessageTooLarge) {
+				t.Fatal("optimized limit ignored", e)
+			}
+		}
 	})
 }
