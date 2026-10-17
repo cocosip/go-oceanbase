@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cocosip/go-oceanbase/internal/auth"
 	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/routing"
 )
@@ -191,6 +192,9 @@ func (cfg *Config) validateDriverOptions() error {
 }
 
 func cloneAuthOptions(options AuthOptions) (AuthOptions, error) {
+	if options.ServicePrincipalName != "" && !auth.ValidGSSPrincipal(options.ServicePrincipalName) {
+		return AuthOptions{}, &ConfigError{Field: "Auth.ServicePrincipalName"}
+	}
 	if options.PasswordCharset == "" {
 		options.PasswordCharset = "utf8mb4"
 	}

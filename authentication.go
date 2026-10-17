@@ -34,6 +34,7 @@ const (
 	authOld         = "mysql_old_password"
 	authEd25519     = "client_ed25519"
 	authPAM         = "dialog"
+	authGSSAPI      = "auth_gssapi_client"
 )
 
 // Credentials are obtained for each new authentication, never during a transaction.
@@ -63,6 +64,16 @@ type AuthPlugin interface {
 	Respond(context.Context, Credentials, AuthChallenge) ([]byte, error)
 }
 
+// AuthConversation optionally exchanges raw tokens until Complete reports true.
+// The driver preserves complete server packets, including their first byte,
+// and still applies Security before every Respond. A nil continuation response
+// sends no packet; a non-nil empty response sends an empty packet. Completion
+// still requires a final server OK. Each use must have independent state.
+type AuthConversation interface {
+	AuthPlugin
+	Complete() bool
+}
+
 // AuthFactory creates independent mutable state for one authentication plugin use.
 type AuthFactory func() AuthPlugin
 
@@ -81,6 +92,9 @@ type AuthOptions struct {
 	// PasswordCharset encodes built-in password and PAM answers; default utf8mb4.
 	// Custom plugins receive the original Go string and own their encoding.
 	PasswordCharset string
+	// ServicePrincipalName overrides the GSSAPI server SPN. Native providers use
+	// the process identity or credential cache; Credentials.Password is not used.
+	ServicePrincipalName string
 }
 
 type handshakeSession struct {
@@ -289,6 +303,8 @@ func (c *connector) newAuthPlugin(name string) (AuthPlugin, error) {
 		return plugin, nil
 	}
 	switch name {
+	case authGSSAPI:
+		return &gssAuth{principal: c.cfg.Auth.ServicePrincipalName}, nil
 	case authPAM:
 		return &pamAuth{respond: c.cfg.Auth.PAM, charset: c.cfg.Auth.PasswordCharset}, nil
 	case authNative, authCachingSHA2, authSHA256, authClear, authOld, authEd25519:
@@ -358,6 +374,23 @@ func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSessio
 		if len(data) == 0 {
 			return wire.ErrMalformed
 		}
+		if conversation, ok := use.plugin.(AuthConversation); ok {
+			if conversation.Complete() {
+				expectOK = true
+			} else {
+				challenge.More, challenge.Data = true, data
+				response, e := authResponse(ctx, use.plugin, name, credentials, challenge)
+				if e != nil {
+					return e
+				}
+				if response != nil {
+					if e = s.packets.WriteMessage(ctx, response); e != nil {
+						return e
+					}
+				}
+				continue
+			}
+		}
 		if expectOK && data[0] != 0 && data[0] != 0xff {
 			return wire.ErrMalformed
 		}
@@ -419,16 +452,6 @@ func (c *connector) switchAuthentication(s *handshakeSession, use *authPluginUse
 			return "", AuthChallenge{}, wire.ErrMalformed
 		}
 		name, nonce = string(data[1:1+end]), data[2+end:]
-		length := 0
-		switch name {
-		case authEd25519:
-			length = 32
-		case authNative, authCachingSHA2, authSHA256:
-			length = 20
-		}
-		if name != authPAM && (length == 0 || len(nonce) == length+1) {
-			nonce = bytes.TrimSuffix(nonce, []byte{0})
-		}
 	}
 	if err := use.close(); err != nil {
 		return "", AuthChallenge{}, err
@@ -438,6 +461,17 @@ func (c *connector) switchAuthentication(s *handshakeSession, use *authPluginUse
 		return "", AuthChallenge{}, err
 	}
 	use.plugin = plugin
+	length := 0
+	switch name {
+	case authEd25519:
+		length = 32
+	case authNative, authCachingSHA2, authSHA256:
+		length = 20
+	}
+	_, conversation := plugin.(AuthConversation)
+	if len(data) > 1 && name != authPAM && !conversation && (length == 0 || len(nonce) == length+1) {
+		nonce = bytes.TrimSuffix(nonce, []byte{0})
+	}
 	return name, AuthChallenge{Nonce: nonce, TLSVerified: s.tlsVerified}, nil
 }
 

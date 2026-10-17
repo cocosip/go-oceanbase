@@ -60,6 +60,7 @@ func TestAuthPluginPAMPrompt(t *testing.T) {
 func FuzzAuthPlugins(f *testing.F) {
 	f.Add("foobar", []byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
 	f.Add("", []byte{4, 'x', 0})
+	f.Add("pinned/service", []byte("service/db.example\x00Negotiate\x00"))
 	f.Fuzz(func(t *testing.T, password string, challenge []byte) {
 		if len(password) > 4096 || len(challenge) > 4096 {
 			t.Skip()
@@ -71,5 +72,16 @@ func FuzzAuthPlugins(f *testing.F) {
 			}
 		}
 		_, _, _, _ = PAMPrompt(challenge)
+		spn, mechanism, err := GSSAPISeed(challenge, password)
+		if err == nil {
+			if !ValidGSSPrincipal(spn) || (password != "" && spn != password) {
+				t.Fatal("invalid GSS principal or override")
+			}
+			canonical := []byte(spn + "\x00" + mechanism + "\x00")
+			again, selected, e := GSSAPISeed(canonical, "")
+			if e != nil || again != spn || selected != mechanism {
+				t.Fatal("GSS seed did not round trip")
+			}
+		}
 	})
 }

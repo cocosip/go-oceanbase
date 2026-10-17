@@ -1122,9 +1122,17 @@ Java replication 的主/从地址映射为显式角色快照及两个标准 sql.
 
 PAM `dialog` 的工厂每次创建独立轮次状态。`AuthOptions.PAM func(context.Context, PAMChallenge) (string, error)` 得到从 1 开始的 Round、UTF-8 Prompt、Echo 和 Last；2/3 表示回显，4/5 表示隐藏，低位为最后问题提示。空初始插件数据按 Java 的首密码流程处理，Prompt 为空；非空提示必须有合法问题类型，提示终止符只剥离一次。原始对话包与普通 auth-more-data 区分，所有回答统一先验证 TLS；回调错误、取消、畸形提示或 NUL 回答均不发送回答。nil 回调只使用一次 Credentials.Password，后续提示明确拒绝，不能把同一个密码自动复用为 OTP。Last 不能代替最终 OK。回调须响应 context，并支持多连接并发；驱动不启动脱离调用的认证回调 goroutine。
 
+`auth_gssapi_client` 在 Windows 使用原生 SSPI 的当前 Windows 身份，不使用数据库密码。`AuthOptions.ServicePrincipalName`（DSN `servicePrincipalName`）可固定目标 SPN，覆盖服务器提供的 SPN；两者均按有界 UTF-8 校验，平台调用转换为 UTF-16。服务端数据为 NUL 结尾的 SPN、机制名称，另允许一个协议终止符；空机制默认为 Kerberos。只接受 Kerberos、Negotiate、NTLM，不把任意名称交给 Windows 选择其他安全包。
+
+Kerberos 请求双向认证，并检查 SSPI 最终实际返回的 mutual 标志；未建立双向身份则失败。NTLM 和可能回退 NTLM 的 Negotiate 在每轮 token 生成前要求驱动验证的 TLS，不能把挑战应答等同于服务端身份已验证。凭据、上下文按每次插件使用独立创建并释放；只导入 `github.com/alexbrainman/sspi` 基础包，避免高级 Kerberos 包在全局初始化时查询平台并 panic。Windows 适配留在 internal/auth 的平台文件，不反向依赖根包或 wire。
+
+多轮原始 token 插件可选择实现 `AuthConversation`（AuthPlugin 加 Complete() bool）。在 Complete 为 false 时，完整服务器包（包括 0/1/fe/ff 首字节）交给 Respond；仍逐轮执行 Security 门禁，最多32轮，不把 token 误作 OK、auth-more、切换或 ERR。Complete 为 true 后仅接受最终 OK/ERR；nil 续轮输出不发包，非 nil 空切片显式发空包。初始握手响应仍按协议包含认证字段。自定义工厂的认证策略、复制挑战与 io.Closer 契约继续适用。
+
+本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取正向证据。真实域 Kerberos、Negotiate/服务端组合仍待验证；Unix 原生 GSSAPI/凭据缓存适配继续开发，目前内置提供方明确返回 ErrUnsupported，不以可注册自定义工厂替代其完成状态。SSPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。
+
 实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。共享门禁和实例持有机制供后续 D30 ChangeUser 复用；公开切用户能力尚未实现。
 
-当前 D28 已落地上述认证子项及 §9.0.1 的 Unix/Named Pipe；GSSAPI/SSPI、Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+当前 D28 已落地上述认证子项、Windows SSPI 及 §9.0.1 的 Unix/Named Pipe；Unix GSSAPI、Shared Memory/OBProxy VC 的实现及各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
 
 ### 17.3 LOCAL INFILE
 

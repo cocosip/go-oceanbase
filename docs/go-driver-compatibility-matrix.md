@@ -231,7 +231,8 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | Ed25519 | Go 可运行平台；client_ed25519 严格32字节挑战、64字节签名；纯 Go edwards25519 依赖 | 互操作向量、初始/切换/尾零本地测试；真实插件目标待验证 |
 | PAM dialog | 支持该插件的目标服务；所有回答仅驱动验证 TLS 后发送；回调按轮次独立，可并发且响应取消 | 本地真实 TLS、两轮对话、默认单密码和错误/取消门禁；PAM 服务/平台待验证 |
 | 插件生命周期/编码 | AuthFactory 每使用独立实例，可选 io.Closer；内置密码严格 PasswordCharset，默认 UTF-8 | 成功/拒绝/切换/错误清理和字符集本地测试；ChangeUser 公开链路归 D30 |
-| GSSAPI/SSPI | 平台身份、凭据/票据及实际多轮上下文 | 待开发，保留 Windows 和 Unix 正向目标 |
+| Windows GSSAPI/SSPI | 当前 Windows 身份；Kerberos 双向认证，NTLM/Negotiate 强制 verified TLS；SPN 可固定，原生上下文按次关闭 | 本机原生 NTLM 初始与完整 TLS 对端已测；域 Kerberos、Negotiate 和真实服务组合待验证；系统票据查询无法由 context 强制中断 |
+| Unix GSSAPI | 凭据缓存/票据及实际多轮上下文；原始 token 状态机已有实现 | 原生提供方待开发，当前内置明确不支持；保留 Unix 正向目标，不以外部回调代替完成 |
 | TCP | 标准 net.Dialer、多地址/发现和既有 TLS/模式/命令流程 | Windows 本地测试；真实两模式/代理和 Linux 待验证 |
 | Unix socket | Config.Network=unix，Go/OS 提供 AF_UNIX；固定 Addr，TLS 时显式 ServerName | 本机 Windows socket 协议收发/关闭、超时和门禁已测；Linux/真实服务 socket 待验证 |
 | Named Pipe | Config.Network=pipe；Windows go-winio overlapped I/O；暂时不存在按配置重试，权限错误不重试；非 Windows 内置拨号明确不支持 | 本机 Windows 管道协议收发/关闭、重试和门禁；远端同步 CreateFile 无严格 context 中断保证，见架构 §9.0.1；远程权限及真实服务待验证 |
