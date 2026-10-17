@@ -738,6 +738,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestLongDataNilReaderSession 使用实际 database/sql 与本地协议对端，覆盖两模式 × 标准/压缩/OB20：非法输入在 prepare/upload 前返回 ErrLongData，输入未消费，修正同一对象后成功执行；非 nil 的函数/map/slice/channel 空 Reader 正常上传，最终关闭 statement 并 Ping/QUIT 复用会话。LOCAL INFILE 的借用/持有及 nil 返回规则保持。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过，两版本普通及 integration 标签 golangci-lint 均0 issues；Go1.25 实际 Windows/386 的 LongData/LocalInfile 目标通过。独立只读复核无确认问题，文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过，不另存报告；本轮未连接数据库，D28/D30/D31/D32 和28/32实现、0/32验收保持。
 
+#### D04/D26 自定义拨号 typed-nil 连接校验
+
+- 自定义 DialContext 返回 typed-nil 连接时，原普通 nil 判断会把它送入读取或错误分支的 Close，触发 nil 指针 panic。TestDialContextNilConnection 经标准 database/sql 在两模式分别复现无错误/普通错误/可重试网络错误三种返回，共6个失败组合；普通 nil 对照及有效连接错误清理通过。
+- dialCandidate 两处分支复用 nilReader 判断，不调用 typed-nil 方法；nil 且无错误返回既有拨号结果错误，带错误则保留错误链和候选重试分类，有效连接与错误同时返回仍恰好关闭一次。普通拨号及 CancelQuery 辅助拨号共用此边界，不新增公开 API、配置、包或依赖。
+- 新目标共12个 nil 组合，检查拨号次数、无凭据请求及无入池；TestDialContextErrorClosesConnection 用关闭计数与对端 EOF 检查所有权和无网络写。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过；Go1.25 实际 Windows/386 新目标通过。初次 lint 的重复测试名称已更名，最终两版本普通及 integration 标签 golangci-lint 均0 issues；独立只读复核无确认问题，文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过，不另存报告。未连接数据库，四项未收口任务及28/32实现、0/32验收保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

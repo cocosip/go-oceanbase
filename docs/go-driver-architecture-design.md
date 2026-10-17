@@ -351,6 +351,8 @@ Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也�
 
 TCP 的七个 Java 配置项通过现有 `Config.DialContext` 与 Go 标准库完成适配，不增加 TCPOptions、第二套拨号器接口或全局工厂。回调收到当前候选入口的 network/address 和剩余建连 context，返回原始 net.Conn；驱动随后执行相同 TLS、模式协商和初始化，回调不能通过包装连接取得明文认证豁免。回调及其捕获的 Dialer/地址由调用方管理，Connector 不复制函数内部对象，应在使用期间保持配置不可变、允许并发拨号。
 
+返回 nil 或 typed-nil 连接且无错误时，驱动在 TLS/读取/请求凭据前直接拒绝，不切换候选。返回错误时保留原错误及既有候选重试规则，只关闭实际非 nil 的连接，typed-nil 不调用其方法；此规则同样用于显式取消的辅助拨号。TestDialContextNilConnection 与 TestDialContextErrorClosesConnection 覆盖两模式、两种 nil、错误传播/重试和错误返回连接恰好关闭一次。
+
 | Java option | Go 承载和默认差异 |
 | --- | --- |
 | tcpNoDelay | `(*net.TCPConn).SetNoDelay(bool)`；Go 1.25/1.26 的内置 TCP 连接默认 true，与 Java 相同 |

@@ -64,12 +64,12 @@ func (c *connector) dialCandidate(ctx context.Context, addr string) (*conn, bool
 	}
 	raw, err := dial(ctx, c.cfg.Network, addr)
 	if err != nil {
-		if raw != nil {
+		if !nilReader(raw) {
 			_ = raw.Close()
 		}
 		return nil, retryDialError(err), err
 	}
-	if raw == nil {
+	if nilReader(raw) {
 		return nil, false, fmt.Errorf("oceanbase: dialer returned a nil connection")
 	}
 	if err = ctx.Err(); err != nil {
