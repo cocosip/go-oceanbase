@@ -12,7 +12,7 @@
 
 ## 1. 使用方式与当前基线
 
-计划制定时仓库只有设计文档、忽略配置和 lint 配置，尚无 `go.mod`、Go 源码和测试。下列任务是实施约定；当前实际代码与执行结果以进度表为准。用户要求本阶段暂不进行数据库联调，相关验收条目保持未验证，先实现并运行本地/协议测试。
+计划制定时仓库只有设计文档、忽略配置和 lint 配置，尚无 `go.mod`、Go 源码和测试。下列任务是实施约定；当前实际代码与执行结果以进度表为准。勾选只表示该步骤的证据齐备，不代表所属任务或功能已经验收；本地测试、平台运行和真实服务端验证分别记录。历史 RED→GREEN 依据进度中的当时记录，不以当前成功重跑补造失败证据。用户要求本阶段暂不进行数据库联调，相关验收条目保持未验证，先实现并运行本地/协议测试。
 
 本计划采用已配置仓库对应的模块路径 `github.com/cocosip/go-oceanbase`，公共包名 `oceanbase`。若仓库归属以后改变，应在首个代码任务统一调整模块与示例导入。
 
@@ -203,7 +203,7 @@ go test -tags=integration ./tests/integration -count=1
 - [x] 测试 `TestPacketRoundTrip`、`TestPacketLimit`、`TestPacketShortIO`：空消息、恰好分包边界及终止包、序号回绕、错误序号、超长/截断在分配前拒绝；短写不丢数据。
 - [x] 执行 `go test ./internal/wire ./internal/testutil -count=1`，确认相关断言失败。
 - [x] 实现包流和故障注入；字节夹具标明来源和协议版本，不保存认证秘密。实现 §3.1 的包依赖守卫，用一条反向导入夹具证明守卫拒绝，并接入已有 CI。
-- [ ] 同命令通过；执行 `go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s`，无 panic/失控分配；执行 386 边界用例。
+- [x] 同命令通过；执行 `go test ./internal/wire -run '^$' -fuzz FuzzPacket -fuzztime 30s`，无 panic/失控分配；执行 386 边界用例。
 
 ### D03 握手、基础认证、TLS 与模式识别
 
@@ -240,9 +240,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：ExecerContext/QueryerContext、driver.Rows/RowsNextResultSet、基础列信息、EOF/OK/ERR/session tracking；标准结果计数溢出检查，服务端错误可 errors.As；首次行读取后仍正确处理后续响应。
 
-- [ ] 测试 `TestTextRows`、`TestResultCounts`、`TestRowsDrain`：NULL/空值不同、[]byte 所有权、EOF/OK 终止、多结果切换、计数为 0/溢出、错误 SQLState、提前 Close 后连接同步。
-- [ ] 执行 `go test . -run 'Test(TextRows|ResultCounts|RowsDrain)' -count=1`，确认失败。
-- [ ] 实现两模式标准文本查询与完整响应边界；未知类型明确失败，不能一律当 BLOB。
+- [x] 测试 `TestTextRows`、`TestResultCounts`、`TestRowsDrain`：NULL/空值不同、[]byte 所有权、EOF/OK 终止、多结果切换、计数为 0/溢出、错误 SQLState、提前 Close 后连接同步。
+- [x] 执行 `go test . -run 'Test(TextRows|ResultCounts|RowsDrain)' -count=1`，确认失败。
+- [x] 实现两模式标准文本查询与完整响应边界；未知类型明确失败，不能一律当 BLOB。
 - [ ] 同命令通过；两模式执行 `TestQueryCRUD`、`TestQueryResults`；提供标准 OpenDB/Query 示例。G1 还须 D03 的安全和 D01 的日志测试通过。
 
 ### D06 取消、错误边界与连接淘汰
@@ -253,9 +253,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：Validator、并发关闭协调、context.AfterFunc 停止/等待；发送前失效可 ErrBadConn，发送后保留原错误及不确定性；清理预算统一使用。
 
-- [ ] 测试 `TestNoReplayAfterSend`、`TestCancelCompletionRace`、`TestCloseBudget`：部分写/丢响应时业务命令数为 1；旧取消回调不能关闭后续操作；Close 不无限等待；坏连接不能回池。
-- [ ] 执行 `go test . -run 'Test(NoReplay|CancelCompletionRace|CloseBudget)' -count=1`，确认失败。
-- [ ] 实现取消与失效状态，覆盖 Query 的完整 Rows 生命周期；不得为丢弃连接而返回可重试 ErrBadConn。
+- [x] 测试 `TestNoReplayAfterSend`、`TestCancelCompletionRace`、`TestCloseBudget`：部分写/丢响应时业务命令数为 1；旧取消回调不能关闭后续操作；Close 不无限等待；坏连接不能回池。
+- [x] 执行 `go test . -run 'Test(NoReplay|CancelCompletionRace|CloseBudget)' -count=1`，确认失败。
+- [x] 实现取消与失效状态，覆盖 Query 的完整 Rows 生命周期；不得为丢弃连接而返回可重试 ErrBadConn。
 - [ ] 同命令通过；受支持平台执行 `go test -race . -run 'Test(NoReplay|Cancel|Close)' -count=1`，并接入既有 CI；把同类断言复用于后续资源任务。
 
 ### D07 词法绑定与参数转换
@@ -266,10 +266,10 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：§3.2 的绑定计划；NamedValueChecker/NumInput；标准值、Valuer、uint64 及必要扩展输入。包私有请求与 SQL 参数分离，不产生校验副作用。
 
-- [ ] 测试 `TestBindPlan`、`TestNamedValueValidation`：引号、注释、q-quote、:=、匿名块分号；同名多位置、缺失/多余/混合参数拒绝；MySQL named 拒绝；Valuer 出错时网络写入为 0。
-- [ ] 执行 `go test . -run 'Test(Bind|NamedValue)' -count=1`，确认失败。
-- [ ] 实现词法状态机和一次参数转换；拒绝不支持的输入，不靠 fmt 拼接参数。
-- [ ] 同命令及绑定 fuzz 通过；两模式预处理任务复用同一计划，不各写一套参数计数规则。
+- [x] 测试 `TestBindPlan`、`TestNamedValueValidation`：引号、注释、q-quote、:=、匿名块分号；同名多位置、缺失/多余/混合参数拒绝；MySQL named 拒绝；Valuer 出错时网络写入为 0。
+- [x] 执行 `go test . -run 'Test(Bind|NamedValue)' -count=1`，确认失败。
+- [x] 实现词法状态机和一次参数转换；拒绝不支持的输入，不靠 fmt 拼接参数。
+- [x] 同命令及绑定 fuzz 通过；两模式预处理任务复用同一计划，不各写一套参数计数规则。
 
 ### D08 服务端预处理与二进制结果
 
@@ -279,9 +279,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：ConnPrepareContext、StmtExecContext/StmtQueryContext、二进制参数/结果、statement ID、类型头和 NULL bitmap；服务端 prepare 缓存先保证有界与正确性。
 
-- [ ] 测试 `TestServerPrepare`、`TestBinaryRows`、`TestStmtOwnership`：NULL bitmap 位边界、uint64、大数、重复执行换类型、关闭幂等、错误会话 ID 拒绝；执行响应失败不转客户端重试。
-- [ ] 执行 `go test . -run 'Test(ServerPrepare|BinaryRows|StmtOwnership)' -count=1`，确认失败。
-- [ ] 实现服务器 statement 的创建/执行/关闭；旧标准方法委托 context 路径，不引入另一种语义。
+- [x] 测试 `TestServerPrepare`、`TestBinaryRows`、`TestStmtOwnership`：NULL bitmap 位边界、uint64、大数、重复执行换类型、关闭幂等、错误会话 ID 拒绝；执行响应失败不转客户端重试。
+- [x] 执行 `go test . -run 'Test(ServerPrepare|BinaryRows|StmtOwnership)' -count=1`，确认失败。
+- [x] 实现服务器 statement 的创建/执行/关闭；旧标准方法委托 context 路径，不引入另一种语义。
 - [ ] 同命令通过；两模式 `TestPrepareRoundTrip` 比较文本/二进制结果；Statement 可安全被 DB 在不同物理会话重新建立。
 
 ### D09 本地事务、保存点与 reset 代次
@@ -292,9 +292,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：ConnBeginTx/driver.Tx、§3.2 保存点函数、Managed/Full reset；Full 不可靠时丢弃；reset 后 statement generation 失效并按需重新 prepare。
 
-- [ ] 测试 `TestTxOptions`、`TestCommitUnknown`、`TestResetGeneration`：不支持隔离级别拒绝；丢失 COMMIT 响应不报告已回滚；reset 失败返回安全的 ErrBadConn；固定 Conn 相邻调用不 reset。
-- [ ] 执行 `go test . -run 'Test(Tx|CommitUnknown|Reset)' -count=1`，确认失败。
-- [ ] 实现事务状态/恢复、保存点标识符引用及 statement 代次检查；不换物理连接完成事务。
+- [x] 测试 `TestTxOptions`、`TestCommitUnknown`、`TestResetGeneration`：不支持隔离级别拒绝；丢失 COMMIT 响应不报告已回滚；reset 失败返回安全的 ErrBadConn；固定 Conn 相邻调用不 reset。
+- [x] 执行 `go test . -run 'Test(Tx|CommitUnknown|Reset)' -count=1`，确认失败。
+- [x] 实现事务状态/恢复、保存点标识符引用及 statement 代次检查；不换物理连接完成事务。
 - [ ] 同命令通过；两模式 `TestLocalTx`、`TestSavepoints`、`TestStmtAfterReset`；验证池复用时状态与资源清理。
 
 ### D10 客户端预处理与显式 escape 转换
@@ -305,9 +305,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：显式客户端 prepare 策略；公开 `RewriteJDBCEscapes(query string, mode Mode) (string, error)`；mode Auto 不具备足够上下文时拒绝改写，不猜模式。
 
-- [ ] 测试 `TestClientPrepareEncoding`、`TestJDBCEscapes`：引号/反斜杠/多字节/二进制、模式与会话转义设置、JDBC 日期/函数/call 语法；普通 SQL 默认无改写；注释中的占位符不替换。
-- [ ] 执行 `go test . -run 'Test(ClientPrepare|JDBCEscapes)' -count=1`，确认失败。
-- [ ] 复用 D07 词法/参数计划，按实际会话编码；只有发送前确认 prepare 不支持时才允许已配置的降级。
+- [x] 测试 `TestClientPrepareEncoding`、`TestJDBCEscapes`：引号/反斜杠/多字节/二进制、模式与会话转义设置、JDBC 日期/函数/call 语法；普通 SQL 默认无改写；注释中的占位符不替换。
+- [ ] 执行 `go test . -run 'Test(ClientPrepare|JDBCEscapes)' -count=1`，确认失败；当前进度未记录历史失败，不能由现有通过结果推定。
+- [x] 复用 D07 词法/参数计划，按实际会话编码；只有发送前确认 prepare 不支持时才允许已配置的降级。
 - [ ] 同命令通过；`TestPrepareEquivalence` 在两模式比较客户端/服务端的值和错误，不以字符串相似替代执行等价。
 
 ### D11 Execute、多结果摘要与计数策略
@@ -318,9 +318,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：§3.2 Execute/Execution、架构 ResultInfo/ExecutionSnapshot、MatchedRows/ChangedRows、AllowMultiStatements 和 MaxResultItems；普通 Rows 不插入假行集。
 
-- [ ] 测试 `TestExecutionOrder`、`TestExecutionPartialError`、`TestExecutionClose`：UPDATE→SELECT→UPDATE 顺序、RowSetIndex=0、零与未知、完整 uint64 ID、直接 Query 错误仍保留摘要、上限失败、Close/自动关闭的最终状态。
-- [ ] 执行 `go test . -run 'TestExecution' -count=1`，确认失败。
-- [ ] 实现解析器向私有承载对象发布摘要、线程安全快照及统一最终化；服务端没提供的内部过程计数不制造出来。
+- [x] 测试 `TestExecutionOrder`、`TestExecutionPartialError`、`TestExecutionClose`：UPDATE→SELECT→UPDATE 顺序、RowSetIndex=0、零与未知、完整 uint64 ID、直接 Query 错误仍保留摘要、上限失败、Close/自动关闭的最终状态。
+- [ ] 执行 `go test . -run 'TestExecution' -count=1`，确认失败；当前进度未记录历史失败，不能由现有通过结果推定。
+- [x] 实现解析器向私有承载对象发布摘要、线程安全快照及统一最终化；服务端没提供的内部过程计数不制造出来。
 - [ ] 同命令通过；两模式 `TestMultiResult`；MySQL no-op UPDATE/upsert 计数对照，Oracle 拒绝 ChangedRows。Snapshot 仅观察，不触发网络。
 
 ### D12 全类型、字符集和时间语义
@@ -331,9 +331,9 @@ go test -tags=integration ./tests/integration -count=1
 
 交付：Number、NString、RowID/Raw、TimestampTZ/LTZ、IntervalYM/DS 的无损 Scanner/Valuer；具体类型及 sql.Null[T] 保留绑定身份；字符集/collation、NCHAR 和实际会话时区；Session.ParseTime 默认保留文本，显式解析无时区日期/时间戳时拒绝非法/DST 歧义；普通 Scan 来源保持标准值。
 
-- [ ] 测试 `TestTypeBoundaries`、`TestTemporalLossless`、`TestCharsetRoundTrip`：最大/最小/越界数、负/超24小时 TIME、零日期、纳秒/region/DST、月间隔、非法编码、NULL/空字符串/空字节；不把 NUMBER 转成 float64。
-- [ ] 执行 `go test . ./internal/charset -count=1`，确认新增断言失败。
-- [ ] 实现类型映射和文本规范；字符集确需依赖时只引入对应编码库，记录版本与用途，不开发通用编码框架。
+- [x] 测试 `TestTypeBoundaries`、`TestTemporalLossless`、`TestCharsetRoundTrip`：最大/最小/越界数、负/超24小时 TIME、零日期、纳秒/region/DST、月间隔、非法编码、NULL/空字符串/空字节；不把 NUMBER 转成 float64。
+- [x] 执行 `go test . ./internal/charset -count=1`，确认新增断言失败。
+- [x] 实现类型映射和文本规范；字符集确需依赖时只引入对应编码库，记录版本与用途，不开发通用编码框架。
 - [ ] 同命令通过；`TestAllScalarTypes` 交叉模式/文本/二进制/客户端路径验证；支持性差异进入兼容矩阵。
 
 Oracle DATE 元数据补充：协议类型12在 Oracle 报告 DATE、MySQL 报告 DATETIME；ParseTime 只改变 Scan 来源，不改变类型名称或截断时分秒。TestDateColumnTypes/TestDateParameterMetadata 提供本地回归；TestAllScalarTypes 已补 DATE/TIMESTAMP 列名检查与 Oracle DATE 含时间夹具，集成仅编译，真实验证仍未勾选。
@@ -368,7 +368,8 @@ MySQL 的 BINARY/VARBINARY 类型名按字符集63区分，不能将带 BINARY_F
 - [x] 测试 `TestOutValidation`、`TestOutFinalization`、`TestOutReturningProtocol`：nil/不可写目的和不支持类型在发送前拒绝；INOUT 初值；NULL 不能写成非空零值；溢出不部分更新内置目标；Scanner 失败不隐藏先前副作用；RETURNING 必要合并命令、输出顺序及能力不满足时零业务发送。
 - [x] 执行 `go test . -run 'TestOut' -count=1`，确认失败。
 - [x] 实现两模式实际 OUT 响应及 RETURNING 必需的合并基础路径；变量中转只在固定会话完成并清理；输出在最终响应后生效。未经源码与目标服务验证，不能把普通分离式 prepare/execute 当作 RETURNING 的替代。
-- [x] 同命令通过；`TestScalarCall`、`TestReturning` 验证多个输出、函数、匿名块和错误；连接句柄输出留给 D20，不假装已有支持。
+- [x] 同命令本地通过；协议对端覆盖多个标量输出、函数、匿名块和错误；连接句柄输出由 D20 实现。
+- [ ] `TestScalarCall`、`TestReturning` 在真实两模式/代理中验证上述行为；已有集成源码仅编译，未执行数据库测试。
 
 本地实现与验证已完成；`TestScalarCall`、`TestReturning` 仅完成集成源码编译，按当前约束暂不执行真实数据库联调。真实模式/版本验收不随本地任务勾选完成。
 
@@ -461,7 +462,8 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 - [x] 测试 `TestCursorFetch`、`TestCursorUpdateIdentity`：批次先关闭、0/负/越界位置、有界 static 缓存、sensitive 不以缓存冒充；join/聚合/无行标识拒绝更新；no-op 更新不误报并发删除。
 - [x] 执行 `go test . -run 'TestCursor' -count=1`，确认失败。
 - [x] 实现实际支持的 offset fetch/定位及参数化 DML；ChangedRows 仅在可靠锁定存在性下支持可更新能力，否则发送前拒绝。
-- [x] 同命令通过；`TestCursorModes`、`TestCursorUpdates` 覆盖两模式支持条件、LOB fetch、并发变化及事务结束失效。
+- [x] 同命令本地通过；协议对端覆盖两模式支持条件、LOB fetch、更新身份、错误及事务结束失效。
+- [ ] 在真实两模式/代理执行 `TestCursorModes`、`TestCursorUpdates`，验证游标与并发变化；集成源码仅编译。
 
 当前本地实现的具体位置、版本、主键/事务及刷新边界见架构 §15；集成场景已提供源码并仅编译，真实环境验收不勾选为通过。
 
@@ -476,7 +478,8 @@ UTF16 覆盖按架构允许的拒绝边界处理：改变已有字符代理对�
 - [x] 测试 `TestCursorOutPublish`、`TestOutputLease`：目的初始 nil、多个输出、提前 Close 成功发布、读取失败不发布；Execution.Close 后 Cursor 可用；最后句柄释放父 statement；后续 Fetch 不继承旧 context。
 - [x] 执行 `go test . -run 'Test(CursorOut|OutputLease)' -count=1`，确认失败。
 - [x] 复用 D11 最终化与 D15 租约；输出转换及最终响应成功后再原子发布内置句柄。
-- [x] 同命令通过；`TestProcedureResources` 验证混合普通结果/计数/多个游标/LOB，关闭与失败不泄漏资源。
+- [x] 同命令本地通过；协议对端验证混合普通结果/计数/多个游标/LOB，以及关闭、失败和父 statement 租约释放。
+- [ ] 在真实两模式/代理执行 `TestProcedureResources`，验证过程资源与关闭/失败行为；集成源码仅编译。
 
 当前实现的模式、版本、子 Rows 缓冲/深度和发布边界见架构 §13.2；本地实现与协议测试完成，集成源码仅编译，真实环境验收不计通过。
 
@@ -551,7 +554,8 @@ D24 已本地实现，真实验收未完成；配置、缓存及句柄边界见�
 - [x] 测试 `TestDiagnosticRedaction`、`TestTraceIsolation`：nil logger、handler 重入不在网络锁内死锁、凭据/LOB/参数不出日志；复用连接无 trace 串扰；slog 关闭不阻断协议 FLT。
 - [x] 执行 `go test . -run 'Test(Diagnostic|Trace)' -count=1`，确认失败。
 - [x] 定义 TraceInfo 的 module/action/client 信息字段和长度上限；为 query/fetch/LOB/batch/建连指定独立请求边界。
-- [x] 同命令通过；客户端协议已实现，集成源码仅编译，真实可见性仍待验证；`TestFullLinkTrace` 对照真实 OBProxy/服务端可观察信息；没有服务端追踪证据时只记客户端实现完成。
+- [x] 同命令本地通过；客户端协议已实现，nil logger、跨命令隔离及脱敏有本地证据。
+- [ ] 执行 `TestFullLinkTrace` 对照真实 OBProxy/服务端可观察信息；集成源码仅编译，没有服务端追踪证据时只记客户端实现完成。
 
 D25 实现契约见架构 §18.3.1：诊断仅元数据/指纹；有界同步交付；每命令 app 清空；server-controlled 采样和一次性延后 span 上报；无强制 exporter。真实服务端可见性不计本地完成。
 
@@ -579,9 +583,9 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 
 交付：扩展地址描述/TNS/OCP、replication/aurora 对应的发现适配；按实际服务能力记录映射，不把外部产品名称直接当 OceanBase 支持承诺。D27 公开 API、来源策略映射、OCP 真实包装与外部 TopologySource 边界见架构 §17.1.2。
 
-- [ ] 测试 `TestTNSParser`、`TestOCPRefresh`、`TestTopologyChanges`：嵌套/非法描述、超时/无效响应、缓存过期、刷新后仍保持逻辑服务/角色一致；关闭 Connector 终止刷新但不取消活动业务连接。
-- [ ] 执行 `go test ./internal/routing -run 'Test(TNS|OCP|Topology)' -count=1`，确认失败。
-- [ ] 用标准库解析/HTTP 和生命周期 context 实现有界刷新；未配置时无背景 goroutine，不注册全局源。
+- [x] 测试 `TestTNSParser`、`TestOCPRefresh`、`TestTopologyChanges`：嵌套/非法描述、超时/无效响应、缓存过期、刷新后仍保持逻辑服务/角色一致；关闭 Connector 终止刷新但不取消活动业务连接。
+- [x] 执行 `go test ./internal/routing -run 'Test(TNS|OCP|Topology)' -count=1`，确认失败。
+- [x] 用标准库解析/HTTP 和生命周期 context 实现有界刷新；未配置时无背景 goroutine，不注册全局源。
 - [ ] 同命令通过；对应可用服务 `TestDiscovery` 验证角色与租户，不具备环境的适配逐项标记待联调。
 
 ### D28 完整认证插件与平台传输
@@ -592,9 +596,9 @@ API、默认值、TLS alert 拒绝重试和初始化单次预算见架构 §17.1
 
 交付：Java 已注册认证能力及 TCP/Unix socket、Named Pipe/Shared Memory/OBProxy VC 的适配或同等能力映射；每种说明目标平台、协商条件和依赖，不用总开关宣称全平台完成。
 
-- [ ] 测试 `TestAuthPluginLifecycle`、`TestPlatformTransport`：每会话独立状态、弱算法默认拒绝、初始/切换/ChangeUser 全阶段 TLS 门禁；自定义传输无明文豁免；取消/平台错误清理。
-- [ ] 执行该平台 `go test ./internal/auth . -run 'Test(AuthPlugin|PlatformTransport)' -count=1`，确认失败。
-- [ ] 在协议明确的适配上实现；认证/传输依赖使用平台文件隔离，不让基础包强制加载本地库。维持 §3.1 的单向包依赖，平台认证算法不反向引用根包配置或 wire。
+- [x] 已建立本地 `TestAuthPluginLifecycle`、`TestPlatformTransport*` 算法/协议与 Windows IPC 测试：每会话独立状态、弱算法默认拒绝、初始/切换/ChangeUser 全阶段 TLS 门禁；自定义传输无明文豁免；取消/平台错误清理。
+- [x] Windows 本地算法/传输的失败→通过记录见开发进度 D28；`go test ./internal/auth . -run 'Test(AuthPlugin|PlatformTransport)' -count=1` 已通过。Linux/macOS 系统库及目标传输运行仍按下项保留未验证。
+- [x] 在协议明确的适配上实现；认证/传输依赖使用平台文件隔离，不让基础包强制加载本地库。维持 §3.1 的单向包依赖，平台认证算法不反向引用根包配置或 wire。
 - [ ] 同命令通过；按进度 §5.4 将每个算法及传输单列到目标平台和服务端组合，分别记录正向认证/收发、拒绝、切换和清理证据；全部必需条目满足后才验收，只有交叉编译不能标记该平台验收完成。
 
 D28 分步推进：old password 显式启用、Ed25519/PAM、密码字符集、插件 io.Closer 生命周期和原始 token 会话，Windows SSPI、Unix GSSAPI，以及 Unix socket/Windows Named Pipe/Shared Memory 已有本地实现；对应算法/初始/切换/安全/清理、原生 ABI 和 IPC/SSPI 本机对端收发回归已建立。Unix GSSAPI 的目标范围、库依赖与未运行边界见架构 §17.2。Shared Memory 的无关联分配取消/软预算和单缓冲批量回退见 §9.0.5；OBProxy VC 独立宿主见 §9.0.6，真实平台待验证。D30 公开重新认证已补，真实票据、域 Kerberos 与各服务组合继续验证，总体勾选保持未完成，证据见进度及兼容矩阵。
@@ -663,9 +667,9 @@ func XAForget(ctx context.Context, conn *sql.Conn, xid XID) error
 
 XAVote 区分 prepared/read-only，错误单独返回；没有 read-only 反馈的路径不能编造该票。XAFlags 只接受该阶段支持的 XA 标准值及已取证的 Oracle 扩展值（架构 §16.2.1）。输入/输出 XID 的字节切片按值复制，避免调用方修改已登记分支身份。
 
-- [ ] 测试 `TestXAState`、`TestXARecover`、`TestXAUnknownCommit`：禁止与 sql.Tx 混用、非法 flags/长度、join/resume/suspend、1PC/2PC、准备分支不随本地对象关闭回滚；结果未知不重放。
-- [ ] 执行 `go test . -run 'TestXA' -count=1`，确认失败。
-- [ ] 用外部调用测试固定 flags/返回码和 Recover 的 XID 列表，再实现原生 XA/DBMS_XA；不明分支状态的物理连接不能回池。
+- [x] 测试 `TestXAState`、`TestXARecover`、`TestXAUnknownCommit`：禁止与 sql.Tx 混用、非法 flags/长度、join/resume/suspend、1PC/2PC、准备分支不随本地对象关闭回滚；结果未知不重放。
+- [x] 执行 `go test . -run 'TestXA' -count=1`，确认失败。
+- [x] 用外部调用测试固定 flags/返回码和 Recover 的 XID 列表，再实现原生 XA/DBMS_XA；不明分支状态的物理连接不能回池。
 - [ ] 同命令通过；两模式 `TestXATransactions`、`TestXARecoveryAfterDisconnect` 由新连接恢复；明确 Forget/超时等真实支持条件，不伪造成功。
 
 D31 本地实现：新增 xa.go / xa_protocol.go，原生 OUT 复用内部调用并保留发送阶段证据。两模式本地协议测试及四目标集成源码、示例已补，契约见架构 §16.2.1；Forget/RM 超时明确不支持。D30 的平台依赖未闭环，整体依赖与真实服务端验证继续按进度表保留，不以本地测试代替验收。
