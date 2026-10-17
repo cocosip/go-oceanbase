@@ -52,6 +52,12 @@ func ParseDSN(dsn string) (Config, error) {
 
 func applyDSNOption(cfg *Config, name, value string) error {
 	switch name {
+	case "interactive":
+		if value != dsnTrue && value != dsnFalse {
+			return &ConfigError{Field: name}
+		}
+		cfg.Interactive = value == dsnTrue
+		return nil
 	case "allowOldPassword", "passwordCharset", "servicePrincipalName":
 		return cfg.Auth.applyDSNOption(name, value)
 	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum", "fullLinkTrace":

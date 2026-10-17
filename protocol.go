@@ -3,7 +3,10 @@ package oceanbase
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -72,6 +75,73 @@ func (c *connector) protocolAttributes() map[string]string {
 		attrs["__proxy_capability_flag"] = strconv.FormatUint(proxy, 10)
 	}
 	return attrs
+}
+
+func (c *connector) connectionAttributes() (map[string]string, error) {
+	attrs := c.protocolAttributes()
+	if len(c.cfg.ConnectionAttributes) == 0 {
+		return attrs, nil
+	}
+	invalid := &ConfigError{Field: "ConnectionAttributes"}
+	budget := c.cfg.Limits.MaxMessageBytes
+	// Every nonempty key requires at least three bytes including length prefixes.
+	if int64(len(c.cfg.ConnectionAttributes)) > budget/3 {
+		return nil, invalid
+	}
+	remaining := budget
+	consume := func(key, value string) bool {
+		for _, text := range []string{key, value} {
+			n := int64(len(text))
+			prefix := attributeLengthBytes(n)
+			if prefix > remaining || n > remaining-prefix {
+				return false
+			}
+			remaining -= n + prefix
+		}
+		return true
+	}
+	for key, value := range attrs {
+		if !consume(key, value) {
+			return nil, invalid
+		}
+	}
+	for key, value := range c.cfg.ConnectionAttributes {
+		if key == "" || strings.HasPrefix(key, "_") || key == "ob_capability_flag" || strings.ContainsRune(key, 0) || strings.ContainsRune(value, 0) || int64(utf8.RuneCountInString(key)) > remaining || int64(utf8.RuneCountInString(value)) > remaining {
+			return nil, invalid
+		}
+		encodedKey, err := charset.Encode(c.cfg.Session.Charset, key)
+		if err != nil {
+			return nil, invalid
+		}
+		encodedValue, err := charset.Encode(c.cfg.Session.Charset, value)
+		if err != nil {
+			return nil, invalid
+		}
+		if _, exists := attrs[string(encodedKey)]; exists {
+			return nil, invalid
+		}
+		if !consume(string(encodedKey), string(encodedValue)) {
+			return nil, invalid
+		}
+		attrs[string(encodedKey)] = string(encodedValue)
+	}
+	if attributeLengthBytes(budget-remaining) > remaining {
+		return nil, invalid
+	}
+	return attrs, nil
+}
+
+func attributeLengthBytes(n int64) int64 {
+	switch {
+	case n < 251:
+		return 1
+	case n < 1<<16:
+		return 3
+	case n < 1<<24:
+		return 4
+	default:
+		return 9
+	}
 }
 
 func (c *connector) selectProtocol(s *handshakeSession) error {

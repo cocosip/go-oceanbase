@@ -73,6 +73,10 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	if err != nil {
 		return err
 	}
+	attributes, err := authenticator.connectionAttributes()
+	if err != nil {
+		return err
+	}
 	name, nonce := c.session.authPlugin, c.session.authChallenge
 	plugin, err := authenticator.newAuthPlugin(name)
 	if err != nil {
@@ -91,7 +95,7 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	if err != nil {
 		return err
 	}
-	payload, err := wire.EncodeChangeUser(wire.HandshakeResponse{Capabilities: c.session.capabilities, User: string(user), Auth: response, Database: string(db), Plugin: name, Attributes: authenticator.protocolAttributes()})
+	payload, err := wire.EncodeChangeUser(wire.HandshakeResponse{Capabilities: c.session.capabilities, User: string(user), Auth: response, Database: string(db), Plugin: name, Attributes: attributes})
 	if err != nil {
 		return err
 	}

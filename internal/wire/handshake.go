@@ -19,6 +19,7 @@ const (
 	ClientCompress          uint64 = 1 << 5
 	ClientLocalFiles        uint64 = 1 << 7
 	ClientProtocol41        uint64 = 1 << 9
+	ClientInteractive       uint64 = 1 << 10
 	ClientSSL               uint64 = 1 << 11
 	ClientTransactions      uint64 = 1 << 13
 	ClientSecureConnection  uint64 = 1 << 15

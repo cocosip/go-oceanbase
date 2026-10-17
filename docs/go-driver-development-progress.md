@@ -81,7 +81,7 @@
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 本地子项通过，待依赖 | D28 Shared Memory/VC | Codex；辅助函数、warning、ChangeUser 和单次显式取消已补；整项不提前计完成；见 §5.6 D30 |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 进行中 | 本地子项通过，待依赖 | D30/D28 Shared Memory/VC | Codex；见 §5.6 D31；集成源码仅编译 |
-| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 未开始 | 未验证 | 无 | — |
+| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，待依赖 | D01–D31 完整验收 | Codex；连接属性/交互标志首批已补，见 §5.6 D32 |
 
 ## 4. 里程碑
 
@@ -92,7 +92,7 @@
 | G3 | 完整扩展数据能力，D13–D22 | 10/10 | 0/10 | 待验收 |
 | G4 | 协议与运行能力，D23–D30 | 6/8 | 0/8 | 进行中，D23–D27、D29 本地通过，待联调 |
 | G5 | 分布式事务，D31 | 0/1 | 0/1 | 本地已实现；依赖未闭环 |
-| G6 | 完整交付，D32 | 0/1 | 0/1 | 未开始 |
+| G6 | 完整交付，D32 | 0/1 | 0/1 | 进行中，首批配置补齐 |
 
 里程碑仅在全部所属任务验收通过且前置契约满足后完成。G1–G5 任一完成都不能单独表述为“全功能驱动完成”。
 
@@ -225,7 +225,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 - 开发：已实现；验证：本地通过。代码：`config.go`、`dsn.go`、`connector.go`、`driver.go`、`logging.go`；测试：`config_test.go`、`dsn_test.go`、`logging_test.go`。
 - RED：默认值、无效配置、严格 DSN、快照隔离和 logger 断言均在功能空实现上实际失败；GREEN：Go 1.25.0/1.26.0 Windows amd64 的 `go test ./... -count=1`、`go vet ./...` 通过；golangci-lint 2.14.0 为 0 issues。
-- 已实现：配置校验/默认值、TLS/map/slice 快照、注册、logger 注入/nil 静默与脱敏。155 个 Java option 已逐项记录任务/承载/状态，见 [迁移清单](go-driver-options-mapping.md)。D01 的 Connect 不可用路径已在 D04 替换；标准文本执行已在 D05 接通，参数与预处理由后续任务交付。
+- 已实现：配置校验/默认值、TLS/map/slice 快照、注册、logger 注入/nil 静默与脱敏。Java option 持续记录任务/承载/状态，见 [迁移清单](go-driver-options-mapping.md)；D32 核对固定版本后将原155项提取补正为160项。D01 的 Connect 不可用路径已在 D04 替换；标准文本执行已在 D05 接通，参数与预处理由后续任务交付。
 - V01 未完成条目：Linux 实际执行、GitHub CI 运行证据；CI workflow 已建立，尚未远程执行。回调、私钥/已解析证书与 logger 的并发安全由调用方保证。
 
 #### D02 包流与依赖守卫
@@ -525,6 +525,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestXAState/Recover/UnknownCommit、Oracle 原生及集合、非法恢复响应、部分写和三包流等本地测试已补；TestXATransactions/TestXARecoveryAfterDisconnect 四目标源码/手动 CI 与 examples/xa 已补，暂不运行数据库。
 - D31 本地实现已齐，但 D30/D28 平台依赖未闭环，整项保持进行中；实现28/32、验收0/32不变。本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、XA 目标各10次和实际 Windows/386 全包测试通过；两版本 Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过，go mod tidy -diff 无差异。两版本普通/integration 标签 golangci-lint2.14.0 各0 issues；integration 源码仅编译。独立走查与调用链复核补齐恢复错误分类、NULL BQUAL 和原生额外结果确认；相关缺陷均有先失败再通过的回归，无遗留已确认重要问题，不保存独立报告。六文档 UTF-8/链接/代码块/无机器路径、32任务/28实现/0验收/155选项/22矩阵章节、CI YAML 和 Go 格式检查通过。未连接数据库，Linux 运行、远程 CI 和成功 race 尚未验证。
 
+#### D32 配置迁移首批
+
+- 根包 Config.Interactive/ConnectionAttributes 已补，前者同时提供严格 DSN interactive；属性仅显式 map，不自动采集进程/主机信息，不增加包或依赖。配置快照、保留键、严格字符集、编码后累计限额及缺失能力拒绝见架构 §6.1；不将 map 透传当作代理身份认证已完成。
+- TestConnectionAttributesSnapshot/Validation/EncodedBudget/Handshake/MissingCapability/ChangeUser、TestInteractiveCapability、TestDSNInteractive 及 TLSVerifiedAuthentication 覆盖两模式、UTF-8/GBK/GB18030、转码收缩/扩展与长度前缀、TLS、普通/压缩/OB20 的重发。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译、go mod tidy -diff 通过；六文档 UTF-8/相对链接/代码块/无机器路径、32任务/28实现/0验收、160项名称集合与固定 Java 源码一致、CI YAML/Go格式/diff 检查通过。未运行真实数据库、Linux 目标或成功 race，不另存走查报告。
+- 固定 DefaultOptions 的空格枚举核对补齐5项，清单从155更正为160项：serverAffinityOrder、connectionCollation、rewriteInsertByMultiQueries、useLocalXID、defaultConnectionAttributesBanList。其余字段、默认差异和测试仍需逐项核对；README/其他示例、完整基准、资源稳定性与 D28 依赖未完成。D32 保持进行中，实现28/32、验收0/32；暂不连接数据库，不以本地属性字节证明服务端可见性或空闲超时效果。此前各阶段的155项检查仅代表当时清单行数，不能当作完整性证据。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
@@ -535,7 +541,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 | E04 | Oracle 游标与 LOB/类型字典同连接交错边界 | D16、D18–D20 | 在完整 fetch 响应边界验证原事务可见性 | 待取证；禁止换辅助会话冒充 |
 | E05 | OUT/REF CURSOR 响应顺序和父 statement 依赖 | D14、D20 | 协议夹具 + 真实过程/多输出生命周期测试 | 待取证；保持发布与租约契约 |
 | E06 | 各平台认证、IPC 及拓扑发现环境 | D27、D28 | 每个适配器独立运行/失败用例 | 未确认；可先做平台编译与协议单测 |
-| E07 | Java 全部 option 的逐项对应 | D01 起持续、D32 收口 | 固定版本提取并归类，每项关联 Go 承载与任务 | 155 项清单已建立；后续功能逐项实现和验证 |
+| E07 | Java 全部 option 的逐项对应 | D01 起持续、D32 收口 | 固定版本提取并归类，每项关联 Go 承载与任务 | 160 项清单已与固定 DefaultOptions 枚举集合核对；逐项功能/默认差异/别名仍需继续 |
 
 这些是开发输入和验证条件，不是缩减功能的决定。出现实际阻塞时，再把受影响任务标记“环境/契约”等阻塞，并写明可继续工作。
 

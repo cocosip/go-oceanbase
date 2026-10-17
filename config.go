@@ -101,6 +101,12 @@ type Config struct {
 	ResetMode            ResetMode
 	PrepareMode          PrepareMode
 	AllowMultiStatements bool
+	// Interactive requests the server's interactive session timeout; default false.
+	Interactive bool
+	// ConnectionAttributes supplies application metadata, encoded using Session.Charset.
+	// Keys starting with "_" and "ob_capability_flag" are reserved. Nil sends only
+	// driver protocol declarations, without collecting host or process information.
+	ConnectionAttributes map[string]string
 }
 
 // ConfigError identifies an invalid field without retaining its sensitive value.
@@ -161,10 +167,19 @@ func normalizeConfig(cfg Config) (Config, error) {
 	if cfg.Limits.CleanupTimeout == 0 {
 		cfg.Limits.CleanupTimeout = time.Second
 	}
+	return cloneConfigOptions(cfg)
+}
+
+func cloneConfigOptions(cfg Config) (Config, error) {
+	var err error
 	cfg.Session, err = cloneSessionOptions(cfg.Session)
 	if err != nil {
 		return Config{}, err
 	}
+	if _, err = (&connector{cfg: cfg}).connectionAttributes(); err != nil {
+		return Config{}, err
+	}
+	cfg.ConnectionAttributes = maps.Clone(cfg.ConnectionAttributes)
 	cfg.Auth, err = cloneAuthOptions(cfg.Auth)
 	if err != nil {
 		return Config{}, err

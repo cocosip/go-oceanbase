@@ -1,6 +1,6 @@
 # OceanBase Go 驱动架构设计
 
-状态：设计提案，尚未实现。本文面向完整功能适配，不以基础 CRUD 作为最终范围。
+状态：架构与接口契约，分项本地实现及验收状态以开发进度为准。本文面向完整功能适配，不以基础 CRUD 作为最终范围。
 
 ## 1. 目标、已确认要求与设计基线
 
@@ -177,6 +177,7 @@ func NewConnector(cfg Config) (driver.Connector, error)
 | 分组 | 承载能力与建议默认值 |
 | --- | --- |
 | 连接 | `Addr` 默认 `127.0.0.1:2881`；静态 User 或 Credentials 回调必填；连接建立总预算默认 10 秒，受调用 context 更早期限约束 |
+| 连接声明 | `Interactive` 默认 false；`ConnectionAttributes` 默认 nil，仅显式提供应用元数据；见 §6.1 |
 | 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
 | 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
 | 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password |
@@ -198,6 +199,18 @@ func NewConnector(cfg Config) (driver.Connector, error)
 - logger、函数回调、TLS 对象通过 Go 配置传入，不用全局注册表或字符串名称寻找实例。
 - Connector 复制切片和 map，并 clone TLS 配置；公开 cfg 后续修改不改变已建立 Connector。外部回调和 logger 自身需满足各自并发契约。
 - 不提供允许任意 Java 参数透传的 `map[string]any`。每个公开选项必须对应已有功能和明确语义。
+
+### 6.1 D32 已实现的连接属性与交互标志
+
+`Config.Interactive` 对应 Java `interactiveClient`，两者默认均为 false；DSN 使用 `interactive=true/false`。启用时发送 CLIENT_INTERACTIVE 客户端请求位，不要求 greeting 先声明该位；实际空闲超时由服务端的 interactive_timeout 配置决定，不改变 Go context 或查询超时。
+
+`Config.ConnectionAttributes map[string]string` 仅程序化提供，默认 nil；键和值使用 Go UTF-8 字符串，由驱动快照并按 `Session.Charset` 严格编码，握手和 ChangeUser 共用该路径。允许空值，拒绝空键、NUL、无效 UTF-8、不可表示字符和编码后键冲突。以下划线开头的键及 `ob_capability_flag` 保留给协议，不允许借此覆盖能力位或代理身份；`useProxyUser` 的认证适配仍是独立待完成项。
+
+属性区（包含驱动声明、键值及全部长度前缀）累计受 `Limits.MaxMessageBytes` 限制；编码前按字符数检查最小空间，编码后逐项扣减预算，避免 GBK 收缩误拒与无界聚合。完整握手仍受原有消息限额约束。配置错误只返回字段名；目标未声明 CLIENT_CONNECT_ATTRS 时，显式非空属性在请求凭据前返回 ErrUnsupported，不静默丢弃。
+
+Go 不自动采集 Java 的 PID、线程、OS、主机等动态属性，因此 Java `sendConnectionAttributes`/默认属性排除列表映射为调用方控制该 map 的内容，而不是复制全局开关。nil/空 map 不发送应用属性，但保留驱动内部协议声明。属性不会被驱动日志或诊断回调输出；是否保护传输仍遵循 `TLSConfig`，启用 TLS 时属性只存在于验证成功后的握手响应内。
+
+本地覆盖两模式、UTF-8/GBK、GB18030 扩展编码、长度前缀阈值、配置快照、保留键、能力缺失、TLS，以及普通/压缩/OB20 的 ChangeUser 重发；不代表已验证服务端属性表可见性或 interactive_timeout 的实际效果。
 
 ## 7. 标准库接口实现表
 

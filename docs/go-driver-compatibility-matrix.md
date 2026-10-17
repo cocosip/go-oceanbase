@@ -20,6 +20,17 @@
 
 D11 已实现标准 Rows 上的 Execute 摘要、逐项计数及有界最终化；完整 uint64 ID 保留文本。Snapshot 仅观察驱动状态，Close 在停止迭代后协调标准库取消错误。MySQL MatchedRows/ChangedRows 通过 CLIENT_FOUND_ROWS 控制；Oracle 拒绝 ChangedRows。合成包流通过，真实混合结果及无变化 UPDATE/upsert 待联调。
 
+### 1.1 D32 连接声明首批
+
+| 能力 | Go 当前行为 | 本地证据 / 真实验证边界 |
+| --- | --- | --- |
+| Interactive | Config.Interactive/DSN interactive，默认false；CLIENT_INTERACTIVE 是客户端请求位 | greeting 有/无该位、两模式精确握手通过；真实 interactive_timeout 效果待联调 |
+| 应用连接属性 | Config.ConnectionAttributes 显式 map、快照、保留键、严格 Session.Charset、包含长度前缀的累计限额 | UTF-8/GBK/GB18030、长度阈值/收缩/扩展及 TLS 本地通过；服务端属性表可见性待联调 |
+| ChangeUser 重发 | 同物理会话和原协商能力，沿用共同属性编码 | 两模式 × UTF-8/GBK × 普通/压缩/OB20 本地通过；真实服务与代理待联调 |
+| 默认属性排除 | 不自动采集 PID/线程/主机，nil/空 map 只留内部协议声明 | 不提供会禁用协议能力声明的总开关；自定义属性不能代替 useProxyUser 认证适配 |
+
+源码依据：固定版本 DefaultOptions、AbstractConnectProtocol.initializeClientCapabilities、SendHandshakeResponsePacket.writeConnectAttributes；对应选项及默认差异见[配置清单](go-driver-options-mapping.md)，Go 契约见架构 §6.1。D32 仍进行中，未缩减其余选项、平台与完整交付范围。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

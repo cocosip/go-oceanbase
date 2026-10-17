@@ -68,8 +68,11 @@ func TestTLSVerifiedAuthentication(t *testing.T) {
 			if path == derivedNamePath {
 				cfg.ServerName = ""
 			}
-			result, err := runAuthConnTest(t, Config{Addr: "db.example:2881", User: testUser, Password: testPassword, TLSConfig: cfg}, nil, func(ctx context.Context, raw net.Conn, p *wire.PacketIO) {
-				if err := p.WriteMessage(ctx, authGreeting(authClear, true)); err != nil {
+			result, err := runAuthConnTest(t, Config{Addr: "db.example:2881", User: testUser, Password: testPassword, TLSConfig: cfg, ConnectionAttributes: map[string]string{testAttributeKey: testAttributeValue}}, nil, func(ctx context.Context, raw net.Conn, p *wire.PacketIO) {
+				greeting := authGreeting(authClear, true)
+				start := bytes.IndexByte(greeting[1:], 0) + 2 + 4 + 8 + 1
+				greeting[start+5] |= 1 << 4 // CLIENT_CONNECT_ATTRS in the high capability word.
+				if err := p.WriteMessage(ctx, greeting); err != nil {
 					t.Error(err)
 					return
 				}
@@ -102,7 +105,7 @@ func TestTLSVerifiedAuthentication(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				if len(response) < 45 || !bytes.Contains(response[32:], []byte("secret\x00")) {
+				if len(response) < 45 || !bytes.Contains(response[32:], []byte("secret\x00")) || !bytes.Contains(response[32:], []byte(testAttributeValue)) {
 					t.Errorf("missing encrypted credentials: %x", response)
 					return
 				}

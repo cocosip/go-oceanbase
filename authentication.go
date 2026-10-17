@@ -141,7 +141,10 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 		return nil, err
 	}
 	response := wire.HandshakeResponse{Capabilities: s.capabilities, MaxPacketBytes: uint32(min(c.cfg.Limits.MaxMessageBytes, math.MaxUint32)), Charset: charset, Database: c.cfg.Database}
-	response.Attributes = c.protocolAttributes()
+	response.Attributes, err = c.connectionAttributes()
+	if err != nil {
+		return nil, err
+	}
 	if c.cfg.TLSConfig != nil {
 		if err = c.upgradeTLS(ctx, s, response); err != nil {
 			return nil, err
@@ -189,6 +192,9 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	if server&required != required {
 		return 0, fmt.Errorf("%w: protocol 4.1 authentication", ErrUnsupported)
 	}
+	if len(c.cfg.ConnectionAttributes) != 0 && server&wire.ClientConnectAttrs == 0 {
+		return 0, fmt.Errorf("%w: connection attributes", ErrUnsupported)
+	}
 	wanted := required | wire.ClientLongPassword | wire.ClientTransactions | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc | wire.ClientMultiResults | wire.ClientPSMultiResults | wire.ClientSessionTrack | wire.ClientDeprecateEOF | wire.ClientConnectAttrs
 	// Protocol support does not grant access: only an explicit Import supplies a Reader.
 	wanted |= wire.ClientLocalFiles
@@ -216,8 +222,13 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 		}
 		wanted |= wire.ClientSSL
 	}
-	// OceanBase requires this declaration even when absent from the server greeting.
-	return wanted&server | wire.ClientSupportOracle | wire.ClientSupportLOBLocator, nil
+	capabilities := wanted & server
+	// This is a client request, independent of the server greeting (Connector/J agrees).
+	if c.cfg.Interactive {
+		capabilities |= wire.ClientInteractive
+	}
+	// OceanBase requires these declarations even when absent from the server greeting.
+	return capabilities | wire.ClientSupportOracle | wire.ClientSupportLOBLocator, nil
 }
 
 func handshakeCharset(name string) (byte, error) {
