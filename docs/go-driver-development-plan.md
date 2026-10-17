@@ -613,16 +613,18 @@ D29 本地实现：`Import` + 一次性 `LocalInfile`，精确名称 Reader/授�
 
 交付：固定 *sql.Conn 的 schema/catalog、客户端信息/变量、结构化 warning、用户切换；显式 CancelQuery 使用已取到的连接身份/代次及已配置 Connector 的辅助通道。
 
-- [ ] 测试 `TestChangeUserIsolation`、`TestWarnings`、`TestCancelQueryIdentity`：旧 statement/LOB/Cursor 失效、换用户物理连接不回原池；nil logger 不丢 warning；复用 ID/代次不误取消另一会话。
-- [ ] 执行 `go test . -run 'Test(ChangeUser|Warnings|CancelQuery)' -count=1`，确认失败。
-- [ ] 用封闭函数而非任意私有指令接口公开；ChangeUser 重走认证门禁并重建基线，KILL 成功不表示原查询未执行。
+- [x] 测试 `TestChangeUserIsolation`、`TestWarnings`、`TestCancelQueryIdentity`：旧 statement/LOB/Cursor 失效、换用户物理连接不回原池；nil logger 不丢 warning；本地会话/命令代次防止旧令牌命中下一操作，服务端 ID 复用的协议边界见架构 §16.3.4。
+- [x] 执行 `go test . -run 'Test(ChangeUser|Warnings|CancelQuery)' -count=1`，公开 API 缺失先失败，各子项再通过。
+- [x] 用封闭函数而非任意私有指令接口公开；ChangeUser 重走认证门禁并重建基线，KILL 成功不表示原查询未执行。
 - [ ] 同命令通过；`TestSessionOperations` 验证身份、警告、辅助通道 TLS 和池隔离；缺权限返回明确错误。
 
-D30 首批实现：session_ops.go 提供固定 sql.Conn 的 schema/catalog、客户端信息/变量，setter 拒绝活动事务并使物理会话关闭时淘汰，防止状态泄漏；缓存清理、实际模式转义/编码和封闭请求复用既有内核。Warnings 与 ResultInfo.Warnings 先提供独立于 logger 的 OK/EOF 数量快照，MySQL 详情及本地清除已补（架构 §16.3.3）；Oracle 保留数量并明确拒绝详情；ChangeUser 已补，CancelQuery 尚未实现，故以上整项清单保持未勾选。TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 是本地测试；四目标集成同名源码只验证本批辅助函数及数量快照，TestChangeUserSessions 已补身份切换集成源码，TestWarningDetails 已补非零 warning 集成源码，后续仍需取消与辅助通道 TLS。D28 尚未闭环的 Shared Memory/VC 不影响本批已支持连接上的辅助函数，不视为完成 D28 或 D30。
+D30 首批实现：session_ops.go 提供固定 sql.Conn 的 schema/catalog、客户端信息/变量，setter 拒绝活动事务并使物理会话关闭时淘汰，防止状态泄漏；缓存清理、实际模式转义/编码和封闭请求复用既有内核。Warnings 与 ResultInfo.Warnings 提供独立于 logger 的 OK/EOF 数量快照，MySQL 详情/本地清除、ChangeUser、显式 CancelQuery 已分批补齐。TestSessionOperations、TestChangeUserSessions、TestWarningDetails、TestCancelQuerySessions 四目标源码仅编译，真实取消、身份/权限/代理仍待联调；辅助 TLS 已有本地对端测试。D28 Shared Memory/VC 尚未闭环，整项 D30 保持进行中，不能把已支持传输上的子项替代其依赖完成。
 
-D30 ChangeUser 子项：新增 change_user.go 与协议/TLS/分帧/生命周期测试，显式凭据和数据库、同连接重新认证、同模式约束、共用持锁初始化、server/client statement 身份代次与固定资源失效均已实现。旧 statement.Close 不发送可能复用的 ID，发送后失败关闭连接、成功关闭时退出原池；不修改 Connector 或调用旧凭据提供方。四目标 TestChangeUserSessions 源码和 CI 已补，尚未连接数据库；warning 详情/清除见 §16.3.3；CancelQuery 未完成，整项继续进行。详见架构 §16.3.2。
+D30 ChangeUser 子项：新增 change_user.go 与协议/TLS/分帧/生命周期测试，显式凭据和数据库、同连接重新认证、同模式约束、共用持锁初始化、server/client statement 身份代次与固定资源失效均已实现。旧 statement.Close 不发送可能复用的 ID，发送后失败关闭连接、成功关闭时退出原池；不修改 Connector 或调用旧凭据提供方。四目标 TestChangeUserSessions 源码和 CI 已补，尚未连接数据库；warning 详情/清除见 §16.3.3，取消见 §16.3.4。详见架构 §16.3.2。
 
-D30 warning 子项：warnings.go 提供 Warning、ReadWarnings、ClearWarnings；MySQL 按需读取当前诊断区，Oracle 保留协议数量并拒绝详情，不补造 SQLSTATE。详情有行数/累计字节限额，读取失败不返回部分列表；本地清除抑制至下一个普通 SQL，池 reset 和切换身份不泄漏旧详情。TestWarningDetails 系列覆盖清除、模式、事务、reset、预处理/失败命令再启用、字符集、包流、取消及畸形/超限；TestWarningDetails 四目标集成源码要求非零警告 SQL，只编译未联调。详见架构 §16.3.3，CancelQuery 继续开发，整项不计完成。
+D30 warning 子项：warnings.go 提供 Warning、ReadWarnings、ClearWarnings；MySQL 按需读取当前诊断区，Oracle 保留协议数量并拒绝详情，不补造 SQLSTATE。详情有行数/累计字节限额，读取失败不返回部分列表；本地清除抑制至下一个普通 SQL，池 reset 和切换身份不泄漏旧详情。TestWarningDetails 系列覆盖清除、模式、事务、reset、预处理/失败命令再启用、字符集、包流、取消及畸形/超限；TestWarningDetails 四目标集成源码要求非零警告 SQL，只编译未联调。详见架构 §16.3.3。
+
+D30 取消子项：cancel_query.go 提供不透明 CancelTarget、预先 QueryTarget 及 CancelQuery。每个目标只接受一次尝试，绑定首个普通 SQL/首个 pipeline 分块；原实际入口单次辅助连接复用显式 Connector 策略，校验用户/租户、模式、Network 和已验证 TLS。完成、reset、切身份及关闭使目标过期；清理/下一命令前协调在途 KILL，写出后丢确认淘汰原会话，不重放业务。服务端仅有 ID 的不可原子验证窗口明确记录于架构 §16.3.4。本地两模式、TLS、权限/畸形/超时、完成竞态、单次目标及生命周期测试已补；四目标 TestCancelQuerySessions 及 CANCEL_SQL/CANCEL_CODE 手动 CI 输入仅编译，不连接数据库。D28 依赖未闭环，D30 仍进行中。
 
 ### D31 XA 分支、状态与恢复
 

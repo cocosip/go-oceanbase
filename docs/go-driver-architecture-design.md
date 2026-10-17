@@ -998,7 +998,7 @@ func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
 - SessionVariable 只接受 ASCII 系统变量标识符，保留 SQL NULL；SetSessionVariable 的值是字符串，实际变量可写性/值域由服务端校验。time_zone、ncharacter_set_connection、character_set_*、collation_* 由 Config.Session 管理，运行时 setter 拒绝修改，防止解码配置与服务端状态不一致。两模式实际 SQL 支持仍需联调。
 - setter 只在无托管/服务端事务且 autocommit 开启时执行。发送修改前标记物理会话不可归还原池，成功或完整服务端错误后仍可在原 pinned 连接继续使用，关闭 sql.Conn 后淘汰；校验失败不标记。所有 setter 在发送前清理自动预处理缓存及类型描述缓存，覆盖 sql_mode 等解析语义变更；调用方显式持有的 sql.Stmt 仍遵循服务端原生绑定语义。此策略以重建连接代替不完整的变量恢复，不更改其他普通 SQL 的既有 reset 契约。
 - WarningSummary{Count uint16, Known bool} 保存协议 OK/EOF 数量；Known=false 表示尚无完整响应提供计数。Warnings 只读取最新普通 SQL 命令的最近完整结果快照，新的 SQL 清空并替换它，Ping/本节 helper/内部清理不覆盖；归还池后 reset 清空。Execute 的每项 ResultInfo.Warnings 独立保存各完整结果的数量，未完成结果保持未知。成功带 warning 仍是成功，nil logger 不影响快照。
-- 本节数量快照不编造警告码、SQLSTATE 或消息；详情/清除见 §16.3.3，ChangeUser 见 §16.3.2。显式 CancelQuery 仍未实现；本节不能作为整项完成依据。
+- 本节数量快照不编造警告码、SQLSTATE 或消息；详情/清除见 §16.3.3，ChangeUser 见 §16.3.2，显式取消见 §16.3.4。各子项与平台认证/传输的完成状态分别记录。
 
 实现继续使用根包现有的封闭请求、操作锁、Rows/错误状态机和 wire 叶包，无新增包或依赖。四目标集成源码 TestSessionOperations 已提供，本阶段仅编译，尚未验证真实模式、代理或版本。
 
@@ -1038,7 +1038,24 @@ ReadWarnings 在固定连接上发送 MySQL 模式的 SHOW WARNINGS，按列字�
 - Limits.MaxResultItems 同时限制一次详情的行数，MaxMessageBytes 限制解码后级别/消息/码的累计内容；超限返回 wire.ErrMessageTooLarge，不返回部分列表并淘汰连接。空结果有效；NULL/非法码/畸形列数/额外结果拒绝并淘汰，完整服务端 ERR 可复用，发送后取消淘汰。标准/压缩/OB20 共用既有包流和 Rows 内核。
 - ClearWarnings 只清除本地数量（Known=true、Count=0），在下一个普通 SQL 命令发送前抑制 MySQL ReadWarnings；不发送 SQL、不清除服务端自身诊断区。helper/Ping 不解除抑制，新普通 SQL（含执行失败的命令）解除；新建、reset 和 ChangeUser 后抑制旧详情。Oracle 可清数量，但详情 API 始终返回 ErrUnsupported。历史 Execution.Snapshot 不被清除函数修改。
 
-TestWarningDetails/Response/Clear/Modes/Validation/Cancel/Framing 和 TestSessionOperationNoRowset 覆盖本地行为。四目标 TestWarningDetails 集成源码需要对应 WARNING_SQL（成功且产生非零警告，MySQL 需实际保留详情）；仅编译，尚未连接真实模式或代理。D30 的显式取消仍需实现。
+TestWarningDetails/Response/Clear/Modes/Validation/Cancel/Framing 和 TestSessionOperationNoRowset 覆盖本地行为。四目标 TestWarningDetails 集成源码需要对应 WARNING_SQL（成功且产生非零警告，MySQL 需实际保留详情）；仅编译，尚未连接真实模式或代理。显式取消见下一节。
+
+### 16.3.4 D30 显式取消与单次目标
+
+```go
+type CancelTarget struct { /* 不透明，不允许指定连接 ID */ }
+func QueryTarget(context.Context, *sql.Conn) (CancelTarget, error)
+func CancelQuery(context.Context, driver.Connector, CancelTarget) error
+```
+
+先在空闲的固定连接上调用 QueryTarget，再启动业务 SQL；在另一 goroutine 中调用 CancelQuery。取目标本身不发送 SQL，不能在原查询/Rows 占用固定连接后再取身份。再次 QueryTarget 会替换旧目标。目标只属于其后的第一个普通 SQL 发送/响应周期；复制目标不增加使用次数，每个目标只接受一次取消尝试（包括拨号失败），不自动重试。尚未发送、已完成、已尝试或已过期时返回 ErrResource，不能取消同一连接的下一操作。Prepare、Ping 和会话 helper 不进入这个业务周期；批量逐项模式仅覆盖首个 SQL，multi-send 仅覆盖首个发送分块，不能据此宣称整批停止或未执行。
+
+- 目标保存原物理会话、实际兼容模式、用户/租户身份、实际入口和 TLS 状态，不持有新凭据。reset、切用户、关闭及首个 SQL 结束使其失效；独立于协议 gate 的取消状态负责协调。SQL 结束在内部清理/LOB 物化和释放 gate 前等待已发送的 KILL 得到确定结果；尚未发送的辅助拨号会被取消。默认 context 取消仍关闭原连接，不偷偷换成 KILL。
+- Connector 必须来自本驱动 NewConnector。复用其凭据提供方、认证插件、TLS、会话基线及限额，但只向目标记录的同一入口拨一次辅助连接，不重新选址/发现/切换。Network 和模式必须匹配；认证后的用户/租户必须与目标相同，辅助连接 ID 不得等于目标 ID。ChangeUser 后需传入对应新身份的 Connector。原连接使用已验证 TLS 时辅助连接也必须已验证 TLS，不能降级；辅助连接私有，不进入 database/sql 池，各路径均关闭。
+- 辅助拨号、认证、初始化和 KILL 共用调用 context 与 Connector.ConnectTimeout 的较早期限，关闭使用 CleanupTimeout。自定义 DialContext、Credentials 和认证回调必须响应 context，且不得重入正被取消的连接；驱动不创建可遗弃的后台拨号。私有辅助通道不触发 Logger 或 Diagnostics 回调，避免同步观察者重入正在等 KILL 的原会话；原业务连接的日志配置不变。失败完整保留服务端错误（如权限不足），原查询独立继续；KILL 部分写、丢确认、畸形/额外结果均使原连接失效，并禁止业务重放。KILL 写出后即使读取前直接取消，也属于结果未知。
+- 成功只代表服务端确认 KILL，不证明 SQL 未执行，也不替代原操作的最终结果。协议只接受连接 ID，没有服务端会话代次/CAS；本地生命周期协调不能排除远端主动断开后 ID 被重用的窗口，尤其需真实 OBProxy/版本取证，不能宣称跨服务端的绝对原子保证。
+
+TestCancelQueryIdentity/Failure/CompletionBeforeSend/AckCancellation/Guards/AuxIdentity/FixedEntry/WaitsForAck/VerifiedTLS/ResetAndClose 与 ChangeUserIsolation 覆盖两模式、固定入口、TLS、权限错误、单次令牌、响应竞态和本地生命周期。TestCancelQuerySessions 四目标源码及手动 CI 已补，只编译未联调；每个目标配置 CANCEL_SQL（足够长的只读阻塞查询）和 CANCEL_CODE（已取证的服务端中断码），验证实际中断及原会话复用，不把任意 SQL 错误当取消成功。
 
 ## 17. 选址、HA、认证与导入
 

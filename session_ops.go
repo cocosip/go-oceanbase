@@ -40,6 +40,7 @@ const (
 	sessionWarnings
 	sessionWarningDetails
 	sessionClearWarnings
+	sessionQueryTarget
 )
 
 type sessionOperationRequest struct {
@@ -50,6 +51,7 @@ type sessionOperationRequest struct {
 	values   []sql.NullString
 	warnings WarningSummary
 	details  []Warning
+	target   CancelTarget
 }
 
 // CurrentSchema reads the Oracle current schema or MySQL current database.
@@ -151,6 +153,9 @@ func (c *conn) execSessionOperation(ctx context.Context, r *sessionOperationRequ
 		return nil, errResponseActive
 	}
 	switch r.op {
+	case sessionQueryTarget:
+		r.target = c.queryTargetLocked()
+		return result{known: true}, nil
 	case sessionWarnings:
 		r.warnings = c.lastWarnings
 		return result{known: true}, nil

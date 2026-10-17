@@ -150,6 +150,9 @@ func (c *conn) encodeBatchItemLocked(ctx context.Context, prepared *stmt, args [
 }
 
 func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, payloads [][]byte, indices []int) bool {
+	if c.beginCancelExecution() {
+		defer c.endCancelExecution(false)
+	}
 	writes, err := c.session.packets.Pipeline(ctx, payloads, func(i int) error {
 		data, e := c.session.packets.ReadMessage(ctx)
 		if e != nil {

@@ -85,8 +85,15 @@ func testChangeUserIsolation(t *testing.T, mode Mode, prepare PrepareMode) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	target, err := QueryTarget(ctx, pinned)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = ChangeUser(ctx, pinned, Credentials{changeUserName, changeUserPassword}, ""); err != nil {
 		t.Fatal(err)
+	}
+	if target.identity.conn.beginCancelExecution() {
+		t.Fatal("old cancel target survived identity change")
 	}
 	if mode == ModeMySQL {
 		if got, err := ReadWarnings(ctx, pinned); err != nil || len(got) != 0 {

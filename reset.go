@@ -14,6 +14,7 @@ func (c *conn) ResetSession(ctx context.Context) error {
 		return driver.ErrBadConn
 	}
 	defer c.unlock()
+	c.endCancelExecution(true)
 	c.clearDescriptors()
 	c.lastWarnings = WarningSummary{}
 	c.warningsCleared = true

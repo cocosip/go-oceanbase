@@ -45,6 +45,7 @@ type textRows struct {
 	bufferBytes          int64
 	localInfile          *LocalInfile
 	localInfileAck       bool
+	cancelExecution      bool
 }
 
 func (r *textRows) Columns() []string {
@@ -58,6 +59,10 @@ func (r *textRows) Columns() []string {
 func (r *textRows) release() { r.releaseWithContext(r.ctx) }
 
 func (r *textRows) releaseWithContext(opCtx context.Context) {
+	if r.cancelExecution {
+		r.conn.endCancelExecution(r.contextError() != nil)
+		r.cancelExecution = false
+	}
 	if r.holdRelease {
 		r.conn.responseActive = false
 		return

@@ -94,6 +94,9 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 	ctx = r.ctx
 	p := c.session.packets
 	p.ResetSequence()
+	if !r.keepGate {
+		r.cancelExecution = c.beginCancelExecution()
+	}
 	if err := p.WriteMessage(ctx, payload); err != nil {
 		broken := !errorsPreSend(err)
 		if broken {

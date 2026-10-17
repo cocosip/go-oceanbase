@@ -259,10 +259,12 @@ TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶�
 | 修改后的池隔离 | 活动事务/autocommit 关闭时拒绝；发送修改后不可归还原池，原 pinned 连接可继续使用；所有 setter 发送前清理自动预处理/类型描述缓存 | 物理断连及新借用者无状态泄漏的真实目标验证尚未执行 |
 | warning 数量/详情/清除 | OK/EOF 的 WarningSummary、Execute 每项 ResultInfo.Warnings；MySQL ReadWarnings 读取当前 SHOW WARNINGS 的级别/码/消息，ClearWarnings 本地抑制直到下一普通 SQL；不依赖日志 | Oracle 只供数量，详情返回 ErrUnsupported（对齐 Java 通用提示）；SHOW WARNINGS 无 SQLSTATE，不推测。当前诊断区不等于历史快照；非零 warning 真实目标待验证 |
 | ChangeUser | 同连接 COM_CHANGE_USER；重新认证/基线/同模式，身份代次失效 server/client statement 与固定资源，失败关闭，成功关闭时退出原池 | 两模式、插件切换/门禁、取消、真实 TLS 及压缩/OB20 本地测试；四目标 TestChangeUserSessions 源码只编译，真实身份/权限/代理待验证 |
-| 显式取消 | 设计契约保留 | 尚未实现 |
+| 显式取消 | QueryTarget/CancelTarget/CancelQuery；单次取消首个 SQL/首个 pipeline 分块，原入口私有辅助通道、同用户/租户及已验证 TLS，完成/重置/切身份失效，在途确认协调 | 两模式、TLS、固定入口、权限/未知结果及本地竞态测试；真实取消码、代理行为和远端 ID 复用窗口待验证，不提供协议没有的原子保证 |
 
 TestSessionOperations 和 TestChangeUserSessions 四目标源码已加入手动 CI，本阶段只编译、不连接数据库。D30 仍为进行中；实现总数保持28/32，验收0/32。API 和状态生命周期见架构 §16.3.1。
 
 ChangeUser 集成输入：OB_MYSQL_CHANGE_USER_DSN、OB_ORACLE_CHANGE_USER_DSN、OBPROXY_MYSQL_CHANGE_USER_DSN、OBPROXY_ORACLE_CHANGE_USER_DSN；必须为对应原服务上的另一个身份。强制验收时缺失失败，普通跳过不计通过。行为边界见架构 §16.3.2。
 
-TestWarningDetails 四目标源码和手动 CI 已补，需 OB_MYSQL_WARNING_SQL、OB_ORACLE_WARNING_SQL、OBPROXY_MYSQL_WARNING_SQL、OBPROXY_ORACLE_WARNING_SQL 提供成功且产生非零警告的 SQL（MySQL 须保留实际详情）；强制验收缺失失败，普通跳过不计通过。本阶段仅编译，不执行 SQL。详情的当前诊断区、限额/失败连接及本地清除契约见架构 §16.3.3；D30 显式取消尚未完成。
+TestWarningDetails 四目标源码和手动 CI 已补，需 OB_MYSQL_WARNING_SQL、OB_ORACLE_WARNING_SQL、OBPROXY_MYSQL_WARNING_SQL、OBPROXY_ORACLE_WARNING_SQL 提供成功且产生非零警告的 SQL（MySQL 须保留实际详情）；强制验收缺失失败，普通跳过不计通过。本阶段仅编译，不执行 SQL。详情的当前诊断区、限额/失败连接及本地清除契约见架构 §16.3.3。
+
+TestCancelQuerySessions 四目标源码/手动 CI 已补，每个 DSN 前缀对应 CANCEL_SQL 和 CANCEL_CODE，例如 OB_MYSQL_CANCEL_SQL/OB_MYSQL_CANCEL_CODE；其余前缀为 OB_ORACLE、OBPROXY_MYSQL、OBPROXY_ORACLE。SQL 必须为足够长的只读阻塞查询，CODE 必须为实际目标已确认的非零中断码；拒绝把语法/权限等任意错误当作取消成功。源码仅编译未连接数据库；本地测试不能验证真实 ID 分配、代理路由和权限。本子项已实现，但 D28 依赖未闭环，D30 继续进行，实现28/32、验收0/32不变，契约见架构 §16.3.4。

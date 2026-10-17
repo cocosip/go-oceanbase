@@ -98,6 +98,7 @@ func (c *conn) changeUserLocked(ctx context.Context, request changeUserRequest) 
 	if int64(len(payload)) > c.cfg.Limits.MaxMessageBytes {
 		return wire.ErrMessageTooLarge
 	}
+	c.endCancelExecution(true)
 	if err = c.invalidateResourcesLocked(ctx, true); err != nil {
 		return err
 	}

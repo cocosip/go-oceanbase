@@ -26,6 +26,7 @@ type conn struct {
 	lastWarnings    WarningSummary // guarded by mu; ordinary SQL only
 	warningsCleared bool           // guarded by mu; local suppression until the next ordinary SQL
 	statementEpoch  *resourceEpoch // guarded by mu; explicit statements cannot cross identity changes
+	cancellation    cancelState
 }
 
 func (c *conn) Close() error {
@@ -42,6 +43,7 @@ func (c *conn) Close() error {
 	if c.closed.Load() {
 		return nil
 	}
+	c.endCancelExecution(true)
 	if err := c.clearStatementsLocked(ctx); err != nil {
 		return err
 	}
@@ -94,6 +96,7 @@ func (c *conn) unlock() {
 // discard may run from cancellation while the operation still owns protocol state.
 func (c *conn) discard() {
 	if c.closed.CompareAndSwap(false, true) {
+		c.endCancelExecution(true)
 		_ = c.session.raw.Close()
 	}
 }
@@ -111,7 +114,11 @@ func (c *conn) commandOK(ctx context.Context, payload []byte) error {
 		c.discard()
 		return err
 	}
-	data, err := p.ReadMessage(ctx)
+	return c.readCommandOK(ctx)
+}
+
+func (c *conn) readCommandOK(ctx context.Context) error {
+	data, err := c.session.packets.ReadMessage(ctx)
 	if err != nil {
 		c.discard()
 		return err

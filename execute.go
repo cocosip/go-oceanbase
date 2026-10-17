@@ -253,6 +253,9 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 		r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
 	}
 	c.session.packets.ResetSequence()
+	if !keepGate {
+		r.cancelExecution = c.beginCancelExecution()
+	}
 	if err := c.session.packets.WriteMessage(ctx, payload); err != nil {
 		// A rejected pre-send packet does not poison the physical session.
 		broken := !errorsPreSend(err)
