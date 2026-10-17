@@ -1104,6 +1104,18 @@ Java replication 的主/从地址映射为显式角色快照及两个标准 sql.
 
 门禁覆盖初始认证、每次 auth switch、多阶段认证及 ChangeUser；服务器临时改换算法同样重验。拒绝后不调用敏感阶段的凭据编码/发送，关闭未完成认证的连接；不能先发送密码再检测 TLS。已通过挑战应答发送的摘要不等于允许后续 full-auth 明文。日志和包诊断始终过滤密码、认证内容及相关密钥。[J16]
 
+#### 17.2.1 D28 认证扩展的当前实现
+
+`AuthOptions.AllowOldPassword` 默认为 false，控制 `mysql_old_password`，包括同名自定义工厂；显式开启才允许八字节旧挑战应答及单字节旧式切换。它不降低 TLS 门禁。`client_ed25519` 使用严格 32 字节挑战和密码派生签名；采用纯 Go `filippo.io/edwards25519 v1.1.0` 的标量/曲线运算，标准 `crypto/ed25519.Sign` 的种子再哈希不适用于此协议。算法向量和本地协议对端通过不代表 OceanBase 服务端已安装相应插件。
+
+`AuthOptions.PasswordCharset` 默认 `utf8mb4`，通过现有严格字符集编码器转换内置密码及 PAM 回答；DSN 对应 `passwordCharset`。旧密码按编码后的字节计算，不复制 Java 默认系统编码/UTF-16 字符迭代的隐式行为。自定义插件得到原始 Go 字符串，自行决定编码。DSN `allowOldPassword` 只接受 true/false。
+
+PAM `dialog` 的工厂每次创建独立轮次状态。`AuthOptions.PAM func(context.Context, PAMChallenge) (string, error)` 得到从 1 开始的 Round、UTF-8 Prompt、Echo 和 Last；2/3 表示回显，4/5 表示隐藏，低位为最后问题提示。空初始插件数据按 Java 的首密码流程处理，Prompt 为空；非空提示必须有合法问题类型，提示终止符只剥离一次。原始对话包与普通 auth-more-data 区分，所有回答统一先验证 TLS；回调错误、取消、畸形提示或 NUL 回答均不发送回答。nil 回调只使用一次 Credentials.Password，后续提示明确拒绝，不能把同一个密码自动复用为 OTP。Last 不能代替最终 OK。回调须响应 context，并支持多连接并发；驱动不启动脱离调用的认证回调 goroutine。
+
+实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。共享门禁和实例持有机制供后续 D30 ChangeUser 复用；公开切用户能力尚未实现。
+
+当前 D28 仅上述认证子项已落地；GSSAPI/SSPI、Unix/Named Pipe/Shared Memory/OBProxy VC 的实现及验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+
 ### 17.3 LOCAL INFILE
 
 保留本地导入功能，默认不允许服务端按任意文件名读取本机文件。调用方显式传入 Reader 或按请求名解析 Reader 的回调；采用请求级或 Connector 级配置，不使用全局文件白名单。

@@ -49,6 +49,8 @@ func ParseDSN(dsn string) (Config, error) {
 
 func applyDSNOption(cfg *Config, name, value string) error {
 	switch name {
+	case "allowOldPassword", "passwordCharset":
+		return cfg.Auth.applyDSNOption(name, value)
 	case "compression", "ob20", "checksum", "newMetadata", "proxyChecksum", "fullLinkTrace":
 		return cfg.Protocol.applyDSNOption(name, value)
 	case "prepareExecute", "statementCacheSize", "statementCacheSQLLimit", "reuseParameterTypes", "statementChecksum":
@@ -141,6 +143,21 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 		return &ConfigError{Field: "DSN option"}
 	}
 	if err != nil {
+		return &ConfigError{Field: name}
+	}
+	return nil
+}
+
+func (o *AuthOptions) applyDSNOption(name, value string) error {
+	switch name {
+	case "allowOldPassword":
+		if value != dsnTrue && value != dsnFalse {
+			return &ConfigError{Field: name}
+		}
+		o.AllowOldPassword = value == dsnTrue
+	case "passwordCharset":
+		o.PasswordCharset = value
+	default:
 		return &ConfigError{Field: name}
 	}
 	return nil

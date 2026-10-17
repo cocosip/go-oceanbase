@@ -4,7 +4,7 @@
 
 当前实现已推进至 D22；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。后续能力落地时补实际 Go 字段、默认差异、测试及验证组合。
 
-Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。当前选项：mode、prepareMode、connectTimeout、charset、ncharset、location、parseTime、rowsAffectedMode、resetMode、allowMultiStatements、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。敏感值只放 userinfo；logger/TLS/回调只能程序化注入。
+Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。基础选项：mode、prepareMode、connectTimeout、charset、ncharset、location、parseTime、rowsAffectedMode、resetMode、allowMultiStatements、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout；认证新增 allowOldPassword、passwordCharset。后续协议/执行/路由/发现选项见对应章节及白名单。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。敏感值只放 userinfo；logger/TLS/回调只能程序化注入。
 
 Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 128 行，摘要 1024 项，清理 1 秒；零值选默认，负值拒绝。TLS 配置克隆其证书字节、证书池、切片/map；回调、私钥、已解析 Leaf 及 logger 仍为调用方共享的不可变/并发安全对象。
 
@@ -73,7 +73,7 @@ Config 默认：建连 10 秒，逻辑消息 64 MiB，LOB 物化 16 MiB，fetch 
 | `profileSql` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L500) | D25 | Config.Logger + Diagnostics.Request；命令耗时/收发字节/错误状态 | D25 已本地实现/Go 语义适配；真实追踪/兼容待联调 |
 | `maxQuerySizeToLog` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L506) | D25 | SQL 指纹固定64十六进制字符；原文不保留；MaxRequests/MaxPackets 限制快照 | D25 已本地实现/Go 语义适配；真实追踪/兼容待联调 |
 | `slowQueryThresholdNanos` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L513) | D25 | Diagnostics.SlowThreshold；正值达到时 Warn，零关闭慢请求升级 | D25 已本地实现/Go 语义适配；真实追踪/兼容待联调 |
-| `passwordCharacterEncoding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L520) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
+| `passwordCharacterEncoding` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L520) | D03、D28 | Auth.PasswordCharset / DSN passwordCharset；内置算法及 PAM 回答使用严格编码，默认 utf8mb4；自定义插件自行编码 | 本地实现；真实插件组合待验证 |
 | `usePipelineAuth` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L525) | D03 | TLSConfig / 凭据与认证门禁（D28 补平台） | 待迁移/验证 |
 | `enablePacketDebug` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L534) | D25 | Diagnostics.Packet；每逻辑消息的方向/字节/序号/失败标记，无认证或原始包 | D25 已本地实现/Go 语义适配；真实追踪/兼容待联调 |
 | `disableSslHostnameVerification` | [源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L543) | D03 | 采用架构安全策略：禁止关闭证书/名称校验，禁止未认证公钥检索；不提供同名弱化开关 | 安全拒绝本地已验证；真实环境未联调 |

@@ -10,11 +10,13 @@ import (
 	"io"
 	"math"
 	"net"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/cocosip/go-oceanbase/internal/auth"
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -29,6 +31,9 @@ const (
 	authCachingSHA2 = "caching_sha2_password"
 	authSHA256      = "sha256_password"
 	authClear       = "mysql_clear_password"
+	authOld         = "mysql_old_password"
+	authEd25519     = "client_ed25519"
+	authPAM         = "dialog"
 )
 
 // Credentials are obtained for each new authentication, never during a transaction.
@@ -51,6 +56,8 @@ type AuthChallenge struct {
 
 // AuthPlugin produces authentication messages without access to the connection.
 // Security must declare any stage that exposes credentials as AuthRequireTLS.
+// If it implements io.Closer, the driver closes it on switch or completion,
+// including failure. Close must release local state promptly without network I/O.
 type AuthPlugin interface {
 	Security(AuthChallenge) AuthSecurity
 	Respond(context.Context, Credentials, AuthChallenge) ([]byte, error)
@@ -64,6 +71,16 @@ type AuthFactory func() AuthPlugin
 type AuthOptions struct {
 	RSAKey  *rsa.PublicKey
 	Plugins map[string]AuthFactory
+	// AllowOldPassword explicitly enables the weak mysql_old_password algorithm.
+	// The policy also applies to a custom factory registered under that name.
+	AllowOldPassword bool
+	// PAM answers dialog prompts under driver-verified TLS. A nil callback uses
+	// Credentials.Password once and rejects further prompts. It must honor ctx
+	// and be safe for concurrent independent authentications.
+	PAM func(context.Context, PAMChallenge) (string, error)
+	// PasswordCharset encodes built-in password and PAM answers; default utf8mb4.
+	// Custom plugins receive the original Go string and own their encoding.
+	PasswordCharset string
 }
 
 type handshakeSession struct {
@@ -122,6 +139,12 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 	if err != nil {
 		return nil, err
 	}
+	use := &authPluginUse{plugin: plugin}
+	defer func() {
+		if closeErr := use.close(); closeErr != nil {
+			result, err = nil, errors.Join(err, closeErr)
+		}
+	}()
 	challenge := AuthChallenge{Nonce: s.hello.Challenge, TLSVerified: s.tlsVerified}
 	response.Auth, err = authResponse(ctx, plugin, response.Plugin, credentials, challenge)
 	if err != nil {
@@ -134,7 +157,7 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 	if err = s.packets.WriteMessage(ctx, encoded); err != nil {
 		return nil, err
 	}
-	if err = c.finishAuthentication(ctx, s, credentials, response.Plugin, plugin, challenge); err != nil {
+	if err = c.finishAuthentication(ctx, s, credentials, response.Plugin, use, challenge); err != nil {
 		return nil, err
 	}
 	if err = c.selectProtocol(s); err != nil {
@@ -255,18 +278,36 @@ func (c *connector) credentials(ctx context.Context) (Credentials, error) {
 }
 
 func (c *connector) newAuthPlugin(name string) (AuthPlugin, error) {
+	if name == authOld && !c.cfg.Auth.AllowOldPassword {
+		return nil, fmt.Errorf("%w: legacy password authentication is disabled", ErrUnsupported)
+	}
 	if factory, ok := c.cfg.Auth.Plugins[name]; ok {
 		plugin := factory()
-		if plugin == nil {
+		if nilAuthPlugin(plugin) {
 			return nil, fmt.Errorf("%w: nil authentication plugin", ErrUnsupported)
 		}
 		return plugin, nil
 	}
 	switch name {
-	case authNative, authCachingSHA2, authSHA256, authClear:
-		return builtinAuth{name: name, key: c.cfg.Auth.RSAKey}, nil
+	case authPAM:
+		return &pamAuth{respond: c.cfg.Auth.PAM, charset: c.cfg.Auth.PasswordCharset}, nil
+	case authNative, authCachingSHA2, authSHA256, authClear, authOld, authEd25519:
+		return builtinAuth{name: name, key: c.cfg.Auth.RSAKey, charset: c.cfg.Auth.PasswordCharset}, nil
 	default:
 		return nil, fmt.Errorf("%w: authentication plugin", ErrUnsupported)
+	}
+}
+
+func nilAuthPlugin(plugin AuthPlugin) bool {
+	if plugin == nil {
+		return true
+	}
+	v := reflect.ValueOf(plugin)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
 	}
 }
 
@@ -283,7 +324,7 @@ func authResponse(ctx context.Context, plugin AuthPlugin, name string, credentia
 	if security > AuthRequireTLS {
 		return nil, fmt.Errorf("%w: authentication security level", ErrUnsupported)
 	}
-	if (name == authClear || name == "dialog" || security == AuthRequireTLS) && !c.TLSVerified {
+	if (name == authClear || name == authPAM || security == AuthRequireTLS) && !c.TLSVerified {
 		return nil, ErrTLSRequired
 	}
 	response, err := plugin.Respond(ctx, credentials, copyChallenge(c))
@@ -296,7 +337,18 @@ func authResponse(ctx context.Context, plugin AuthPlugin, name string, credentia
 	return response, nil
 }
 
-func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSession, credentials Credentials, name string, plugin AuthPlugin, challenge AuthChallenge) error {
+type authPluginUse struct{ plugin AuthPlugin }
+
+func (u *authPluginUse) close() error {
+	plugin := u.plugin
+	u.plugin = nil
+	if closer, ok := plugin.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSession, credentials Credentials, name string, use *authPluginUse, challenge AuthChallenge) error {
 	expectOK := false
 	for range 32 {
 		data, err := s.packets.ReadMessage(ctx)
@@ -329,26 +381,26 @@ func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSessio
 		case 0xff:
 			return decodeServerError(data)
 		case 0xfe:
-			end := bytes.IndexByte(data[1:], 0)
-			if end <= 0 || end > 128 {
-				return wire.ErrMalformed
-			}
-			name = string(data[1 : 1+end])
-			plugin, err = c.newAuthPlugin(name)
+			name, challenge, err = c.switchAuthentication(s, use, data)
 			if err != nil {
 				return err
 			}
-			challenge = AuthChallenge{Nonce: bytes.TrimSuffix(data[2+end:], []byte{0}), TLSVerified: s.tlsVerified}
 		case 1:
+			if name == authPAM {
+				return wire.ErrMalformed
+			}
 			if name == authCachingSHA2 && len(data) == 2 && data[1] == 3 {
 				expectOK = true
 				continue
 			}
 			challenge.More, challenge.Data = true, data[1:]
 		default:
-			return wire.ErrMalformed
+			if name != authPAM {
+				return wire.ErrMalformed
+			}
+			challenge.More, challenge.Data = true, data
 		}
-		response, err := authResponse(ctx, plugin, name, credentials, challenge)
+		response, err := authResponse(ctx, use.plugin, name, credentials, challenge)
 		if err != nil {
 			return err
 		}
@@ -359,9 +411,40 @@ func (c *connector) finishAuthentication(ctx context.Context, s *handshakeSessio
 	return fmt.Errorf("%w: too many authentication exchanges", ErrUnsupported)
 }
 
+func (c *connector) switchAuthentication(s *handshakeSession, use *authPluginUse, data []byte) (string, AuthChallenge, error) {
+	name, nonce := authOld, s.hello.Challenge
+	if len(data) > 1 {
+		end := bytes.IndexByte(data[1:], 0)
+		if end <= 0 || end > 128 {
+			return "", AuthChallenge{}, wire.ErrMalformed
+		}
+		name, nonce = string(data[1:1+end]), data[2+end:]
+		length := 0
+		switch name {
+		case authEd25519:
+			length = 32
+		case authNative, authCachingSHA2, authSHA256:
+			length = 20
+		}
+		if name != authPAM && (length == 0 || len(nonce) == length+1) {
+			nonce = bytes.TrimSuffix(nonce, []byte{0})
+		}
+	}
+	if err := use.close(); err != nil {
+		return "", AuthChallenge{}, err
+	}
+	plugin, err := c.newAuthPlugin(name)
+	if err != nil {
+		return "", AuthChallenge{}, err
+	}
+	use.plugin = plugin
+	return name, AuthChallenge{Nonce: nonce, TLSVerified: s.tlsVerified}, nil
+}
+
 type builtinAuth struct {
-	name string
-	key  *rsa.PublicKey
+	name    string
+	key     *rsa.PublicKey
+	charset string
 }
 
 func (p builtinAuth) Security(c AuthChallenge) AuthSecurity {
@@ -372,7 +455,20 @@ func (p builtinAuth) Security(c AuthChallenge) AuthSecurity {
 }
 
 func (p builtinAuth) Respond(_ context.Context, credentials Credentials, c AuthChallenge) ([]byte, error) {
+	password, err := charset.Encode(p.charset, credentials.Password)
+	if err != nil {
+		return nil, err
+	}
+	credentials.Password = string(password)
 	switch p.name {
+	case authOld, authEd25519:
+		if c.More {
+			return nil, wire.ErrMalformed
+		}
+		if p.name == authOld {
+			return auth.OldPassword(credentials.Password, c.Nonce)
+		}
+		return auth.Ed25519(credentials.Password, c.Nonce)
 	case authNative:
 		if c.More {
 			return nil, wire.ErrMalformed

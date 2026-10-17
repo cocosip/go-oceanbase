@@ -77,7 +77,7 @@
 | D25 | 诊断、profiling、FLT | D11、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D25，架构 §18.3.1 |
 | D26 | 静态多地址、负载、故障切换 | D06、D09 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D26、架构 §17.1.1 |
 | D27 | TNS/OCP/拓扑发现 | D26 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D27、架构 §17.1.2 |
-| D28 | 完整认证、平台传输 | D03、D26 | 未开始 | 未验证 | 无 | — |
+| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 未验证 | 无 | 已补 old/Ed25519/PAM 与插件清理；其余继续 |
 | D29 | LOCAL INFILE 受控导入 | D06、D21 | 未开始 | 未验证 | 无 | — |
 | D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 未开始 | 未验证 | 无 | — |
 | D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 未开始 | 未验证 | 无 | — |
@@ -461,6 +461,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestTNSParser/PolicyHints、TestOCPRefresh/HTTPEnvelope、TestTopologyChanges/RejectsInvalidSnapshots/ConcurrentAndLateResponse/FailureCached/HealthAcrossRefresh/CloseCancelsLookup/CloseBounded，以及公开 Source/DSN/连接预算/活动会话/旧 Open 清理回归本地通过。走查的四处问题均先复现再修复：文件别名绕过、误认 OCP HTTP 格式、driver.Open 刷新泄漏、旧代迟到拨号健康丢失；最终复核无遗留 Important/Critical。不保存独立走查报告。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet 和实际 Windows/386 全包运行通过，发现刷新/HTTP/关闭相关回归两版本各连续20次通过；普通与 integration 标签 golangci-lint2.14.0 两版本各0 issues。FuzzTNSParser 同时覆盖 TNS 两种别名路径与 OCP，各30秒通过，分别679357 / 802846次。HTTP 清理回归经高负载发现服务端晚到请求的测试误判，改为有界等待静默；临时禁用生产清理时确认新测试仍失败，恢复后全量验证通过。符号链接正向用例因本机创建权限跳过，Linux 等可用平台仍需补取证。
 - TestDiscovery 四目标 TNS/OCP 源码和手动 CI 已加入，仅编译；部署方提供真实身份 SQL/预期租户和角色，固定会话验证来源声明，不将常量 SQL 或初次连接代替真实刷新证据。外部复制/Aurora 真实发现、Linux/远程 CI 与成功 race 无新运行证据；按要求不连接数据库。实现27/32、G4 5/8，验收保持0/32。
+
+### D28 完整认证与平台传输（进行中）
+
+- 首批代码：old password、client_ed25519、PAM dialog，Auth.PasswordCharset、DSN allowOldPassword/passwordCharset，以及实例 io.Closer 生命周期。内置算法留在 internal/auth；根包负责 TLS、模式、编码和会话，未新增包或循环依赖。Ed25519 使用纯 Go filippo.io/edwards25519 v1.1.0；不手写曲线算法、不加载本地动态库。
+- TestAuthPluginLifecycle/TypedNil、Algorithms、ExtendedHandshake/LegacySwitch/OldPasswordPolicy、PAM/Gate/Fallback/Failure/UnverifiedHandshake、PasswordCharset/OptionsDSN 覆盖实例清理、关闭错误、初始/切换、二进制末尾零、弱算法禁止、回答取消/NUL/错误提示及自定义传输统一门禁。FuzzAuthPlugins 覆盖算法及 PAM 提示。未连接数据库；真实服务插件和平台组合仍待联调。
+- GSSAPI/SSPI、Unix/Named Pipe/Shared Memory/OBProxy VC 仍需开发；公开 ChangeUser 归 D30。D28 保持进行中，实现完成仍27/32，验收0/32；不以部分子项代替完整任务。
+- 首批本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包测试及 integration 源码编译通过；AuthPlugin 两版本各10次通过，普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。FuzzAuthPlugins 各30秒通过，1180142 / 629696次。独立走查发现 PAM 切换重复剥离终止符，回归先失败后修复通过；无其他遗留已确认问题。Linux/远程 CI/成功 race 和真实服务认证仍无新证据。
 
 ## 6. 待取证条件与推进方式
 

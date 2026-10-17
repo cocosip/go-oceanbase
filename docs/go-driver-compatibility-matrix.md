@@ -220,3 +220,16 @@ TestConnectionFailover 四目标源码及手动 CI 已加入；各 profile 的 D
 | 关闭/旧入口 | sql.DB.Close 停止刷新；driver.Open 私有 Connector 清理；已获得的连接不随发现 context 取消 | 自定义源必须响应 context；超时只限制等待，不能强杀用户回调/文件系统 syscall |
 
 TestDiscovery 已为四目标提供 TNS/OCP 源码及手动 CI 入口，本阶段仅编译、不连接数据库。每个基础 DSN 环境变量的前缀（移除 `_DSN`）需配置 `_TNS_DSN`、`_OCP_DSN`，以及 `_DISCOVERY_IDENTITY_SQL`、`_DISCOVERY_TENANT`、`_DISCOVERY_ROLE`。身份 SQL 由部署方按实际版本/权限提供，返回租户及 readwrite/readonly 两列；测试只为未标记的整个逻辑服务显式赋予该角色，并在同会话查询验证。该查询必须真实读取服务端身份，常量返回不算验收证据。受控刷新后的角色/地址变化、外部复制/Aurora 发现仍需独立真实服务取证，不能用初次连接或静态回调代替。Linux、远程 CI 与 race 仍不计通过。
+
+## 19. D28 逐项认证与传输
+
+本表先登记支持条件，精确 OceanBase/OBProxy 版本及相应插件部署仍未确认；目标服务缺失只影响验收，不删除开发范围。下列本地协议证据不能证明服务端安装或支持 MariaDB 同名插件。
+
+| 能力 | 本地实现/目标条件 | 实际验收状态 |
+| --- | --- | --- |
+| old password | Go 可运行平台；必须显式 AllowOldPassword；8 字节应答/旧式切换，字符集按字节，空密码发空响应 | 算法向量、初始/切换和默认拒绝；服务端插件/两模式/代理仍待验证 |
+| Ed25519 | Go 可运行平台；client_ed25519 严格32字节挑战、64字节签名；纯 Go edwards25519 依赖 | 互操作向量、初始/切换/尾零本地测试；真实插件目标待验证 |
+| PAM dialog | 支持该插件的目标服务；所有回答仅驱动验证 TLS 后发送；回调按轮次独立，可并发且响应取消 | 本地真实 TLS、两轮对话、默认单密码和错误/取消门禁；PAM 服务/平台待验证 |
+| 插件生命周期/编码 | AuthFactory 每使用独立实例，可选 io.Closer；内置密码严格 PasswordCharset，默认 UTF-8 | 成功/拒绝/切换/错误清理和字符集本地测试；ChangeUser 公开链路归 D30 |
+| GSSAPI/SSPI | 平台身份、凭据/票据及实际多轮上下文 | 待开发，保留 Windows 和 Unix 正向目标 |
+| TCP/Unix/Named Pipe/Shared Memory/VC | TCP 已有基础路径；IPC 继续按实际协议和平台适配，不能假定仅本地便豁免 TLS | TCP 本地测试；其余待开发/平台运行，整项 D28 未完成 |

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/routing"
 )
 
@@ -188,6 +189,13 @@ func (cfg *Config) validateDriverOptions() error {
 }
 
 func cloneAuthOptions(options AuthOptions) (AuthOptions, error) {
+	if options.PasswordCharset == "" {
+		options.PasswordCharset = "utf8mb4"
+	}
+	options.PasswordCharset = strings.ToLower(options.PasswordCharset)
+	if _, err := charset.Encode(options.PasswordCharset, ""); err != nil {
+		return AuthOptions{}, &ConfigError{Field: "Auth.PasswordCharset"}
+	}
 	options.Plugins = maps.Clone(options.Plugins)
 	for name, factory := range options.Plugins {
 		if name == "" || len(name) > 128 || strings.ContainsRune(name, 0) || factory == nil {
