@@ -378,6 +378,8 @@ ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协�
 
 Java connectProxy 默认 false，跳过部分 session 变量读取、ob_version 和 auto_increment_increment 探测；Go 无对应的隐式变量/自增步长读取，只映射实际存在的可选版本探测，不迁移一个含义模糊的 connectProxy 布尔字段，也不接受其 Java DSN 名称。此策略不保证某个代理接受其他必要基线 SQL，真实部署仍需验证；使用前应评估上述高级能力限制。
 
+Java `usePipelineAuth` 默认 null，UrlParser 将缺省解析为 false；它选择的是认证后的初始化分支，不改变认证插件或 TLS。[固定 postConnectionQueries](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L978) 在该选项下还临时缩短读取超时至500ms，并可能回退 additionalData；但[该版本 sendPipelineAdditionalData](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1103) 对每个 SET 随即 getResult，不能据名称或配置描述宣称实际并行发送。Go 固定使用认证最终 OK 后逐条发送/完整消费的初始化，不提供同名开关、不临时改成500ms、不在初始化失败后重试可能产生副作用的 InitSQL。沿用 ConnectTimeout/context 总预算与独立 ReadTimeout；TestInitializationErrorBoundary 覆盖认证、字符集、自动提交、时区、变量及 InitSQL 的拒绝、错误链、关闭和不入池；TestVersionProbeSessions/Initialization 分别覆盖两模式/三包流成功及自定义基线恢复。这里不宣称初始化流水线或建连性能收益。
+
 ### 9.0.5 D28 Windows Shared Memory
 
 `Config{Network: "sharedmemory", Addr: "MYSQL"}` 选择 Windows 原生命名事件/文件映射传输，DSN 为 `network=sharedmemory&socket=MYSQL`。Addr 是服务端对象基名，不是磁盘文件；可显式使用 `Local\` 或 `Global\` 前缀。仅允许一个命名空间前缀、非空 UTF-8 基名，无 NUL/反斜杠/首尾空白；总长最多220个 UTF-16 单元，为连接 ID 和事件后缀留空间。不展开环境变量；无前缀且本地 CONNECT_REQUEST 不存在时才尝试 Global 命名空间，权限错误不触发该回退。默认仍为 TCP，Java sharedMemory 名称不作为 DSN 别名。
@@ -504,6 +506,8 @@ cfg.Execution = oceanbase.ExecutionOptions{
 词法计划必须覆盖单/双引号、反引号、注释、转义、Oracle q-quote 和 `:=`。不按字符串替换冒号，不把匿名块内部的分号认作多语句分隔符。
 
 普通 SQL 使用服务端原生语法。Java JDBC escape 的等价能力由显式兼容转换函数提供，转换仍使用词法状态机；不对所有 Go SQL 默认改写。
+
+固定 Java 的 `encloseParamInParentheses` 默认 true，但自2.4.10起实际只在 Oracle 文本参数前写空格，未包裹括号；见 [ComQuery.addParenthesesArroundValue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L366)。Go 客户端预处理和批量改写统一在每个字面量两侧保留空格，防止负数与前置减号拼成注释，或数字与后续别名连成指数。此规则固定启用，两模式均适用；不增加可关闭参数边界保护的开关。标准服务端预处理继续发送独立二进制参数，不改写 SQL 的括号或表达式优先级。TestClientParameterBoundaries 通过公开 ExecContext/sql.Stmt 覆盖两模式/三包流、重复命名参数、负数/数字别名及含分号的引号字符串；这些是编码边界证据，真实 SQL 解释仍待联调。
 
 ### 10.3 扩展操作如何进入同一个内核
 
@@ -766,6 +770,8 @@ Full 策略在池复用边界执行经验证的服务端 reset，并恢复初始
 - QueryContext 的操作 context 生命周期延续到 Rows 读取/关闭结束；Connect 和 Prepare 的 context 不存入长期连接/statement。
 - Rows.Close、Stmt.Close 和 Conn.Close 的网络清理均有上限。清理不了就关闭会话，不无限 drain，也不使用无界 Background 网络请求。
 - 需要主动服务端 `KILL QUERY` 的场景提供显式 CancelQuery 能力，目标由先前取得的连接信息和会话代次确定；辅助通道由调用方已配置的 Connector 建立，使用同一认证/TLS策略。该能力与默认 context 取消分开，不将 KILL 成功当作原操作未执行的证明。
+
+Java `enableQueryTimeouts` 默认 true，控制 Statement.setQueryTimeout 的共享定时任务，[OceanBaseStatement.executeQueryPrologue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseStatement.java#L271) 还受是否使用服务端超时及批量路径影响。Go 使用每次 ExecContext/QueryContext 的 context；不提供全局禁用 context 的开关，不偷偷加服务端超时前缀或发送 KILL。Background 没有业务 deadline，仍受读取/清理预算约束。PrepareContext 的 context 只管 prepare，后续执行必须另传其业务 context；QueryContext 的 context 则覆盖 Rows 生命周期。超时发送前不污染原会话，可能发送后必须淘汰，不返回能触发业务重放的 ErrBadConn；不证明数据库已中止或回滚。TestStatementContextDeadline 用固定 sql.Conn/sql.Stmt 覆盖两模式/三包流、两类预处理、预先过期后仍可 Ping、执行 deadline 早于 ReadTimeout 和未知结果不回池；事务/Rows 的期限由 TestExecutionTxDeadline、TestTextNextResultUsesQueryDeadline 等既有测试覆盖。
 
 ### 12.5.1 D32 已实现的网络读取超时
 
@@ -1351,6 +1357,8 @@ type RoutingOptions struct {
 RoleReadOnly 的 Connector 在发送前拒绝 ReadOnly=false 的 BeginTx；ReadOnly=true 使用现有 Socket。普通 SELECT 不分析/路由，普通写语句权限由服务端负责。读写服务分别使用两个标准 sql.DB，同一个 Connector 固定角色；RoleReadWrite 的会话也能按标准事务接口开启只读事务。
 
 DSN 支持 `addresses`（逗号分隔 DNS/IPv4/带括号 IPv6，端口可省略）、`role=any/readwrite/readonly`、`balance=ordered/random/roundrobin/affinity`、`maxAttempts` 及四个同名 duration 参数 `attemptTimeout/retryDelay/blacklistTimeout/validationInterval`。addresses 中所有条目统一标记 role，参数遍历顺序不影响结果；混合角色、Group 和 Weight 使用 typed Config。未知/重复参数和非法值报错，不透传 Java 参数。
+
+Java `serverAffinityOrder` 默认 null；非空时在 [ConfigParser.getLoadBalanceInfoByDefault](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/failover/utils/ConfigParser.java#L426) 用逗号分隔的 host:port[:weight] 列表替换 URL 地址，并沿用 loadBalanceStrategy，不是独立“始终按顺序”开关。Go 的对应能力是 Routing.Endpoints 替换 Addr、Endpoint.Weight 与显式 Strategy；BalanceOrdered 按列表，BalanceAffinity 使用权重，Group 另外表达优先级。Java 默认策略 random，Go 零值 Ordered；权重范围按现有 uint16 契约校验。包含 IPv6 时用标准带括号 Addr，不沿用 Java 按冒号拆分的字符串格式；不新增重复列表/策略字段或接受 Java 同名 DSN。
 
 例如 `oceanbase://app@fallback/?addresses=entry-a:2881,entry-b:2881&role=readwrite&balance=roundrobin`；地址/权重由调用方配置，TNS/OCP 刷新和拓扑证明仍归 D27。Java 的多组 retry/maxReconnects 选项合并成有界 MaxAttempts/总预算，黑名单默认值不照搬 Java 的全局状态和长重试次数；allowMasterDownConnection 不允许跨角色降级；galeraAllowedState 属于外部产品能力，不伪造 OceanBase 状态 SQL。
 

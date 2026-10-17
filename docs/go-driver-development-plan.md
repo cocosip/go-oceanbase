@@ -701,6 +701,8 @@ D32 connectProxy 的 Go 适配使用 Session.SkipVersionProbe / skipVersionProbe
 
 D32 标准连接池子项以 sql.DB 原生 setter/context/Stats 和外部 slog 承载八项 Java 池选项，补齐一次性多连接就绪示例与两模式实际驱动生命周期验证；minPoolSize 无等价保底，staticGlobal 的服务端全局变量缓存不迁移为配置开关，默认差异和共享 Connector 的边界见架构 §5.1。没有新增生产 API、包、依赖或连接池；真实容量、空闲超时、监控及长期负载仍待验收，D28/D32 和 D30/D31 依赖状态保持。
 
+D32 初始化/执行选项按固定 Java 实现补证：usePipelineAuth 的认证后初始化分支在当前版本逐条 getResult，Go 沿用逐条确认/失败即关闭，不声明流水线优化；enableQueryTimeouts 由每次调用 context 承载；encloseParamInParentheses 对应当前版本的空格边界；serverAffinityOrder 的替换列表由 Endpoints/Weight/Strategy 承载，不能仅映射成 Ordered。新增 TestInitializationErrorBoundary、TestClientParameterBoundaries、TestStatementContextDeadline 及同名 Java DSN 拒绝测试，无生产配置/API/依赖变更。数组编码 fuzz 接入30秒 CI，原 FuzzStmt 选择器修复多目标歧义；真实 SQL/HA、平台与远程 CI 验收继续保留。
+
 ## 7. 首个开发批次
 
 下一次进入代码开发从 D01 开始，紧接 D02、D03、D04、D05；每项代码可单独验证。D01 交付可测试配置而非全部接口空文件，D02 交付可故障注入的真实包流，D04 接入真实建连，D05 打通两模式标准文本执行。

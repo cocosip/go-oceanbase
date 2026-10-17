@@ -75,7 +75,8 @@ jobs:
       - run: go test ./internal/wire -run '^$' -fuzz FuzzHandshake -fuzztime 30s -parallel 2
       - run: go test ./internal/auth -run '^$' -fuzz FuzzAuthPlugins -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzText -fuzztime 30s -parallel 2
-      - run: go test ./internal/wire -run '^$' -fuzz FuzzStmt -fuzztime 30s -parallel 2
+      - run: go test ./internal/wire -run '^$' -fuzz '^FuzzStmt$' -fuzztime 30s -parallel 2
+      - run: go test ./internal/wire -run '^$' -fuzz '^FuzzStmtArray$' -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzPrepareExecute -fuzztime 30s -parallel 2
       - run: go test ./internal/wire -run '^$' -fuzz FuzzLOBLocator -fuzztime 30s -parallel 2
       - run: go test . -run '^$' -fuzz FuzzBindPlan -fuzztime 30s -parallel 2

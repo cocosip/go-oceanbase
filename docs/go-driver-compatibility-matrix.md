@@ -115,6 +115,17 @@ TestVersionProbe* / TestDSNSkipVersionProbe 覆盖两模式/三包流、快照�
 
 TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模式延迟建连、限额等待/取消、初始化/复用/QUIT、预热失败和 PING 拒绝清理、寿命与空闲回收、借用校验默认/启用、独立 Auto 模式池及 Java DSN 拒绝。示例只编译；真实数据库空闲超时、容量、长期资源/监控及跨平台运行未验收，D32 继续进行中，实现28/32、验收0/32保持。
 
+### 1.13 D32 初始化、参数边界与查询期限
+
+| Java option | Go 当前承载 | 本地证据 / 限制 |
+| --- | --- | --- |
+| usePipelineAuth | 认证最终 OK 后逐条初始化；ConnectTimeout/context/ReadTimeout 独立生效，无同名开关 | TestInitializationErrorBoundary 两模式/三包流覆盖各阶段拒绝后关闭、不发后项/不重试、不入池；成功恢复沿用 TestVersionProbeInitialization。固定 Java 的对应方法也逐条 getResult，不宣称流水线性能 |
+| encloseParamInParentheses | 客户端参数两侧固定空格，标准预处理仍二进制绑定 | TestClientParameterBoundaries 经公开 API 验证两模式/三包流、负数、数字别名、重复命名和引号/分号字符串。固定 Java 当前版本只添加前置空格；SQL 真实解释待联调 |
+| enableQueryTimeouts | 每次调用 context；无全局禁用开关，不改 SQL、不隐式 KILL | TestStatementContextDeadline 覆盖两模式/三包流/两种预处理、过期前后连接可用性、期限早于 ReadTimeout 和不重放。Rows/事务期限复用既有测试；不保证服务端停止或回滚 |
+| serverAffinityOrder | Endpoints 替换 Addr；Strategy、Weight、Group 明确表达排序 | 固定 Java 列表也受 strategy 控制，Go 不把它错误地仅映射成 Ordered。既有 TestFailoverBudget、路由/选择器测试覆盖候选替换、顺序、快照与有界切换；新增 TestAddressAffinityWeights 检查权重偏好与不重复，不是概率或吞吐验收；真实 HA 待联调 |
+
+固定源码及默认差异见架构 §9.0.4、§10.2、§12.5、§17.1.1。四项 Java 同名 DSN 均拒绝；本地证据不补造服务端/平台验收，任务计数保持28/32实现、0/32验收。FuzzStmtArray 已加入两工具链 protocol-boundaries CI 的30秒目标，远程 CI 尚未运行。
+
 ## 2. 后续高级协议条件
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |

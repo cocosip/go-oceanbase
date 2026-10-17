@@ -121,6 +121,8 @@ return tx.Commit()
 
 `ExecBatch` 保留输入顺序、实际 `Strategy`、每项 `Status/Started`。`BatchFailed` 不保证没有副作用，`BatchUnknown` 不能自动重试；显式 BatchRewrite 在 MySQL 兼容模式、允许并协商多语句、遇错停止且逐块确认服务端合并优化关闭时，以独立 DML 合并请求；显式 BatchArrayBinding 在已知 OceanBase >=4.2.1 的 Oracle 可写事务中配合 ContinueOnError=true，使用原生列式参数和保存异常响应，多项成功的影响行数未知。其他条件及 bulk 回退逐项。用法见根包 ExampleExecBatch_rewrite 和 ExampleExecBatch_arrayBinding；详细门禁和 Started=true/NotExecuted 含义见架构 §13.4。批量成功同样不表示调用方事务已提交。
 
+查询时限通过每次 ExecContext/QueryContext 的 context 指定，PrepareContext 的期限只覆盖准备过程；读取 Rows 时也继续受查询 context 约束。发送后超时会使物理连接失效，不能据此判断数据库已停止或回滚，也不要自动重放写操作。ReadTimeout 仅限制每次底层读取，不能代替总查询期限。初始化按顺序确认，客户端参数自动保留安全的空格边界；不需要迁移 Java 的 usePipelineAuth、enableQueryTimeouts 或 encloseParamInParentheses 开关。亲和地址列表使用 Routing.Endpoints/Weight/Strategy，默认 Ordered，需加权选择时显式 BalanceAffinity。
+
 `Execute` 的命令结果不伪装成行集；`ResultInfo` 的计数只有在对应 `Known` 为真时才可使用。Oracle 匿名块不合成内部每条 DML 的独立计数。读取异常、关闭异常和 `Snapshot.Err` 均需要处理。
 
 标准 `Rows.Columns()` / `ColumnTypes().Name()` 返回结果标签。需要原列/原表来源时，从 `e.Snapshot().Results` 中选 `Kind == oceanbase.ResultRows` 的项，再按投影顺序读取 `Columns`：`Name` 是标签，`OriginalName` 是原列名，`Table` / `OriginalTable` 保留协议表名/原表名，另有 `Schema` / `Catalog`。字段为空表示服务端未提供，不能从标签推断；快照和列切片为独立副本，执行关闭后仍保留已观察的来源。`RowSetIndex` 对应标准 Rows 的行集顺序，命令/Failure 没有 Columns。列来源不证明结果可更新或具有访问权限；累计预算及 Java 差异见[架构 §16.1.2](go-driver-architecture-design.md#1612-d32-结果列来源与产品身份)。

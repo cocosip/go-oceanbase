@@ -678,6 +678,14 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 固定 Connector/J 与 OceanBase v4.2.1 服务端源码已取证并链接到架构。真实服务器/OBProxy 的逐项语义、类型支持及吞吐未验收；D32 继续进行，实现28/32、验收0/32保持，不保存独立走查报告。
 - 最终只读走查未发现可确认问题；中途 ERR 丢失服务端错误的回归先失败后修复。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TestBatchArray 各20轮、集成源码仅编译，以及两版本普通/integration 标签 golangci-lint 各0 issues 通过。TestStmtArray 两版本各20轮及 FuzzStmtArray 各15秒通过，分别746362/285088次执行；Go1.25 Windows/386 的 BatchArray/StmtArray 目标测试通过。九文件文档/链接/160项选项/32任务计数、CI YAML、Go 格式与 diff 检查通过。未连接数据库，Linux、远程 CI 和成功 race 仍无验证证据。
 
+#### D32 初始化/执行选项核对及数组 fuzz CI
+
+- 对固定 Java 的 usePipelineAuth、enableQueryTimeouts、encloseParamInParentheses 和 serverAffinityOrder 补齐实际调用路径、默认差异及 Go 承载说明，修正原先将认证后初始化分支映射到 TLS、将亲和地址表仅映射到 Ordered 的不准确描述；参数括号选项在当前 Java 实际只加空格。沿用已有 Go API，不新增生产开关、包或依赖，也不宣称初始化流水线或建连性能收益。
+- option_semantics_test.go 经真实 database/sql 与故障对端，覆盖两模式/三包流的初始化各阶段拒绝后停止、不重试/不入池，客户端 ExecContext/sql.Stmt 参数边界、重复命名和引号/分号字符串，以及两种预处理的预先过期不污染会话、执行期限早于 ReadTimeout、发送后关闭/不重放；四项 Java 同名 DSN 严格拒绝。既有 Rows/事务期限、路由/权重/快照测试继续作为对应证据。
+- 复现原 CI 的 -fuzz FuzzStmt 同时匹配 FuzzStmtArray/FuzzStmt 而失败；将两个选择器改为完整名称匹配，并在两工具链 protocol-boundaries 中加入数组30秒 fuzz。Go1.25.0/1.26.0 的 FuzzStmtArray 各30秒通过，分别479334/297357次执行；远程 CI 尚未运行。验证本地编码不等于真实服务端数组语义验收，实现28/32、验收0/32不变。
+- 补 TestAddressAffinityWeights：两个输入顺序各4096次采样，确认9:1权重产生明确偏好、仍有低权重候选且每次无重复；此宽阈值健全性测试不是服务吞吐或严格概率验收。用 Go overlay 临时模拟初始化错误可重试和选择器忽略权重，两个新回归分别按预期失败；实际生产代码未改变，恢复原源码的目标与全包测试通过。
+- 只读走查指出的候选次数、归还后池状态与四项固定源码链接证据缺口已修复：初始化允许两候选，超时先关闭 statement/固定连接后检查 Idle/OpenConnections，160项固定链接均完整。最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮、普通/integration 标签 lint 各0 issues，以及集成仅编译通过；实际 Go1.25 Windows/386 新目标通过。精确 FuzzStmt 选择器两版本各30秒通过，分别584170/904984次执行；文档/链接/选项/计数、CI YAML/目标及格式/diff 检查通过。未连接数据库，Linux/远程 CI/成功 race 尚未验证。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

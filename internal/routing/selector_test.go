@@ -36,6 +36,33 @@ func TestAddressSelection(t *testing.T) {
 	}
 }
 
+func TestAddressAffinityWeights(t *testing.T) {
+	for _, reversed := range []bool{false, true} {
+		addresses := []Address{{Addr: "light", Weight: 1}, {Addr: "heavy", Weight: 9}}
+		if reversed {
+			addresses[0], addresses[1] = addresses[1], addresses[0]
+		}
+		s, err := NewSelector(addresses, Options{Strategy: Affinity})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A broad bound catches ignored/inverted weights; expected heavy frequency is 90%.
+		heavy := 0
+		for range 4096 {
+			got, _ := s.Order(time.Now())
+			if len(got) != 2 || got[0].Addr == got[1].Addr {
+				t.Fatal("affinity dropped or duplicated a candidate", got)
+			}
+			if got[0].Addr == "heavy" {
+				heavy++
+			}
+		}
+		if heavy <= 3072 || heavy == 4096 {
+			t.Fatal("affinity ignored weights or always chose one address", reversed, heavy)
+		}
+	}
+}
+
 func TestAddressHealth(t *testing.T) {
 	now := time.Now()
 	s, _ := NewSelector([]Address{{Addr: "a"}, {Addr: "b"}}, Options{BlacklistTimeout: time.Second})
