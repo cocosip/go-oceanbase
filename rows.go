@@ -609,7 +609,12 @@ func (r *textRows) ColumnTypeScanType(index int) reflect.Type {
 		return reflect.TypeFor[[]byte]()
 	}
 	switch c.Type {
-	case 1, 2, 8, 9, 13:
+	case 8:
+		if c.Flags&32 != 0 {
+			return reflect.TypeFor[uint64]()
+		}
+		return reflect.TypeFor[int64]()
+	case 1, 2, 9, 13:
 		return reflect.TypeFor[int64]()
 	case 3:
 		if r.conn.session.mode != ModeOracle {

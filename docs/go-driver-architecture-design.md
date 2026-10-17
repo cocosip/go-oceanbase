@@ -561,6 +561,8 @@ cfg.Execution = oceanbase.ExecutionOptions{
 | REF CURSOR | 标准子 driver.Rows 或明确的输出游标入口 | 在父资源及原会话内读取 |
 | GEOMETRY | 原始 []byte | 不擅自按 UTF-8 解码 |
 
+`BIGINT UNSIGNED` 的 `ColumnTypes().ScanType()` 为 uint64，覆盖完整0–18446744073709551615范围；有符号 BIGINT 为 int64。ScanType 是建议的 Scan 目标类型，不要求等于每行 driver.Value 的实际类型：无符号行值仍在 int64 可表示时使用 int64，其余为精确十进制 string，由 database/sql 无损扫描到 uint64。可空列使用指针或 `sql.Null[uint64]`，ScanType 不把 NULL 编为0。
+
 `Number` 仅负责无损表示、验证和 Scanner/Valuer，不实现一套十进制运算库。输入扩展类型首先由 `NamedValueChecker` 识别并保持协议类型；普通第三方 `driver.Valuer` 再按标准库契约转换。[G04]
 
 复杂值的普通 Scan 表示需自描述：格式版本、schema/type 名称、字段顺序与类型、NULL、精确数值、时间和二进制都有明确标记。已采用 `encoding/json` 实现的 format=1 带类型标签表示，数值以十进制文本保存、二进制以 base64 保存；`Object.Scan`/`Array.Scan` 负责解析。它是公开、文档化的类型表示，不是进程内句柄或对未知类型的兜底。

@@ -352,6 +352,8 @@ Oracle DATE 元数据补充：协议类型12在 Oracle 报告 DATE、MySQL 报�
 
 本地完成：两工具链全包 test/vet/386、普通/integration lint、目标重复与 FuzzMetadataFilters 通过。TestMetadataCatalog 仅编译，最后一项真实对照仍未勾选；详见进度 D13。
 
+BIGINT UNSIGNED 的 ScanType 须为 uint64，保证按元数据反射创建的 Scan 目标能接收完整无符号范围；有符号 BIGINT 保持 int64，普通行值来源保持无损 int64/string。TestUnsignedBigIntScanType 覆盖三执行路径/三包流、边界和 NULL；TestAllScalarTypes 的真实边界对照仅编译。
+
 ### D14 标量 OUT、INOUT 与 RETURNING
 
 依赖：D11、D12。对应：M07、M08；架构 §13.1、§13.3。

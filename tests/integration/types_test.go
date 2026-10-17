@@ -5,8 +5,10 @@ package integration
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -52,11 +54,12 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	table := fmt.Sprintf("obgo_types_%d", time.Now().UnixNano())
-	definition := "id INTEGER PRIMARY KEY,n DECIMAL(38,9),v VARCHAR(100),b VARBINARY(100),ts DATETIME(6),d DATE,tm TIME(6),yr YEAR"
-	values := "?,?,?,?,?,?,?,?"
+	definition := "id INTEGER PRIMARY KEY,n DECIMAL(38,9),v VARCHAR(100),b VARBINARY(100),ts DATETIME(6),d DATE,tm TIME(6),yr YEAR,u BIGINT UNSIGNED,s BIGINT"
+	values := "?,?,?,?,?,?,?,?,?,?"
 	query := "SELECT n,v,b,ts,d,tm,yr FROM " + table + " WHERE id=1"
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, scalarDateText, "-838:59:59.999999", 2026}
+	args = append(args, uint64(math.MaxUint64), int64(math.MinInt64))
 	if p.mode == oceanbase.ModeOracle {
 		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9),dt DATE"
 		values = "?,?,?,?,?,?,?,?,?,?"
@@ -88,15 +91,17 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 		row = stmt.QueryRowContext(testContext(t))
 	}
 	checkScalarProfileRow(t, p, db, table, row, instant)
-	checkScalarDateMetadata(t, p, db, table, path)
+	checkScalarMetadata(t, p, db, table, path)
 }
 
-func checkScalarDateMetadata(t *testing.T, p profile, db *sql.DB, table, path string) {
+func checkScalarMetadata(t *testing.T, p profile, db *sql.DB, table, path string) {
 	t.Helper()
-	query := "SELECT d,ts FROM " + table + " WHERE id=1"
+	query := "SELECT d,ts,u,s FROM " + table + " WHERE id=1"
+	wantColumns := 4
 	wantDate, wantTimestamp := scalarDateText, "DATETIME"
 	if p.mode == oceanbase.ModeOracle {
 		query = "SELECT dt,ts FROM " + table + " WHERE id=1"
+		wantColumns = 2
 		wantDate, wantTimestamp = "2024-02-29 12:34:56", "TIMESTAMP"
 	}
 	var rows *sql.Rows
@@ -106,31 +111,43 @@ func checkScalarDateMetadata(t *testing.T, p profile, db *sql.DB, table, path st
 	} else {
 		stmt, prepareErr := db.PrepareContext(testContext(t), query)
 		if prepareErr != nil {
-			failOperation(t, "prepare date metadata select", prepareErr)
+			failOperation(t, "prepare scalar metadata select", prepareErr)
 		}
 		defer func() { _ = stmt.Close() }()
 		rows, err = stmt.QueryContext(testContext(t))
 	}
 	if err != nil {
-		failOperation(t, "query date metadata", err)
+		failOperation(t, "query scalar metadata", err)
 	}
 	defer func() { _ = rows.Close() }()
 	columns, err := rows.ColumnTypes()
-	if err != nil || len(columns) != 2 {
-		t.Fatal("date metadata missing", err)
+	if err != nil || len(columns) != wantColumns {
+		t.Fatal("scalar metadata missing", err)
 	}
 	if columns[0].DatabaseTypeName() != "DATE" || columns[1].DatabaseTypeName() != wantTimestamp {
 		t.Fatal("date/timestamp database type names changed", columns[0].DatabaseTypeName(), columns[1].DatabaseTypeName())
 	}
 	var date, timestamp string
+	destinations := []any{&date, &timestamp}
+	var unsigned, signed reflect.Value
+	if p.mode == oceanbase.ModeMySQL {
+		if columns[2].ScanType() != reflect.TypeFor[uint64]() || columns[3].ScanType() != reflect.TypeFor[int64]() {
+			t.Fatal("integer ScanType cannot represent full column range")
+		}
+		unsigned, signed = reflect.New(columns[2].ScanType()), reflect.New(columns[3].ScanType())
+		destinations = append(destinations, unsigned.Interface(), signed.Interface())
+	}
 	if !rows.Next() {
 		t.Fatal("date row missing", rows.Err())
 	}
-	if err = rows.Scan(&date, &timestamp); err != nil {
-		failOperation(t, "read date value", err)
+	if err = rows.Scan(destinations...); err != nil {
+		failOperation(t, "read scalar metadata values", err)
 	}
 	if date != wantDate {
 		t.Fatal("date time-of-day changed", date)
+	}
+	if p.mode == oceanbase.ModeMySQL && (unsigned.Elem().Interface() != uint64(math.MaxUint64) || signed.Elem().Interface() != int64(math.MinInt64)) {
+		t.Fatal("integer ScanType lost boundary value")
 	}
 	if rows.Next() || rows.Err() != nil {
 		t.Fatal("date result boundary changed", rows.Err())

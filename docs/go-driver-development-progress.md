@@ -725,6 +725,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - TestAllScalarTypes 已补 Oracle DATE 列与整秒含时间输入，三种执行路径检查 DATE/TIMESTAMP 元数据及日期值；MySQL 对照检查 DATE/DATETIME。两工具链均只编译该集成源码，不运行数据库。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过，Go1.25 实际 Windows/386 目标通过；初次 integration lint 的两处重复字符串已提取常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读走查无确认问题；文档/链接/160配置初值及32任务/28实现/0验收、Go格式和diff检查通过。真实数据库、Linux/macOS/远程 CI 与成功 race 未验证，四项未收口任务及计数保持。
 
+#### D13 无符号 BIGINT 的 ScanType
+
+- 依据标准 database/sql.ScanType 的“适合接收列值的 Go 类型”契约，原 int64 无法接收 BIGINT UNSIGNED 超过 MaxInt64 的合法值。共享 RowsColumnTypeScanType 已按协议类型8的 unsigned 标志推荐 uint64，有符号仍为 int64；不改变实际行值的 int64/精确十进制 string 表示，不新增 API、配置、包或依赖。
+- TestUnsignedBigIntScanType 使用实际 database/sql 和本地协议对端，三执行路径 × 三包流，共9组合；按 ScanType 反射创建 Scan 目标，覆盖0、MaxInt64、MaxInt64+1、MaxUint64，有符号-1/0/MaxInt64/MinInt64和 NULL，并检查 statement 关闭、Ping/QUIT 复用。修复前9组合均复现元数据错误及大值扫描溢出；修复后目标通过。
+- TestAllScalarTypes 的 MySQL 夹具增加 unsigned/signed BIGINT，复用既有标量元数据查询路径，按实际 ScanType 反射扫描 MaxUint64/MinInt64；两版本均仅编译该集成源码。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过；两版本普通及 integration 标签 golangci-lint 均0 issues，Go1.25 实际 Windows/386 目标通过。独立只读走查无确认问题；文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过。未连接数据库，Linux/macOS/远程 CI、成功 race 与真实服务端边界仍未验证，四项未收口任务和计数保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

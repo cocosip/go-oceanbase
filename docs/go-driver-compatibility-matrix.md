@@ -150,6 +150,7 @@ TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模�
 
 | 能力 | Go 行为 | 验证状态 |
 | --- | --- | --- |
+| BIGINT UNSIGNED 结果元数据 | ScanType 为 uint64，覆盖完整无符号范围；有符号 BIGINT 保持 int64；行值仍为 int64/精确 string | TestUnsignedBigIntScanType 经真实 database/sql 按 ScanType 反射分配目标，三执行路径/三包流验证0、MaxInt64、MaxInt64+1、MaxUint64、有符号对照及 NULL；TestAllScalarTypes 集成仅编译 |
 | 精确 NUMBER / DECIMAL | Number 保留文本；Oracle 协议 3 按四字节整数，206/246 按精确十进制文本；输入 246，不转 float64 | 两模式边界及三种执行路径本地通过；真实精度待联调 |
 | NCHAR/NVARCHAR2、RAW、ROWID | NString/Raw/RowID 保留输入身份；NCHAR 按 NCharset 解码，RAW 返回复制的字节，ROWID 返回文本 | 原生字段体、NULL/空值及参数身份本地通过；真实服务器空值语义待联调 |
 | Oracle 时间/间隔 | 类型 200/201/202/204/205 按 Java 原生布局解码，两类行协议保留纳秒/偏移/region；区分 LTZ 会话墙上时间与瞬间 | 原生夹具、DST、零值时间、公元 1 年、非法字段及端到端本地通过 |
