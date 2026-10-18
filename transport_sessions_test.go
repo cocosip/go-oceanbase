@@ -69,7 +69,7 @@ func runPlatformMixedSession(t *testing.T, listener net.Listener, cfg Config, fr
 			return
 		}
 		for i := range 2 {
-			if !serveDriverSessionCycle(ctx, t, p, cfg.Mode, i) {
+			if !serveDriverSessionCycle(ctx, t, p, cfg.Mode, i, nil) {
 				return
 			}
 		}
@@ -87,13 +87,7 @@ func runPlatformMixedSession(t *testing.T, listener net.Listener, cfg Config, fr
 	t.Cleanup(func() { _ = listener.Close(); <-done })
 	cfg.User = testUser
 	cfg.Execution = ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}
-	cfg.Protocol = ProtocolOptions{Compression: FeatureOff, OB20: FeatureOff}
-	if framing == testCompression {
-		cfg.Protocol.Compression = FeatureRequired
-	}
-	if framing == testOB20 {
-		cfg.Protocol.OB20 = FeatureRequired
-	}
+	cfg.Protocol = sessionStabilityProtocol(framing)
 	created, err := NewConnector(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +109,9 @@ func runPlatformMixedSession(t *testing.T, listener net.Listener, cfg Config, fr
 		t.Fatal(err, closeErr)
 	}
 	for i := range 2 {
-		runDriverSessionCycle(ctx, t, db, physical, i)
+		if err = runDriverSessionCycle(ctx, db, physical, i); err != nil {
+			t.Fatal(err)
+		}
 		checkBenchmarkIdle(t, physical, db.Stats())
 	}
 	if err = db.Close(); err != nil {

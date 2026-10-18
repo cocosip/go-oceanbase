@@ -49,8 +49,14 @@ func TestDriverResourceStability(t *testing.T) {
 
 // The counters are hard assertions; process-wide heap/goroutine samples are observations.
 func benchmarkIdleError(c *conn, stats sql.DBStats) error {
-	if stats.OpenConnections != 1 || stats.InUse != 0 || stats.Idle != 1 || c.closed.Load() ||
-		c.activeTx != nil || c.responseActive || len(c.resources.records) != 0 {
+	if stats.OpenConnections != 1 || stats.InUse != 0 || stats.Idle != 1 {
+		return fmt.Errorf("benchmark leaked a pool connection lease")
+	}
+	return benchmarkSessionError(c)
+}
+
+func benchmarkSessionError(c *conn) error {
+	if c.closed.Load() || c.activeTx != nil || c.responseActive || len(c.resources.records) != 0 {
 		return fmt.Errorf("benchmark leaked a connection lease, transaction, response or resource")
 	}
 	if len(c.statements.entries) != c.statements.order.Len() || c.statements.order.Len() > c.cfg.Execution.StatementCacheSize {

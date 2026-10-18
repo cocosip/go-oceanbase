@@ -248,6 +248,9 @@ jobs:
       - run: go test . -run '^TestDriver(Resource|Session)Stability$' -count=1 -v -timeout 10m
         env:
           OB_TEST_STABILITY_ITERATIONS: '4096'
+      - run: go test . -run '^TestDriverConcurrentSessionStability$' -count=1 -v -timeout 5m
+        env:
+          OB_TEST_STABILITY_ITERATIONS: '1024'
 
   integration:
     name: Integration (${{ matrix.profile }}, Go ${{ matrix.go }})

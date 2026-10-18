@@ -22,8 +22,25 @@ const (
 	sessionStabilityMutation = "UPDATE stability_fixture SET v=1"
 )
 
-// Keep the original physical session across mixed operations, including recoverable SQL errors.
-func TestDriverSessionStability(t *testing.T) {
+type stabilitySession interface {
+	Session
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	PingContext(context.Context) error
+}
+
+func sessionStabilityProtocol(framing string) ProtocolOptions {
+	protocol := ProtocolOptions{Compression: FeatureOff, OB20: FeatureOff}
+	if framing == testCompression {
+		protocol.Compression = FeatureRequired
+	}
+	if framing == testOB20 {
+		protocol.OB20 = FeatureRequired
+	}
+	return protocol
+}
+
+func sessionStabilityIterations(t *testing.T) int {
+	t.Helper()
 	iterations := 8
 	if value := os.Getenv("OB_TEST_STABILITY_ITERATIONS"); value != "" {
 		var err error
@@ -32,6 +49,12 @@ func TestDriverSessionStability(t *testing.T) {
 			t.Fatal("OB_TEST_STABILITY_ITERATIONS must be in [1,10000]")
 		}
 	}
+	return iterations
+}
+
+// Keep the original physical session across mixed operations, including recoverable SQL errors.
+func TestDriverSessionStability(t *testing.T) {
+	iterations := sessionStabilityIterations(t)
 	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
@@ -54,7 +77,7 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 			return
 		}
 		for i := 0; i < iterations; i++ {
-			if !serveDriverSessionCycle(ctx, t, p, mode, i) {
+			if !serveDriverSessionCycle(ctx, t, p, mode, i, nil) {
 				return
 			}
 		}
@@ -63,13 +86,7 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 	}, 2*time.Minute)
 	var dials atomic.Int32
 	cfg := Config{User: testUser, Mode: mode, Execution: ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
-	cfg.Protocol = ProtocolOptions{Compression: FeatureOff, OB20: FeatureOff}
-	if framing == testCompression {
-		cfg.Protocol.Compression = FeatureRequired
-	}
-	if framing == testOB20 {
-		cfg.Protocol.OB20 = FeatureRequired
-	}
+	cfg.Protocol = sessionStabilityProtocol(framing)
 	cfg.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if dials.Add(1) != 1 {
 			return nil, errors.New("mixed workload replaced its physical session")
@@ -116,7 +133,9 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 	sample(0)
 	sampleStep := max(1, (iterations+stabilitySamples-1)/stabilitySamples)
 	for i := 0; i < iterations; i++ {
-		runDriverSessionCycle(ctx, t, db, physical, i)
+		if err = runDriverSessionCycle(ctx, db, physical, i); err != nil {
+			t.Fatal(err)
+		}
 		checkBenchmarkIdle(t, physical, db.Stats())
 		if (i+1)%sampleStep == 0 || i+1 == iterations {
 			sample(i + 1)
@@ -124,7 +143,7 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 	}
 }
 
-func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode Mode, i int) bool {
+func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode Mode, i int, barrier func() bool) bool {
 	t.Helper()
 	status, active := byte(2), byte(3)
 	begin := []txStep{{testMySQLReadWrite, active}}
@@ -134,7 +153,13 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 	}
 	id, value := uint32(2*i+1), int64(i+1)
 	if !servePrepareStatus(ctx, t, p, sessionStabilityUpdate, id, 1, nil, status) ||
-		!readCommand(ctx, t, p, optimizationExecute(id, value, false)) || !sendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
+		!readCommand(ctx, t, p, optimizationExecute(id, value, false)) {
+		return false
+	}
+	if barrier != nil && !barrier() {
+		return false
+	}
+	if !sendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
 		!readCommand(ctx, t, p, optimizationExecute(id, -value, true)) || !sendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
 		!readCommand(ctx, t, p, stmtPacket(25, id)) || !readQuery(ctx, t, p, sessionStabilitySelect) ||
 		!sendPackets(ctx, t, p, []byte{1}, textColumn("v", 8, 63, 0), []byte{254, 0, 0, status, 0}) {
@@ -167,43 +192,42 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 	return true
 }
 
-func runDriverSessionCycle(ctx context.Context, t *testing.T, db *sql.DB, physical *conn, i int) {
-	t.Helper()
+func runDriverSessionCycle(ctx context.Context, db stabilitySession, physical *conn, i int) error {
 	for _, value := range []int64{int64(i + 1), -int64(i + 1)} {
 		result, err := db.ExecContext(ctx, sessionStabilityUpdate, value)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if n, err := result.RowsAffected(); err != nil || n != 1 {
-			t.Fatal("cached update count", n, err)
+			return fmt.Errorf("cached update count %d: %v", n, err)
 		}
 	}
 	rows, err := db.QueryContext(ctx, sessionStabilitySelect)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if i%2 != 0 {
 		var value int64
 		if !rows.Next() || rows.Scan(&value) != nil || value != int64(i+1) {
 			_ = rows.Close()
-			t.Fatal("mixed rows value", value, rows.Err())
+			return fmt.Errorf("mixed rows value %d: %v", value, rows.Err())
 		}
 	}
 	if err = rows.Close(); err != nil || rows.Err() != nil {
-		t.Fatal("early Rows.Close", err, rows.Err())
+		return fmt.Errorf("early Rows.Close: %v, rows: %v", err, rows.Err())
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	result, err := tx.ExecContext(ctx, sessionStabilityMutation)
 	if err != nil {
 		_ = tx.Rollback()
-		t.Fatal(err)
+		return err
 	}
 	if n, countErr := result.RowsAffected(); countErr != nil || n != 1 {
 		_ = tx.Rollback()
-		t.Fatal("transaction update count", n, countErr)
+		return fmt.Errorf("transaction update count %d: %v", n, countErr)
 	}
 	if i%2 == 0 {
 		err = tx.Rollback()
@@ -211,22 +235,23 @@ func runDriverSessionCycle(ctx context.Context, t *testing.T, db *sql.DB, physic
 		err = tx.Commit()
 	}
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if err = physical.lock(ctx); err != nil {
-		t.Fatal(err)
+		return err
 	}
 	restored := physical.activeTx == nil && physical.session.ok.Status&3 == 2
 	physical.unlock()
 	if !restored {
-		t.Fatal("transaction returned without restoring the original session")
+		return errors.New("transaction returned without restoring the original session")
 	}
 	_, err = db.ExecContext(ctx, sessionStabilityUpdate, i+1)
 	var server *Error
 	if !errors.As(err, &server) || server.Code != 1062 || server.SQLState != "23000" {
-		t.Fatal("recoverable prepared error", err)
+		return fmt.Errorf("recoverable prepared error: %v", err)
 	}
 	if err = db.PingContext(ctx); err != nil {
-		t.Fatal("session not reusable after mixed cycle", err)
+		return fmt.Errorf("session not reusable after mixed cycle: %w", err)
 	}
+	return nil
 }
