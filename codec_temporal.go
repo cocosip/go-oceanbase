@@ -292,6 +292,9 @@ func encodeTemporal(v any, options SessionOptions) (wire.Parameter, error) {
 	return p, ErrType
 }
 
+// encodeInterval packs an interval into the Oracle binary interval layout.
+// intervalParts already stores each field at its wire width, so no value is
+// narrowed here.
 func encodeInterval(p intervalParts, days bool) []byte {
 	data := []byte{0}
 	if p.negative {
@@ -299,9 +302,9 @@ func encodeInterval(p intervalParts, days bool) []byte {
 	}
 	data = binary.LittleEndian.AppendUint32(data, uint32(p.major))
 	if !days {
-		return append(data, byte(p.minor), byte(p.precision))
+		return append(data, p.minor, p.precision)
 	}
-	data = append(data, byte(p.hour), byte(p.minute), byte(p.second))
+	data = append(data, p.hour, p.minute, p.second)
 	data = binary.LittleEndian.AppendUint32(data, uint32(p.nanos))
-	return append(data, byte(p.precision), byte(p.scale))
+	return append(data, p.precision, p.scale)
 }

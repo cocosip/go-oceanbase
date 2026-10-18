@@ -293,10 +293,14 @@ func decimalField(text string, maxValue int) (int, error) {
 	return n, nil
 }
 
+// intervalParts holds fields already narrowed to their wire widths. parseInterval
+// performs the range checks, so encodeInterval never converts a wider integer.
 type intervalParts struct {
-	negative                           bool
-	major, minor, precision            int
-	hour, minute, second, nanos, scale int
+	negative             bool
+	major, nanos         int
+	minor, precision     byte
+	hour, minute, second byte
+	scale                byte
 }
 
 func parseInterval(text string, days bool) (intervalParts, error) {
@@ -318,28 +322,41 @@ func parseInterval(text string, days bool) (intervalParts, error) {
 	if len(parts) != 2 {
 		return p, ErrType
 	}
-	p.precision = len(parts[0])
+	if len(parts[0]) > 0xff {
+		return p, ErrType
+	}
+	p.precision = byte(len(parts[0]))
 	var err error
 	p.major, err = decimalField(parts[0], 999999999)
 	if err != nil {
 		return p, err
 	}
 	if !days {
-		p.minor, err = decimalField(parts[1], 11)
-		return p, err
+		minor, err := decimalField(parts[1], 11)
+		if err != nil {
+			return p, err
+		}
+		p.minor = byte(minor)
+		return p, nil
 	}
 	clock := parts[1]
 	if len(clock) < 8 {
 		return p, ErrType
 	}
-	p.scale, err = fractionScale(clock[8:])
+	scale, err := fractionScale(clock[8:])
 	if err != nil {
 		return p, err
 	}
+	if scale > 0xff {
+		return p, ErrType
+	}
+	p.scale = byte(scale)
 	t, err := time.Parse("15:04:05", clock)
 	if err != nil {
 		return p, ErrType
 	}
-	p.hour, p.minute, p.second, p.nanos = t.Hour(), t.Minute(), t.Second(), t.Nanosecond()
+	// time.Parse bounds these to 0-23, 0-59 and 0-59, so each fits a byte.
+	p.hour, p.minute, p.second = byte(t.Hour()), byte(t.Minute()), byte(t.Second())
+	p.nanos = t.Nanosecond()
 	return p, nil
 }
