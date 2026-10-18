@@ -114,6 +114,34 @@ func parseLTZ(text string) (timestampParts, error) {
 	return timestampParts{instant: wall, scale: scale, region: parts[2], local: true}, nil
 }
 
+func ltzSessionWall(p timestampParts, location *time.Location) (time.Time, error) {
+	if location == nil {
+		location = time.UTC
+	}
+	if p.local && p.region == location.String() {
+		return p.instant, nil
+	}
+	instant := p.instant
+	if p.local {
+		source, err := time.LoadLocation(p.region)
+		if err != nil {
+			return time.Time{}, ErrType
+		}
+		instant, err = resolveLocal(instant, source)
+		if err != nil {
+			return time.Time{}, err
+		}
+	}
+	wall := instant.In(location)
+	if wall.Year() < 1 || wall.Year() > 9999 {
+		return time.Time{}, ErrType
+	}
+	if _, err := resolveLocal(wall, location); err != nil {
+		return time.Time{}, err
+	}
+	return wall, nil
+}
+
 func resolveLocal(wall time.Time, loc *time.Location) (time.Time, error) {
 	local := time.Date(wall.Year(), wall.Month(), wall.Day(), wall.Hour(), wall.Minute(), wall.Second(), wall.Nanosecond(), loc)
 	start, end := local.ZoneBounds()

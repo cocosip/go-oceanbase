@@ -591,7 +591,7 @@ Number 的内容预算按规范化后的定点十进制字节计算，不因正�
 
 Oracle 兼容模式的协议类型12表示 `DATE`，`ColumnTypes().DatabaseTypeName()` 和服务端参数元数据均报告 `DATE`，保留时分秒；MySQL 兼容模式同一协议类型报告 `DATETIME`。类型名称不随 ParseTime 改变，后者只控制 Scan 来源为文本或 time.Time，不改变数据库类型身份。依据固定 Java 的 [ColumnType.getColumnTypeName](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L454)；TestDateColumnTypes/TestDateParameterMetadata 覆盖两模式/三包流、三种执行路径与 ParseTime/NULL；真实 TestAllScalarTypes 的 DATE/TIMESTAMP 检查仅编译，待联调。
 
-带时区值的文本例为 `2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT`。偏移必需，region/缩写可选；已知 region 与偏移不一致时拒绝。未知 region 原文和显式偏移保留，Time() 使用该偏移，不猜测 region。LTZ 原生字段只有会话墙上时间；固定偏移会话追加偏移，具转换规则的会话追加 region，例如 `2024-11-03 01:30:00.000000001 America/New_York`。其 Time() 在歧义时拒绝；同会话 region 可原样绑定，本机瞬间转换到歧义 LTZ 墙上时间也拒绝，防止丢失 fold。需要指定 fold 时使用 TimestampTZ 绑定，由服务端转换到 LTZ 列。
+带时区值的文本例为 `2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT`。偏移必需，region/缩写可选；已知 region 与偏移不一致时拒绝。未知 region 原文和显式偏移保留，Time() 使用该偏移，不猜测 region。LTZ 原生字段只有会话墙上时间；固定偏移会话追加偏移，具转换规则的会话追加 region，例如 `2024-11-03 01:30:00.000000001 America/New_York`。其 Time() 在歧义时拒绝；同会话 region 可原样绑定，本机瞬间转换到歧义 LTZ 墙上时间也拒绝，防止丢失 fold。客户端与服务端预处理共用 LTZ 会话转换规则：不同 region 的墙上时间须先无歧义地解析为瞬间，再转换到配置的会话时区；源时间缺口/重叠、目标时间重叠或转换后年份超出1–9999均在发送前拒绝。客户端对转换后的 region 输入发送会话墙上时间，对显式偏移输入保留偏移字面量，但两者均须先通过相同的目标墙上时间校验。需要指定 fold 时使用 TimestampTZ 绑定，由服务端转换到 LTZ 列。
 
 Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用原生 TIMESTAMP(9)，MySQL 协议只支持微秒，超过精度明确报错。IntervalYM/DS 保留符号、最高九位年/日与最高九位秒小数，不换算成 time.Duration。二进制和文本行中的 Oracle 扩展时间均按原生字段体解码，不能把它误当成字符文本。
 

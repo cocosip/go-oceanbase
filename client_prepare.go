@@ -284,11 +284,12 @@ func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
 		}
 	case TimestampLTZ:
 		parts, _ := parseLTZ(string(v))
+		wall, err := ltzSessionWall(parts, c.cfg.Session.Location)
+		if err != nil {
+			return "", err
+		}
 		if parts.local {
-			if c.cfg.Session.Location == nil || parts.region != c.cfg.Session.Location.String() {
-				return "", ErrType
-			}
-			text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + "'"
+			text = "TIMESTAMP '" + formatTimestamp(wall, parts.scale) + "'"
 		} else {
 			text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + " " + parts.instant.Format("-07:00") + "'"
 		}

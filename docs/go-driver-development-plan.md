@@ -347,6 +347,8 @@ Oracle DATE 元数据补充：协议类型12在 Oracle 报告 DATE、MySQL 报�
 
 Number 预算补充：TestNumberNormalizedBudget、TestComplexNumberNormalizedBudget、TestNumberSQLNormalizedBudget 共46个本地场景覆盖规范化收缩、定点展开、精度、零/负预算、复杂字段累计前缀及两模式三包流 server/client 公开预处理，另检查正/负极端指数在展开前拒绝。按最终定点字节及平台 MaxInt 检查后才构造结果，避免先复制超限尾数；FuzzScalars 增加收缩种子及0–510字节的变化预算，检查精确值不变。真实精度与服务端往返仍待联调。
 
+LTZ 预处理等价性补充：TestLTZPrepareEquivalence、TestLTZSQLPrepareEquivalence 共36场景覆盖客户端与服务端的跨 region 会话转换、纳秒、同 region 墙上时间保留、源 DST 缺口/重叠及目标重叠拒绝、会话年份边界，以及三种包流上的公开预处理和本地拒绝后的原会话复用。客户端与二进制路径共用会话墙上时间校验，不以偏移 SQL 字面量绕过二进制路径的歧义或范围限制；FuzzScalars 增加 LTZ 跨 region、源缺口及年份边界种子，固定 UTC 会话和充足预算时检查两路径接受/拒绝一致。真实时区转换及服务端类型语义仍待联调。
+
 ### D13 数据库、结果和参数元数据
 
 依赖：D09、D12。对应：M11；架构 §16.1。

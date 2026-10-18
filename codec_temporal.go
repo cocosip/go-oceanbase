@@ -245,16 +245,9 @@ func encodeTemporal(v any, options SessionOptions) (wire.Parameter, error) {
 		if err != nil {
 			return p, err
 		}
-		wall := timestamp.instant
-		if !timestamp.local || timestamp.region != options.Location.String() {
-			instant, timeErr := value.Time()
-			if timeErr != nil {
-				return p, timeErr
-			}
-			wall = instant.In(options.Location)
-			if _, timeErr = resolveLocal(wall, options.Location); timeErr != nil {
-				return p, timeErr
-			}
+		wall, err := ltzSessionWall(timestamp, options.Location)
+		if err != nil {
+			return p, err
 		}
 		p.Data, err = encodeOracleWall(wall, timestamp.scale)
 		return p, err
