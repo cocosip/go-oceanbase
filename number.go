@@ -38,9 +38,6 @@ func (n *Number) Scan(src any) error {
 }
 
 func plainNumber(text string, limit int64) (string, error) {
-	if int64(len(text)) > limit {
-		return "", wire.ErrMessageTooLarge
-	}
 	mantissa, exponent, err := decimalParts(text)
 	if err != nil {
 		return "", err
@@ -51,16 +48,18 @@ func plainNumber(text string, limit int64) (string, error) {
 	}
 	mantissa = strings.TrimPrefix(strings.TrimPrefix(mantissa, "-"), "+")
 	point := int64(strings.IndexByte(mantissa, '.'))
+	digitCount := int64(len(mantissa))
 	if point < 0 {
-		point = int64(len(mantissa))
+		point = digitCount
+	} else {
+		digitCount--
 	}
-	digits := strings.ReplaceAll(mantissa, ".", "")
 	point += exponent
-	length := int64(len(digits))
+	length := digitCount
 	switch {
 	case point <= 0:
 		length += 2 - point
-	case point < int64(len(digits)):
+	case point < digitCount:
 		length++
 	default:
 		length = point
@@ -68,6 +67,7 @@ func plainNumber(text string, limit int64) (string, error) {
 	if length+int64(len(sign)) > limit || length+int64(len(sign)) > int64(math.MaxInt) {
 		return "", wire.ErrMessageTooLarge
 	}
+	digits := strings.ReplaceAll(mantissa, ".", "")
 	if point <= 0 {
 		return sign + "0." + strings.Repeat("0", int(-point)) + digits, nil
 	}

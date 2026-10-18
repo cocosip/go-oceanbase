@@ -8,15 +8,16 @@ import (
 )
 
 func FuzzScalars(f *testing.F) {
-	for _, text := range []string{"0", "1e-130", "-9.99e125", "98765432109876543210.987654321", "1;SELECT", "1e2147483647", ".", "2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT", "-999999998 23:59:59.987654321"} {
+	for _, text := range []string{"0", "+.5e+0", "1.", "1e" + strings.Repeat("0", 400), "1e-130", "-9.99e125", "98765432109876543210.987654321", "1;SELECT", "1e2147483647", ".", "2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT", "-999999998 23:59:59.987654321"} {
 		f.Add(text, []byte(text), byte(200))
 	}
 	f.Fuzz(func(t *testing.T, text string, data []byte, typ byte) {
 		if len(text) > 512 || len(data) > 512 {
 			return
 		}
-		if plain, err := plainNumber(text, 512); err == nil {
-			if strings.ContainsAny(plain, "eE") || len(plain) > 512 {
+		limit := int64(typ) * 2
+		if plain, err := plainNumber(text, limit); err == nil {
+			if strings.ContainsAny(plain, "eE") || int64(len(plain)) > limit {
 				t.Fatal("nondecimal literal", plain)
 			}
 			original, ok := new(big.Rat).SetString(text)

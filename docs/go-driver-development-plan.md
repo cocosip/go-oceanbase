@@ -343,7 +343,9 @@ SQL/客户端预算补充：TestSQLTextEncodedBudget、TestClientSQLTextEncodedB
 
 Oracle DATE 元数据补充：协议类型12在 Oracle 报告 DATE、MySQL 报告 DATETIME；ParseTime 只改变 Scan 来源，不改变类型名称或截断时分秒。TestDateColumnTypes/TestDateParameterMetadata 提供本地回归；TestAllScalarTypes 已补 DATE/TIMESTAMP 列名检查与 Oracle DATE 含时间夹具，集成仅编译，真实验证仍未勾选。
 
-二进制文本参数预算补充：普通 string、NString 和复杂类型文本字段按实际转码字节检查内容预算，保留编码前码点数下界、严格编码及长度前缀/命令累计上限。TestParameterEncodedBudget、TestComplexTextEncodedBudget、TestPreparedParameterEncodedBudget 共63个本地场景覆盖收缩/膨胀、精确边界、零/负预算，以及两模式适用组合和三包流公开预处理；超限在发送前拒绝，原会话仍可 Ping。SQL 文本/客户端插值的独立预算另行核对；LongData 源字节和转码后字节双重限制保持。真实数据库验收不据此勾选。
+二进制文本参数预算补充：普通 string、NString 和复杂类型文本字段按实际转码字节检查内容预算，保留编码前码点数下界、严格编码及长度前缀/命令累计上限。TestParameterEncodedBudget、TestComplexTextEncodedBudget、TestPreparedParameterEncodedBudget 共63个本地场景覆盖收缩/膨胀、精确边界、零/负预算，以及两模式适用组合和三包流公开预处理；超限在发送前拒绝，原会话仍可 Ping。SQL 文本/客户端插值的独立预算见 D10；LongData 源字节和转码后字节双重限制保持。真实数据库验收不据此勾选。
+
+Number 预算补充：TestNumberNormalizedBudget、TestComplexNumberNormalizedBudget、TestNumberSQLNormalizedBudget 共46个本地场景覆盖规范化收缩、定点展开、精度、零/负预算、复杂字段累计前缀及两模式三包流 server/client 公开预处理，另检查正/负极端指数在展开前拒绝。按最终定点字节及平台 MaxInt 检查后才构造结果，避免先复制超限尾数；FuzzScalars 增加收缩种子及0–510字节的变化预算，检查精确值不变。真实精度与服务端往返仍待联调。
 
 ### D13 数据库、结果和参数元数据
 
