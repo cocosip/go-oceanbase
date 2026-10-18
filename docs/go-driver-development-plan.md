@@ -725,6 +725,8 @@ D32 connectProxy 的 Go 适配使用 Session.SkipVersionProbe / skipVersionProbe
 
 D32 标准连接池子项以 sql.DB 原生 setter/context/Stats 和外部 slog 承载八项 Java 池选项，补齐一次性多连接就绪示例与两模式实际驱动生命周期验证；minPoolSize 无等价保底，staticGlobal 的服务端全局变量缓存不迁移为配置开关，默认差异和共享 Connector 的边界见架构 §5.1。没有新增生产 API、包、依赖或连接池；真实容量、空闲超时、监控及长期负载仍待验收，D28/D32 和 D30/D31 依赖状态保持。
 
+D06/D32 增加 TestPoolCancelIsolation：两模式/三包流下，在同池另一条物理连接的预处理事务执行期间取消流式 Rows，验证错误与物理关闭只影响目标连接，原事务可提交、原会话可继续 Ping，并且无重拨、池泄漏或测试清理代为关闭。此项本地组合验证不替代全部并发/故障、真实数据库与成功 race 验收。
+
 D32 初始化/执行选项按固定 Java 实现补证：usePipelineAuth 的认证后初始化分支在当前版本逐条 getResult，Go 沿用逐条确认/失败即关闭，不声明流水线优化；enableQueryTimeouts 由每次调用 context 承载；encloseParamInParentheses 对应当前版本的空格边界；serverAffinityOrder 的替换列表由 Endpoints/Weight/Strategy 承载，不能仅映射成 Ordered。新增 TestInitializationErrorBoundary、TestClientParameterBoundaries、TestStatementContextDeadline 及同名 Java DSN 拒绝测试，无生产配置/API/依赖变更。数组编码 fuzz 接入30秒 CI，原 FuzzStmt 选择器修复多目标歧义；真实 SQL/HA、平台与远程 CI 验收继续保留。
 
 D32 逐项证据子项为160个规范选项补充 Go 配置、标准库、显式 API、固定语义、安全拒绝、应用责任、平台适配或不适用分类，并关联具体本地测试入口；不将 Example 的编译、旧参数拒绝或查询计划当作完整行为验收。TestDSNJavaCanonicalOptions 独立固定158个拒绝 query key 和2个同名 Go 入口；TestMySQLScalarCompatibility 补齐 TINYINT/YEAR/BIT 的9条执行/包流路径，保留 Go 整数/字节契约。TestMetadataCatalogAndRemarks 在两模式/两字符集/三包流中检查空 Catalog 无隐式 schema 限制、非空精确过滤请求和表/列备注保真、重复查询及同会话边界；固定字典行集不证明真实 SQL 求值。TestMetadataCatalog 的 DDL 备注和 Catalog 过滤集成源码仅编译；平台、远程 CI、成功 race 和真实目标仍待闭环，不勾选逐项完整验证或 D32 整项完成。
