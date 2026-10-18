@@ -21,7 +21,9 @@ func Native(password string, challenge []byte) ([]byte, error) {
 	var input [40]byte
 	copy(input[:20], challenge)
 	copy(input[20:], second[:])
+	clear(second[:])
 	third := sha1.Sum(input[:])
+	clear(input[:])
 	for i := range first {
 		first[i] ^= third[i]
 	}

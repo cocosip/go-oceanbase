@@ -27,7 +27,9 @@ func CachingSHA2(password string, challenge []byte) ([]byte, error) {
 	var input [52]byte
 	copy(input[:32], second[:])
 	copy(input[32:], challenge)
+	clear(second[:])
 	third := sha256.Sum256(input[:])
+	clear(input[:])
 	for i := range first {
 		first[i] ^= third[i]
 	}
