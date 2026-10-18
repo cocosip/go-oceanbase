@@ -893,6 +893,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[打开事务失效回归](../cursor_open_epoch_test.go)：两模式 forward/static、Oracle sensitive × prepare/execute × 标准/压缩/OB20 共30场景，另有 sensitive 最终 OK 才失效的3场景。旧实现10个普通包流场景复现失效句柄发布、额外 fetch/LOB 读取和 prepare 后继续执行；修复后33场景重复10轮通过，既有游标测试通过。回归验证 ErrResource、无句柄发布、statement 关闭、原会话可继续执行及显式回滚。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；lint 检出的重复测试字符串已提取常量，打开前校验独立为持锁私有函数以满足复杂度约束，两版本目标回归各重复10轮、普通/integration 标签 golangci-lint 均通过，lint 均0 issues。独立只读复核未发现确认问题，目标打开/fetch/子游标回归独立运行通过。obtest 重建、38项列表及示例配置离线检查通过；真实数据库、其他平台和 race 暂缓，实现28/32、验收0/32不变。
 
+#### D15/D16 原生 LOB 打开代次与参数化失败清理
+
+- OpenBlob/OpenClob 在 prepare/查询前建立资源代次，实际发送前校验 prepare/参数处理是否已使代次变化，完整 locator 响应后再次检查，失效时不登记或发布句柄。参数化打开收到完整服务端 ERR 时，已有 Rows 在原操作锁下关闭自动 statement；QueryContext 不再二次调用 Close 重入同一锁，避免清理超时误淘汰原物理会话。内部表内 BLOB/Refresh 使用的无打开快照上下文保持原有语义，无新增公开 API、包或依赖。
+- 新增[原生 LOB 打开回归](../lob_open_epoch_test.go)：BLOB/CLOB × 文本/客户端绑定/服务端预处理/合并执行 × 元数据/最终响应失效 × 三包流共48场景，独立 prepare 失效6场景，以及独立/合并执行完整服务端 ERR 清理6场景。旧实现18个普通包流事务场景复现失效句柄发布或 prepare 后继续执行，2个错误场景复现清理自锁后的坏连接。修复后60场景及既有 LOB/游标/合并执行目标通过；回归验证无句柄发布、无额外 execute、statement 关闭、原会话继续使用和显式回滚。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；初次 lint 的测试常量、context 参数顺序和复杂度问题已整理，两版本60场景各重复10轮通过，普通/integration 标签 golangci-lint 均0 issues。独立只读复核未发现确认问题，独立重跑60场景及既有清理/取消回归通过；obtest 重建、38项列表及示例配置离线检查通过。数据库联调、其他平台及 race 暂缓，实现28/32、验收0/32保持。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

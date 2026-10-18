@@ -1053,6 +1053,8 @@ D19 的服务器游标到位前，首次遇到原生 LOB 的结果集会有界�
 
 字符 API 的 off/count/返回计数均为 Unicode 码点。已知 UTF16 collation 的服务端偏移按 UTF-16 单位转换，其他受支持字符集按码点转换；out-row 路径从起点分块扫描，校验服务端数量和编码长度，不能把 UTF-8 字节当字符。UTF-16 覆盖要求已有位置与新字符的代理对宽度相同，宽度改变时在任何写入前返回 ErrUnsupported；追加和相同宽度覆盖可用。不能表示的文本、非法代理对或不匹配的服务端字符单位明确失败。目标服务端 NCLOB 字符单位和 collation 行为仍须由 TestNativeLOB 取证。
 
+OpenBlob/OpenClob 在任何 prepare/查询前取得资源代次，发送 locator 查询前和完整响应后复核；prepare 已结束原事务时不再执行，元数据、行结束或合并执行最终 OK 导致事务失效时返回 ErrResource，不登记或发布 locator。完整响应上的失效保留可用会话。参数化打开失败时，自动 statement 由持有操作锁的 Rows 清理，不再次调用会重新获取该锁的 Close；完整服务端 ERR 不因二次清理自锁而误淘汰连接。[打开回归](../lob_open_epoch_test.go)覆盖两种 LOB、文本/客户端绑定/服务端预处理/合并执行、三包流和完整错误后的原会话复用。
+
 ### 14.4 表内 BLOB 与 MySQL 模拟 locator
 
 采用显式目标描述取得可靠行身份，不从任意查询、列别名或 BLOB 内容推测表和主键。这是本方案的 API 选择，返回的仍是同一个 Blob 类型：

@@ -90,7 +90,9 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 	} else {
 		r.execution, _ = ctx.Value(executionContextKey{}).(*Execution)
 	}
-	r.captureLOBOpen()
+	if err := r.captureLOBOpen(); err != nil {
+		return nil, r.fail(err, false)
+	}
 	ctx = r.ctx
 	p := c.session.packets
 	p.ResetSequence()

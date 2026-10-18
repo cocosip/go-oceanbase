@@ -41,7 +41,11 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	}
 	rows, err := prepared.query(ctx, args, true)
 	if err != nil {
-		_ = prepared.Close()
+		state, _ := ctx.Value(lobOpenContextKey{}).(*lobOpenState)
+		// Captured LOB rows close their automatic statement under the retained gate.
+		if state == nil || !state.gate {
+			_ = prepared.Close()
+		}
 	}
 	return rows, err
 }
@@ -249,7 +253,9 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 	if !keepGate && !binary && len(payload) > 0 && payload[0] == 3 {
 		r.localInfile, _ = ctx.Value(localInfileContextKey{}).(*LocalInfile)
 	}
-	r.captureLOBOpen()
+	if err := r.captureLOBOpen(); err != nil {
+		return nil, r.fail(err, false)
+	}
 	r.outputs = outputs
 	ctx = r.ctx
 	if !keepGate {
@@ -280,13 +286,17 @@ func (c *conn) queryCommandStateLocked(ctx context.Context, payload []byte, bina
 	return r, nil
 }
 
-func (r *textRows) captureLOBOpen() {
+func (r *textRows) captureLOBOpen() error {
 	if state, _ := r.ctx.Value(lobOpenContextKey{}).(*lobOpenState); state != nil {
 		r.captureLOB = true
 		if !r.keepGate {
 			state.gate, r.keepGate = true, true
 		}
+		if state.key.connection != nil && state.key != r.conn.resources.key {
+			return ErrResource
+		}
 	}
+	return nil
 }
 
 func errorsPreSend(err error) bool {

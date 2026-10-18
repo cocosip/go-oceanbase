@@ -24,7 +24,10 @@ type nativeLOBResource struct {
 }
 
 type lobOpenContextKey struct{}
-type lobOpenState struct{ gate bool }
+type lobOpenState struct {
+	gate bool
+	key  resourceKey
+}
 
 func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (_ driver.Result, err error) {
 	if !validSession(request.session) || request.result == nil || request.typ != 210 && request.typ != 211 {
@@ -33,7 +36,11 @@ func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (_ drive
 	if c.session.mode != ModeOracle {
 		return nil, ErrUnsupported
 	}
-	state := &lobOpenState{}
+	if err = c.lock(ctx); err != nil {
+		return nil, err
+	}
+	state := &lobOpenState{key: c.resourceKeyLocked()}
+	c.unlock()
 	var selected *resourceHandle
 	defer func() {
 		if !state.gate {
@@ -65,6 +72,9 @@ func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (_ drive
 	r.holdRelease = false
 	if err != nil {
 		return nil, r.fail(err, true)
+	}
+	if c.resources.key != state.key {
+		return nil, r.fail(ErrResource, false)
 	}
 	r.release()
 	if r.err != nil {
