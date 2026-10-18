@@ -35,34 +35,41 @@ func (r *cursorBatchRows) Close() error {
 	return r.textRows.Close()
 }
 
-func (c *conn) execOpenCursor(ctx context.Context, request cursorOpenRequest) (_ driver.Result, err error) {
+func (c *conn) validateCursorOpenLocked(request cursorOpenRequest) error {
 	if !validSession(request.session) || request.result == nil {
-		return nil, ErrResource
+		return ErrResource
 	}
 	if request.options.Mode == CursorSensitive && (c.session.mode != ModeOracle || !supportsPrepareExecute(c.session.obVersion)) {
-		return nil, ErrUnsupported
+		return ErrUnsupported
 	}
 	if request.options.Updatable {
 		if _, ok := request.session.(*sql.Tx); !ok || c.activeTx == nil || c.activeTx.readOnly || c.session.ok.Status&8192 != 0 {
-			return nil, ErrUnsupported
+			return ErrUnsupported
 		}
 		if err := cursorUpdatableQuery(request.query, c.session.mode, c.session.ok.Status&512 != 0); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	tokens, err := lexSQL(request.query, c.session.mode, c.session.ok.Status&512 != 0, false)
 	if err != nil || !cursorSingleSelect(request.query, tokens) {
-		return nil, errors.Join(ErrCursor, err)
+		return errors.Join(ErrCursor, err)
 	}
-	prepared, err := c.prepareServer(ctx, request.query)
-	if err != nil {
-		return nil, err
-	}
+	return nil
+}
+
+func (c *conn) execOpenCursor(ctx context.Context, request cursorOpenRequest) (_ driver.Result, err error) {
 	if err = c.lock(ctx); err != nil {
-		_ = prepared.Close()
 		return nil, err
 	}
 	defer c.unlock()
+	if err = c.validateCursorOpenLocked(request); err != nil {
+		return nil, err
+	}
+	key := c.resourceKeyLocked()
+	prepared, err := c.prepareServerLocked(ctx, request.query)
+	if err != nil {
+		return nil, err
+	}
 	var handle *resourceHandle
 	defer func() {
 		if err != nil {
@@ -77,10 +84,16 @@ func (c *conn) execOpenCursor(ctx context.Context, request cursorOpenRequest) (_
 			}
 		}
 	}()
+	if c.resources.key != key {
+		return nil, ErrResource
+	}
 	c.clearDescriptors()
 	columns, last, err := c.executeCursorOpenLocked(ctx, prepared, request)
 	if err != nil {
 		return nil, err
+	}
+	if c.resources.key != key {
+		return nil, ErrResource
 	}
 	cur := &cursorResource{columns: columns, last: last, options: request.options, offset: c.session.mode == ModeOracle && supportsVersion(c.session.obVersion, 2, 2, 5)}
 	handle, err = c.registerResourceLocked(request.session, prepared)
@@ -371,6 +384,7 @@ func cursorStart(current int64, pos CursorPosition) (int64, error) {
 }
 
 func (c *conn) openSensitiveCursorLocked(ctx context.Context, payload []byte, prepared *stmt) ([]wire.Column, error) {
+	key := c.resourceKeyLocked()
 	r := c.startRows(ctx, true, nil)
 	r.keepGate, r.holdRelease, r.captureLOB = true, true, true
 	ctx = r.ctx
@@ -407,6 +421,9 @@ func (c *conn) openSensitiveCursorLocked(ctx context.Context, payload []byte, pr
 	r.holdRelease = false
 	if err != nil {
 		return nil, r.fail(err, true)
+	}
+	if c.resources.key != key {
+		return nil, r.fail(ErrResource, false)
 	}
 	if len(sets) != 1 {
 		return nil, r.fail(ErrCursor, true)

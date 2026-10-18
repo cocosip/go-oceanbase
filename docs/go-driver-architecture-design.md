@@ -1086,6 +1086,8 @@ func OpenTableBlob(ctx context.Context, session Session,
 
 ## 15. 游标、滚动和可更新结果
 
+打开游标在发送 prepare 前建立资源代次，prepare 和执行响应完成后均复核；prepare 已结束原事务时不再执行，执行响应失效时不登记句柄、不开始 static 预取。Oracle sensitive 的初始响应还需完整读取最终 OK，再在物化 LOB/复杂值/子游标前复核。完整边界上的失效关闭本次 statement，保留可用会话供调用方继续操作或显式回滚，不重放命令，也不表示服务端副作用已撤销。[打开事务失效回归](../cursor_open_epoch_test.go)覆盖两模式的 forward/static、Oracle sensitive、三种包流及最终 OK 失效。
+
 标准 `sql.Rows` 保持向前读取。Java 中 scroll、sensitive、updatable 的能力通过专门 Cursor 提供，不向所有 Rows 添加 Java 风格的 getter/setter。
 
 ```go
