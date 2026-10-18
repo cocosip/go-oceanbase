@@ -22,14 +22,15 @@ func (r *textRows) decodeComplexRowsetLocked(ctx context.Context, set *lobRowset
 	if len(set.rawRows) == 0 {
 		return nil
 	}
-	if err := r.conn.describeComplexColumnsLocked(ctx, set.columns); err != nil {
+	if err := errors.Join(r.conn.describeComplexColumnsLocked(ctx, set.columns), r.outputs.checkResourceKeyLocked(r.conn)); err != nil {
 		return err
 	}
 	decoder := &textRows{conn: r.conn, columns: set.columns, binary: true, captureLOB: true, ctx: ctx, keepGate: true}
 	for _, raw := range set.rawRows {
 		if _, err := wire.DecodeBinaryRow(raw, set.columns); err != nil {
 			r.conn.clearDescriptors()
-			if err = r.conn.describeComplexColumnsLocked(ctx, set.columns); err != nil {
+			err = r.conn.describeComplexColumnsLocked(ctx, set.columns)
+			if err = errors.Join(err, r.outputs.checkResourceKeyLocked(r.conn)); err != nil {
 				return err
 			}
 			if _, err = wire.DecodeBinaryRow(raw, set.columns); err != nil {
@@ -40,7 +41,7 @@ func (r *textRows) decodeComplexRowsetLocked(ctx context.Context, set *lobRowset
 		if err := decoder.decodeRow(raw, row); err != nil {
 			return err
 		}
-		if err := r.conn.materializeComplexValuesLocked(ctx, set.columns, row); err != nil {
+		if err := errors.Join(r.conn.materializeComplexValuesLocked(ctx, set.columns, row), r.outputs.checkResourceKeyLocked(r.conn)); err != nil {
 			return err
 		}
 		r.bufferBytes += lobValuesSize(row) - int64(len(raw))
@@ -87,6 +88,7 @@ func (r *textRows) bufferLOBResponse(ctx context.Context) error {
 	}
 	r.holdRelease, r.captureLOB = true, true
 	sets, err := r.collectLOBResponse(ctx)
+	err = errors.Join(err, r.outputs.checkResourceKeyLocked(r.conn))
 	if err == nil {
 		for i := range sets {
 			set := &sets[i]
@@ -95,7 +97,8 @@ func (r *textRows) bufferLOBResponse(ctx context.Context) error {
 			}
 			for _, row := range set.rows {
 				before := lobValuesSize(row)
-				if err = r.conn.materializeLOBValuesLocked(ctx, set.columns, row, r.conn.cfg.Limits.MaxMessageBytes-r.bufferBytes+before); err != nil {
+				err = r.conn.materializeLOBValuesLocked(ctx, set.columns, row, r.conn.cfg.Limits.MaxMessageBytes-r.bufferBytes+before)
+				if err = errors.Join(err, r.outputs.checkResourceKeyLocked(r.conn)); err != nil {
 					break
 				}
 				r.bufferBytes += lobValuesSize(row) - before
@@ -111,7 +114,8 @@ func (r *textRows) bufferLOBResponse(ctx context.Context) error {
 	}
 	if err == nil {
 		for i := range sets {
-			if err = r.conn.materializeRefCursorsLocked(ctx, r.iterationCtx, &sets[i], 0, &r.bufferBytes, make(map[refCursorID]bool)); err != nil {
+			err = r.conn.materializeRefCursorsLocked(ctx, r.iterationCtx, &sets[i], 0, &r.bufferBytes, make(map[refCursorID]bool))
+			if err = errors.Join(err, r.outputs.checkResourceKeyLocked(r.conn)); err != nil {
 				break
 			}
 		}

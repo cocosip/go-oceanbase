@@ -885,6 +885,7 @@ type CursorOut struct {
 - Oracle 兼容模式且 OceanBase 版本已知 >=2.2.76，使用原生 PrepareExecute 的隐藏 OUT 和最终响应；MySQL 兼容模式、旧/未知版本在业务发送前返回 ErrUnsupported。CursorOut、显式 BLOB/CLOB/NCLOB Out 不支持 INOUT、长度/精度提示或非 nil 初始句柄；SQL NULL 保持 nil。
 - REF CURSOR 使用二进制类型 163、固定小端四字节 cursor ID。Fetch 使用独立 cursor ID 的九字节 COM_STMT_FETCH，首批建立列元数据；关闭先释放 cursor ID，最后一个输出资源再释放父 statement。Blob/Clob 复用原生 locator 与已有流式读写接口，句柄不受普通 LOB 总物化上限约束，单次协议与读取仍有界。
 - 普通输出先完成内置转换和自定义 Scanner，再统一发布全部资源；Scanner 失败可有其自身副作用，但驱动不发布任何句柄。发布前再次检查 context 和资源代次；未发布租约在失败清理时释放。服务端尾错不发布，损坏/无法安全恢复的响应淘汰连接。
+- 资源 OUT 在 prepare、参数编码或上传前记录连接/会话/事务代次，主命令发送前及最终响应后复核；失效时返回 ErrResource，普通 OUT 和资源句柄均不写回，辅助操作错误与代次错误同时保留。完整简单响应仍登记仅供清理的子租约，释放子资源和父 statement 后保留可用会话。混合 OBJECT/ARRAY 的延迟二进制行在代次失效时不继续字典查询或物化；普通资源结果集也在完整缓冲后、字典解析及各物化阶段后检查，失效时淘汰尚含未物化子资源的物理连接。仅有普通 OUT 的过程允许自行结束事务。
 - 普通 REF CURSOR 列要求 Oracle 二进制行。完整消费父响应后，在原会话内有界获取子数据并关闭服务器 cursor ID，再作为标准子 driver.Rows 交给 database/sql。所有层共享 MaxMessageBytes，计入行、完整列元数据及嵌套内容；最多 16 层并拒绝循环 ID，超限报错。标准父 Rows 关闭会关闭已扫描子 Rows；需要跨过程 Rows 寿命和分批获取时使用 CursorOut。
 - 子 Rows 使用父 Rows 的调用方迭代 context，内部网络操作 context 的结束不会提前取消子读取。Static 游标缓存计入全部嵌套快照，每次 Fetch 创建独立子读取状态并使用本次 context；回看不复用上次关闭的子 Rows。
 

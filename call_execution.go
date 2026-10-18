@@ -14,6 +14,7 @@ import (
 )
 
 type outputState struct {
+	key            resourceKey
 	temporary      bool
 	longArgs       []driver.NamedValue
 	parent         *stmt
@@ -84,13 +85,12 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, err
 	}
-	for _, b := range outputs.bindings {
-		if b.resource != 0 {
-			e, _ := ctx.Value(executionContextKey{}).(*Execution)
-			if e == nil || !validSession(e.session) {
-				return nil, ErrOut
-			}
+	if outputs.hasResources() {
+		e, _ := ctx.Value(executionContextKey{}).(*Execution)
+		if e == nil || !validSession(e.session) {
+			return nil, ErrOut
 		}
+		outputs.key = c.resourceKeyLocked()
 	}
 	if c.session.mode == ModeOracle {
 		for _, value := range values {
@@ -103,7 +103,7 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 		if longValues(values) && prepared == nil {
 			prepared, err = c.prepareServerLocked(ctx, plan.query)
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(err, outputs.checkResourceKeyLocked(c))
 			}
 			outputs.temporary = true
 			defer func() {
@@ -114,12 +114,16 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 				}
 			}()
 		}
+		if err = outputs.checkResourceKeyLocked(c); err != nil {
+			return nil, err
+		}
 		payload, err := c.outputPrepareExecute(ctx, plan, values, prepared)
-		if err != nil {
+		if err = errors.Join(err, outputs.checkResourceKeyLocked(c)); err != nil {
 			return nil, err
 		}
 		if longValues(values) {
-			if err = c.uploadLongDataLocked(ctx, prepared.id, values); err != nil {
+			err = c.uploadLongDataLocked(ctx, prepared.id, values)
+			if err = errors.Join(err, outputs.checkResourceKeyLocked(c)); err != nil {
 				return nil, err
 			}
 		}
@@ -140,6 +144,13 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 		return c.queryMySQLLongOutputsLocked(ctx, queryBytes, outputs)
 	}
 	return c.queryCommandStateLocked(ctx, append([]byte{3}, queryBytes...), false, nil, false, outputs, nil)
+}
+
+func (s *outputState) checkResourceKeyLocked(c *conn) error {
+	if s != nil && s.key.connection != nil && s.key != c.resourceKeyLocked() {
+		return ErrResource
+	}
+	return nil
 }
 
 func (c *conn) outputBindings(plan bindPlan, values []boundValue) (*outputState, error) {
@@ -273,7 +284,7 @@ func (s *outputState) decodeComplexLocked(ctx context.Context, c *conn) error {
 	if len(s.complexRows) == 0 {
 		return nil
 	}
-	if err := c.describeComplexColumnsLocked(ctx, s.complexColumns); err != nil {
+	if err := errors.Join(c.describeComplexColumnsLocked(ctx, s.complexColumns), s.checkResourceKeyLocked(c)); err != nil {
 		return err
 	}
 	r := &textRows{conn: c, ctx: ctx, columns: s.complexColumns, binary: true, captureLOB: true, keepGate: true}
@@ -282,7 +293,7 @@ func (s *outputState) decodeComplexLocked(ctx context.Context, c *conn) error {
 		if err := r.decodeRow(raw, values); err != nil {
 			return err
 		}
-		if err := c.materializeComplexValuesLocked(ctx, s.complexColumns, values); err != nil {
+		if err := errors.Join(c.materializeComplexValuesLocked(ctx, s.complexColumns, values), s.checkResourceKeyLocked(c)); err != nil {
 			return err
 		}
 		s.capture(values, true)

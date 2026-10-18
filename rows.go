@@ -138,6 +138,13 @@ func (r *textRows) releaseWithContext(opCtx context.Context) {
 func (r *textRows) finalizeOutputsLocked(opCtx context.Context) {
 
 	if r.outputs != nil {
+		if err := r.outputs.checkResourceKeyLocked(r.conn); err != nil {
+			r.err = errors.Join(r.err, err)
+			// Deferred complex rows cannot enumerate child resources without more server queries.
+			if len(r.outputs.complexRows) != 0 {
+				r.conn.discard()
+			}
+		}
 		if r.err == nil {
 			r.err = r.outputs.decodeComplexLocked(opCtx, r.conn)
 			if r.err != nil {
