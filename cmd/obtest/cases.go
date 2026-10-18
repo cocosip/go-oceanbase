@@ -95,24 +95,28 @@ func fullResetConfig(cfg *oceanbase.Config)    { cfg.ResetMode = oceanbase.Reset
 func multiResultsConfig(cfg *oceanbase.Config) { cfg.AllowMultiStatements = true }
 
 func duplicateKey(err error, mode oceanbase.Mode) bool {
+	code := uint32(1062)
+	if mode == oceanbase.ModeOracle {
+		code = 1
+	}
+	return onlyServerErrorCode(err, code)
+}
+
+func onlyServerErrorCode(err error, code uint32) bool {
 	if group, ok := err.(interface{ Unwrap() []error }); ok {
 		causes := group.Unwrap()
 		if len(causes) == 0 {
 			return false
 		}
 		for _, cause := range causes {
-			if !duplicateKey(cause, mode) {
+			if !onlyServerErrorCode(cause, code) {
 				return false
 			}
 		}
 		return true
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return duplicateKey(wrapped.Unwrap(), mode)
-	}
-	code := uint32(1062)
-	if mode == oceanbase.ModeOracle {
-		code = 1
+		return onlyServerErrorCode(wrapped.Unwrap(), code)
 	}
 	server, ok := err.(*oceanbase.Error)
 	return ok && server != nil && server.Code == code

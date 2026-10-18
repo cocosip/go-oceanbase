@@ -64,8 +64,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 			call = "BEGIN " + e + "(?); END;"
 		}
 		_, callErr := c.ExecContext(ctx, call, sql.Out{Dest: &y})
-		var server *oceanbase.Error
-		if err := expect(errors.As(callErr, &server) && server.Code == failureCode && y == 7, "routine failure code or output mismatch"); err != nil {
+		if err := expect(onlyServerErrorCode(callErr, failureCode) && y == 7, "routine failure code or output mismatch"); err != nil {
 			return err
 		}
 		return c.PingContext(ctx)

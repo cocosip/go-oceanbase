@@ -17,13 +17,18 @@ func TestRoutineFailureAssertions(t *testing.T) {
 	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
 		for _, name := range []string{"routines", "routines-client"} {
 			for _, tc := range []struct {
-				name                  string
-				mysql, oracle         uint32
-				other                 error
-				wrap, publish, wantOK bool
+				name                        string
+				mysql, oracle               uint32
+				other                       error
+				wrap, join, publish, wantOK bool
 			}{
 				{name: "intentional-exception", mysql: 1644, oracle: 20001, wantOK: true},
 				{name: "wrapped-exception", mysql: 1644, oracle: 20001, wrap: true, wantOK: true},
+				{name: "joined-exceptions", mysql: 1644, oracle: 20001, join: true, wantOK: true},
+				{name: "joined-timeout", mysql: 1644, oracle: 20001, join: true, other: context.DeadlineExceeded},
+				{name: "joined-cleanup", mysql: 1644, oracle: 20001, join: true, other: errors.New("cleanup failed")},
+				{name: "joined-other-server", mysql: 1644, oracle: 20001, join: true, other: &oceanbase.Error{Code: 1064}},
+				{name: "wrapped-joined-timeout", mysql: 1644, oracle: 20001, wrap: true, join: true, other: context.DeadlineExceeded},
 				{name: "syntax-rejected", mysql: 1064, oracle: 900},
 				{name: "permission-rejected", mysql: 1142, oracle: 1031},
 				{name: "procedure-missing", mysql: 1305, oracle: 6550},
@@ -40,8 +45,15 @@ func TestRoutineFailureAssertions(t *testing.T) {
 					if mode == oceanbase.ModeOracle {
 						failure = &oceanbase.Error{Code: tc.oracle, SQLState: "HY000", Message: "private fixture"}
 					}
-					if tc.name == "unexpected-success" || tc.other != nil {
+					if tc.name == "unexpected-success" || tc.other != nil && !tc.join {
 						failure = tc.other
+					}
+					if tc.join {
+						extra := failure
+						if tc.other != nil {
+							extra = tc.other
+						}
+						failure = errors.Join(failure, extra)
 					}
 					if tc.wrap {
 						failure = fmt.Errorf("wrapped: %w", failure)

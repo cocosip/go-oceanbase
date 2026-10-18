@@ -151,6 +151,15 @@ func TestCancellationRejectsUnrelatedErrors(t *testing.T) {
 				t.Fatalf("unrelated outcome accepted: %T", outcome)
 			}
 		}
+		server := &oceanbase.Error{Code: code}
+		for _, outcome := range []error{errors.Join(server, context.DeadlineExceeded), errors.Join(server, errors.New("cleanup failure")), errors.Join(server, &oceanbase.Error{Code: 1064})} {
+			if err := checkCancellation(outcome, mode, 0); err == nil {
+				t.Errorf("joined unrelated cancellation failure accepted: %T", outcome)
+			}
+		}
+		if err := checkCancellation(errors.Join(server, server), mode, 0); err != nil {
+			t.Fatal(err)
+		}
 		if err := checkCancellation(&oceanbase.Error{Code: 777}, mode, 777); err != nil {
 			t.Fatal(err)
 		}

@@ -4,7 +4,6 @@ package integration
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -108,8 +107,7 @@ func testScalarCallProfile(t *testing.T, p profile, prepare oceanbase.PrepareMod
 		failureCode = 20001
 	}
 	_, err = c.ExecContext(testContext(t), query, sql.Out{Dest: &y})
-	var server *oceanbase.Error
-	if !errors.As(err, &server) || server.Code != failureCode || y != 7 {
+	if !onlyServerErrorCode(err, failureCode) || y != 7 {
 		t.Fatal("routine failure code or output mismatch")
 	}
 	if err = c.PingContext(testContext(t)); err != nil {

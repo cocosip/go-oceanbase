@@ -92,24 +92,28 @@ func failOperation(t *testing.T, operation string, err error) {
 }
 
 func duplicateKey(err error, mode oceanbase.Mode) bool {
+	code := uint32(1062)
+	if mode == oceanbase.ModeOracle {
+		code = 1
+	}
+	return onlyServerErrorCode(err, code)
+}
+
+func onlyServerErrorCode(err error, code uint32) bool {
 	if group, ok := err.(interface{ Unwrap() []error }); ok {
 		causes := group.Unwrap()
 		if len(causes) == 0 {
 			return false
 		}
 		for _, cause := range causes {
-			if !duplicateKey(cause, mode) {
+			if !onlyServerErrorCode(cause, code) {
 				return false
 			}
 		}
 		return true
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return duplicateKey(wrapped.Unwrap(), mode)
-	}
-	code := uint32(1062)
-	if mode == oceanbase.ModeOracle {
-		code = 1
+		return onlyServerErrorCode(wrapped.Unwrap(), code)
 	}
 	server, ok := err.(*oceanbase.Error)
 	return ok && server != nil && server.Code == code
@@ -135,6 +139,39 @@ func TestDuplicateKeyErrors(t *testing.T) {
 			if duplicateKey(errors.Join(&oceanbase.Error{Code: code}, context.DeadlineExceeded), mode) {
 				t.Error("joined unrelated failure accepted as duplicate")
 			}
+		}
+	}
+}
+
+func TestExpectedServerErrors(t *testing.T) {
+	for _, code := range []uint32{1, 1062, 1644, 20001, 1317, 1013} {
+		server := &oceanbase.Error{Code: code}
+		other := &oceanbase.Error{Code: code + 1}
+		for _, tc := range []struct {
+			name string
+			err  error
+			want bool
+		}{
+			{"direct", server, true},
+			{"wrapped", fmt.Errorf("wrapped: %w", server), true},
+			{"joined-matching", errors.Join(server, server), true},
+			{"nested-matching", fmt.Errorf("wrapped: %w", errors.Join(server, fmt.Errorf("nested: %w", server))), true},
+			{"nil", nil, false},
+			{"typed-nil", (*oceanbase.Error)(nil), false},
+			{"timeout", context.DeadlineExceeded, false},
+			{"other-code", other, false},
+			{"joined-timeout", errors.Join(server, context.DeadlineExceeded), false},
+			{"joined-cleanup", errors.Join(server, errors.New("cleanup failed")), false},
+			{"joined-other-code", errors.Join(server, other), false},
+			{"joined-other-first", errors.Join(other, server), false},
+			{"joined-typed-nil", errors.Join(server, (*oceanbase.Error)(nil)), false},
+			{"wrapped-joined-timeout", fmt.Errorf("wrapped: %w", errors.Join(server, context.DeadlineExceeded)), false},
+		} {
+			t.Run(fmt.Sprintf("%d/%s", code, tc.name), func(t *testing.T) {
+				if got := onlyServerErrorCode(tc.err, code); got != tc.want {
+					t.Fatalf("server error classification = %v; want %v", got, tc.want)
+				}
+			})
 		}
 	}
 }

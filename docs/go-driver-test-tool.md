@@ -113,7 +113,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `trace` | 带应用 trace 和空 trace 的查询、客户端请求诊断；不宣称服务端链路可见性 |
 | `long-data` | 自动生成约 150 KB 二进制和 Unicode 文本，流式上传、内容比较、回滚和提交 |
 | `table-blob` | 自建表内 BLOB，原事务写入/读取/截断与回滚后内容 |
-| `routines`、`routines-client` | 自动创建过程/函数，分别采用 server/client prepare，INOUT、OUT、函数结果；主动异常须为 MySQL 1644/Oracle 20001 且不发布输出，其他错误不能算通过 |
+| `routines`、`routines-client` | 自动创建过程/函数，分别采用 server/client prepare，INOUT、OUT、函数结果；主动异常须为 MySQL 1644/Oracle 20001 且不发布输出；合并错误的全部分支均须匹配，不能掩盖其他失败 |
 | `cursor`、`cursor-update` | 自建两行数据，前向/静态定位；更新、刷新、插入、删除、回滚后值与事务结束失效；每个单行批次验证完整内容、无多余行和后续读取错误 |
 | `cursor-sensitive` | Oracle 专用，另一会话提交更新后重新定位读取；服务器敏感游标能力须可用 |
 | `returning` | Oracle 专用，插入后的 RETURNING INTO 数值/字符串及行数 |
@@ -125,7 +125,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `session` | schema/catalog、会话变量、client info、修改会话后池隔离 |
 | `warnings` | 非零协议 warning、详情或模式明确拒绝、清除快照 |
 | `cancel-context` | 自建表、事务持锁、另一连接等锁到 Context 超时，验证原始值未变化及新连接可用 |
-| `cancel-query` | 独立辅助连接取消等锁命令，校验明确错误码、原会话可用、token 一次性及未持久化副作用 |
+| `cancel-query` | 独立辅助连接取消等锁命令，校验完整错误链的明确错误码、原会话可用、token 一次性及未持久化副作用；预期取消伴随其他失败不能通过 |
 | `change-user` | 使用配置的第二身份，验证身份切换、旧 statement 失效、标准池恢复原身份 |
 | `local-import` | 自动建表、从内存 Reader 导入两行，逐值校验并分别回滚/提交，无须本地数据文件 |
 
@@ -156,7 +156,7 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 
 [TestCursorBatchAssertions](../cmd/obtest/cursor_test.go) 提供22个离线流程，覆盖两列普通游标与单列 REF CURSOR 的单行批次校验：精确值、缺行、重复/额外行、首行后的读取错误、关闭错误、非法/NULL 标识符、列宽及内容错误；全部验证结果关闭和场景失败后的表清理。旧实现6个错误批次被误判通过，修复后拒绝；共享断言用于前向/静态、刷新、敏感游标和过程资源输出，不代表真实服务端 fetch 已验收。
 
-[TestRoutineFailureAssertions](../cmd/obtest/routines_test.go) 提供48个离线流程，覆盖两模式和 server/client 两个场景选择；完整创建三份例程、两轮 INOUT/OUT、函数调用和主动异常，验证参数方向/初值与逆序清理。预期错误和包装错误通过；语法/权限/例程缺失/约束/其他模式/零错误码，以及意外成功、传输失败、超时、失败输出发布均失败。旧实现24个无关服务器错误被误判通过，修复后拒绝；集成例程的同类断言同步收紧，本轮仅编译。
+[TestRoutineFailureAssertions](../cmd/obtest/routines_test.go) 提供68个离线流程，覆盖两模式和 server/client 两个场景选择；完整创建三份例程、两轮 INOUT/OUT、函数调用和主动异常，验证参数方向/初值与逆序清理。预期错误、包装错误及全部分支同码的合并错误通过；包含其他错误的合并链（含外层包装）必须失败。语法/权限/例程缺失/约束/其他模式/零错误码，以及意外成功、传输失败、超时、失败输出发布均失败。旧实现24个无关服务器错误被误判通过，修复后拒绝；集成例程的同类断言同步收紧，本轮仅编译。
 
 [TestRowsAffectedWorkflows](../cmd/obtest/counts_test.go) 提供51个离线流程，使用标准库内存连接与独立字节协议夹具，通过真实公开驱动执行计数场景，检查 CLIENT_FOUND_ROWS、三种入口、异常计数/零、超 int64 计数、服务端错误及失败后的自建表清理。Execute 计数溢出导致原会话淘汰时，夹具还检查新连接初始化后只清理已登记表。SQL 均无参数，批量为单项 Sequential，用于隔离计数契约；不代表多项批量、参数绑定或服务端 SQL 语义已验收。
 
@@ -165,6 +165,8 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 [TestDuplicateKeyWorkflows / TestBatchDuplicateAssertions](../cmd/obtest/duplicate_test.go) 分别提供56个完整工具流程和80个批量结果校验场景。CRUD/优化执行检查正确、包装或同类合并的重复键错误、错误模式/语法/权限/缺表/数据超长/零码、意外成功、传输和取消错误，并检查自建表清理；批量校验汇总与对应输入的错误码、错误位置、完成数和 stop/continue 状态，不能由汇总错误掩盖不同的输入错误。遍历合并错误的全部分支，重复键伴随清理/传输等其他错误时仍判失败；回归先复现误判，再修复通过。工作流使用替代的 SQL 驱动，批量测试直接提供结果；不证明优化或原生 array binding 协议和真实 SQL 已验收。对应[集成执行策略](../tests/integration/execute_strategies_test.go)和[集成批量](../tests/integration/batch_test.go)同步加强断言；[集成辅助分类回归](../tests/integration/env_test.go)不连接数据库，其余数据库流程仅编译。
 
 自建主键的重复键错误码按固定 OceanBase [OB_ERR_PRIMARY_KEY_DUPLICATE 定义](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L695)判断：MySQL 模式的 [ER_DUP_ENTRY 为1062](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L79)，Oracle 模式为1；不依赖消息文字或从 SQLSTATE 推断。原生 array binding 的诊断可能没有 SQLSTATE，因此只要求其真实错误码与输入归属。
+
+例程、取消和重复键复用严格错误码检查：逐层解开包装并遍历所有合并分支；只接受所有叶子均为非 nil 的预期服务端错误，不因某个分支含预期错误而忽略清理、超时或其他服务器错误。`TestCancellationRejectsUnrelatedErrors` 覆盖默认两模式与自定义码；`TestExpectedServerErrors` 的84项离线分类回归覆盖重复键/例程/取消的六个码、包装/嵌套合并、typed nil 及混合失败。数据库流程仅编译。
 
 错误码按固定 OceanBase 源码核对：[未处理的 SIGNAL](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L1183)映射到[ER_SIGNAL_EXCEPTION 1644](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L661)；[Oracle 错误码转换](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.cpp#L27832)保留应用异常号码，并将负值转换为协议正值，所以自建 `RAISE_APPLICATION_ERROR(-20001,...)` 应为20001。源码和离线夹具不替代实际版本/代理的联调证据。
 

@@ -242,8 +242,7 @@ func checkCancellation(outcome error, mode oceanbase.Mode, expected uint32) erro
 			expected = 1013
 		}
 	}
-	var server *oceanbase.Error
-	return expect(errors.As(outcome, &server) && server.Code == expected, "command did not return the expected server cancellation error")
+	return expect(onlyServerErrorCode(outcome, expected), "command did not return the expected server cancellation error")
 }
 
 func runChangeUser(ctx context.Context, s *scenario) error {

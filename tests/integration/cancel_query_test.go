@@ -78,8 +78,7 @@ func testCancelQuerySession(t *testing.T, p profile) {
 		failOperation(t, "cancel through auxiliary connection", err)
 	}
 	<-done
-	var server *oceanbase.Error
-	if !errors.As(outcome, &server) || uint64(server.Code) != expected {
+	if !onlyServerErrorCode(outcome, uint32(expected)) {
 		t.Fatal("fixture did not produce a server cancellation error")
 	}
 	if err = pinned.PingContext(ctx); err != nil {
