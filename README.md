@@ -78,10 +78,10 @@ go test -tags=integration -run '^$' ./tests/integration
 
 ## GitHub Actions
 
-CI 在 `master`、`main`、`develop` 的 push、所有 PR 和手动运行时执行。Go 1.26 在 Linux、Windows、macOS 构建、vet、编译集成测试源码，并运行 race 与覆盖率测试；覆盖率文件保存为独立 artifact。Linux/Windows 的 lint 独立执行，同时检查 integration 标签；Linux 额外检查格式、module 文件和工作流语法。
+CI 在 `master`、`main`、`develop` 的 push、所有 PR 和手动运行时执行。Go 1.26 在 Linux、Windows、macOS 构建、vet、编译集成测试源码，并以 `CGO_ENABLED=0` 运行覆盖率测试，持续验证零 cgo 构建；覆盖率文件保存为独立 artifact。驱动为纯 Go 且不导入 `C`，而 `-race` 按工具链设计强制 cgo，故 CI 不启用 race，竞态检测需在 cgo 环境手动执行。Linux/Windows 的 lint 独立执行，同时检查 integration 标签；Linux 额外检查格式、module 文件和工作流语法。
 
 协议检查保留 Go 1.26 Linux/386 实际测试，22 个 fuzz 目标分成四组并行，每个目标精确匹配、运行 30 秒，保存日志与回归语料。Linux GSSAPI/OBProxy 的系统与 ABI 夹具独立运行并检查标签 lint；这些夹具不连接数据库。PR 和手动 CI 还会运行 Go 1.26 本地协议对端基准并保存结果，供人工比较，不设置依赖共享 runner 性能的硬阈值。
 
 手动 CI 的 `integration`、`stability` 默认关闭，前者仍要求显式配置测试库 secrets 与 `OB_TEST_REQUIRE=1`，后者运行扩展离线资源检查。自动 push/PR 检查不读取数据库凭据。重复的自动运行会取消旧任务，手动运行不自动取消。CodeQL 在 push/PR、每周和手动入口扫描 Go；Dependabot 每周检查 Go modules 和 Actions 更新。更新 PR 仍需通过 Go 1.26 检查，不得无意提高最低 Go 版本。
 
-覆盖率和 fuzz 产物保留 14 天，基准产物保留 30 天。工作流定义与本地验证不等于远程执行成功；平台、race、安全扫描与真实数据库的验收状态继续以开发进度中的实际证据为准。
+覆盖率和 fuzz 产物保留 14 天，基准产物保留 30 天。工作流定义与本地验证不等于远程执行成功；平台、零 cgo 构建、安全扫描与真实数据库的验收状态继续以开发进度中的实际证据为准。

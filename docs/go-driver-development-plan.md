@@ -161,9 +161,9 @@ go test -tags=integration ./tests/integration -count=1
 ### 5.3 工具链与故障验证
 
 - D01 建立 `.github/workflows/ci.yml`，安装 Go `1.26.x`，在 Linux/Windows amd64 执行 `go version`、`go list -deps ./...`、`go test ./...`、`go vet ./...`；不能只改 GOTOOLCHAIN 字符串就声称测试了另一个版本。
-- Linux/Windows amd64 验证基本能力；支持的系统执行 `go test -race ./...`；386 重点验证协议长度、索引和整数转换。不能运行的目标只记编译证据。
+- Linux/Windows amd64 验证基本能力；支持的系统执行 `CGO_ENABLED=0 go test ./...`；386 重点验证协议长度、索引和整数转换。不能运行的目标只记编译证据。`-race` 按工具链设计强制 cgo，本驱动为纯 Go 且不导入 `C`，因此 CI 不启用 race，改用 `CGO_ENABLED=0` 持续验证零 cgo 构建能力；竞态检测需在单独的 cgo 环境手动执行，不计入常规检查。
 - 使用仓库现有 `.golangci.yml` 和兼容工具链的 golangci-lint v2，锁定 CI 工具版本，执行 `golangci-lint run`。
-- D02 接入架构依赖边守卫、协议 fuzz 和 386 边界；D04 接入 §5.2 的集成 job，验收运行设置 OB_TEST_REQUIRE=1；D06 接入支持平台的 race。缺少外部凭据的普通 PR 可只运行本地 job，但不得把它当作集成验收；后续任务随能力增加 job/场景，D32 只做汇总和缺口收口。
+- D02 接入架构依赖边守卫、协议 fuzz 和 386 边界；D04 接入 §5.2 的集成 job，验收运行设置 OB_TEST_REQUIRE=1；D06 接入 `CGO_ENABLED=0` 的并发资源检查，不接入 race（理由见上一条）。缺少外部凭据的普通 PR 可只运行本地 job，但不得把它当作集成验收；后续任务随能力增加 job/场景，D32 只做汇总和缺口收口。
 - D02 故障对端支持指定第几次读写中断、短写、截断、延迟响应和调用计数。用实际收到的业务命令数证明没有重复执行。
 - 接口断言与模拟包不能证明真实 SQL、目录、事务、锁、LOB 或 XA 语义；这些必须有 integration 测试。
 
@@ -259,7 +259,7 @@ go test -tags=integration ./tests/integration -count=1
 - [x] 测试 `TestNoReplayAfterSend`、`TestCancelCompletionRace`、`TestCloseBudget`：部分写/丢响应时业务命令数为 1；旧取消回调不能关闭后续操作；Close 不无限等待；坏连接不能回池。
 - [x] 执行 `go test . -run 'Test(NoReplay|CancelCompletionRace|CloseBudget)' -count=1`，确认失败。
 - [x] 实现取消与失效状态，覆盖 Query 的完整 Rows 生命周期；不得为丢弃连接而返回可重试 ErrBadConn。
-- [ ] 同命令通过；受支持平台执行 `go test -race . -run 'Test(NoReplay|Cancel|Close)' -count=1`，并接入既有 CI；把同类断言复用于后续资源任务。
+- [ ] 同命令通过；受支持平台执行 `go test . -run 'Test(NoReplay|Cancel|Close)' -count=1`，并接入既有 CI；把同类断言复用于后续资源任务。竞态检测需 cgo 环境手动执行，不计入 CI。
 
 ### D07 词法绑定与参数转换
 

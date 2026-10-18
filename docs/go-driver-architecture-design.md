@@ -1678,7 +1678,7 @@ OB20 Full Link Trace 与 slog 是两项能力：
 
 类型矩阵至少交叉模式、文本/二进制协议、NULL/空值、最大/最小/越界、字符编码、时区和精度。复杂类型及 locator 测试不能仅用 mock 声称与服务器兼容。
 
-CI 在 D01 建立，实际安装 Go 1.26.x，在 Linux/Windows amd64 执行 test/vet 和依赖检查；D02 增加包依赖边检查及协议 fuzz/386，D04 接入显式 require 的集成入口，D06 增加受支持平台的 race。后续能力同步扩展检查，D32 汇总补全矩阵，不到交付末期才建立 CI。每项必需验证集及状态聚合规则固定在[开发进度 §5](go-driver-development-progress.md#5-验证组合与证据)，不能由实现者临时选择一个成功组合验收。
+CI 在 D01 建立，实际安装 Go 1.26.x，在 Linux/Windows amd64 执行 test/vet 和依赖检查；D02 增加包依赖边检查及协议 fuzz/386，D04 接入显式 require 的集成入口，D06 增加受支持平台的并发资源检查。驱动为纯 Go 且不导入 `C`，而 `-race` 按工具链设计强制 cgo，故 CI 以 `CGO_ENABLED=0` 运行并持续验证零 cgo 构建，竞态检测另在 cgo 环境手动执行。后续能力同步扩展检查，D32 汇总补全矩阵，不到交付末期才建立 CI。每项必需验证集及状态聚合规则固定在[开发进度 §5](go-driver-development-progress.md#5-验证组合与证据)，不能由实现者临时选择一个成功组合验收。
 
 ### 20.2 本次补齐契约的验收场景
 

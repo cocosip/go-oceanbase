@@ -44,7 +44,7 @@
 4. 环境问题记录具体缺少的能力和影响范围，不记录密码、DSN、机器绝对路径或敏感抓包。
 5. 接口、依赖、默认行为变化同步到架构/开发计划；不另建走查记录文档。
    本地代码依赖和验收证据依赖分别判断。某个目标平台尚未运行，只限制对应平台的验收结论；只有指出当前功能缺少的具体接口、实现或本地可运行测试，才能将它列为开发阻塞。D30/D31 的原生平台组合和 D32 完整验收要求继续保留。
-6. D01 建立 Go1.26/平台 CI，D02 增加依赖守卫和 fuzz/386，D04 增加 require 集成入口，D06 增加 race；相关任务的验收证据必须含对应 CI 运行，不能推迟到 D32。
+6. D01 建立 Go1.26/平台 CI，D02 增加依赖守卫和 fuzz/386，D04 增加 require 集成入口，D06 增加零 cgo（`CGO_ENABLED=0`）的并发资源检查，不接入 race；相关任务的验收证据必须含对应 CI 运行，不能推迟到 D32。
 
 ## 3. 任务看板
 
@@ -110,7 +110,7 @@
 | --- | --- |
 | V01 | 本地基线：Go 1.26.x × Linux/Windows amd64 的 test/vet、锁定版 lint；D01 起 list 检测循环，D02 起架构守卫检查含 integration/test 的允许依赖边；每项相关测试及全包测试 |
 | V02 | 该任务协议/内核失败路径：在已拥有的最低入口验证，D02 用 net.Conn + PacketIO/故障对端，D03 用握手编排 + 算法/对端；D04 起涉及标准驱动接口的场景用真实 database/sql + 故障对端，D16/D18 的 Query/Next 锁边界不得以直接 helper 单测替代。记录命令数、响应边界、错误/清理和无重放；纯配置/词法项仅测其可观察边界，不伪造网络覆盖 |
-| V03 | Linux amd64、Go1.26 的 race 与该任务资源/并发压力；若某项平台原生适配只在 Windows 工作，另在受支持 Windows race 环境验证它；不能用交叉编译代替运行 |
+| V03 | Linux amd64、Go1.26 的该任务资源/并发压力；若某项平台原生适配只在 Windows 工作，另在受支持 Windows 环境验证它；不能用交叉编译代替运行。CI 以 `CGO_ENABLED=0` 运行并持续验证零 cgo 构建；`-race` 强制 cgo，需另设 cgo 环境手动执行，其证据单独记录，不计入常规 CI 通过 |
 | V04 | 该任务新增解析器的 seed/边界/fuzz，单个 fuzz 目标至少 30 秒；Go1.26 的 Linux/386 长度、索引及整数边界运行，不能仅编译 |
 | V05 | P-MD、P-OD 的真实正向/错误/事务语义；只验证该任务拥有的行为，D04 是建连/初始化/Ping，D05 起增加实际 SQL |
 | V06 | P-MP、P-OP 的对应真实行为，含能力协商和直连语义一致性；不能用直连代替代理 |
@@ -151,7 +151,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 | D03 | V01、V02、V04 | 基础认证/TLS/模式的协议与安全边界；真实认证由 D04/D28 补齐 |
 | D04 | V01、V02、V05、V06 | 基础认证正向、失败及模式；建立 require 集成 job |
 | D05 | V01、V02、V05、V06 | 文本 CRUD/Rows/计数/错误与提前关闭 |
-| D06 | V01、V02、V03、V05、V06 | 取消、发送边界、淘汰和 CI race |
+| D06 | V01、V02、V03、V05、V06 | 取消、发送边界、淘汰和零 cgo 并发资源检查 |
 | D07 | V01、V02、V04 | 词法/绑定及发送前拒绝；本地任务，SQL 往返由 D08/D10 覆盖 |
 | D08 | V01、V02、V04、V05、V06、V10 | 服务端预处理、二进制与缓存代次 |
 | D09 | V01、V02、V03、V05、V06 | 隔离级别/只读/保存点/reset 与旧句柄 |
@@ -691,7 +691,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 #### D01/D32 GitHub Actions 优化
 
-- 参考 go-dicom 的三平台测试、独立 lint、安全扫描和依赖更新结构，保留本项目 Go1.25/1.26 下限与完整协议门禁。test 矩阵扩展 Linux/Windows/macOS，构建示例、vet、只编译 integration 源码，并执行 race/atomic coverage；双版本 Linux/Windows lint 独立运行，包含 integration 标签。Linux 另查 gofmt、go mod tidy -diff 与 actionlint。
+- 参考 go-dicom 的三平台测试、独立 lint、安全扫描和依赖更新结构，保留本项目 Go1.25/1.26 下限与完整协议门禁。test 矩阵扩展 Linux/Windows/macOS，构建示例、vet、只编译 integration 源码，并以 `CGO_ENABLED=0` 执行 atomic coverage（不启用 race，理由见开发计划 §5.3）；双版本 Linux/Windows lint 独立运行，包含 integration 标签。Linux 另查 gofmt、go mod tidy -diff 与 actionlint。
 - 22个 fuzz 目标与源码枚举核对，每个版本分4组并行，每个目标完整名称匹配且运行30秒；保留双版本 Linux/386 实际测试，以及独立的 GSSAPI 系统拒绝/ABI、OBProxy 宿主/Unix 夹具及组合标签 lint。开启 Go 缓存，添加作业超时、自动运行并发取消，手动 CI 不自动取消；覆盖率、fuzz 日志/语料和本地对端基准分别保存 artifact。基准只在 PR/手动运行，不以共享 runner 时延设置硬阈值。
 - integration/stability 仍仅手动显式开启，数据库 secrets、四类 profile、OB_TEST_REQUIRE=1 和原有集成用例选择器保持；自动检查不读取数据库凭据。新增 CodeQL 的 push/PR/每周/手动入口，扫描权限限于该作业；Dependabot 每周检查 Actions 和 Go modules，更新仍受双版本检查约束。工作流详情见 README 的 GitHub Actions 段落。
 - 本地 Go1.25.0/1.26.0 Windows amd64 构建、全包 atomic coverage 测试、vet、integration 仅编译、go mod verify 与 go mod tidy -diff 通过；根包覆盖率84.5%，wire90.1%，其余内部包81.4%–88.5%，不设置未经约定的覆盖率阈值。两版本普通及 integration 标签 golangci-lint2.14.0 各0 issues；actionlint1.7.12、YAML/矩阵与22目标完整性、原集成凭据/选择器保持和文档结构检查通过。直接取工作流 Bash 脚本执行12种成功/首项失败/末项失败自检，确认参数精确且 tee 不吞错误、失败不继续后续目标；此处使用命令桩，只验证调度与失败传播，不替代30秒 fuzz。两版本实际执行 CI 同款 `go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m` 通过，仅为 Windows 本地协议对端结果。独立只读走查无确认问题，不保存独立报告。远程 Actions、Linux/macOS 运行、成功 race、CodeQL 结果及数据库联调仍未取证，不能据此关闭 D28/D32 或提高验收计数。
@@ -1047,9 +1047,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 #### D01/D32 Go1.26 最低版本升级
 
 - 最低支持版本调整为 Go1.26.0，沿用本次 go.mod/go.sum 中已升级的依赖；包文档、README、架构、开发计划、使用指南和验收工具说明同步。历史 Go1.25/1.26 的测试、fuzz 和基准记录保留采集时版本，不作为升级后兼容性证据；当前复现命令仅使用 Go1.26。
-- CI 的八组 Go 矩阵统一为1.26.x，保留 Linux/Windows/macOS、race/coverage、原生 ABI、386、22目标 fuzz、基准、手动稳定性及四数据库 profile。格式/module 和 actionlint 检查继续在 Linux 执行；CodeQL 已使用1.26.x。数据库检查仍须手动显式开启。
+- CI 的八组 Go 矩阵统一为1.26.x，保留 Linux/Windows/macOS、`CGO_ENABLED=0` coverage、原生 ABI、386、22目标 fuzz、基准、手动稳定性及四数据库 profile。格式/module 和 actionlint 检查继续在 Linux 执行；CodeQL 已使用1.26.x。数据库检查仍须手动显式开启。
 - 实际工具链为 Go1.26.0 Windows/amd64；go mod tidy -diff、go mod verify、全包 build/test/vet、integration 仅编译通过，普通与 integration 标签 golangci-lint 均0 issues；Windows/386 全包实际测试和 obtest 的44项离线列表通过。actionlint、文档链接/配置映射/任务计数及 diff 检查通过。
 - 本次未连接真实数据库，未执行 Linux/macOS、成功 race 或远程 GitHub Actions；实现28/32、验收0/32保持。
+
+#### D01/D32 CI 跨平台修复与零 cgo 策略
+
+- 修复 Windows 与 macOS 的 CI 失败。Windows：PowerShell 会把未加引号的 `-flag=value.ext` 从点处拆成两个参数，`-coverprofile=coverage.out` 因而变成 `-coverprofile=coverage` 与 `.out`，报 `no required module provides package .out`；改为引用参数值。macOS：`sockaddr_un.sun_path` 仅 104 字节，`t.TempDir()` 以测试名生成目录，长子测试名使 socket 路径达 107–109 字节，`bind` 返回 `EINVAL`；新增 `unixTempDir`/`listenUnix` 辅助函数，在短前缀 `os.MkdirTemp` 目录内绑定，五处 Unix socket 测试统一改走该路径。
+- 移除 CI 的 `-race` 并显式设置 `CGO_ENABLED=0`。驱动为纯 Go，仓库无 `import "C"`，而 `-race` 按工具链设计强制 cgo（`CGO_ENABLED=0` 下直接报 `-race requires cgo`）。此前本机 race 进程启动即返回 `0xc0000139`，正是该依赖暴露的症状。现每次 CI 均验证零 cgo 构建；竞态检测改为 cgo 环境手动执行，不计入常规检查。README、架构 §20.1、开发计划 §5.3 及进度 §5 的 V03 同步。
+- 本地验证：Go1.27.2 Windows/amd64、`CGO_ENABLED=0` 全包 `go test ./...` 通过（含全部命名管道与 Unix socket 用例，无 skip、无 FAIL），`go vet ./...` 与 gofmt 干净；CI 同款命令覆盖率 85.8%，`coverage.out` 正常生成。命名管道用例在受限沙箱下因禁止访问命名管道而失败，属环境限制，完全权限下全部通过。未连接真实数据库，Linux/macOS 与远程 GitHub Actions 仍未运行；实现28/32、验收0/32保持。
 
 ## 6. 待取证条件与推进方式
 
@@ -1060,7 +1066,7 @@ D32 工具配置边界修复：不再把 1 MiB 截断当作文件结束，超限
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
 | --- | --- | --- | --- | --- |
 | E01 | 两模式 OceanBase 与 OBProxy 实际测试入口/版本 | D04 起的集成验收 | 配置测试 profile，运行 TestSmoke 并记录版本/模式 | 未确认；不阻塞配置与包流 |
-| E02 | Go 1.26 工具链及平台运行能力 | 当前基线兼容声明、D32 | CI 安装目标版本并保存 go version 与测试结果 | 升级前 Windows 两目标版本已运行；当前 Go1.26 证据见 §5.6；Linux/macOS 与成功 race 仍缺证据。2026-10-18 只读查询 GitHub Actions 运行列表为空，工作流定义不计运行通过 |
+| E02 | Go 1.26 工具链及平台运行能力 | 当前基线兼容声明、D32 | CI 安装目标版本并保存 go version 与测试结果 | 升级前 Windows 两目标版本已运行；当前 Go1.26 证据见 §5.6；Linux/macOS 与远程 Actions 仍缺证据。CI 已改为 `CGO_ENABLED=0` 并持续验证零 cgo 构建，race 不再是 CI 门禁，需在 cgo 环境手动取证。2026-10-18 只读查询 GitHub Actions 运行列表为空，工作流定义不计运行通过 |
 | E03 | reset/PrepareExecute/offset fetch/LOB V2/array binding 支持组合 | D09、D16、D19、D22、D24 | 固定 Java 条件 + 实际目标版本用例 | 待取证；未知时保守选择或拒绝 |
 | E04 | Oracle 游标与 LOB/类型字典同连接交错边界 | D16、D18–D20 | 在完整 fetch 响应边界验证原事务可见性 | 待取证；禁止换辅助会话冒充 |
 | E05 | OUT/REF CURSOR 响应顺序和父 statement 依赖 | D14、D20 | 协议夹具 + 真实过程/多输出生命周期测试 | 待取证；保持发布与租约契约 |
