@@ -1047,6 +1047,8 @@ D16 已实现上述原生入口和 `Blob.Reader(ctx)` / `Blob.Writer(ctx)`，适
 
 当前实现使用已有 Oracle COM_STMT_PREPARE_EXECUTE 内核调用 DBMS_LOB.READ/WRITE/TRIM/FREETEMPORARY，要求已确认的实际 ob_version >= 2.2.76。读取数量同时接受原生整数和无损整数 NUMBER，拒绝小数、溢出及数量/内容不匹配。每块受 DBMS_LOB 的 32767 字节和 MaxMessageBytes 双重约束。V2 临时标记驱动服务端释放，V1 通过同会话 ISTEMPORARY 判定；持久 locator 只释放本地记录。清理失败淘汰物理连接，不结束调用方事务。
 
+每个内部 LOB 命令在发送前取得资源代次，完整响应后再次比较；服务端事务状态或 autocommit 变化导致代次失效时返回 ErrResource，不采纳该响应的内容或新 locator，也不发送后续块。此前完成的读写前缀保留，当前块的服务端副作用不据此判定为回滚。普通查询的自动物化尚无公开句柄时也建立同一代次检查；物化失败沿用结果读取的连接淘汰规则。[事务状态回归](../lob_epoch_test.go)覆盖显式 BLOB/CLOB 分块读写和无公开句柄的普通查询物化。
+
 D19 的服务器游标到位前，首次遇到原生 LOB 的结果集会有界缓冲本次响应剩余的所有行集、命令结果和隐藏 OUT；读到完整响应边界后才物化内容。累计计入列信息、行容器、字段和物化后内容，受 MaxMessageBytes / MaxResultItems / MaxLOBBytes 限制。内部命令保留现有 gate，不进入公开 Session 或 Metadata，不换辅助连接；已缓冲行使用原调用方 context，与网络操作结束时的内部取消分开。Open 也先结束整个 locator 查询，再原子发布；基数不合要求时清理已取得的临时对象。
 
 字符 API 的 off/count/返回计数均为 Unicode 码点。已知 UTF16 collation 的服务端偏移按 UTF-16 单位转换，其他受支持字符集按码点转换；out-row 路径从起点分块扫描，校验服务端数量和编码长度，不能把 UTF-8 字节当字符。UTF-16 覆盖要求已有位置与新字符的代理对宽度相同，宽度改变时在任何写入前返回 ErrUnsupported；追加和相同宽度覆盖可用。不能表示的文本、非法代理对或不匹配的服务端字符单位明确失败。目标服务端 NCLOB 字符单位和 collation 行为仍须由 TestNativeLOB 取证。

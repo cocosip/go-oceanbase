@@ -167,6 +167,10 @@ func lobIntFixture(n uint64) wire.Parameter {
 }
 
 func serveLOBCall(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, params []wire.Parameter, columns [][]byte, row []byte) bool {
+	return serveLOBCallStatus(ctx, t, p, query, params, columns, row, 6)
+}
+
+func serveLOBCallStatus(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, params []wire.Parameter, columns [][]byte, row []byte, status byte) bool {
 	t.Helper()
 	command, err := wire.EncodePrepareExecute(0, []byte(query), params, 64<<20)
 	if err != nil || !readCommand(ctx, t, p, command) {
@@ -176,9 +180,9 @@ func serveLOBCall(ctx context.Context, t *testing.T, p *wire.PacketIO, query str
 	for _, param := range params {
 		packets = append(packets, textColumn("p", byte(param.Type), 63, 0))
 	}
-	packets = append(packets, []byte{254, 0, 0, 6, 0})
+	packets = append(packets, []byte{254, 0, 0, status, 0})
 	packets = append(packets, columns...)
-	packets = append(packets, []byte{254, 0, 0, 6, 16}, row, []byte{254, 0, 0, 6, 0}, []byte{0, 0, 0, 6, 0, 0, 0})
+	packets = append(packets, []byte{254, 0, 0, status, 16}, row, []byte{254, 0, 0, status, 0}, []byte{0, 0, 0, status, 0, 0, 0})
 	return sendPackets(ctx, t, p, packets...) && readCommand(ctx, t, p, stmtPacket(25, 41))
 }
 

@@ -863,6 +863,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - [包流测试](../internal/wire/complex_test.go)在旧实现复现 object/array、collect=false/true 四个负数预算场景，以及65537节点被 DecodeBinaryRow/DecodeComplex 接受和 NULL 超深的问题；[编码回归](../complex_regression_test.go)复现相同预算/深度缺口。修复后相关目标通过，并验证恰好65536节点、嵌套值形状及后续整数列不变。[FuzzComplex](../complex_fuzz_test.go)新增嵌套 NULL 种子，并独立统计成功解码树的节点数，约束总量不超过传入预算。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。FuzzComplex 各30秒通过，分别37346/46484次执行，仅证明本次有限输入探索。只读复核无确认问题；obtest 已重新构建，38项列表及示例配置离线检查通过。文档链接、160配置与任务计数检查通过；未连接数据库，实现28/32、验收0/32不变。
 
+#### D15/D16 原生 LOB 内部命令的代次校验
+
+- 修复显式 BLOB/CLOB 分块读写仅在入口检查句柄，服务端事务状态变化后仍继续使用旧 locator、计入失效响应内容的问题。共享 lobCallLocked 在每个内部命令前后比较资源代次，失效时返回 ErrResource，不采纳当前响应或发送后续块，保留此前完成的前缀；当前块的服务器副作用不据此宣称回滚。普通查询自动物化尚无公开句柄时也建立代次，复用注册资源的初始化逻辑，无新增公开 API、包或依赖。
+- 新增[事务状态回归](../lob_epoch_test.go)：公开 BLOB/CLOB 读写 × 首块/中途失效 × 普通/压缩/OB20 共24个场景，校验完成前缀、停止旧 locator 操作和原会话仍可 Ping；另覆盖未注册公开资源的普通查询物化，失效内容不发布并沿用物化失败的连接淘汰规则。旧实现的8个普通包流场景及无句柄物化均复现继续发送，修复后全部通过。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读复核无确认问题，目标回归及资源代次/租约/事务保留测试独立通过。真实 OceanBase/OBProxy、其他平台和 race 未验证；实现28/32、验收0/32不变。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

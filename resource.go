@@ -76,16 +76,20 @@ func (c *conn) registerResourceLocked(session Session, parent *stmt) (*resourceH
 	if parent != nil && (parent.conn != c || parent.closed || parent.closeRequested || parent.epoch != c.statementEpoch) {
 		return nil, ErrResource
 	}
-	if c.resources.records == nil {
-		c.resources.key = resourceKey{new(resourceEpoch), new(resourceEpoch), new(resourceEpoch)}
-		c.resources.records = make(map[*resourceEpoch]*resourceRecord)
-	}
-	h := &resourceHandle{session: session, key: c.resources.key, id: new(resourceEpoch)}
+	h := &resourceHandle{session: session, key: c.resourceKeyLocked(), id: new(resourceEpoch)}
 	c.resources.records[h.id] = &resourceRecord{key: h.key, parent: parent}
 	if parent != nil {
 		parent.leases++
 	}
 	return h, nil
+}
+
+func (c *conn) resourceKeyLocked() resourceKey {
+	if c.resources.records == nil {
+		c.resources.key = resourceKey{new(resourceEpoch), new(resourceEpoch), new(resourceEpoch)}
+		c.resources.records = make(map[*resourceEpoch]*resourceRecord)
+	}
+	return c.resources.key
 }
 
 func (c *conn) publishResourceLocked(h *resourceHandle) error {

@@ -187,11 +187,15 @@ func (l *nativeLOBResource) parameter() wire.Parameter {
 
 // The caller owns the gate; only a complete response permits this internal command.
 func (c *conn) lobCallLocked(ctx context.Context, query string, params []wire.Parameter, count int) ([]driver.Value, error) {
+	key := c.resourceKeyLocked()
 	s, err := c.callInternalLocked(ctx, query, params, count)
 	if err != nil {
 		return nil, err
 	}
-	return s.values, err
+	if c.resources.key != key {
+		return nil, ErrResource
+	}
+	return s.values, nil
 }
 
 func (c *conn) callInternalLocked(ctx context.Context, query string, params []wire.Parameter, count int) (*outputState, error) {
