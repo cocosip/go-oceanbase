@@ -754,6 +754,8 @@ D32 提供[独立数据库验收工具](go-driver-test-tool.md)作为集中运�
 
 D11/D32 计数验收入口补充：独立工具 counts-matched/counts-changed 固定计数策略，在自建数据上验证标准 Exec、Execute 摘要和单项 Sequential 批量的 INSERT、无变化/变化/未匹配 UPDATE 及 DELETE/空 DELETE；MySQL 另检查三种 upsert 分支，Oracle 不模拟 ChangedRows。TestRowsAffectedWorkflows 通过公开驱动和内存协议对端检查能力位、已知计数/溢出/错误及清理；不连接数据库，不替代真实 no-op/upsert 验收或已有多项批量/参数绑定用例。
 
+D13/D32 参数描述验收入口补充：独立工具 metadata-parameters 使用自建表，检查位置参数、Oracle 重复命名参数及无参数 Query 的 StatementParameters；每次描述后验证种子原值，完整流程确认行数并清理。固定输出模式、身份和未知方向/描述的契约见架构 §16.1.1；不把服务端参数描述视为业务列定义。TestParameterMetadataWorkflow 替代公开 Metadata 结果以验证工具编排/断言/清理，底层 prepare/close 由既有驱动协议测试覆盖，真实服务端参数推断仍待联调。
+
 工具 metadata 比较自建表的字典内容，不能只用行数证明正确：核对 catalog/schema/表身份、ID/V 列名/位置/类型、INTEGER 精度和 scale、VARCHAR 长度、NULL、主键及两列 ColumnTypes，保持精确 schema 过滤与 LIKE 转义；错误/缺失/多余内容和读取/关闭错误必须失败并清理对象。90个离线流程只证明断言及编排，不替代服务端字典验收。
 
 工具单行游标批次必须验证完整行数和最终错误：首行内容匹配后继续检查无多余行及 Rows.Err，保持关闭错误传播。前向/静态、刷新、敏感游标和过程 REF CURSOR 输出复用该断言，22个离线流程覆盖两种列形状、错误内容/行数/读取/关闭及失败清理，真实 fetch 语义仍待联调。

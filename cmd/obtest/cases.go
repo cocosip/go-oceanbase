@@ -23,6 +23,7 @@ func caseDefinitions() []caseDefinition {
 		{name: "oracle-scalars", description: "Oracle national text, TZ/LTZ, intervals, ROWID and typed NULL", oracleOnly: true, configure: oracleScalarConfig, run: runOracleScalars},
 		{name: "transactions", description: "commit, rollback, savepoint and read-only transaction", run: runTransactions},
 		{name: "metadata", description: "table/column/primary key dictionary and ColumnTypes", run: runMetadata},
+		{name: "metadata-parameters", description: "describe parameters without executing SQL, including Oracle repeated names", run: runParameterMetadata},
 		{name: "execution", description: "execution rows, snapshot and early close", run: runExecution},
 		{name: "batch", description: "preferred strategies and fallback, duplicate attribution, stop/continue", run: runBatch},
 		{name: "batch-rewrite", description: "require actual MySQL batch rewrite execution", mysqlOnly: true, configure: rewriteConfig, run: runBatchRewrite},

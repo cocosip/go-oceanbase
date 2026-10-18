@@ -50,7 +50,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `targets` | 配置文件中必填 | 一个或多个连接目标，按顺序运行；不并行修改目标对象 |
-| `cases` | 全部 42 项 | 选填场景名称数组；拼写错误、重复项直接拒绝，不允许静默漏测 |
+| `cases` | 全部 43 项 | 选填场景名称数组；拼写错误、重复项直接拒绝，不允许静默漏测 |
 | `timeout` | `2m` | 每个场景及目标探测的独立超时，最大 `1h` |
 | `cleanup_timeout` | `30s` | 每个清理动作的独立超时，最大 `1h`；清理时间不计入场景执行预算 |
 | `require_all` | `false` | `true` 时把缺少 fixture 的跳过视为失败；模式不适用仍单列 |
@@ -101,6 +101,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `oracle-scalars` | Oracle 专用，自动创建 NVARCHAR2、TIMESTAMP(9) WITH TIME ZONE / LOCAL TIME ZONE 及 interval 列；公开类型绑定与读取、纳秒和原 TZ 偏移、LTZ 等价时刻、最大负 interval、ROWID 回绑定位及各列 typed NULL；文本与参数化读取。显式 server prepare、UTF-16 national charset，保留配置 location |
 | `transactions` | 建表、提交/回滚、保存点回滚、只读拒绝写入、最终持久化行数 |
 | `metadata` | 自建表的表/列/主键字典内容：catalog/schema/表身份、列名/顺序/类型/长度/精度/NULL、主键列；两列 ColumnTypes 名称/类型，以及缺行/多行拒绝 |
+| `metadata-parameters` | 自建表和单行数据，描述带位置参数的 UPDATE、Oracle 重复命名参数 UPDATE 及无参数 SELECT；固定11列、物理/逻辑位置、规范化名称和未知方向、模式对应的 nullable、描述尺寸及原始协议字节。未知类型/尺寸保持未知，不要求参数描述等于业务列定义；每次描述后读取原值，最后确认仅有种子行并清理表。Metadata 始终采用服务端 prepare，即使目标选择客户端预处理 |
 | `execution` | Execute、读取结果、提前 Close、完成摘要、原会话继续 Ping |
 | `batch` | 五种优选策略的重复键定位、stop/continue、事务回滚；报告 `observations` 保留实际策略，回退不等于原生能力通过 |
 | `batch-rewrite` | MySQL 专用，显式开启多语句并设置批量协商变量，要求实际策略为 Rewrite |
@@ -158,6 +159,8 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 
 [TestRowsAffectedWorkflows](../cmd/obtest/counts_test.go) 提供51个离线流程，使用标准库内存连接与独立字节协议夹具，通过真实公开驱动执行计数场景，检查 CLIENT_FOUND_ROWS、三种入口、异常计数/零、超 int64 计数、服务端错误及失败后的自建表清理。Execute 计数溢出导致原会话淘汰时，夹具还检查新连接初始化后只清理已登记表。SQL 均无参数，批量为单项 Sequential，用于隔离计数契约；不代表多项批量、参数绑定或服务端 SQL 语义已验收。
 
+[TestParameterMetadataWorkflow](../cmd/obtest/parameter_metadata_test.go) 提供53个离线流程，检查元数据请求的原始 Query/Kind、完整列和参数身份、已报告或未知描述、原始方向字节、Oracle 重复名称，以及错位/缺行/多行、非法 nullable/尺寸/协议范围、读取/关闭失败和种子被修改时的失败传播；已打开结果均关闭，失败后仍清理自建表。该夹具替代公开 Metadata 的返回结果，验证工具编排和断言；服务端 prepare、临时 statement 关闭及 PrepareClient 下仍服务端描述由既有[驱动协议测试](../metadata_test.go)覆盖，不把这些离线证据当作真实参数推断或 SQL 行为验收。
+
 错误码按固定 OceanBase 源码核对：[未处理的 SIGNAL](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L1183)映射到[ER_SIGNAL_EXCEPTION 1644](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L661)；[Oracle 错误码转换](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.cpp#L27832)保留应用异常号码，并将负值转换为协议正值，所以自建 `RAISE_APPLICATION_ERROR(-20001,...)` 应为20001。源码和离线夹具不替代实际版本/代理的联调证据。
 
 [TestMySQLScalarsWorkflow](../cmd/obtest/mysql_scalars_test.go) 提供44个离线流程：两条读取路径上的完整边界值、最大整秒/零 TIME 的两种合法表示及非零越界小数、整数溢出/精度、TINYINT 非 bool、TIME 尾部、BIT 宽度、YEAR 零值与空二进制非 NULL、定长补零、缺行/多行、NULL 及错误元数据。检查原始输入类型、查询参数、Rows 关闭及自建表清理；夹具元数据和行值不证明实际服务端行为。
@@ -168,6 +171,6 @@ TIME 种子以最大整秒 `838:59:59` 和 `-838:59:58.999999` 分别覆盖范�
 
 [复杂类型 integration 用例](../tests/integration/complex_test.go) 同步使用不同集合种子和完整 OUT 内容断言；DATE 只接受预期整秒及驱动可能输出的六位零微秒表示，7项离线正负例验证该断言。数据库流程本轮仅编译，未执行。
 
-Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；最终工具回归分别重复 10 轮，两个工具链的普通及 integration 标签全仓库 golangci-lint 均为 0 issues。新增51个计数流程在 Windows/386 通过；`-list` 的42项名称唯一性、示例及计数选择配置的 `-check` 和文档链接检查通过，见[开发进度](go-driver-development-progress.md)。CI 仅增加不连接数据库的 `-list` 检查。
+Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；工具回归重复运行、普通及 integration 标签全仓库 golangci-lint、Windows/386、`-list`、配置 `-check` 和文档检查的逐次证据见[开发进度](go-driver-development-progress.md)。工具提供43项场景；CI 仅增加不连接数据库的 `-list` 检查。
 
-本次不连接数据库，因此上述 42 项真实运行结果均待用户提供测试 DSN 后执行，不能依据编译、离线检查或单元测试提高数据库验收计数。
+本次不连接数据库，因此上述 43 项真实运行结果均待用户提供测试 DSN 后执行，不能依据编译、离线检查或单元测试提高数据库验收计数。
