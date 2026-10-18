@@ -52,7 +52,7 @@ func encodeParameter(v any, mode Mode, options SessionOptions, limit int64) (wir
 		p.Data = v
 		p.LengthEncoded = true
 	case string:
-		if int64(len(v)) > limit {
+		if int64(utf8.RuneCountInString(v)) > limit {
 			return p, wire.ErrMessageTooLarge
 		}
 		if !utf8.ValidString(v) {
@@ -120,7 +120,7 @@ func encodeScalarParameter(v any, mode Mode, options SessionOptions, limit int64
 		p.LengthEncoded = true
 		switch v := v.(type) {
 		case NString:
-			if int64(len(v)) > limit {
+			if int64(utf8.RuneCountInString(string(v))) > limit {
 				return p, wire.ErrMessageTooLarge
 			}
 			name := options.NCharset

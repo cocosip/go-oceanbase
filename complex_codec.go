@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -269,7 +270,7 @@ func (e *complexEncoder) scalar(typ string, value any, depth int) error {
 		default:
 			return ErrComplex
 		}
-		if int64(len(text)) > limit {
+		if int64(utf8.RuneCountInString(text)) > limit {
 			return wire.ErrMessageTooLarge
 		}
 		name := e.conn.cfg.Session.Charset
