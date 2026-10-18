@@ -15,6 +15,7 @@ import (
 )
 
 const fixtureDroppedState = "dropped"
+const fixtureDropTableSQL = "DROP TABLE OBT_OFFLINE_T"
 
 type fixtureStep struct {
 	query    string
@@ -22,6 +23,7 @@ type fixtureStep struct {
 	affected int64
 	err      error
 	inspect  func([]driver.NamedValue)
+	optional bool
 }
 
 type fixtureDB struct {
@@ -43,12 +45,35 @@ type fixtureConn struct{ fixture *fixtureDB }
 func (*fixtureConn) Prepare(string) (driver.Stmt, error) {
 	return nil, errors.New("unexpected prepare")
 }
-func (*fixtureConn) Begin() (driver.Tx, error)                { return nil, errors.New("unexpected begin") }
+func (f *fixtureConn) Begin() (driver.Tx, error) {
+	return f.BeginTx(context.Background(), driver.TxOptions{})
+}
+
+func (f *fixtureConn) BeginTx(ctx context.Context, _ driver.TxOptions) (driver.Tx, error) {
+	_, err := f.next(ctx, "BEGIN")
+	return fixtureTx{f}, err
+}
+
+type fixtureTx struct{ conn *fixtureConn }
+
+func (tx fixtureTx) Commit() error {
+	_, err := tx.conn.next(context.Background(), "COMMIT")
+	return err
+}
+
+func (tx fixtureTx) Rollback() error {
+	_, err := tx.conn.next(context.Background(), "ROLLBACK")
+	return err
+}
+
 func (*fixtureConn) Close() error                             { return nil }
 func (*fixtureConn) CheckNamedValue(*driver.NamedValue) error { return nil }
 func (f *fixtureConn) next(ctx context.Context, query string) (fixtureStep, error) {
 	if err := ctx.Err(); err != nil {
 		return fixtureStep{}, err
+	}
+	for len(f.fixture.steps) != 0 && f.fixture.steps[0].optional && f.fixture.steps[0].query != query {
+		f.fixture.steps = f.fixture.steps[1:]
 	}
 	if len(f.fixture.steps) == 0 {
 		f.fixture.t.Errorf("unexpected SQL: %s", query)
@@ -190,7 +215,7 @@ func TestCRUDOfflineWorkflow(t *testing.T) {
 					fixtureStep{query: "DELETE FROM OBT_OFFLINE_T WHERE ID=1", affected: 1},
 					fixtureStep{query: "SELECT V FROM OBT_OFFLINE_T WHERE ID=1"})
 			}
-			steps = append(steps, fixtureStep{query: "DROP TABLE OBT_OFFLINE_T"})
+			steps = append(steps, fixtureStep{query: fixtureDropTableSQL})
 			s := fixtureScenario(t, steps)
 			r := runScenario(context.Background(), s, runCRUD)
 			want := statusFail

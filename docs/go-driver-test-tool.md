@@ -113,7 +113,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `cursor-sensitive` | Oracle 专用，另一会话提交更新后重新定位读取；服务器敏感游标能力须可用 |
 | `returning` | Oracle 专用，插入后的 RETURNING INTO 数值/字符串及行数 |
 | `native-lob` | Oracle 专用，自动创建 BLOB/CLOB/NCLOB 数据，流式读写、Unicode 字符偏移、截断与事务寿命；此场景显式使用 UTF-16 national charset |
-| `complex` | Oracle 专用，自动创建 OBJECT 和 TABLE OF 类型及表，精确数字/RAW、集合顺序/NULL、对象 OUT、事务回滚 |
+| `complex` | Oracle 专用，自动创建 OBJECT 和 TABLE OF 类型及表，精确数字/RAW、首尾不同的集合值及顺序/NULL、对象 OUT 的完整字段值/属性顺序/schema、事务回滚 |
 | `resource-outputs` | Oracle 专用，自动创建过程和临时 LOB，REF CURSOR/BLOB/CLOB 输出内容与关闭 |
 | `xa-one-phase`、`xa-two-phase`、`xa-rollback` | 自建表和唯一 XID，分支状态、prepare/recover、提交/回滚及持久化可见性 |
 | `xa-suspend`、`xa-join`、`xa-recovery` | suspend/resume、end/join、关闭原物理连接后恢复；只操作本轮 XID，绝不回滚其他协调器的分支 |
@@ -144,6 +144,10 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 工具自身的离线回归验证严格配置、完整 CRUD 编排、错误数据不能通过、部分建表失败后的所有权清理、取消后独立清理、清理失败传播、XA 原会话清理及取消错误码识别。它们用进程内 fixture 校验执行器，不是实际数据库验收证据；可执行程序不依赖这些 fixture 或 Go testing。
 
 [TestScalarsTemporalAssertions](../cmd/obtest/scalars_test.go) 在两种兼容模式的文本与参数化查询上覆盖32个离线流程：精确值、等价小数尾零、日期时间变化、额外纳秒、超九位小数和非法尾部。包含单数字小时缩短整串后夹带超精度小数的拒绝回归。每个流程检查实际场景状态及自建表清理；Oracle DATE 必须保留预期的午夜，不能只比较日期前缀。本地 fixture 不证明真实服务端的日期/精度行为。
+
+[TestComplexOutputAssertions/TestComplexCollectionAssertions](../cmd/obtest/complex_test.go) 覆盖20个离线流程，验证 OBJECT OUT 的数值/RAW/schema/属性顺序，以及集合首尾不同值、错序/重复/缺项/NULL 和对象/集合 schema。每个流程检查事务回滚及表、集合类型、对象类型的逆序清理；等价十进制尾零允许通过。夹具只替代数据库依赖，不证明真实类型描述或服务端往返。
+
+[复杂类型 integration 用例](../tests/integration/complex_test.go) 同步使用不同集合种子和完整 OUT 内容断言；DATE 只接受预期整秒及驱动可能输出的六位零微秒表示，7项离线正负例验证该断言。数据库流程本轮仅编译，未执行。
 
 Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；最终工具回归分别重复 10 轮，两个工具链的普通及 integration 标签全仓库 golangci-lint 均为 0 issues。`-list`、示例配置 `-check`、38 场景名称唯一性及文档链接检查通过；CI 仅增加不连接数据库的 `-list` 检查。
 

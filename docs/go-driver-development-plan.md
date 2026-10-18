@@ -754,6 +754,10 @@ D32 提供[独立数据库验收工具](go-driver-test-tool.md)作为集中运�
 
 工具 scalars 的日期/时间断言比较完整墙上时间及纳秒，不以字符串前缀掩盖 Oracle DATE 时分秒变化或额外非零小数；等价尾零可接受，超九位小数不能经 Go 时间解析截断后算通过，也不能用单数字小时绕过小数上限。TestScalarsTemporalAssertions 提供两模式/两查询路径32个离线流程，并验证失败后的自建表清理；真实数据库往返仍待验收。
 
+工具 complex 的 OBJECT OUT 同时核对字段值、属性顺序和 schema，不能只依据类型名/字段数量判定通过；集合首尾使用不同的 NUMBER/RAW 值，逐位置核对，避免重复种子掩盖乱序。TestComplexOutputAssertions/TestComplexCollectionAssertions 提供20个离线流程，同时验证事务回滚与依赖对象逆序清理；真实类型描述和数据库往返仍待验收。
+
+原 integration 复杂类型用例同步上述内容和位置校验，OBJECT DATE 完整核对整秒，兼容驱动的六位零微秒表示；7项离线断言回归不连接数据库，原数据库流程仅编译。
+
 | Java 模块/能力 | 实现任务 | 必需补充验证 |
 | --- | --- | --- |
 | M01 入口与统一 API | D01、D04、D05 | D32 外部调用示例/工具链 |

@@ -78,7 +78,7 @@ func scalarAssertionScenario(t *testing.T, mode oceanbase.Mode, path, dateOverri
 			break
 		}
 	}
-	steps = append(steps, fixtureStep{query: "DROP TABLE OBT_OFFLINE_T"})
+	steps = append(steps, fixtureStep{query: fixtureDropTableSQL})
 	s := fixtureScenario(t, steps)
 	s.mode = mode
 	s.cfg.Session.Location = time.FixedZone("test-offset", 19800)

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -73,8 +72,10 @@ func testComplexProfile(t *testing.T, p profile) {
 	}
 	defer func() { _ = tr.Rollback() }()
 	const number = "12345678901234567890.00123456"
-	value := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number(number)}, {Name: "B", Value: oceanbase.Raw{0, 255}}, {Name: "D", Value: "2025-10-17 12:34:56"}}}
-	array := oceanbase.Array{Type: arr, Elements: []any{value, nil, value}}
+	const date = "2025-10-17 12:34:56"
+	value := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number(number)}, {Name: "B", Value: oceanbase.Raw{0, 255}}, {Name: "D", Value: date}}}
+	other := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number("-42.5")}, {Name: "B", Value: oceanbase.Raw{255, 0}}, {Name: "D", Value: date}}}
+	array := oceanbase.Array{Type: arr, Elements: []any{value, nil, other}}
 	if _, err = tr.ExecContext(testContext(t), "INSERT INTO "+table+" VALUES(?,?,?,"+lob+"(7,TO_BLOB(HEXTORAW('00FF'))))", 1, value, array); err != nil {
 		failOperation(t, "bind native object and collection", err)
 	}
@@ -84,16 +85,20 @@ func testComplexProfile(t *testing.T, p profile) {
 	if err = tr.QueryRowContext(testContext(t), "SELECT V,A,L FROM "+table+" WHERE ID=?", 1).Scan(&got, &items, &withLOB); err != nil {
 		failOperation(t, "scan native complex types", err)
 	}
-	assertComplexObject(t, got, obj, number)
-	if len(items.Elements) != 3 || items.Elements[1] != nil {
+	assertComplexObject(t, got, obj, number, date, []byte{0, 255})
+	if items.Type != arr || items.Schema != got.Schema || len(items.Elements) != 3 || items.Elements[1] != nil {
 		t.Fatal("collection NULL or order changed")
 	}
 	for _, index := range []int{0, 2} {
 		v, ok := items.Elements[index].(oceanbase.Object)
-		if !ok {
+		if !ok || v.Schema != got.Schema {
 			t.Fatal("collection element lost its descriptor")
 		}
-		assertComplexObject(t, v, obj, number)
+		wantNumber, wantRaw := number, []byte{0, 255}
+		if index == 2 {
+			wantNumber, wantRaw = "-42.5", []byte{255, 0}
+		}
+		assertComplexObject(t, v, obj, wantNumber, date, wantRaw)
 	}
 	if len(withLOB.Fields) != 2 {
 		t.Fatal("nested LOB fields missing")
@@ -106,12 +111,13 @@ func testComplexProfile(t *testing.T, p profile) {
 	if _, err = tr.ExecContext(testContext(t), "BEGIN ? := "+obj+"(1,HEXTORAW('00FF'),DATE '2025-10-17'); END;", sql.Out{Dest: &out}); err != nil {
 		failOperation(t, "native object output", err)
 	}
-	if out.Type != obj || len(out.Fields) != 3 {
-		t.Fatal("object output descriptor changed")
+	assertComplexObject(t, out, obj, "1", "2025-10-17 00:00:00", []byte{0, 255})
+	if out.Schema != got.Schema {
+		t.Fatal("object output schema changed")
 	}
 }
 
-func assertComplexObject(t *testing.T, value oceanbase.Object, name, number string) {
+func assertComplexObject(t *testing.T, value oceanbase.Object, name, number, date string, raw []byte) {
 	t.Helper()
 	if value.Type != name || value.Schema == "" || len(value.Fields) != 3 || value.Fields[0].Name != "N" || value.Fields[1].Name != "B" || value.Fields[2].Name != "D" {
 		t.Fatal("object identity or field order changed")
@@ -126,11 +132,35 @@ func assertComplexObject(t *testing.T, value oceanbase.Object, name, number stri
 		t.Fatal("NUMBER precision changed")
 	}
 	b, ok := value.Fields[1].Value.(oceanbase.Raw)
-	if !ok || !bytes.Equal(b, []byte{0, 255}) {
+	if !ok || !bytes.Equal(b, raw) {
 		t.Fatal("RAW changed")
 	}
 	d, ok := value.Fields[2].Value.(string)
-	if !ok || !strings.HasPrefix(d, "2025-10-17 12:34:56") {
+	if !ok || !complexDateMatches(d, date) {
 		t.Fatal("DATE changed")
+	}
+}
+
+func complexDateMatches(value, want string) bool {
+	return value == want || value == want+".000000"
+}
+
+func TestComplexDateRepresentation(t *testing.T) {
+	const date = "2025-10-17 12:34:56"
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{date, true},
+		{date + ".000000", true},
+		{date + ".000001", false},
+		{date + ".000000garbage", false},
+		{date + ".0000000", false},
+		{"2025-10-17 12:34:57", false},
+		{"2025-10-17", false},
+	} {
+		if got := complexDateMatches(tc.value, date); got != tc.want {
+			t.Errorf("complex DATE %q: got %v, want %v", tc.value, got, tc.want)
+		}
 	}
 }
