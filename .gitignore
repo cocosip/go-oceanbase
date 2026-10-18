@@ -42,3 +42,8 @@ Thumbs.db
 .cache/
 docs/superpowers/
 .superpowers/
+
+# Acceptance runs can contain deployment metadata; keep local configurations and reports private.
+obtest.local.json
+obtest-report*.json
+obtest-run-*.json

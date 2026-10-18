@@ -49,6 +49,8 @@ jobs:
         run: go mod verify
       - name: Build packages and examples
         run: go build ./...
+      - name: Check standalone acceptance tool without a database
+        run: go run ./cmd/obtest -list
       - name: Vet
         run: go vet ./...
       - name: Compile integration tests without a database

@@ -170,6 +170,8 @@ go run ./examples/xa
 
 ## 6. 离线验证与当前边界
 
+完整数据库流程可使用[独立验收工具](go-driver-test-tool.md)：`go run ./cmd/obtest -config docs/obtest.example.json -report obtest-run-001.json`。工具通过配置的连接字符串自动创建隔离对象和数据、运行 CRUD/事务/过程/LOB/游标/XA 等场景并清理，不依赖 `go test`。`-list` 和 `-check` 是不连接数据库的入口。
+
 ```sh
 go test ./... -count=1
 go vet ./...

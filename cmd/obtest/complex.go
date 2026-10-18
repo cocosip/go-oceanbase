@@ -1,0 +1,83 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"math/big"
+
+	"github.com/cocosip/go-oceanbase"
+)
+
+func runComplex(ctx context.Context, s *scenario) (err error) {
+	obj, err := s.create(ctx, "TYPE", "O", "AS OBJECT(N NUMBER(38,9),B RAW(20))")
+	if err != nil {
+		return err
+	}
+	arr, err := s.create(ctx, "TYPE", "A", "AS TABLE OF "+obj)
+	if err != nil {
+		return err
+	}
+	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,V "+obj+",A "+arr+")")
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackInto(tx, &err)
+	value := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number(exactNumber)}, {Name: "B", Value: oceanbase.Raw{0, 255}}}}
+	array := oceanbase.Array{Type: arr, Elements: []any{value, nil, value}}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (?,?,?)", 1, value, array); err != nil {
+		return err
+	}
+	var got oceanbase.Object
+	var items oceanbase.Array
+	if err = tx.QueryRowContext(ctx, "SELECT V,A FROM "+table+" WHERE ID=1").Scan(&got, &items); err != nil {
+		return err
+	}
+	if err = checkObject(got, obj); err != nil {
+		return err
+	}
+	if err = expect(items.Type == arr && len(items.Elements) == 3 && items.Elements[1] == nil, "collection identity, order or NULL mismatch"); err != nil {
+		return err
+	}
+	for _, index := range []int{0, 2} {
+		v, ok := items.Elements[index].(oceanbase.Object)
+		if !ok {
+			return checkFailure("collection element lost its descriptor")
+		}
+		if err = checkObject(v, obj); err != nil {
+			return err
+		}
+	}
+	var out oceanbase.Object
+	if _, err = tx.ExecContext(ctx, "BEGIN ? := "+obj+"(42,HEXTORAW('00FF')); END;", sql.Out{Dest: &out}); err != nil {
+		return err
+	}
+	if err = expect(out.Type == obj && len(out.Fields) == 2, "object output descriptor mismatch"); err != nil {
+		return err
+	}
+	if err = tx.Rollback(); err != nil {
+		return err
+	}
+	return countRows(ctx, s.db, table, 0)
+}
+
+func checkObject(value oceanbase.Object, name string) error {
+	if value.Type != name || value.Schema == "" || len(value.Fields) != 2 || value.Fields[0].Name != "N" || value.Fields[1].Name != "B" {
+		return checkFailure("object identity or attribute order mismatch")
+	}
+	number, ok := value.Fields[0].Value.(oceanbase.Number)
+	if !ok {
+		return checkFailure("object NUMBER lost exact representation")
+	}
+	got, ok := new(big.Rat).SetString(string(number))
+	want, _ := new(big.Rat).SetString(exactNumber)
+	if !ok || got.Cmp(want) != 0 {
+		return checkFailure("object NUMBER precision mismatch")
+	}
+	raw, ok := value.Fields[1].Value.(oceanbase.Raw)
+	return expect(ok && bytes.Equal(raw, []byte{0, 255}), "object RAW content mismatch")
+}
