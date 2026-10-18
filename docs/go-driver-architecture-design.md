@@ -848,8 +848,9 @@ type Out struct {
 - Type 和尺寸用于客户端模式/值约束。纯 OUT 按 Java 路径发送 NULL，服务端从 SQL 或例程形参确定类型；需要强制数据库类型时在 SQL 中显式转换。句柄、LOB、OBJECT/ARRAY 的协议绑定由后续任务实现，标量入口在发送前拒绝相应目的。
 - Oracle OUT/INOUT/RETURNING 使用真实 ob_version() >=2.2.76 的 COM_STMT_PREPARE_EXECUTE；版本未知或更旧时在发送业务前返回 ErrUnsupported。该语义要求也适用于 PrepareClient。接收参数/列描述、内部输出、强制尾随 OK/ERR，临时 statement 关闭后才发布输出；显式服务端 statement 可复用原 ID。
 - MySQL 使用每次调用随机命名的私有会话变量，固定同一连接完成初始化、原 SQL、输出 SELECT 和变量清空。主命令的普通结果继续流式读取；辅助命令不加入 Execution 摘要。变量替换共用当前 SQL mode 的严格词法/字面量路径；无法安全替换的 SQL 在发送前拒绝。清理失败淘汰物理会话并保留错误。
-- Query/Execute 的输出随最终响应消费或 Close 完成后生效；Exec 在返回前完成该步骤。清理后再次检查操作取消；失败、取消、输出形状错误均不写回内置目的。重复逻辑 OUT 的各物理输出必须一致，只写回一次；不同逻辑 OUT 指向同一目的时拒绝。
+- Query/Execute 的输出随最终响应消费或 Close 完成后生效；Exec 在返回前完成该步骤。清理后再次检查操作取消；服务端失败、发布前取消及输出形状错误不写回内置目的。重复逻辑 OUT 的各物理输出必须一致，只写回一次；不同逻辑 OUT 指向同一目的时拒绝。
 - ErrOut 可识别输出验证/转换错误；OutError.Parameter 为 SQL 的逻辑绑定位置，Partial=true 表示自定义 Scanner 已可能产生部分副作用。使用 errors.As 获取详细错误，继续保留底层 Scanner 错误链。多个输出先完成全部内置转换，再按 SQL 中首次出现的顺序写回；自定义 Scanner 失败后停止发布后续目的。
+- 每个目的写回前重新检查操作和事务 context。自定义 Scanner 在回调中取消后，即使 Scan 返回 nil，也停止后续标量及 Scanner，资源仍遵循统一发布前复核；保留 context 错误。Scanner 已发生的副作用和此前已发布的目的不回滚，不承诺回调期间取消的跨目的原子性。[TestOutCancelStopsPublication、TestOutTransactionCancelStopsPublication](../out_context_test.go) 覆盖两模式/三包流的公开调用和事务 context 赋值边界。
 
 上述协议布局已对照固定 Java 源码并用合成对端验证；真实服务端/OBProxy 的例程与 RETURNING 仍须按兼容矩阵联调。
 

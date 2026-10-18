@@ -247,6 +247,12 @@ func (c *conn) assignOutputsContext(ctx context.Context, bindings []*outBinding,
 		staged[i] = temp.Elem()
 	}
 	for i, b := range bindings {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if c.activeTx != nil && c.activeTx.ctx.Err() != nil {
+			return c.activeTx.ctx.Err()
+		}
 		if b.resource != 0 {
 			continue
 		}
