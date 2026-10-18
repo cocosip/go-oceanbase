@@ -832,6 +832,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 使用临时 Go 编译覆盖分别移除取消路径和正常 Close 路径的传输关闭，目标均按预期失败，确认测试能抓住实际关闭遗漏，未将故障注入写入生产源码。重复运行期间修正测试对端编号的调度竞态，并允许 net.Pipe 合法的 EOF/ErrClosedPipe；最终等待发生在测试清理之前，防止清理代码代为关闭造成假阳性。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；六组合两版本各25轮及 Go1.25 实际 Windows/386 通过。测试函数按 fixture/workload 拆分并调整 context 参数位置后，两版本普通及 integration 标签 golangci-lint 各0 issues；独立只读增量复核无确认问题，不另存报告。没有修改生产代码或对外契约，D28/D30/D31/D32及28/32实现、0/32验收保持；未连接数据库，本地并发组合不替代真实数据库、全部故障组合、平台或成功 race 验收。
 
+#### D31 XA 错误分类与兼容模式边界
+
+- 根据固定 OceanBase 提交 `7b0f43693565654bb1d7343f728bc2013dfff959` 的 mysql_errno.h 与 ob_errno.def，补齐 MySQL 1440 → XAER_DUPID（-8）、1613 → XA_RBTIMEOUT（106）、1614 → XA_RBDEADLOCK（102），其余已知映射及未知错误的 RMERR 回退保持。映射只用于 MySQL 兼容模式，Oracle SQL 错误保留原 Error 并归 RMERR；DBMS_XA 原生返回码路径不变，依据及边界见架构 §16.2.1。
+- 新增 [TestXAMySQLErrorCodes、TestXAOracleServerErrorNamespace](../xa_errors_test.go)：MySQL 十个错误码 × 三种包流 × 开启/一阶段提交，共60个场景，检查原始 code/SQLSTATE/message、ErrXA、完整拒绝不归未知结果或 ErrBadConn、本地关联状态、原连接 Ping、失败提交后的显式回滚及退出普通池；Oracle 九个同号 SQL 错误检查独立命名空间与错误链。旧实现对新增三个 MySQL 码分类错误，Oracle 路径也复现已有编号冲突；修复后通过。
+- Windows Go1.25.0/1.26.0 全包构建、单测/vet、integration 仅编译及普通/integration 标签 golangci-lint 均通过；首次 lint 的测试复杂度及 switch 提示已修正。未连接数据库，不推断服务器会在相应阶段产生上述错误，也不据本地分类测试证明超时/死锁或真实恢复语义。实现28/32、验收0/32保持。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

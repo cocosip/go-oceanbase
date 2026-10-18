@@ -51,7 +51,8 @@ var ErrXA = errors.New("oceanbase: XA error")
 var ErrXAOutcomeUnknown = errors.New("oceanbase: XA outcome unknown; recover on a new connection")
 
 // XAError preserves the standard XA return code and any underlying server error.
-// Codes include protocol -6, invalid -5, rollback-only 100, and RM error -3.
+// Codes include protocol -6, invalid -5, duplicate XID -8, RM error -3,
+// rollback-only 100, deadlock rollback 102, and timeout rollback 106.
 type XAError struct {
 	Code int32
 	Err  error
@@ -308,10 +309,15 @@ func mysqlXID(x XID) string {
 func (c *conn) xaFailure(r *xaRequest, err error, sent bool) error {
 	var server *Error
 	if errors.As(err, &server) {
-		codes := map[uint32]int32{1397: -4, 1398: -5, 1399: -7, 1400: -9, 1401: -3, 1402: 100}
-		code, ok := codes[server.Code]
-		if !ok {
-			code = -3
+		code := int32(-3)
+		if c.session.mode == ModeMySQL {
+			codes := map[uint32]int32{
+				1397: -4, 1398: -5, 1399: -7, 1400: -9, 1401: -3, 1402: 100,
+				1440: -8, 1613: 106, 1614: 102,
+			}
+			if mapped, ok := codes[server.Code]; ok {
+				code = mapped
+			}
 		}
 		return &XAError{Code: code, Err: err}
 	}

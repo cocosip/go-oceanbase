@@ -387,6 +387,7 @@ TestCancelQuerySessions 四目标源码/手动 CI 已补，每个 DSN 前缀对�
 | 两模式执行 | MySQL XA SQL；Oracle DBMS_XA 原生 XID/OUT，保留 prepare 票和 XA 错误 | 1PC/2PC、rollback-only、挂起恢复、原生输出和返回码本地通过；Oracle 原生调用要求 >=2.2.76 |
 | 恢复与隔离 | 实际四列/集合解析，有界全列表，专用会话退出原池，不本地回滚 prepared | NULL/长度/额外结果/上限、prepared Close、事务/身份/会话 guard 本地通过 |
 | 故障 | 写出后结果不明淘汰、不重放；commit 额外 ErrCommitUnknown | 部分写、丢确认及原生输出后尾部错误本地通过；不包含真实故障恢复证据 |
+| 错误分类 | MySQL 重复 XID、超时/死锁回滚保留标准 XA 码；Oracle SQL 错误不套用 MySQL 编号，DBMS_XA 返回码原样保留 | [TestXAMySQLErrorCodes、TestXAOracleServerErrorNamespace](../xa_errors_test.go) 验证错误链、完整拒绝不归未知结果、同连接 Ping/分支状态及退池；实际服务端触发条件未联调 |
 | 明确未支持 | Forget/RM timeout 不伪造成功，协调日志与恢复决策归应用 | Java 本身未实现的服务器契约；context 不是 RM timeout |
 
 TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手动 CI，包含 DML、1PC/2PC/rollback、join/resume/suspend、准备后断开并用新连接恢复及提交可见性；本阶段只编译。标准/压缩/OB20 两模式本地覆盖不代替服务端 SQL、权限、版本、代理和 RM 恢复语义。D31 保持进行中，因 D30/D28 平台依赖未闭环，实现28/32、验收0/32；细节见架构 §16.2.1。
