@@ -966,9 +966,16 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[TestOracleScalarsWorkflow](../cmd/obtest/oracle_scalars_test.go)，两条读取路径共32个离线流程，检查错误值/原偏移丢失/纳秒损失、等价 LTZ、五种 typed NULL、ROWID 绑定与定位及自建表清理；缺少场景时先失败，接入后通过。非法 TZ 回归暴露夹具 Next 后列数缩为1、扫描错误时触发标准库 panic 的问题，固定整轮列数后同例通过；Query fixture 新增参数检查，防止 ROWID 被改成普通字符串。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues。首次 lint 的重复路径标签已调整，测试按准备/校验职责拆分；独立只读复核未发现确认问题，不另存报告。obtest 重建，39项唯一列表、默认配置和单独选择 oracle-scalars 的离线检查通过；文档/链接/配置映射及diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race继续暂缓。
 
+#### D12/D32 独立工具的 MySQL 专用标量场景
+
+- 新增 mysql-scalars，自动建表和准备三组边界值及全 NULL 行，覆盖正负838小时/零 TIME(6)、YEAR、完整 unsigned/signed BIGINT、TINYINT(1) 整数、BIT(1/9)、VARBINARY 空值/零字节和 BINARY(4) 补零。文本与参数化查询同时验证内容、NULL 和固定行数，以及 ColumnTypes 的类型、ScanType、二进制字节长度；仅适用 MySQL 兼容模式，显式 server prepare/ParseTime=false。无新驱动 API、包或依赖。
+- 新增[TestMySQLScalarsWorkflow](../cmd/obtest/mysql_scalars_test.go)44个离线流程；缺少场景时先失败，接入后全部工具测试和lint通过。夹具使用固定元数据及独立字面量输入/返回值，检查类型、参数、结果关闭和自建表清理；新增 fixtureStep.rows 承载元数据对端，不改动可执行工具的数据库接口。
+- 按固定 OceanBase TIME_MAX_VAL/time_overflow_trunc 核对 SQL 范围，修正初始越界种子及原 integration 的同类输入/断言；改用最大整秒838:59:59和-838:59:58.999999分别验证边界/微秒。最大整秒允许六位零小数，非零小数拒绝；新增正反例先在旧种子/断言上失败，再修正通过。范围源码见[工具说明](go-driver-test-tool.md)，原 integration 仍仅编译。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，Windows/386 的44个新增流程通过。首次 lint 的重复测试字符串已调整；独立只读复核发现的 TIME 范围问题已修正，复核无剩余确认问题，不另存报告。obtest 重建，40项唯一列表、示例配置和单独选择 mysql-scalars 的离线检查通过。实现28/32、验收0/32保持，真实数据库、其他平台及race继续暂缓。
+
 ## 6. 待取证条件与推进方式
 
-D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 39 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。
+D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 40 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。
 
 D32 工具配置边界修复：不再把 1 MiB 截断当作文件结束，超限配置在任何数据库连接前明确拒绝；读取错误保持脱敏。新增 TestConfigInputBounds，旧实现对超限空白、边界后第二对象及非法尾部三个场景错误接受，修复后通过，另覆盖恰好上限的合法文件和读取失败。Windows Go 1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及普通/integration 标签 lint 均通过；未连接数据库，实现及验收总数保持 28/32、0/32。
 

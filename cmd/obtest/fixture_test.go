@@ -20,6 +20,7 @@ const fixtureDropTableSQL = "DROP TABLE OBT_OFFLINE_T"
 type fixtureStep struct {
 	query    string
 	values   [][]driver.Value
+	rows     driver.Rows
 	affected int64
 	err      error
 	inspect  func([]driver.NamedValue)
@@ -157,6 +158,9 @@ func (f *fixtureConn) QueryContext(ctx context.Context, query string, args []dri
 	step, err := f.next(ctx, query)
 	if step.inspect != nil {
 		step.inspect(args)
+	}
+	if step.rows != nil {
+		return step.rows, err
 	}
 	width := 1
 	if len(step.values) != 0 {

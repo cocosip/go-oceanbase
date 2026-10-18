@@ -752,6 +752,8 @@ D32 逐项证据子项为160个规范选项补充 Go 配置、标准库、显式
 
 D32 提供[独立数据库验收工具](go-driver-test-tool.md)作为集中运行入口；目标和 fixture 由配置管理，程序自动准备/清理数据并记录逐场景报告。该工具补充现有协议回归与 integration 源码；本阶段只做离线验证，实际数据库报告仍为待验收证据。
 
+工具 mysql-scalars 提供 MySQL 专用标量集中验收：自动准备三组边界值和全 NULL 行，文本与参数化读取校验 TIME/YEAR、完整整数范围、BIT、空/含零二进制与定长补零，同时核对列类型/ScanType 及二进制字节长度；明确区分零/空/NULL，检查缺行/多行并在失败后关闭结果和清理表。离线回归只证明工具编排，真实类型/SQL 行为仍待联调。
+
 工具 oracle-scalars 补齐 Oracle 专用标量的集中入口：自动建表、带值/NULL 行、文本与参数化读取，以及 ROWID 回绑定位。验证 NString、TimestampTZ/LTZ、IntervalYM/DS 的公开绑定、Unicode、原 TZ 偏移/纳秒、LTZ 等价时刻和 typed NULL；使用 server prepare、UTF-16 national charset，保留用户配置 location。该场景仅适用 Oracle 兼容模式，离线回归不代替服务端验收。
 
 工具 scalars 的日期/时间断言比较完整墙上时间及纳秒，不以字符串前缀掩盖 Oracle DATE 时分秒变化或额外非零小数；等价尾零可接受，超九位小数不能经 Go 时间解析截断后算通过，也不能用单数字小时绕过小数上限。TestScalarsTemporalAssertions 提供两模式/两查询路径32个离线流程，并验证失败后的自建表清理；真实数据库往返仍待验收。

@@ -59,7 +59,7 @@ func testScalarProfile(t *testing.T, p profile, path string) {
 	values := "?,?,?,?,?,?,?,?,?,?,?"
 	query := "SELECT n,v,b,ts,d,tm,yr FROM " + table + " WHERE id=1"
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
-	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, scalarDateText, "-838:59:59.999999", 2026}
+	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, scalarDateText, "-838:59:58.999999", 2026}
 	args = append(args, uint64(math.MaxUint64), int64(math.MinInt64), []byte{0, 255, 0, 0})
 	if p.mode == oceanbase.ModeOracle {
 		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9),dt DATE"
@@ -208,7 +208,7 @@ func checkScalarProfileRow(t *testing.T, p profile, db *sql.DB, table string, ro
 		if err := row.Scan(&n, &text, &raw, &timestamp, &date, &duration, &year); err != nil {
 			failOperation(t, "read MySQL scalar values", err)
 		}
-		if date != scalarDateText || duration != "-838:59:59.999999" || year != 2026 {
+		if date != scalarDateText || duration != "-838:59:58.999999" || year != 2026 {
 			t.Fatal("date/TIME/YEAR changed")
 		}
 	}
