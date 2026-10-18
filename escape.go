@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // RewriteJDBCEscapes explicitly converts JDBC escapes to the selected OceanBase dialect.
@@ -222,7 +223,15 @@ func escapeConvert(args string, mode Mode) (string, error) {
 	if comma < 0 {
 		return "", fmt.Errorf("%w: JDBC CONVERT arguments", ErrBind)
 	}
-	value := strings.TrimSpace(args[:comma])
+	operand, err := lexSQL(strings.TrimSpace(args[:comma]), mode, false, false)
+	if err != nil {
+		return "", err
+	}
+	if len(operand) == 0 {
+		return "", fmt.Errorf("%w: JDBC CONVERT operand", ErrBind)
+	}
+	// Retain trailing newlines so a line comment cannot swallow the generated suffix.
+	value := strings.TrimLeftFunc(args[:comma], unicode.IsSpace)
 	typ := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(args[comma+1:])), "sql_")
 	target := ""
 	if mode == ModeOracle {
@@ -232,12 +241,12 @@ func escapeConvert(args string, mode Mode) (string, error) {
 	}
 
 	if typ == "boolean" && mode == ModeMySQL {
-		return "(1=" + value + ")", nil
+		return "(1=(" + value + "))", nil
 	}
 	if (typ == "double" || typ == "float" || typ == "real") && mode == ModeMySQL {
-		return "(0e0+" + value + ")", nil
+		return "(0e0+(" + value + "))", nil
 	}
-	if target == "" || value == "" {
+	if target == "" {
 		return "", fmt.Errorf("%w: JDBC CONVERT type", ErrUnsupported)
 	}
 	return "CAST(" + value + " AS " + target + ")", nil

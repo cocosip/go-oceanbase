@@ -1036,6 +1036,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 三项 Go overlay 反向验证：关闭 Oracle autocommit 恢复、禁用缓存复用、只标记关闭而不关闭底层连接，最终测试均按预期失败。独立复核指出既有 QUIT 辅助检查可能被测试清理制造的关闭掩盖；删除底层 Close 时初版新测试确实误通过，改为仅接受 EOF/ErrClosedPipe 并在任何清理前等待三对端完成后明确失败。复核确认修正有效，无剩余明确问题，不另存报告。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译、定向混合会话/资源守卫回归各10轮（含 -parallel=1）通过，两版本普通/integration 标签 golangci-lint 均0 issues；Windows/386 的对应定向测试通过。两版本扩展测试各18432轮、54个 GC 后采样点通过，完整用时31.429秒/28.884秒；原始会话/池/关闭断言通过，108个采样点均为7个 goroutine、3次拨号，有限样本不代表无泄漏。actionlint、CI 选择器/预算/无 secrets、文档链接及本地路径检查通过；GitHub CI 本身未运行。
 
+#### D10/D32 JDBC CONVERT 操作数边界
+
+- 修复显式 RewriteJDBCEscapes 在 MySQL 布尔/浮点模拟中缺少操作数括号的问题，例如 `CONVERT(2 OR 0, SQL_BOOLEAN)` 必须保留为 `1=(2 OR 0)`，不变成 `1=2 OR 0`。保留与1比较、0e0提升浮点及原有两模式类型映射，不改普通 SQL 的默认路径，不新增 API、配置、包或依赖。
+- 新增 TestJDBCConvertOperandBoundaries 的12个转换流程，检查 OR/XOR/比较/位运算、NULL、嵌套转换、参数数量及末尾行注释；TestJDBCConvertMissingOperand 覆盖两模式/五种类型/八种空操作数，共80例。先在旧实现复现9个括号错误和4个返回无效 SQL 的空白操作数；初次修复再复现3个换行被裁掉及注释操作数未拒绝的问题，按裁剪后的操作数再次词法检查、仅裁左侧空白生成输出后通过。独立复核发现 Unicode 空白裁剪与原始词法校验不一致，新增全角空格、NBSP 及前后注释组合先复现50个漏检，再统一校验规则修复。原有双模式转换用例同步补充 Oracle 行注释 CAST 回归。
+- 同步兼容矩阵 §23 的同池三连接稳定性证据，保持实现28/32、验收0/32；转换回归不代表服务端 SQL 等价验收。
+- 最终 Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及 JDBC 定向回归各20轮通过；两版本普通/integration 标签 golangci-lint 均0 issues，Windows/386 的 JDBC 定向测试通过。独立复核指出的 Unicode 空白问题已补失败→通过回归并修复，未另存走查报告；文档链接、配置映射及 diff 检查通过。真实数据库、其他平台和 race 按当前约束暂缓。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 44 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。

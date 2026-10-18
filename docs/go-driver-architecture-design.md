@@ -527,6 +527,8 @@ cfg.Execution = oceanbase.ExecutionOptions{
 
 普通 SQL 使用服务端原生语法。Java JDBC escape 的等价能力由显式兼容转换函数提供，转换仍使用词法状态机；不对所有 Go SQL 默认改写。
 
+`RewriteJDBCEscapes` 的 MySQL `CONVERT` 布尔/浮点兼容表达式始终括住完整操作数，保留其中 OR、XOR、位运算和比较的原有优先级；布尔转换沿用与1比较的既有语义。两模式转换均保留操作数末尾行注释的换行，避免生成的括号或 CAST 后缀被注释吞掉；空白或只有注释的缺失操作数返回 ErrBind。`TestJDBCConvertOperandBoundaries`、`TestJDBCConvertMissingOperand` 和 `TestJDBCEscapes` 验证转换文本、嵌套及参数数量；这些本地断言不证明真实服务端计算结果。
+
 固定 Java 的 `encloseParamInParentheses` 默认 true，但自2.4.10起实际只在 Oracle 文本参数前写空格，未包裹括号；见 [ComQuery.addParenthesesArroundValue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L366)。Go 客户端预处理和批量改写统一在每个字面量两侧保留空格，防止负数与前置减号拼成注释，或数字与后续别名连成指数。此规则固定启用，两模式均适用；不增加可关闭参数边界保护的开关。标准服务端预处理继续发送独立二进制参数，不改写 SQL 的括号或表达式优先级。TestClientParameterBoundaries 通过公开 ExecContext/sql.Stmt 覆盖两模式/三包流、重复命名参数、负数/数字别名及含分号的引号字符串；这些是编码边界证据，真实 SQL 解释仍待联调。
 
 ### 10.3 扩展操作如何进入同一个内核

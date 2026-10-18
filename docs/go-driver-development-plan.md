@@ -309,11 +309,13 @@ go test -tags=integration ./tests/integration -count=1
 交付：显式客户端 prepare 策略；公开 `RewriteJDBCEscapes(query string, mode Mode) (string, error)`；mode Auto 不具备足够上下文时拒绝改写，不猜模式。
 
 - [x] 测试 `TestClientPrepareEncoding`、`TestJDBCEscapes`：引号/反斜杠/多字节/二进制、模式与会话转义设置、JDBC 日期/函数/call 语法；普通 SQL 默认无改写；注释中的占位符不替换。
-- [ ] 执行 `go test . -run 'Test(ClientPrepare|JDBCEscapes)' -count=1`，确认失败；当前进度未记录历史失败，不能由现有通过结果推定。
+- [ ] 执行 `go test . -run 'Test(ClientPrepare|JDBC)' -count=1`，确认失败；当前进度未记录历史失败，不能由现有通过结果推定。
 - [x] 复用 D07 词法/参数计划，按实际会话编码；只有发送前确认 prepare 不支持时才允许已配置的降级。
 - [ ] 同命令通过；`TestPrepareEquivalence` 在两模式比较客户端/服务端的值和错误，不以字符串相似替代执行等价。
 
 SQL/客户端预算补充：TestSQLTextEncodedBudget、TestClientSQLTextEncodedBudget、TestSQLBudgetStrictEncoding、TestSQLExecutionEncodedBudget、TestOutputSQLTextEncodedBudget 覆盖实际编码大小、片段累计、字面量转义、两模式三包流公开文本/server/client 预处理及 Oracle OUT，共58个本地场景。原文解析预检按码点数有界；完整消息按转码后的内容、命令/协议开销及空格限制，超限发送前拒绝后原会话仍可 Ping。GBK/latin1 收缩误拒已复现并修复，真实 SQL 等价与服务端验收仍单列。
+
+JDBC CONVERT 边界补充：MySQL 布尔/浮点模拟保留复合操作数优先级，两模式保留末尾行注释的换行；空白或纯注释操作数发送前返回 ErrBind。回归覆盖 OR/XOR/比较/位运算、NULL、嵌套转换和参数数量，真实 SQL 等价仍由上述集成条目验收。
 
 ### D11 Execute、多结果摘要与计数策略
 

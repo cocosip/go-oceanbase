@@ -398,4 +398,6 @@ TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手�
 
 `TestDriverResourceStability` 在固定8轮复用上述场景，检查每轮会话/statement/LOB/游标清理及缓存、池边界，记录 GC 后的进程级堆/goroutine；手动 `stability` CI 独立于数据库集成入口。只覆盖串行 net.Pipe 基础路径，不能证明真实句柄、完整并发/故障路径或生产长期稳定性，样本及运行方式见本地基准 §6。
 
-`TestDriverSessionStability` 补充两模式/三包流的同一物理会话持续混合执行：缓存及类型复用、Rows 提前关闭、事务提交/回滚、明确 SQL 错误后的 statement 释放与 Ping。各组合只允许一次拨号，逐轮直接检查原会话资源和池；进程样本保留活动的闲置连接，定义见本地基准 §7。有限离线检查不代替真实平台、并发多连接、完整高级能力/故障或生产长期验收。
+`TestDriverSessionStability` 补充两模式/三包流的同一物理会话持续混合执行：缓存及类型复用、Rows 提前关闭、事务提交/回滚、明确 SQL 错误后的 statement 释放与 Ping。各组合只允许一次拨号，逐轮直接检查原会话资源和池；进程样本保留活动的闲置连接，定义见本地基准 §7。有限离线检查不代替真实平台、完整高级能力/故障或生产长期验收。
+
+`TestDriverConcurrentSessionStability` 在同一连接池固定三条物理会话，以独立 ID/参数及每采样段首轮协议屏障并发运行上述混合流程，检查原会话、释放后重借、池计数及对端实际关闭。两模式/三包流、双工具链各18432轮的样本和范围见[本地基准 §8](go-driver-benchmarks.md#8-同池三连接并发混合负载)；有限三连接样本不替代完整并发/故障/高级资源或真实平台的长期验收。
