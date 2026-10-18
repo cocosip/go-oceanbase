@@ -152,7 +152,7 @@ func complexAssertionScenario(t *testing.T, array oceanbase.Array, out oceanbase
 			*binding.Dest.(*oceanbase.Object) = out
 		}},
 		{query: "ROLLBACK"},
-		{query: "SELECT COUNT(*) FROM OBT_OFFLINE_T", values: [][]driver.Value{{int64(0)}}, optional: !valid},
+		{query: fixtureCountSQL, values: [][]driver.Value{{int64(0)}}, optional: !valid},
 		{query: fixtureDropTableSQL},
 		{query: "DROP TYPE OBT_OFFLINE_A"},
 		{query: "DROP TYPE OBT_OFFLINE_O"},

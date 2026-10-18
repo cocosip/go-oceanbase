@@ -756,6 +756,8 @@ D11/D32 计数验收入口补充：独立工具 counts-matched/counts-changed �
 
 D13/D32 参数描述验收入口补充：独立工具 metadata-parameters 使用自建表，检查位置参数、Oracle 重复命名参数及无参数 Query 的 StatementParameters；每次描述后验证种子原值，完整流程确认行数并清理。固定输出模式、身份和未知方向/描述的契约见架构 §16.1.1；不把服务端参数描述视为业务列定义。TestParameterMetadataWorkflow 替代公开 Metadata 结果以验证工具编排/断言/清理，底层 prepare/close 由既有驱动协议测试覆盖，真实服务端参数推断仍待联调。
 
+D05/D11/D32 生成键验收入口补充：独立工具 generated-keys 仅在 MySQL 兼容模式自建 unsigned BIGINT 自增表，校验普通 LastInsertId、Execute 完整 uint64 摘要、超 int64 错误、后续 UPDATE 无旧 ID 与最终四行/清理；不假定 ID 连续。标准溢出结果无法取得原始完整 ID，不伪造精确比较；此部分由 Execute 覆盖。TestGeneratedKeyWorkflows 通过公开驱动和内存协议对端检查31个流程，含非法数据导致连接淘汰后的重新建连清理；真实自增范围/分配及 SQL 行为待联调，Oracle 返回列沿用 returning 场景。
+
 D05/D22/D24/D32 错误语义补正：独立工具 CRUD、优化执行、普通批量和原生 array binding 对自建主键只接受模式对应的重复键错误码（MySQL 1062 / Oracle 1）；批量同时核对汇总错误、失败输入错误、完成数及 stop/continue 状态。TestDuplicateKeyWorkflows 和 TestBatchDuplicateAssertions 验证工具断言与失败清理；相关集成执行策略/批量断言同步补正，真实 SQL 和原生策略仍按既有目标待联调。
 
 工具 metadata 比较自建表的字典内容，不能只用行数证明正确：核对 catalog/schema/表身份、ID/V 列名/位置/类型、INTEGER 精度和 scale、VARCHAR 长度、NULL、主键及两列 ColumnTypes，保持精确 schema 过滤与 LIKE 转义；错误/缺失/多余内容和读取/关闭错误必须失败并清理对象。90个离线流程只证明断言及编排，不替代服务端字典验收。

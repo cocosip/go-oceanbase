@@ -1016,9 +1016,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 扩充[TestResultCounts](../execute_test.go)为7个公开 database/sql + 协议对端场景：零计数/零 ID、普通计数/ID、有影响行却无 ID、最大 int64 ID、ID 单独溢出、计数单独溢出且保留可用 ID、两者同时溢出。先复现两处零 ID 错误接受，再修复通过；移除旧测试在计数溢出后提前返回的盲区，始终校验两个方法。既有 Execute 的完整 uint64/未知 ID 摘要回归保留；这些测试不证明实际服务端生成键 SQL 行为。
 - Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译通过；TestResultCounts、既有未知值/溢出与 Execute 摘要回归两版本各重复10轮通过，两版本普通/integration 标签 golangci-lint 均0 issues。Windows/386 的上述目标回归通过；obtest 已重建，43项名称唯一性及示例配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
 
+#### D05/D11/D32 独立工具的生成键验收入口
+
+- 新增 MySQL 专用 generated-keys，在本轮自建 unsigned BIGINT 自增表上分别验证普通 Exec 与 Execute；普通范围 LastInsertId 和摘要 ID 对比落库值，提高本轮表的自增起点后检查标准 int64 溢出与完整 uint64 摘要。每次插入后 UPDATE 均确认无旧 ID，最终核对四行并清理；不假定连续 ID、不修改租户/全局配置，不新增公开 API、包或依赖。工具增至44项，Oracle 返回列继续由 returning 覆盖。
+- 新增 TestGeneratedKeyWorkflows 的31个公开驱动/内存协议流程，覆盖正常/边界 ID、未知/错误 ID、计数/范围/缺行/SQL 错误、多余结果和清理失败；非法 unsigned 数据必须淘汰原连接，由新连接只执行初始化及清理。标准溢出不能取得完整 ID，测试只检查错误和落库范围，Execute 承担精确比较。修正最初两处夹具问题后目标回归通过；首次 lint 的共享字面量及复杂度问题经复用常量、拆分故障设置修正。
+- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 golangci-lint 均0 issues，Windows/386 的31个生成键流程均通过。独立只读复核无确认问题，不另存报告；obtest 已重建，44项名称唯一性、默认/示例及生成键选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持；未连接数据库，实际自增范围/分配、其他平台和race不据此验收。
+
 ## 6. 待取证条件与推进方式
 
-D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 43 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。
+D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 44 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。
 
 D32 工具配置边界修复：不再把 1 MiB 截断当作文件结束，超限配置在任何数据库连接前明确拒绝；读取错误保持脱敏。新增 TestConfigInputBounds，旧实现对超限空白、边界后第二对象及非法尾部三个场景错误接受，修复后通过，另覆盖恰好上限的合法文件和读取失败。Windows Go 1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及普通/integration 标签 lint 均通过；未连接数据库，实现及验收总数保持 28/32、0/32。
 

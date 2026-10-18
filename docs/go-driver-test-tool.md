@@ -50,7 +50,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `targets` | 配置文件中必填 | 一个或多个连接目标，按顺序运行；不并行修改目标对象 |
-| `cases` | 全部 43 项 | 选填场景名称数组；拼写错误、重复项直接拒绝，不允许静默漏测 |
+| `cases` | 全部 44 项 | 选填场景名称数组；拼写错误、重复项直接拒绝，不允许静默漏测 |
 | `timeout` | `2m` | 每个场景及目标探测的独立超时，最大 `1h` |
 | `cleanup_timeout` | `30s` | 每个清理动作的独立超时，最大 `1h`；清理时间不计入场景执行预算 |
 | `require_all` | `false` | `true` 时把缺少 fixture 的跳过视为失败；模式不适用仍单列 |
@@ -95,6 +95,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `connect` | 认证、会话初始化、Ping、OceanBase 版本非空 |
 | `crud` | 建表、插入/更新/读取/删除、受影响行数、模式对应的重复键错误码、错误后继续使用 |
 | `counts-matched`、`counts-changed` | 自动建整数表，分别固定 MatchedRows/ChangedRows；普通 Exec、Execute 完成摘要和单项逐次批量入口均检查 INSERT、无变化/有变化/无匹配 UPDATE、DELETE/空 DELETE 的已知计数，MySQL 另检查 upsert 的插入/无变化/有变化三条分支；最后确认无残留行并清理表。ChangedRows 场景仅适用 MySQL，Oracle 使用原生匹配行数；每个入口重新准备数据，不比较不同数据库的计数差异 |
+| `generated-keys` | MySQL 专用，自动建 unsigned BIGINT 自增主键表；普通 Exec 的 LastInsertId 与落库 ID 精确一致，Execute 摘要保留完整 uint64 十进制 ID；提高本轮表的自增起点后检查超 int64 的标准溢出错误及 Execute 精确值。每次 INSERT 后执行 UPDATE，确认不沿用生成 ID，最终核对四行并清理。无需假定自增步长或首个 ID；Oracle 的返回列由 returning 场景验证 |
 | `prepare-server`、`prepare-client` | 分别使用服务端和客户端预处理，多次复用、Unicode/引号/反斜杠/NULL、Oracle 重复命名参数 |
 | `scalars` | 精确 NUMBER/DECIMAL、Unicode、RAW/二进制、闰日、微秒时间、NULL，文本与参数化查询；完整比较日期及时间值（允许等价的尾随零，拒绝额外非零纳秒、超九位小数及尾随内容）。此场景显式使用 server prepare、关闭 ParseTime，按配置 location 构造输入墙上时间 |
 | `mysql-scalars` | MySQL 专用，自动准备三组边界值及全 NULL 行；正负超24小时/零 TIME(6)、YEAR、完整 unsigned/signed BIGINT、TINYINT(1) 整数、BIT(1/9)、空/含零 VARBINARY、BINARY(4) 补零；文本与参数化读取、精确值/NULL/行数、数据库类型/ScanType 和二进制字节长度，显式 server prepare、ParseTime=false |
@@ -175,6 +176,8 @@ TIME 种子以最大整秒 `838:59:59` 和 `-838:59:58.999999` 分别覆盖范�
 
 [复杂类型 integration 用例](../tests/integration/complex_test.go) 同步使用不同集合种子和完整 OUT 内容断言；DATE 只接受预期整秒及驱动可能输出的六位零微秒表示，7项离线正负例验证该断言。数据库流程本轮仅编译，未执行。
 
-Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；工具回归重复运行、普通及 integration 标签全仓库 golangci-lint、Windows/386、`-list`、配置 `-check` 和文档检查的逐次证据见[开发进度](go-driver-development-progress.md)。工具提供43项场景；CI 仅增加不连接数据库的 `-list` 检查。
+生成键场景在自建表上执行 `ALTER TABLE ... AUTO_INCREMENT=9223372036854775808`，需要对应 DDL 权限及目标版本对 unsigned BIGINT 自增范围的支持；不会修改全局或租户自增配置。标准 `LastInsertId` 返回 int64，因此超范围时仅检查溢出错误及落库范围，完整 ID 的精确比较由 Execute 摘要完成。31个公开驱动与内存协议对端流程检查断言、边界及失败清理，不证明实际版本的自增分配行为。
 
-本次不连接数据库，因此上述 43 项真实运行结果均待用户提供测试 DSN 后执行，不能依据编译、离线检查或单元测试提高数据库验收计数。
+Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；工具回归重复运行、普通及 integration 标签全仓库 golangci-lint、Windows/386、`-list`、配置 `-check` 和文档检查的逐次证据见[开发进度](go-driver-development-progress.md)。工具提供44项场景；CI 仅增加不连接数据库的 `-list` 检查。
+
+本次不连接数据库，因此上述 44 项真实运行结果均待用户提供测试 DSN 后执行，不能依据编译、离线检查或单元测试提高数据库验收计数。

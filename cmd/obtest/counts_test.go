@@ -66,7 +66,7 @@ func TestRowsAffectedWorkflows(t *testing.T) {
 				db := sql.OpenDB(connector)
 				db.SetMaxOpenConns(1)
 				defer func() { _ = db.Close() }()
-				s := &scenario{db: db, cfg: cfg, prefix: "OBT_OFFLINE", mode: profile.mode, cleanupTimeout: time.Second}
+				s := &scenario{db: db, cfg: cfg, prefix: fixturePrefix, mode: profile.mode, cleanupTimeout: time.Second}
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				result := runScenario(ctx, s, definition.run)

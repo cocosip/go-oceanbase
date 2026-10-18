@@ -14,6 +14,8 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
+const fixturePrefix = "OBT_OFFLINE"
+const fixtureCountSQL = "SELECT COUNT(*) FROM OBT_OFFLINE_T"
 const fixtureDroppedState = "dropped"
 const fixtureDropTableSQL = "DROP TABLE OBT_OFFLINE_T"
 
@@ -196,7 +198,7 @@ func fixtureScenario(t *testing.T, steps []fixtureStep) *scenario {
 	f := &fixtureDB{t: t, steps: steps}
 	db := sql.OpenDB(f)
 	db.SetMaxOpenConns(1)
-	s := &scenario{db: db, prefix: "OBT_OFFLINE", mode: oceanbase.ModeOracle, cleanupTimeout: time.Second}
+	s := &scenario{db: db, prefix: fixturePrefix, mode: oceanbase.ModeOracle, cleanupTimeout: time.Second}
 	t.Cleanup(func() {
 		if err := db.Close(); err != nil {
 			t.Error(err)
@@ -221,7 +223,7 @@ func TestCRUDOfflineWorkflow(t *testing.T) {
 				steps[3].values[0][0] = "updated"
 				steps = append(steps,
 					fixtureStep{query: "INSERT INTO OBT_OFFLINE_T VALUES (1,'duplicate')", err: &oceanbase.Error{Code: 1, Message: "private"}},
-					fixtureStep{query: "SELECT COUNT(*) FROM OBT_OFFLINE_T", values: [][]driver.Value{{int64(1)}}},
+					fixtureStep{query: fixtureCountSQL, values: [][]driver.Value{{int64(1)}}},
 					fixtureStep{query: "DELETE FROM OBT_OFFLINE_T WHERE ID=1", affected: 1},
 					fixtureStep{query: "SELECT V FROM OBT_OFFLINE_T WHERE ID=1"})
 			}
