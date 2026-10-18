@@ -51,7 +51,8 @@ func TestReadTimeoutCommands(t *testing.T) {
 			for _, rows := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%d/%s/rows=%t", status, framing, rows), func(t *testing.T) {
 					var dials atomic.Int32
-					cfg := Config{User: testUser, ReadTimeout: 100 * time.Millisecond}
+					var commandRead atomic.Bool
+					cfg := Config{User: testUser, ReadTimeout: 5 * time.Second}
 					switch framing {
 					case testCompression:
 						cfg.Protocol.Compression = FeatureRequired
@@ -66,6 +67,7 @@ func TestReadTimeoutCommands(t *testing.T) {
 						if !serveCreateDatabaseAuth(ctx, t, p, framing, status) || !serveBaseline(ctx, t, p, status) || !readQuery(context.Background(), t, p, query) {
 							return
 						}
+						commandRead.Store(true)
 						if rows && !sendPackets(context.Background(), t, p, []byte{1}, textColumn("v", 3, 63, 0), []byte{254, 0, 0, status, 0}) {
 							return
 						}
@@ -83,8 +85,22 @@ func TestReadTimeoutCommands(t *testing.T) {
 					}
 					db := sql.OpenDB(configured)
 					defer func() { _ = db.Close() }()
-					ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 					defer cancel()
+					// Isolate the stalled command from compression and session initialization.
+					pinned, err := db.Conn(ctx)
+					if err != nil {
+						t.Fatal("initialization failed before the command timeout check", err)
+					}
+					if err = pinned.Raw(func(raw any) error {
+						raw.(*conn).session.raw.(*readTimeoutConn).timeout = 100 * time.Millisecond
+						return nil
+					}); err != nil {
+						t.Fatal(err)
+					}
+					if err = pinned.Close(); err != nil {
+						t.Fatal(err)
+					}
 					if rows {
 						var result *sql.Rows
 						result, err = db.QueryContext(ctx, query)
@@ -103,8 +119,8 @@ func TestReadTimeoutCommands(t *testing.T) {
 					if !errors.As(err, &timeout) || !timeout.Timeout() || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, driver.ErrBadConn) || ctx.Err() != nil {
 						t.Fatal("read timeout lost its network error or caused replay classification", err)
 					}
-					if dials.Load() != 1 || db.Stats().Idle != 0 {
-						t.Fatal("timed out execution was replayed or pooled", dials.Load(), db.Stats())
+					if !commandRead.Load() || dials.Load() != 1 || db.Stats().Idle != 0 {
+						t.Fatal("command was not reached, was replayed or was pooled after timeout", commandRead.Load(), dials.Load(), db.Stats())
 					}
 				})
 			}

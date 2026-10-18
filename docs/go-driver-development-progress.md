@@ -563,6 +563,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 #### D32 网络读取超时
 
+- TestReadTimeoutCommands 已分离连接初始化与业务命令停顿：初始化完成后才给同一物理连接启用 100ms 读预算，归池后仍通过 sql.DB 的 Exec/Query 入口执行；新增对端实际收到业务命令的断言，保留超时后不重放、不回池及 context 未到期的检查，避免压缩初始化超时干扰业务命令超时的验证。仅调整测试夹具，不改变驱动超时行为。Go1.25.0/1.26.0 Windows amd64 各连续20轮通过（每版本240个子场景）；两版本全包 build/test/vet、普通及 integration 标签 lint（各0 issues）通过，集成源码仅编译。
 - Config.ReadTimeout / DSN readTimeout 已补，默认0关闭、负值拒绝；对应 Java socketTimeout，Go 使用 duration，并统一关闭 Java Aurora 的特例默认值。每次底层 Read 以独立读取预算与 context 较早期限计时，不改变写方向；内置或自定义 net.Conn 在 TLS/认证前接入，复用两模式、三种包流、Rows、LOB 和会话操作路径，无新增包、依赖或后台协程。契约见架构 §12.5.1。
 - 并发流水线 writer 刷新/清除 deadline 不延长阻塞读；后续读取重新计时，不计池空闲或用户处理时间。独立超时保留 net.Error/Timeout，context 更早时保留原取消/超时错误，淘汰会话且不重放已发送的业务，批量保留未知结果。DSN 与业务超时均先失败再实现；活跃读取保护在临时移除后明确失败，恢复后通过。
 - TestReadTimeout* / TestDSNReadTimeout 和外部 ExampleNewConnector_readTimeout 覆盖握手/初始化、TLS 握手/查询、两模式及普通/压缩/OB20、响应/行停顿、context 优先、并发刷新、旧 deadline、分段消息和写预算、逐项/流水线批量。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
