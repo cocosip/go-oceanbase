@@ -284,11 +284,13 @@ func decimalField(text string, maxValue int) (int, error) {
 			return 0, ErrType
 		}
 	}
-	n, err := strconv.ParseUint(text, 10, 32)
-	if err != nil || n > uint64(maxValue) {
+	// Atoi returns int directly, so no narrowing conversion can overflow; on 32-bit
+	// targets it reports ErrRange instead of wrapping.
+	n, err := strconv.Atoi(text)
+	if err != nil || n > maxValue {
 		return 0, ErrType
 	}
-	return int(n), nil
+	return n, nil
 }
 
 type intervalParts struct {

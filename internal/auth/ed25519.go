@@ -8,6 +8,11 @@ import (
 
 // Ed25519 signs the 32-byte challenge using the client's password-derived scalar.
 // Standard ed25519.Sign rehashes a seed and does not implement client_ed25519.
+//
+// The protocol fixes SHA-512 here: the scalar is clamped from SHA512(password)[:32]
+// and the nonce seed is SHA512(password)[32:], so the digest is part of the
+// authentication algorithm rather than a password-storage choice. CodeQL's
+// go/weak-sensitive-data-hashing flags it as a false positive for that reason.
 func Ed25519(password string, challenge []byte) ([]byte, error) {
 	if password == "" {
 		return nil, nil

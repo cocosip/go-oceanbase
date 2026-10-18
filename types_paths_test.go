@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,27 @@ func TestScalarBinaryNullEmpty(t *testing.T) {
 	source[0] = 1
 	if !bytes.Equal(raw, []byte{0, 255}) {
 		t.Fatal("RAW aliases row buffer")
+	}
+}
+
+func TestScalarClientLiteralQuoting(t *testing.T) {
+	c := &conn{cfg: Config{Session: SessionOptions{Charset: testUTF8MB4, Location: time.UTC}, Limits: Limits{MaxLOBBytes: 1024}}, session: &handshakeSession{mode: ModeOracle}}
+	// A value that would end its literal early must either be rejected by the
+	// type's validation or have every embedded quote doubled.
+	for _, value := range []any{
+		RowID("AAAA')||CHR(0)||('"),
+		IntervalYM("1-2'||'"),
+		IntervalDS("1 00:00:00'||'"),
+		TimestampTZ("2026-01-02 03:04:05 +00:00'"),
+		TimestampLTZ("2026-01-02 03:04:05 +00:00'"),
+	} {
+		text, err := c.clientLiteral(value, 1024)
+		if err != nil {
+			continue
+		}
+		if quotes := strings.Count(text, "'"); quotes%2 != 0 {
+			t.Fatalf("%T produced an unbalanced literal: %s", value, text)
+		}
 	}
 }
 

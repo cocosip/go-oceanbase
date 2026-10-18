@@ -245,23 +245,28 @@ func (c *conn) clientTimeLiteral(v time.Time) (string, error) {
 }
 
 func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
-	if _, err := value.(driver.Valuer).Value(); err != nil {
+	// Value validates the representation and returns the exact text to bind, so
+	// binding anything else would bypass that validation.
+	validated, err := value.(driver.Valuer).Value()
+	if err != nil {
 		return "", err
 	}
-	var text string
+	if raw, ok := validated.([]byte); ok {
+		return c.clientLiteral(raw, limit)
+	}
+	text, ok := validated.(string)
+	if !ok {
+		return "", fmt.Errorf("%w: scalar text", ErrType)
+	}
+	var literal string
 	switch v := value.(type) {
-	case Raw:
-		return c.clientLiteral([]byte(v), limit)
 	case RowID:
-		if int64(len(v)) > limit-15 {
-			return "", wire.ErrMessageTooLarge
-		}
-		text = "CHARTOROWID('" + string(v) + "')"
+		literal = "CHARTOROWID(" + oracleQuoted(text) + ")"
 	case NString:
 		if int64(len(v)) > limit {
 			return "", wire.ErrMessageTooLarge
 		}
-		units := utf16.Encode([]rune(v))
+		units := utf16.Encode([]rune(text))
 		if limit < 10 || int64(len(units)) > (limit-10)/5 {
 			return "", wire.ErrMessageTooLarge
 		}
@@ -272,7 +277,7 @@ func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
 		if name == "" {
 			name = charsetUTF8MB4
 		}
-		if _, err := charset.Encode(name, string(v)); err != nil {
+		if _, err = charset.Encode(name, text); err != nil {
 			return "", err
 		}
 		var b strings.Builder
@@ -281,34 +286,45 @@ func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
 			fmt.Fprintf(&b, "\\%04X", unit)
 		}
 		b.WriteString("')")
-		text = b.String()
+		literal = b.String()
 	case IntervalYM:
-		text = "INTERVAL '" + string(v) + "' YEAR(9) TO MONTH"
+		literal = "INTERVAL " + oracleQuoted(text) + " YEAR(9) TO MONTH"
 	case IntervalDS:
-		text = "INTERVAL '" + string(v) + "' DAY(9) TO SECOND(9)"
+		literal = "INTERVAL " + oracleQuoted(text) + " DAY(9) TO SECOND(9)"
 	case TimestampTZ:
-		parts, _ := parseTimestamp(string(v))
-		text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + " " + parts.instant.Format("-07:00") + "'"
+		parts, parseErr := parseTimestamp(text)
+		if parseErr != nil {
+			return "", parseErr
+		}
+		literal = "TIMESTAMP " + oracleQuoted(formatTimestamp(parts.instant, parts.scale)+" "+parts.instant.Format("-07:00"))
 		if parts.region != "" {
-			text = "(" + text + " AT TIME ZONE '" + parts.region + "')"
+			literal = "(" + literal + " AT TIME ZONE " + oracleQuoted(parts.region) + ")"
 		}
 	case TimestampLTZ:
-		parts, _ := parseLTZ(string(v))
+		parts, parseErr := parseLTZ(text)
+		if parseErr != nil {
+			return "", parseErr
+		}
 		wall, err := ltzSessionWall(parts, c.cfg.Session.Location)
 		if err != nil {
 			return "", err
 		}
+		stamp := formatTimestamp(parts.instant, parts.scale) + " " + parts.instant.Format("-07:00")
 		if parts.local {
-			text = "TIMESTAMP '" + formatTimestamp(wall, parts.scale) + "'"
-		} else {
-			text = "TIMESTAMP '" + formatTimestamp(parts.instant, parts.scale) + " " + parts.instant.Format("-07:00") + "'"
+			stamp = formatTimestamp(wall, parts.scale)
 		}
-		text = "CAST(" + text + " AS TIMESTAMP WITH LOCAL TIME ZONE)"
+		literal = "CAST(TIMESTAMP " + oracleQuoted(stamp) + " AS TIMESTAMP WITH LOCAL TIME ZONE)"
 	}
-	if int64(len(text)) > limit {
+	if int64(len(literal)) > limit {
 		return "", wire.ErrMessageTooLarge
 	}
-	return text, nil
+	return literal, nil
+}
+
+// oracleQuoted renders an Oracle single-quoted literal, doubling embedded quotes
+// so a value cannot terminate the literal early.
+func oracleQuoted(text string) string {
+	return "'" + strings.ReplaceAll(text, "'", "''") + "'"
 }
 
 func formatTimestamp(t time.Time, scale int) string {

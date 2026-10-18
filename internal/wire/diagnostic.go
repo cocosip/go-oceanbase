@@ -71,10 +71,18 @@ func (p *PacketIO) beginDiagnostic(ctx context.Context, payload []byte) {
 	r := &RequestDiagnostic{Context: ctx, Command: payload[0], RequestID: id, Started: time.Now()}
 	query := diagnosticSQL(payload)
 	if query != nil {
-		sum := sha256.Sum256(query)
-		r.SQLFingerprint, r.SQLBytes = hex.EncodeToString(sum[:]), len(query)
+		r.SQLFingerprint, r.SQLBytes = sqlFingerprint(query), len(query)
 	}
 	d.current = r
+}
+
+// sqlFingerprint is a non-secret correlation value: it lets a caller group
+// diagnostics by statement shape without retaining the statement text. The query
+// is never authentication material, so a fast hash is correct here; CodeQL's
+// go/weak-sensitive-data-hashing does not apply.
+func sqlFingerprint(query []byte) string {
+	sum := sha256.Sum256(query)
+	return hex.EncodeToString(sum[:])
 }
 
 func diagnosticSQL(payload []byte) []byte {
