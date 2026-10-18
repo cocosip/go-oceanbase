@@ -148,12 +148,16 @@ func (c *conn) updateTableBlobLocked(ctx context.Context, lob *tableBlobResource
 	if err != nil {
 		return err
 	}
+	key := c.resourceKeyLocked()
 	r, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, query...), false, nil, true)
 	if err != nil {
 		return err
 	}
 	if err = r.drainAll(ctx); err != nil {
 		return err
+	}
+	if c.resources.key != key {
+		return ErrResource
 	}
 	if c.session.ok.Warnings != 0 {
 		return fmt.Errorf("%w: table BLOB mutation returned warnings; roll back the caller transaction", ErrLOB)

@@ -212,6 +212,7 @@ func (c *conn) tableBlobQueryLocked(ctx context.Context, query string, args []dr
 	if capture {
 		ctx = context.WithValue(ctx, lobOpenContextKey{}, &lobOpenState{})
 	}
+	key := c.resourceKeyLocked()
 	r, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, query...), false, nil, true)
 	if err != nil {
 		return nil, err
@@ -221,6 +222,9 @@ func (c *conn) tableBlobQueryLocked(ctx context.Context, query string, args []dr
 	r.holdRelease = false
 	if err != nil {
 		return nil, r.fail(err, true)
+	}
+	if c.resources.key != key {
+		return nil, r.fail(ErrResource, false)
 	}
 	r.release()
 	return sets, r.err

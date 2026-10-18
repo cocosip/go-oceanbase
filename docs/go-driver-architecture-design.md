@@ -1079,7 +1079,7 @@ func OpenTableBlob(ctx context.Context, session Session,
 - MySQL 模拟句柄的 WriteAt/Truncate 必须运行在调用方的 `*sql.Tx` 内；否则在修改前返回错误，不隐式 Begin/Commit。每次修改先在该事务中按主键 SELECT ... FOR UPDATE，确认行和非 NULL 内容、锁定后读取当前长度，再执行参数化 UPDATE；只读事务或不支持所需锁语义时拒绝修改；当前仅对字典 ENGINE=InnoDB 的 MySQL 基表开放修改，未知引擎保留读取能力。
 - WriteAt 只允许 `0 <= off <= 当前字节长度`，可在末尾追加，不自动填充稀疏空洞。例如二进制列的替换可使用 `CONCAT(LEFT(col, off), ?, SUBSTRING(col, off+len(p)+1))`；col 安全引用，其余值绑定。Truncate 仅缩短到 `0..当前长度`，不扩展。空写入或写入相同值，在锁定存在性已确认后可以成功；ChangedRows 返回 0 不等于行不存在。
 - MySQL 写入前检查完整写入计划的目标容量：TINYBLOB 255、BLOB 65535、MEDIUMBLOB 16777215、LONGBLOB 4294967295 字节，超出时在首条 UPDATE 前 ErrLOB。UPDATE 的完整响应若带 warning，也返回 ErrLOB，不把该块计入完成前缀；服务器可能已截断或把 CONCAT 结果置为 NULL，调用方应回滚现有事务。不能把非严格 SQL 模式下带 warning 的 OK 当作完整写入成功。
-- 不同块是多条 SQL，原子性和失败后的回滚由已有 Tx 控制。每条完整响应消费后才能发下一条；网络失败后不自动重发。表 DDL、权限或类型变化返回原错误/资源失效，不重新猜测目标。
+- 不同块是多条 SQL，原子性和失败后的回滚由已有 Tx 控制。每条完整响应消费后才能发下一条；网络失败后不自动重发。内部查询与 UPDATE 在发送前记录资源代次，完整响应后先检查代次，失效响应不复制到调用方缓冲区、不发布长度或句柄、不计入写入完成前缀，也不将短读 EOF 用作失效结果。打开时的 schema、字典、长度及 Oracle locator 查询沿用相同检查，即使尚未注册公开资源也不能忽略事务状态变化。此前完成的分块保留，当前块的服务端副作用不据错误返回推断为已撤销。完整响应上的代次失效保留可用会话供调用方继续操作及显式回滚。[表内 BLOB 事务回归](../lob_table_epoch_test.go)覆盖首块/中途失效、短读、长度及两模式打开阶段。表 DDL、权限或类型变化返回原错误/资源失效，不重新猜测目标。
 - 表目标句柄遵守相同连接、会话和事务代次；Close 幂等，不关闭 Conn/Tx，也不替调用方提交。模拟后端没有可释放的原生 locator，Close 只清理本地身份与占用；原生后端继续释放相应服务器资源。
 
 这一入口覆盖 Java emulateLocators 的表/主键/列定位及分块读写能力，同时保留 Go 普通 SQL 的直接用法；其额外 SQL 次数和事务要求是公开行为。
