@@ -198,8 +198,10 @@ func (e *complexEncoder) value(d *typeDescriptor, value any, depth int, checkNam
 			null = v.Null
 		}
 		if null {
+			if err := complexNode(depth+1, &e.nodes); err != nil {
+				return err
+			}
 			e.data[bitmap+i/8] |= 1 << uint(i%8)
-			e.nodes--
 			continue
 		}
 		index := i

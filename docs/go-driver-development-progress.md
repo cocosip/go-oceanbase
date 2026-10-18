@@ -857,6 +857,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增 [TestOutCancelStopsPublication、TestOutTransactionCancelStopsPublication](../out_context_test.go)：前者用公开 pinned.ExecContext 覆盖两模式和三种包流，确认第一个 Scanner 取消后标量保持原值、后续 Scanner 不调用，完整响应收尾后原物理会话可继续 Ping；后者固定事务 context 的相同赋值边界。旧实现六个公开场景全部复现错误发布，事务场景的旧源码编译覆盖也失败；修复后目标通过。既有输出转换、最终化取消和游标转换取消目标一并通过。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读复核无确认问题，七项目标回归独立重跑通过。重新构建 obtest，38项列表、示例配置离线检查及文档/diff检查通过；未连接数据库，计数保持28/32实现、0/32验收。
 
+#### D18 复杂值尾部 NULL 的共享限制
+
+- 修复二进制复杂值的先前子树耗尽节点预算后，尾部 NULL 仍无条件扣减并成功返回的问题；NULL 同时补上最大深度检查。原生参数编码复用既有 complexNode 校验 NULL，不再无检查递减。JSON 表示路径既有的逐节点校验保持；无新增 API、包或依赖。
+- [包流测试](../internal/wire/complex_test.go)在旧实现复现 object/array、collect=false/true 四个负数预算场景，以及65537节点被 DecodeBinaryRow/DecodeComplex 接受和 NULL 超深的问题；[编码回归](../complex_regression_test.go)复现相同预算/深度缺口。修复后相关目标通过，并验证恰好65536节点、嵌套值形状及后续整数列不变。[FuzzComplex](../complex_fuzz_test.go)新增嵌套 NULL 种子，并独立统计成功解码树的节点数，约束总量不超过传入预算。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。FuzzComplex 各30秒通过，分别37346/46484次执行，仅证明本次有限输入探索。只读复核无确认问题；obtest 已重新构建，38项列表及示例配置离线检查通过。文档链接、160配置与任务计数检查通过；未连接数据库，实现28/32、验收0/32不变。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

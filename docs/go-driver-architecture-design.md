@@ -626,6 +626,8 @@ Schema、Type、字段 Name/Type 使用字典精确拼写；Schema 省略时在�
 
 物化前先有界缓冲整个剩余响应，包括后续结果集和隐藏 OUT；完成响应后才能同会话查字典或读取嵌套 LOB。Close/Exec 排空同样执行这条路径，Close 的清理 context 传到最终复杂 OUT 解码，错误时不发布 OUT。根复杂值共享剩余预算，节点、字段元数据、普通值和嵌套 LOB 累计计入；LOB 读取前检查剩余额度，RAW/BLOB 计入 base64 膨胀，最终 JSON 及整响应再次受限。最大嵌套深度 32、节点 65536、JSON 16 MiB，并与更小的 MaxMessageBytes、MaxLOBBytes 同时约束；不通过扩大单个 LOB 预算绕过总量限制。
 
+NULL 字段和元素同样消耗一个节点并受嵌套深度约束，不能在先前子树耗尽预算后继续接受尾部 NULL。二进制行的复杂字段定位、树解码及原生参数编码均执行该检查；恰好达到上限仍可处理。[包流边界测试](../internal/wire/complex_test.go)覆盖两类容器、定位/物化、65536/65537 节点及后续列边界，[编码回归](../complex_regression_test.go)与[模糊测试](../complex_fuzz_test.go)补充共享预算和 NULL 深度断言。
+
 描述复用 D13 的类型/属性/集合/同义词查询计划。优先实体类型，再 private/PUBLIC 同义词；拒绝远程 DB_LINK、循环和超深依赖。缓存仅存在于一个物理会话的单个业务命令内，以模式/schema/name/协议版本为键；每次业务命令和 reset 清空，不跨权限/schema 变化复用。帧解析与描述失配时清缓存并仅重新解析已缓冲字节，业务 SQL 不重放；相同形状下的类型语义变化仍需目标服务端版本/字典联调验证。描述查询累计响应也受 MaxMessageBytes 限制。
 
 上述能力已有本地协议/标准 database/sql 回归；`TestComplexTypes` 仅编译，Oracle/OBProxy 的类型定义、同义词、协议版本和原事务可见性尚未联调。

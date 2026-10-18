@@ -5,12 +5,57 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
+
+func TestComplexEncoderNestedNullBudget(t *testing.T) {
+	child := &typeDescriptor{key: descriptorKey{ModeOracle, "S", "CHILD", 0}, fields: []descriptorField{{name: "A", typ: typeNameNumber}, {name: "B", typ: typeNameNumber}}}
+	childValue := Object{Schema: "S", Type: "CHILD", Fields: []Attribute{{Name: "A"}, {Name: "B"}}}
+	for _, tc := range []struct {
+		name  string
+		d     *typeDescriptor
+		value any
+	}{
+		{"object", &typeDescriptor{key: descriptorKey{ModeOracle, "S", "PARENT", 0}, fields: []descriptorField{{name: "C", child: child}, {name: "N", typ: typeNameNumber}}}, Object{Type: "PARENT", Fields: []Attribute{{Name: "C", Value: childValue}, {Name: "N"}}}},
+		{"array", &typeDescriptor{array: true, fields: []descriptorField{{child: child}}}, Array{Elements: []any{childValue, nil}}},
+	} {
+		for _, limit := range []int{4, 5} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, limit), func(t *testing.T) {
+				e := complexEncoder{nodes: limit, limit: 1024}
+				err := e.value(tc.d, tc.value, 0, false)
+				if limit == 4 {
+					if !errors.Is(err, ErrComplex) || e.nodes < 0 {
+						t.Fatal("encoder accepted a trailing NULL beyond the shared budget", e.nodes, err)
+					}
+				} else if err != nil || e.nodes != 0 {
+					t.Fatal("encoder rejected exact shared budget", e.nodes, err)
+				}
+			})
+		}
+	}
+}
+
+func TestComplexEncoderNullDepth(t *testing.T) {
+	d := &typeDescriptor{fields: []descriptorField{{name: "N", typ: typeNameNumber}}}
+	for _, value := range []any{nil, Object{Null: true}, Array{Null: true}} {
+		for _, depth := range []int{maxComplexDepth - 1, maxComplexDepth} {
+			e := complexEncoder{nodes: 2, limit: 1024}
+			err := e.value(d, Object{Fields: []Attribute{{Name: "N", Value: value}}}, depth, false)
+			if depth == maxComplexDepth {
+				if !errors.Is(err, ErrComplex) {
+					t.Fatal("encoder accepted NULL beyond maximum depth", value, err)
+				}
+			} else if err != nil || e.nodes != 0 {
+				t.Fatal("encoder rejected NULL at exact depth limit", value, e.nodes, err)
+			}
+		}
+	}
+}
 
 func TestComplexOutputColumnMismatch(t *testing.T) {
 	c := &conn{cfg: outputTestConfig(), session: &handshakeSession{mode: ModeOracle}}

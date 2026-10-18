@@ -54,6 +54,9 @@ func (r *decoder) complex(shape *ComplexShape, depth int, nodes *int, collect bo
 	for i := 0; i < n; i++ {
 		child := ComplexValue{Null: bitmap[(i+2)/8]&(1<<uint((i+2)%8)) != 0}
 		if child.Null {
+			if depth >= 32 || *nodes < 1 {
+				return ComplexValue{}, ErrMessageTooLarge
+			}
 			*nodes--
 		} else {
 			index := i
