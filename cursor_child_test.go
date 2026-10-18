@@ -18,6 +18,102 @@ const (
 	testCursorDepth  = "depth"
 )
 
+func TestCursorSensitiveInitialChildren(t *testing.T) {
+	const (
+		query      = "SELECT child FROM cursor_fixture"
+		nullChild  = "null-child"
+		parent     = "parent"
+		fetchError = "fetch-error"
+	)
+	for _, kind := range []string{"child", nullChild, parent, fetchError} {
+		t.Run(kind, func(t *testing.T) {
+			db := txDB(t, ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+				if !servePrepare(ctx, t, p, query, 54, 0, nil) {
+					return
+				}
+				payload, err := wire.EncodePrepareExecute(54, []byte(query), nil, 4096)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				payload[5] = 1
+				binary.LittleEndian.PutUint32(payload[len(payload)-16:], 8)
+				row := binary.LittleEndian.AppendUint32([]byte{0, 0}, 92)
+				switch kind {
+				case nullChild:
+					row = []byte{0, 4}
+				case parent:
+					row = binary.LittleEndian.AppendUint32([]byte{0, 0}, 54)
+				}
+				if !readCommand(ctx, t, p, payload) || !sendPackets(ctx, t, p, combinedHeader(54, 1, 0, 0), textColumn("child", 163, 63, 0), []byte{254, 0, 0, 70, 0}, row, []byte{254, 0, 0, 70, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
+					return
+				}
+				if kind == parent {
+					p.ResetSequence()
+					if _, err := p.ReadMessage(ctx); err == nil {
+						t.Error("parent reference retained the connection or sent another command")
+					}
+					return
+				}
+				if kind != nullChild {
+					if !readCommand(ctx, t, p, cursorFetchFixture(92, 128)) {
+						return
+					}
+					if kind == fetchError {
+						if !sendPackets(ctx, t, p, []byte{255, 40, 4, '#', 'H', 'Y', '0', '0', '0', 'x'}) {
+							return
+						}
+						p.ResetSequence()
+						if _, err := p.ReadMessage(ctx); err == nil {
+							t.Error("failed child fetch retained the connection")
+						}
+						return
+					}
+					if !sendPackets(ctx, t, p, []byte{1}, textColumn("n", 8, 63, 0), []byte{254, 0, 0, 6, 0}, binary.LittleEndian.AppendUint64([]byte{0, 0}, 42), []byte{254, 0, 0, 134, 0}) || !readCommand(ctx, t, p, stmtPacket(25, 92)) {
+						return
+					}
+				}
+				if !readCommand(ctx, t, p, stmtPacket(25, 54)) || !serveOK(ctx, t, p, []byte{14}, 6) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			session, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = session.Close() }()
+			cur, err := OpenCursor(ctx, session, query, CursorOptions{Mode: CursorSensitive})
+			switch kind {
+			case parent:
+				if cur != nil || !errors.Is(err, ErrCursor) {
+					t.Fatal("parent reference accepted", cur, err)
+				}
+				return
+			case fetchError:
+				var serverError *Error
+				if cur != nil || !errors.As(err, &serverError) || serverError.Code != 1064 {
+					t.Fatal("child failure lost", cur, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = cur.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err = session.PingContext(ctx); err != nil {
+				t.Fatal("initial child cleanup damaged parent session", err)
+			}
+		})
+	}
+}
+
 func TestCursorColumnTransaction(t *testing.T) {
 	db := outOracleDB(t, PrepareServer, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveTxSteps(ctx, t, p, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}) || !servePrepareStatus(ctx, t, p, "SELECT cursor_column FROM t", 91, 0, nil, 5) || !readCommand(ctx, t, p, executeHeader(91)) || !sendPackets(ctx, t, p, []byte{1}, textColumn("child", 163, 63, 0), []byte{254, 0, 0, 5, 0}, binary.LittleEndian.AppendUint32([]byte{0, 0}, 92), []byte{254, 0, 0, 5, 0}) {

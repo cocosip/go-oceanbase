@@ -820,6 +820,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增 [TestSavepointTxCancellation、TestSavepointTxDeadline](../savepoint_context_test.go)：两模式/三包流下15个取消场景覆盖创建、回滚到保存点及 MySQL 释放；另有两模式事务期限。对端先确认收到目标命令才取消或等待事务截止，断言操作自身3秒期限尚未到达、返回事务原因、不返回 ErrBadConn、原物理连接关闭、无后续 SQL、不可提交且无重拨。旧实现的两个期限场景和一个 MySQL 取消场景均等待操作自身3秒期限才失败；修正后全部目标通过。
 - Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；Go1.25 取消目标25轮、期限目标5轮及实际 Windows/386 通过，Go1.26 新目标各3轮通过。初次 lint 提示测试中的 if/else 可改为 switch，调整后两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，保存点相关目标另重复3轮通过，不另存报告。本地对端不证明真实保存点执行、回滚或事务结果；未连接数据库，D28/D30/D31/D32及28/32实现、0/32验收保持。
 
+#### D19 敏感游标首批嵌套 REF CURSOR 清理
+
+- 修复敏感游标打开后丢弃首批行时遗漏嵌套 REF CURSOR 的缺口：完整响应读取结束后，在原物理会话持锁期间复用既有有界子游标物化与关闭逻辑；首批行和子树共享消息预算，并预置父 statement ID，拒绝引用父游标。失败沿既有路径淘汰连接，不发布未完成的游标句柄；未新增公开 API、包或依赖。
+- 新增 [TestCursorSensitiveInitialChildren](../cursor_child_test.go)，通过公开 OpenCursor 覆盖正常子游标、NULL、异常父引用和子游标读取报错。正常路径检查先读取/关闭子游标、再关闭父游标且原会话可 Ping；异常路径检查错误保留、无句柄发布及物理连接关闭。旧实现的正常子游标、父引用和读取报错三个场景均按预期失败，修复后四场景通过。
+- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新目标两版本各10轮及 Go1.25 实际 Windows/386 通过。lint 的重复测试名称已提取常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues；独立只读复核无确认问题，不另存报告。文档链接/160配置、32任务/28实现/0验收及格式/diff 检查通过。未连接数据库；真实服务器游标释放、Linux/macOS、远程 CI 和成功 race 未据此验证，D28/D30/D31/D32及计数保持。
+
 ## 6. 待取证条件与推进方式
 
 | ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |

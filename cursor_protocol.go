@@ -407,8 +407,11 @@ func (c *conn) openSensitiveCursorLocked(ctx context.Context, payload []byte, pr
 	if len(sets) != 1 {
 		return nil, r.fail(ErrCursor, true)
 	}
-	// Consume and release locator resources even though the first reposition replaces these rows.
+	// Release nested resources even though the first reposition replaces these rows.
 	err = r.materializeCursorSetLocked(ctx, &sets[0])
+	if err == nil {
+		err = c.materializeRefCursorsLocked(ctx, ctx, &sets[0], 0, &r.bufferBytes, map[refCursorID]bool{refCursorID(prepared.id): true})
+	}
 	if err != nil {
 		return nil, r.fail(err, true)
 	}
