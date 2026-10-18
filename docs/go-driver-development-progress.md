@@ -875,6 +875,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[游标事务失效回归](../cursor_epoch_test.go)：普通子游标的未结束标量批次、最后标量批次、LOB 和嵌套 REF CURSOR × 三包流共12场景；显式 forward/static × 三包流共6场景。旧实现4个普通包流场景分别复现额外 fetch、错误发布或子资源读取；加边界检查后，static 场景进一步复现漏关 statement，修复后18场景通过。自动物化失败仍淘汰连接；显式游标完整 fetch 失效会清理句柄，保留原会话给调用方继续操作及回滚。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过。初次 lint 检出测试重复字符串，提取常量后两版本目标回归重跑通过，普通/integration 标签 golangci-lint 均0 issues；独立只读复核无确认问题，18场景独立运行通过。obtest 重建、38项列表及示例配置离线检查通过。未连接数据库，其他平台/race 保留未验证；实现28/32、验收0/32不变。
 
+#### D15/D19 可更新游标最终响应的事务代次
+
+- 修复 Update/Delete/Insert 只在发送前检查资源、最终 OK 结束事务后仍返回成功的问题；共享修改路径在完整收包后复核父游标代次。Refresh 提前到完整收包后、物化 LOB/复杂值前校验，保留物化后的既有检查，避免事务已失效仍读取旧 locator。失败清理游标及临时 statement，完整响应边界保留可用会话；不替调用方提交、回滚或重放，也不将错误返回当作服务端副作用已撤销。无新增公开 API、包或依赖。
+- 新增[修改与刷新回归](../cursor_mutation_epoch_test.go)：两模式 × 三包流 × Update/Delete/Insert 共18场景，以及 MySQL 标量、Oracle 标量/LOB × 三包流共9场景。旧实现三个 MySQL 普通包流修改场景返回 nil，Oracle LOB 刷新在事务结束后发送 DBMS_LOB.READ，均已复现；修复后27场景及既有游标测试通过。检查错误链、不发布 Rows、失败句柄不可继续 Fetch、原物理会话继续执行与调用方显式回滚。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；首次 lint 检出的测试重复字符串已改为常量，两个工具链目标回归重跑及普通/integration 标签 golangci-lint 均通过，lint 均0 issues。独立只读复核未发现确认问题，27场景独立重跑通过。obtest 已重新构建，38项列表及示例配置离线检查通过。真实数据库、其他平台及 race 本轮不运行；实现28/32、验收0/32保持。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

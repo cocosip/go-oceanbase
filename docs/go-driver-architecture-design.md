@@ -1124,7 +1124,7 @@ D19 当前实现边界：
 - 每个原生 fetch 在发送前取得资源代次，完整收包后、物化任何 LOB/复杂值/子游标之前复核；代次失效返回 ErrResource，不发布当前批次、不发后续 fetch 或子资源读取。普通查询中的 REF CURSOR 即使没有公开句柄也遵守同一检查。打开 static 游标失败时按本次资源身份释放父 statement，不能因当前代次已失效而漏清理；完整 fetch 的资源失效不替调用方结束事务。[事务失效回归](../cursor_epoch_test.go)覆盖普通子游标、显式 forward/static、三种包流及原会话后续操作。
 - Updatable 当前要求调用方可写 `*sql.Tx`、单基表简单投影、元数据中一致的 schema/original table/original column、完整主键均在投影中；MySQL 另要求字典 ENGINE=InnoDB。使用 PK 方案，未增加仅 ROWID 方案；缺少完整主键时拒绝。join、子查询、DISTINCT/聚合/集合运算、重复或派生列不猜测目标，生成列可以读取但不能修改。支持范围由可靠行身份决定，不按 SQL 字符串猜字段。
 - `key` 是完整主键值；`ColumnChange.Name` 使用投影基列的字典名，不接受别名或任意 SQL 表达式。标识符按实际模式引用；DML 与 Refresh 使用 COM_STMT_PREPARE/EXECUTE 的真实参数。Insert 必须显式提供全部非 NULL 主键，不隐式取生成键。更新前的同事务 SELECT 1 ... FOR UPDATE 复用既有内部类型化查询路径，完整收完后才执行 DML；Update=0 可成功，Delete/Insert 要求1，超过1或 warning 均返回错误。缺行通过 errors.Is(err, sql.ErrNoRows) 识别。
-- Refresh 按完整主键读取当前基表投影，不重新应用最初 WHERE/ORDER，也不改变 static 快照或游标位置；当前随 Updatable 开放，因此同样要求可写 Tx。修改失败不替调用方提交或回滚；warning/未知执行结果后调用方应回滚。业务执行失败释放游标，位置/参数等发送前校验错误保留句柄。prepare、存在性锁与发送 DML 之间复核资源代次，事务结束后不能继续修改；Refresh 缺行只关闭游标，保留调用方事务以便回滚。
+- Refresh 按完整主键读取当前基表投影，不重新应用最初 WHERE/ORDER，也不改变 static 快照或游标位置；当前随 Updatable 开放，因此同样要求可写 Tx。修改失败不替调用方提交或回滚；warning/未知执行结果后调用方应回滚。业务执行失败释放游标，位置/参数等发送前校验错误保留句柄。prepare、存在性锁与发送 DML 之间复核资源代次，事务结束后不能继续修改；DML 完整收包后再次复核，不能将已失效的响应报告为修改成功，也不据此声称已回滚服务端副作用。Refresh 完整收包后、物化 LOB/复杂值之前先校验父游标，物化完成后仍复核代次，失效行不发布且不继续读取旧子资源。完整响应上的代次失效和 Refresh 缺行只关闭游标及临时 statement，保留可用会话供调用方继续操作、显式回滚。[修改与刷新回归](../cursor_mutation_epoch_test.go)覆盖两种模式、三种包流及 Oracle LOB。
 - 前一批次未关闭时，Fetch/Refresh/修改/Close 立即 ErrCursorBusy，避免进入 database/sql 后自锁。Close 幂等；事务结束、会话 reset 或物理关闭按既有代次和父 statement 租约释放。普通查询 Rows 的向前读取行为不变。
 
 以上为本地协议实现，不代表真实 OceanBase/OBProxy 游标、锁与敏感性已验收。`TestCursorModes`、`TestCursorUpdates` 已提供四目标源码，本阶段只编译，不连接数据库。

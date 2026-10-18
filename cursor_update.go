@@ -431,6 +431,9 @@ func (c *conn) execCursorMutation(ctx context.Context, request cursorMutationReq
 	if err = r.drainAll(ctx); err != nil {
 		return nil, err
 	}
+	if _, err = c.resourceLocked(request.cursor.handle); err != nil {
+		return nil, err
+	}
 	if c.session.ok.Warnings != 0 {
 		return nil, fmt.Errorf("%w: mutation returned warnings; roll back the caller transaction", ErrCursor)
 	}
@@ -472,6 +475,10 @@ func (c *conn) queryCursorRefresh(ctx context.Context, request cursorMutationReq
 	if err != nil {
 		r.holdRelease = false
 		return nil, r.fail(err, true)
+	}
+	if _, err = c.resourceLocked(request.cursor.handle); err != nil {
+		r.holdRelease = false
+		return nil, r.fail(err, false)
 	}
 	if len(sets) != 1 || len(sets[0].rows)+len(sets[0].rawRows) != 1 {
 		r.holdRelease = false
