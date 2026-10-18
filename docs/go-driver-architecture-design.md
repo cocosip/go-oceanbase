@@ -593,6 +593,8 @@ Oracle 兼容模式的协议类型12表示 `DATE`，`ColumnTypes().DatabaseTypeN
 
 带时区值的文本例为 `2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT`。偏移必需，region/缩写可选；已知 region 与偏移不一致时拒绝。未知 region 原文和显式偏移保留，Time() 使用该偏移，不猜测 region。LTZ 原生字段只有会话墙上时间；固定偏移会话追加偏移，具转换规则的会话追加 region，例如 `2024-11-03 01:30:00.000000001 America/New_York`。其 Time() 在歧义时拒绝；同会话 region 可原样绑定，本机瞬间转换到歧义 LTZ 墙上时间也拒绝，防止丢失 fold。客户端与服务端预处理共用 LTZ 会话转换规则：不同 region 的墙上时间须先无歧义地解析为瞬间，再转换到配置的会话时区；源时间缺口/重叠、目标时间重叠或转换后年份超出1–9999均在发送前拒绝。客户端对转换后的 region 输入发送会话墙上时间，对显式偏移输入保留偏移字面量，但两者均须先通过相同的目标墙上时间校验。需要指定 fold 时使用 TimestampTZ 绑定，由服务端转换到 LTZ 列。
 
+LTZ 的同 region 判断使用初始化实际发布的会话时区，不能仅比较 `time.Location.String()`。`time.FixedZone` 的名称只是调用方标签，即使叫 `UTC` 或某个 IANA region，也按实际固定偏移处理；同名 region 输入仍须先解析源时区并转换，不能跳过 DST、年份及偏移校验。具转换规则且实际会话 region 一致时，才保留原始墙上时间。
+
 Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用原生 TIMESTAMP(9)，MySQL 协议只支持微秒，超过精度明确报错。IntervalYM/DS 保留符号、最高九位年/日与最高九位秒小数，不换算成 time.Duration。二进制和文本行中的 Oracle 扩展时间均按原生字段体解码，不能把它误当成字符文本。
 
 字符集叶包使用 x/text v0.41.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。

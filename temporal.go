@@ -118,11 +118,15 @@ func ltzSessionWall(p timestampParts, location *time.Location) (time.Time, error
 	if location == nil {
 		location = time.UTC
 	}
-	if p.local && p.region == location.String() {
-		return p.instant, nil
-	}
 	instant := p.instant
 	if p.local {
+		zone, err := sessionTimeZone(location)
+		if err != nil {
+			return time.Time{}, err
+		}
+		if p.region == zone {
+			return instant, nil
+		}
 		source, err := time.LoadLocation(p.region)
 		if err != nil {
 			return time.Time{}, ErrType
