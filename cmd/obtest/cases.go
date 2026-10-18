@@ -17,6 +17,7 @@ func caseDefinitions() []caseDefinition {
 		{name: "prepare-server", description: "server prepared statement reuse, NULL and named binds", configure: serverPrepare, run: runPrepared},
 		{name: "prepare-client", description: "client prepared statement reuse and escaping", configure: clientPrepare, run: runPrepared},
 		{name: "scalars", description: "exact decimal, Unicode, binary, date/time and NULL", configure: scalarConfig, run: runScalars},
+		{name: "oracle-scalars", description: "Oracle national text, TZ/LTZ, intervals, ROWID and typed NULL", oracleOnly: true, configure: oracleScalarConfig, run: runOracleScalars},
 		{name: "transactions", description: "commit, rollback, savepoint and read-only transaction", run: runTransactions},
 		{name: "metadata", description: "table/column/primary key dictionary and ColumnTypes", run: runMetadata},
 		{name: "execution", description: "execution rows, snapshot and early close", run: runExecution},
@@ -59,6 +60,11 @@ func clientPrepare(cfg *oceanbase.Config) { cfg.PrepareMode = oceanbase.PrepareC
 func scalarConfig(cfg *oceanbase.Config) {
 	cfg.Session.ParseTime = false
 	serverPrepare(cfg)
+}
+
+func oracleScalarConfig(cfg *oceanbase.Config) {
+	scalarConfig(cfg)
+	cfg.Session.NCharset = "utf16"
 }
 
 func nativeLOBConfig(cfg *oceanbase.Config) {

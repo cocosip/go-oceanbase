@@ -153,19 +153,25 @@ func TestCancellationRejectsUnrelatedErrors(t *testing.T) {
 		}
 	}
 }
-func (f *fixtureConn) QueryContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+func (f *fixtureConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	step, err := f.next(ctx, query)
-	return &fixtureRows{values: step.values}, err
+	if step.inspect != nil {
+		step.inspect(args)
+	}
+	width := 1
+	if len(step.values) != 0 {
+		width = len(step.values[0])
+	}
+	return &fixtureRows{values: step.values, width: width}, err
 }
 
-type fixtureRows struct{ values [][]driver.Value }
+type fixtureRows struct {
+	values [][]driver.Value
+	width  int
+}
 
 func (r *fixtureRows) Columns() []string {
-	n := 1
-	if len(r.values) != 0 {
-		n = len(r.values[0])
-	}
-	columns := make([]string, n)
+	columns := make([]string, r.width)
 	for i := range columns {
 		columns[i] = "V"
 	}

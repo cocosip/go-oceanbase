@@ -960,9 +960,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 原 integration 复杂类型用例同步不同集合种子、schema 和完整 OUT 内容；DATE 只接受预期整秒或驱动可返回的六位零微秒表示，避免前缀漏检及合法零小数误拒。新增7项离线断言回归，原数据库流程仍仅编译。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 源码编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；最终 DATE 断言回归及 integration 标签 lint 两版本重跑通过。首次 lint 的重复 DROP SQL 已提取共享测试常量；独立只读复核发现的零微秒误拒已修复并确认无新问题，不另存报告。obtest 已重建，38项唯一场景列表和示例配置离线检查通过；实现28/32、验收0/32保持，真实数据库、其他平台及race继续暂缓。
 
+#### D12/D32 独立工具的 Oracle 专用标量场景
+
+- 新增 oracle-scalars，自动建表并插入带值/NULL 两行，使用公开 NString、TimestampTZ、TimestampLTZ、IntervalYM/DS 和 RowID 类型；文本与参数化读取核对 Unicode、纳秒、原 TZ 偏移、LTZ 等价时刻、最大负 interval 及全部 typed NULL，ROWID 必须能定位原记录。场景仅适用 Oracle 兼容模式，显式 server prepare 和 UTF-16 national charset，保留配置 location；无新驱动 API、包或依赖。
+- 新增[TestOracleScalarsWorkflow](../cmd/obtest/oracle_scalars_test.go)，两条读取路径共32个离线流程，检查错误值/原偏移丢失/纳秒损失、等价 LTZ、五种 typed NULL、ROWID 绑定与定位及自建表清理；缺少场景时先失败，接入后通过。非法 TZ 回归暴露夹具 Next 后列数缩为1、扫描错误时触发标准库 panic 的问题，固定整轮列数后同例通过；Query fixture 新增参数检查，防止 ROWID 被改成普通字符串。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues。首次 lint 的重复路径标签已调整，测试按准备/校验职责拆分；独立只读复核未发现确认问题，不另存报告。obtest 重建，39项唯一列表、默认配置和单独选择 oracle-scalars 的离线检查通过；文档/链接/配置映射及diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race继续暂缓。
+
 ## 6. 待取证条件与推进方式
 
-D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。
+D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 39 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。
 
 D32 工具配置边界修复：不再把 1 MiB 截断当作文件结束，超限配置在任何数据库连接前明确拒绝；读取错误保持脱敏。新增 TestConfigInputBounds，旧实现对超限空白、边界后第二对象及非法尾部三个场景错误接受，修复后通过，另覆盖恰好上限的合法文件和读取失败。Windows Go 1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及普通/integration 标签 lint 均通过；未连接数据库，实现及验收总数保持 28/32、0/32。
 

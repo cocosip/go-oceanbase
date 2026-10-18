@@ -50,7 +50,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `targets` | 配置文件中必填 | 一个或多个连接目标，按顺序运行；不并行修改目标对象 |
-| `cases` | 全部 38 项 | 选填场景名称数组；拼写错误、重复项直接拒绝，不允许静默漏测 |
+| `cases` | 全部 39 项 | 选填场景名称数组；拼写错误、重复项直接拒绝，不允许静默漏测 |
 | `timeout` | `2m` | 每个场景及目标探测的独立超时，最大 `1h` |
 | `cleanup_timeout` | `30s` | 每个清理动作的独立超时，最大 `1h`；清理时间不计入场景执行预算 |
 | `require_all` | `false` | `true` 时把缺少 fixture 的跳过视为失败；模式不适用仍单列 |
@@ -96,6 +96,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `crud` | 建表、插入/更新/读取/删除、受影响行数、重复键结构化错误、错误后继续使用 |
 | `prepare-server`、`prepare-client` | 分别使用服务端和客户端预处理，多次复用、Unicode/引号/反斜杠/NULL、Oracle 重复命名参数 |
 | `scalars` | 精确 NUMBER/DECIMAL、Unicode、RAW/二进制、闰日、微秒时间、NULL，文本与参数化查询；完整比较日期及时间值（允许等价的尾随零，拒绝额外非零纳秒、超九位小数及尾随内容）。此场景显式使用 server prepare、关闭 ParseTime，按配置 location 构造输入墙上时间 |
+| `oracle-scalars` | Oracle 专用，自动创建 NVARCHAR2、TIMESTAMP(9) WITH TIME ZONE / LOCAL TIME ZONE 及 interval 列；公开类型绑定与读取、纳秒和原 TZ 偏移、LTZ 等价时刻、最大负 interval、ROWID 回绑定位及各列 typed NULL；文本与参数化读取。显式 server prepare、UTF-16 national charset，保留配置 location |
 | `transactions` | 建表、提交/回滚、保存点回滚、只读拒绝写入、最终持久化行数 |
 | `metadata` | 自建表的表/列/主键字典投影，ColumnTypes 名称与数据库类型 |
 | `execution` | Execute、读取结果、提前 Close、完成摘要、原会话继续 Ping |
@@ -147,8 +148,10 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 
 [TestComplexOutputAssertions/TestComplexCollectionAssertions](../cmd/obtest/complex_test.go) 覆盖20个离线流程，验证 OBJECT OUT 的数值/RAW/schema/属性顺序，以及集合首尾不同值、错序/重复/缺项/NULL 和对象/集合 schema。每个流程检查事务回滚及表、集合类型、对象类型的逆序清理；等价十进制尾零允许通过。夹具只替代数据库依赖，不证明真实类型描述或服务端往返。
 
+[TestOracleScalarsWorkflow](../cmd/obtest/oracle_scalars_test.go) 提供32个离线流程：两条读取路径上的精确值、等价 LTZ offset、错误 national text、TZ 偏移/精度、LTZ 时刻、interval、ROWID 绑定/定位及五种 typed NULL。检查场景状态、自建表清理及公开类型输入；夹具不证明真实服务端支持这些类型。
+
 [复杂类型 integration 用例](../tests/integration/complex_test.go) 同步使用不同集合种子和完整 OUT 内容断言；DATE 只接受预期整秒及驱动可能输出的六位零微秒表示，7项离线正负例验证该断言。数据库流程本轮仅编译，未执行。
 
-Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；最终工具回归分别重复 10 轮，两个工具链的普通及 integration 标签全仓库 golangci-lint 均为 0 issues。`-list`、示例配置 `-check`、38 场景名称唯一性及文档链接检查通过；CI 仅增加不连接数据库的 `-list` 检查。
+Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；最终工具回归分别重复 10 轮，两个工具链的普通及 integration 标签全仓库 golangci-lint 均为 0 issues。`-list`、示例配置 `-check`、39 场景名称唯一性及文档链接检查通过；CI 仅增加不连接数据库的 `-list` 检查。
 
-本次不连接数据库，因此上述 38 项真实运行结果均待用户提供测试 DSN 后执行，不能依据编译、离线检查或单元测试提高数据库验收计数。
+本次不连接数据库，因此上述 39 项真实运行结果均待用户提供测试 DSN 后执行，不能依据编译、离线检查或单元测试提高数据库验收计数。
