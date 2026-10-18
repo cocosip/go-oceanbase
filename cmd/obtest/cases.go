@@ -14,6 +14,8 @@ func caseDefinitions() []caseDefinition {
 	return []caseDefinition{
 		{name: "connect", description: "authentication, Ping and OceanBase version", run: runConnect},
 		{name: "crud", description: "create/seed/read/update/delete, counts and SQL error recovery", run: runCRUD},
+		{name: "counts-matched", description: "matched row counts across Exec, Execute and sequential batch", configure: func(cfg *oceanbase.Config) { cfg.RowsAffectedMode = oceanbase.MatchedRows }, run: runRowCounts},
+		{name: "counts-changed", description: "MySQL changed row counts, no-op updates and native upsert counts", mysqlOnly: true, configure: func(cfg *oceanbase.Config) { cfg.RowsAffectedMode = oceanbase.ChangedRows }, run: runRowCounts},
 		{name: "prepare-server", description: "server prepared statement reuse, NULL and named binds", configure: serverPrepare, run: runPrepared},
 		{name: "prepare-client", description: "client prepared statement reuse and escaping", configure: clientPrepare, run: runPrepared},
 		{name: "scalars", description: "exact decimal, Unicode, binary, date/time and NULL", configure: scalarConfig, run: runScalars},

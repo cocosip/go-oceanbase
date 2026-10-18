@@ -992,9 +992,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[TestRoutineFailureAssertions](../cmd/obtest/routines_test.go)48个离线流程，两模式和两个预处理场景完整执行三份例程的创建、两轮 INOUT/OUT、函数和主动异常，检查参数方向/初值、成功/失败状态与三份对象逆序清理；旧实现24个无关服务器错误被误判通过，修复后拒绝。另覆盖正确/包装错误、意外成功、传输/超时和失败输出发布；夹具不代表真实例程已验收。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；Windows/386 的48个例程流程通过。首次 lint 的重复类型字符串已提取测试常量；独立只读复核未发现确认问题，不另存报告。obtest 已重建，40项唯一列表、示例及例程场景选择配置的离线检查通过，文档/链接/diff检查通过。工具保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
 
+#### D11/D32 独立工具的行数策略验收入口
+
+- 新增 counts-matched/counts-changed，分别固定 MatchedRows 和 MySQL ChangedRows；自建整数表和数据，经标准 Exec、Execute 完成摘要及单项 Sequential 批量检查 INSERT、无变化/变化/无匹配 UPDATE、DELETE/空 DELETE，MySQL 另检查 upsert 的无变化/变化/插入原生计数。每条路径清空后重建数据，最后验证无残留行，并复用既有清理与报告；无新公开 API、包或依赖。工具场景增至42项。
+- 新增[TestRowsAffectedWorkflows](../cmd/obtest/counts_test.go)51个离线流程：先复现场景不存在，再实现并通过；标准库 net.Pipe 夹具独立给出 SQL 和协议字节，经真实公开驱动检查 CLIENT_FOUND_ROWS、错误计数/零、溢出、服务端错误和失败清理。初始夹具漏掉 MySQL ENGINE 后缀已修正；Execute 溢出会淘汰原会话，夹具按真实生命周期补新连接初始化后的 DROP，不把环境或夹具问题写成功能缺陷。仅隔离无参数 SQL 和单项批量的计数契约，不证明数据库 SQL 行为。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，首次 lint 的重复字符串已提取常量/复用表名后重跑。Windows/386 的51个新增流程通过；独立只读复核未发现确认问题，不另存报告。obtest 已重建，42项唯一列表、示例及计数场景选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
+
 ## 6. 待取证条件与推进方式
 
-D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 40 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。
+D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 42 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。
 
 D32 工具配置边界修复：不再把 1 MiB 截断当作文件结束，超限配置在任何数据库连接前明确拒绝；读取错误保持脱敏。新增 TestConfigInputBounds，旧实现对超限空白、边界后第二对象及非法尾部三个场景错误接受，修复后通过，另覆盖恰好上限的合法文件和读取失败。Windows Go 1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及普通/integration 标签 lint 均通过；未连接数据库，实现及验收总数保持 28/32、0/32。
 

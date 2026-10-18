@@ -59,7 +59,7 @@ Oracle 兼容模式使用 `ModeOracle`，示例查询为 `SELECT ? FROM dual`。
 - [开发计划](docs/go-driver-development-plan.md)、[开发进度](docs/go-driver-development-progress.md)：D01–D32 与验证证据。
 - [配置映射](docs/go-driver-options-mapping.md)、[兼容矩阵](docs/go-driver-compatibility-matrix.md)：逐项适配状态。
 - [本地基准](docs/go-driver-benchmarks.md)：两模式的场景、复现命令、样本与适用边界。
-- [独立数据库验收工具](docs/go-driver-test-tool.md)：`go build -o bin/obtest.exe ./cmd/obtest`，配置 DSN 后自动建表/准备数据、执行 40 个场景、清理并输出 JSON 报告。
+- [独立数据库验收工具](docs/go-driver-test-tool.md)：`go build -o bin/obtest.exe ./cmd/obtest`，配置 DSN 后自动建表/准备数据、执行 42 个场景、清理并输出 JSON 报告。
 - [综合示例](examples/usage/main.go)：查询、事务、预处理、批量、过程、多结果、LOB、复杂类型和游标。
 - [XA 示例](examples/xa/main.go)：固定会话上开启、结束并回滚分支。
 
