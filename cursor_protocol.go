@@ -69,7 +69,7 @@ func (c *conn) execOpenCursor(ctx context.Context, request cursorOpenRequest) (_
 			cleanup, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
 			defer cancel()
 			if handle != nil {
-				if record, e := c.resourceRecordLocked(handle); e == nil {
+				if record := c.resources.records[handle.id]; record != nil && record.key == handle.key {
 					err = errors.Join(err, c.releaseResourceLocked(cleanup, handle.id, record))
 				}
 			} else {
@@ -243,6 +243,7 @@ func (c *conn) fetchNativeCursorLocked(ctx context.Context, handle *resourceHand
 }
 
 func (c *conn) fetchCursorResponseLocked(ctx context.Context, id uint32, cur *cursorResource, count int, start int64) ([][]driver.Value, error) {
+	key := c.resourceKeyLocked()
 	var err error
 	payload := binary.LittleEndian.AppendUint32([]byte{28}, id)
 	payload = binary.LittleEndian.AppendUint32(payload, uint32(count))
@@ -276,6 +277,9 @@ func (c *conn) fetchCursorResponseLocked(ctx context.Context, id uint32, cur *cu
 	r.holdRelease = false
 	if err != nil {
 		return nil, r.fail(err, true)
+	}
+	if c.resources.key != key {
+		return nil, r.fail(ErrResource, false)
 	}
 	if len(sets) != 1 || len(sets[0].rows)+len(sets[0].rawRows) > count || cur.columns != nil && len(sets[0].columns) != len(cur.columns) {
 		return nil, r.fail(ErrCursor, true)

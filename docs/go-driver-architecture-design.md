@@ -1121,6 +1121,7 @@ D19 当前实现边界：
 - Static 在打开期间通过实际原生 fetch 建立有界快照，缓存包含列、行、值开销；超限报错并释放未发布资源。快照不因 Update/Delete/Insert/Refresh 改变，后续修改可通过 Refresh 显式读取。
 - Sensitive 仅开放 Oracle 且已知 OceanBase >=2.2.76；使用真实合并命令161、cursor flag=1、scrollable executeMode=8，完整消费初次响应。每个非零定位均向服务端发 ABSOLUTE32 fetch，位置受 int32 限制，尾 OK 提供末行位置；重复定位也重新请求服务器。MySQL、未知/旧版本直接 ErrUnsupported。是否看见其他事务的变更仍受服务器游标与隔离语义约束，待真实环境验证。
 - Fetch/Refresh 将一个批次完整接收、解码及物化后返回标准 sql.Rows；整批、单 LOB、复杂值与描述均沿用既有限制。复杂描述和 LOB 辅助命令必须在完整响应之后、原连接 gate 内执行。新批次不继承 Open 的 context；每次公开命令清空描述缓存。
+- 每个原生 fetch 在发送前取得资源代次，完整收包后、物化任何 LOB/复杂值/子游标之前复核；代次失效返回 ErrResource，不发布当前批次、不发后续 fetch 或子资源读取。普通查询中的 REF CURSOR 即使没有公开句柄也遵守同一检查。打开 static 游标失败时按本次资源身份释放父 statement，不能因当前代次已失效而漏清理；完整 fetch 的资源失效不替调用方结束事务。[事务失效回归](../cursor_epoch_test.go)覆盖普通子游标、显式 forward/static、三种包流及原会话后续操作。
 - Updatable 当前要求调用方可写 `*sql.Tx`、单基表简单投影、元数据中一致的 schema/original table/original column、完整主键均在投影中；MySQL 另要求字典 ENGINE=InnoDB。使用 PK 方案，未增加仅 ROWID 方案；缺少完整主键时拒绝。join、子查询、DISTINCT/聚合/集合运算、重复或派生列不猜测目标，生成列可以读取但不能修改。支持范围由可靠行身份决定，不按 SQL 字符串猜字段。
 - `key` 是完整主键值；`ColumnChange.Name` 使用投影基列的字典名，不接受别名或任意 SQL 表达式。标识符按实际模式引用；DML 与 Refresh 使用 COM_STMT_PREPARE/EXECUTE 的真实参数。Insert 必须显式提供全部非 NULL 主键，不隐式取生成键。更新前的同事务 SELECT 1 ... FOR UPDATE 复用既有内部类型化查询路径，完整收完后才执行 DML；Update=0 可成功，Delete/Insert 要求1，超过1或 warning 均返回错误。缺行通过 errors.Is(err, sql.ErrNoRows) 识别。
 - Refresh 按完整主键读取当前基表投影，不重新应用最初 WHERE/ORDER，也不改变 static 快照或游标位置；当前随 Updatable 开放，因此同样要求可写 Tx。修改失败不替调用方提交或回滚；warning/未知执行结果后调用方应回滚。业务执行失败释放游标，位置/参数等发送前校验错误保留句柄。prepare、存在性锁与发送 DML 之间复核资源代次，事务结束后不能继续修改；Refresh 缺行只关闭游标，保留调用方事务以便回滚。
