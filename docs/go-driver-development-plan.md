@@ -754,6 +754,8 @@ D32 提供[独立数据库验收工具](go-driver-test-tool.md)作为集中运�
 
 工具 metadata 比较自建表的字典内容，不能只用行数证明正确：核对 catalog/schema/表身份、ID/V 列名/位置/类型、INTEGER 精度和 scale、VARCHAR 长度、NULL、主键及两列 ColumnTypes，保持精确 schema 过滤与 LIKE 转义；错误/缺失/多余内容和读取/关闭错误必须失败并清理对象。90个离线流程只证明断言及编排，不替代服务端字典验收。
 
+工具单行游标批次必须验证完整行数和最终错误：首行内容匹配后继续检查无多余行及 Rows.Err，保持关闭错误传播。前向/静态、刷新、敏感游标和过程 REF CURSOR 输出复用该断言，22个离线流程覆盖两种列形状、错误内容/行数/读取/关闭及失败清理，真实 fetch 语义仍待联调。
+
 工具 mysql-scalars 提供 MySQL 专用标量集中验收：自动准备三组边界值和全 NULL 行，文本与参数化读取校验 TIME/YEAR、完整整数范围、BIT、空/含零二进制与定长补零，同时核对列类型/ScanType 及二进制字节长度；明确区分零/空/NULL，检查缺行/多行并在失败后关闭结果和清理表。离线回归只证明工具编排，真实类型/SQL 行为仍待联调。
 
 工具 oracle-scalars 补齐 Oracle 专用标量的集中入口：自动建表、带值/NULL 行、文本与参数化读取，以及 ROWID 回绑定位。验证 NString、TimestampTZ/LTZ、IntervalYM/DS 的公开绑定、Unicode、原 TZ 偏移/纳秒、LTZ 等价时刻和 typed NULL；使用 server prepare、UTF-16 national charset，保留用户配置 location。该场景仅适用 Oracle 兼容模式，离线回归不代替服务端验收。

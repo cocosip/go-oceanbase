@@ -111,12 +111,12 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `long-data` | 自动生成约 150 KB 二进制和 Unicode 文本，流式上传、内容比较、回滚和提交 |
 | `table-blob` | 自建表内 BLOB，原事务写入/读取/截断与回滚后内容 |
 | `routines`、`routines-client` | 自动创建过程/函数，分别采用 server/client prepare，INOUT、OUT、函数结果、出错不发布输出 |
-| `cursor`、`cursor-update` | 自建两行数据，前向/静态定位；更新、刷新、插入、删除、回滚后值与事务结束失效 |
+| `cursor`、`cursor-update` | 自建两行数据，前向/静态定位；更新、刷新、插入、删除、回滚后值与事务结束失效；每个单行批次验证完整内容、无多余行和后续读取错误 |
 | `cursor-sensitive` | Oracle 专用，另一会话提交更新后重新定位读取；服务器敏感游标能力须可用 |
 | `returning` | Oracle 专用，插入后的 RETURNING INTO 数值/字符串及行数 |
 | `native-lob` | Oracle 专用，自动创建 BLOB/CLOB/NCLOB 数据，流式读写、Unicode 字符偏移、截断与事务寿命；此场景显式使用 UTF-16 national charset |
 | `complex` | Oracle 专用，自动创建 OBJECT 和 TABLE OF 类型及表，精确数字/RAW、首尾不同的集合值及顺序/NULL、对象 OUT 的完整字段值/属性顺序/schema、事务回滚 |
-| `resource-outputs` | Oracle 专用，自动创建过程和临时 LOB，REF CURSOR/BLOB/CLOB 输出内容与关闭 |
+| `resource-outputs` | Oracle 专用，自动创建过程和临时 LOB，REF CURSOR/BLOB/CLOB 输出内容与关闭；REF CURSOR 的单行批次拒绝多余行及后续读取错误 |
 | `xa-one-phase`、`xa-two-phase`、`xa-rollback` | 自建表和唯一 XID，分支状态、prepare/recover、提交/回滚及持久化可见性 |
 | `xa-suspend`、`xa-join`、`xa-recovery` | suspend/resume、end/join、关闭原物理连接后恢复；只操作本轮 XID，绝不回滚其他协调器的分支 |
 | `session` | schema/catalog、会话变量、client info、修改会话后池隔离 |
@@ -150,6 +150,8 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 [TestComplexOutputAssertions/TestComplexCollectionAssertions](../cmd/obtest/complex_test.go) 覆盖20个离线流程，验证 OBJECT OUT 的数值/RAW/schema/属性顺序，以及集合首尾不同值、错序/重复/缺项/NULL 和对象/集合 schema。每个流程检查事务回滚及表、集合类型、对象类型的逆序清理；等价十进制尾零允许通过。夹具只替代数据库依赖，不证明真实类型描述或服务端往返。
 
 [TestMetadataContentWorkflow/TestMetadataSchemaFilters](../cmd/obtest/metadata_test.go) 提供90个离线流程：两模式验证自建 ID/V 表的完整表/列/主键字典身份、列顺序、INTEGER 精度/scale、VARCHAR 长度与 NULL，以及两列结果元数据；错误值、缺行/多行、未知必需属性、读取/关闭错误均失败。另检查非空 schema 的 LIKE 转义和精确大小写匹配；每次结果均关闭，完整场景在失败后仍删除自建表。旧实现仅计数时50个错误输入被误判通过；夹具不代表真实字典或权限已经验收。
+
+[TestCursorBatchAssertions](../cmd/obtest/cursor_test.go) 提供22个离线流程，覆盖两列普通游标与单列 REF CURSOR 的单行批次校验：精确值、缺行、重复/额外行、首行后的读取错误、关闭错误、非法/NULL 标识符、列宽及内容错误；全部验证结果关闭和场景失败后的表清理。旧实现6个错误批次被误判通过，修复后拒绝；共享断言用于前向/静态、刷新、敏感游标和过程资源输出，不代表真实服务端 fetch 已验收。
 
 [TestMySQLScalarsWorkflow](../cmd/obtest/mysql_scalars_test.go) 提供44个离线流程：两条读取路径上的完整边界值、最大整秒/零 TIME 的两种合法表示及非零越界小数、整数溢出/精度、TINYINT 非 bool、TIME 尾部、BIT 宽度、YEAR 零值与空二进制非 NULL、定长补零、缺行/多行、NULL 及错误元数据。检查原始输入类型、查询参数、Rows 关闭及自建表清理；夹具元数据和行值不证明实际服务端行为。
 

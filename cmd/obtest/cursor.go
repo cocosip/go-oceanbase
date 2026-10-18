@@ -41,7 +41,13 @@ func checkCursorBatch(rows *sql.Rows, id int, value string) (err error) {
 	if err = rows.Scan(dest...); err != nil {
 		return err
 	}
-	return expect(got == id && text == value, "cursor row mismatch")
+	if err = expect(got == id && text == value, "cursor row mismatch"); err != nil {
+		return err
+	}
+	if rows.Next() {
+		return checkFailure("unexpected cursor batch row")
+	}
+	return rows.Err()
 }
 
 func runCursor(ctx context.Context, s *scenario) error {
