@@ -947,6 +947,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[TestScalarsTemporalAssertions](../cmd/obtest/scalars_test.go)，两模式/文本与参数化查询共32个离线流程，同时检查成功/失败状态和自建表清理。旧前缀实现复现20个漏检；独立复核补充的单数字小时/十位小数在初次修复上仍错误通过，增加回归后修复。夹具仅检查工具编排和断言，不代表真实数据库往返，38个可执行场景及实现28/32、验收0/32计数保持。
 - Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译及32场景各10轮通过；普通及 integration 标签 golangci-lint 两版本均0 issues。首次 lint 的测试重复状态文本已提取常量后重新完成两版本验证；独立只读复核最终无剩余确认问题，不另存报告。obtest 已重建，38项列表、配置离线检查及文档/diff 检查通过；真实数据库、其他平台及 race 暂缓。
 
+#### D12 NString 预处理的 national charset 一致性
+
+- 客户端生成 UNISTR 前按 NCharset → Charset → utf8mb4 严格校验字符可表示性，与服务端二进制绑定一致；保留 UNISTR 及各路径原有的内容/消息预算。显式 national UTF16 与 SQL latin1/ASCII 分离，不能因连接字符集无法表示原值而误拒。无新公开 API、配置、包或依赖。
+- 新增[两路径字符集回归](../national_charset_paths_test.go)共62个离线场景；旧实现复现5类客户端漏检（显式GBK、GBK回退、ASCII、utf8mb3、latin1），其余正向/非法UTF-8检查保持。公开预处理覆盖标准/压缩/OB20，先成功执行，再本地拒绝非法输入，随后复用同一statement并Ping原会话。FuzzScalars 增加 national charset 种子及充足预算下的接受/拒绝等价检查；本地定向回归通过。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及62场景各10轮通过；初次 lint 的新增测试重复字符串已复用常量/调整场景标签，两版本普通及 integration 标签 lint 均0 issues。两版 FuzzScalars 各30秒完成709812/880118次执行，无失败；独立只读复核未发现确认问题，不另存报告。obtest 重建、38项列表、示例配置离线检查及文档/diff检查通过；真实数据库、其他平台及race按当前约束暂缓，实现28/32、验收0/32保持。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

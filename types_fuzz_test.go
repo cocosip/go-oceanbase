@@ -14,6 +14,11 @@ func FuzzScalars(f *testing.F) {
 	for _, text := range []string{ltzSummerNewYork, ltzSpringGap, "0001-01-01 00:00:00 +14:00", "9999-12-31 23:59:59 -12:00"} {
 		f.Add(text, []byte(text), byte(201))
 	}
+	for _, text := range []string{"中", "😀", "€", "A", "\xff"} {
+		for selector := range byte(8) {
+			f.Add(text, []byte(text), selector)
+		}
+	}
 	f.Fuzz(func(t *testing.T, text string, data []byte, typ byte) {
 		if len(text) > 512 || len(data) > 512 {
 			return
@@ -41,6 +46,14 @@ func FuzzScalars(f *testing.F) {
 		}
 		_, _ = parseInterval(text, false)
 		_, _ = parseInterval(text, true)
+		charsets := [...]string{"", charsetUTF8MB4, charsetUTF8MB3Alias, localFilenameCharset, identityCharsetLatin, testCharsetUTF16, identityCharsetASCII, testAttributeGB18030}
+		options := SessionOptions{Charset: localFilenameCharset, NCharset: charsets[int(typ)%len(charsets)]}
+		_, serverErr := encodeParameter(NString(text), ModeOracle, options, 8192)
+		c := &conn{cfg: Config{Session: options}, session: &handshakeSession{mode: ModeOracle}}
+		_, clientErr := c.clientLiteral(NString(text), 8192)
+		if (serverErr == nil) != (clientErr == nil) {
+			t.Fatal("NString prepare acceptance differs", options.NCharset, text, serverErr, clientErr)
+		}
 		types := [...]byte{200, 201, 202, 204, 205}
 		kind := types[int(typ)%len(types)]
 		if decoded, err := decodeOracleTemporal(kind, data, time.UTC); err == nil {

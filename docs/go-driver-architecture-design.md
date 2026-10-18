@@ -599,6 +599,8 @@ Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用�
 
 字符集叶包使用 x/text v0.41.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。
 
+客户端预处理的 NString 即使生成纯 ASCII 的 UNISTR，也必须先按 NCharset → Charset → utf8mb4 校验字符可表示性，与服务端绑定一致；不得借 Unicode 转义绕过 GBK、ASCII、utf8mb3 或 latin1 的限制。显式 UTF16 national charset 仍允许连接字符集不能表示的 Unicode 值，SQL 继续使用 UNISTR；本地拒绝不发送执行命令、不破坏已同步 statement/会话。二进制参数内容预算和 UNISTR 的 SQL 膨胀预算分别保持，不要求两路径在相同数值的大小预算下接受同一输入。
+
 二进制绑定的普通 string、NString 及复杂值内文本字段按转码后的字节占用参数预算，不因 Go UTF-8 源字符串较长而误拒 GBK/latin1/UTF16 收缩值。分配前仅按码点数检查至少一字节的下界，转码后仍严格检查实际内容；长度前缀、类型头和命令开销由既有参数/消息累计预算扣除。编码膨胀、非法输入和超限不截断或替换，发送前拒绝不破坏已同步会话。SQL 文本/客户端插值另按 §10.1 的实际编码与累计开销检查，也不改变 LongData.MaxBytes 对源字节与转码后字节的双重限制。
 
 ### 11.2.2 已实现的 OBJECT/ARRAY 约定（D18）

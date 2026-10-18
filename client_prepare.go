@@ -265,6 +265,16 @@ func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
 		if limit < 10 || int64(len(units)) > (limit-10)/5 {
 			return "", wire.ErrMessageTooLarge
 		}
+		name := c.cfg.Session.NCharset
+		if name == "" {
+			name = c.cfg.Session.Charset
+		}
+		if name == "" {
+			name = charsetUTF8MB4
+		}
+		if _, err := charset.Encode(name, string(v)); err != nil {
+			return "", err
+		}
 		var b strings.Builder
 		b.WriteString("UNISTR('")
 		for _, unit := range units {

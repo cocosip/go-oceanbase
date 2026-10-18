@@ -349,6 +349,8 @@ Number 预算补充：TestNumberNormalizedBudget、TestComplexNumberNormalizedBu
 
 LTZ 预处理等价性补充：TestLTZPrepareEquivalence、TestLTZSQLPrepareEquivalence 共56场景覆盖客户端与服务端的跨 region 会话转换、纳秒、同 region 墙上时间保留、源 DST 缺口/重叠及目标重叠拒绝、会话年份边界，以及三种包流上的公开预处理和本地拒绝后的原会话复用。客户端与二进制路径共用会话墙上时间校验，不以偏移 SQL 字面量绕过二进制路径的歧义或范围限制；FuzzScalars 增加 LTZ 跨 region、源缺口及年份边界种子，固定 UTC 会话和充足预算时检查两路径接受/拒绝一致。固定偏移会话即使与源 region 同名，也按初始化实际设置的偏移转换；另覆盖日期进位、源 region 不可解析、DST 歧义及年份越界。真实时区转换及服务端类型语义仍待联调。
 
+NString national charset 补充：[TestNStringPrepareCharsets/TestNStringSQLPrepareCharsets](../national_charset_paths_test.go) 共62个离线场景，覆盖两种预处理的显式 national charset、连接字符集回退、缺省 utf8mb4、空值、非法 UTF-8、不可表示输入，以及 SQL latin1/ASCII 与 national UTF16 的分离。三种包流上的公开 database/sql 执行验证拒绝前后 statement 与原会话复用，不发送无效执行命令。FuzzScalars 在输入最多512源字节、独立8192字节充足预算下检查8种 national 配置（含回退）的接受/拒绝等价性，不把二进制内容和 UNISTR 膨胀预算强行等同。真实 NCHAR 往返仍待联调。
+
 ### D13 数据库、结果和参数元数据
 
 依赖：D09、D12。对应：M11；架构 §16.1。

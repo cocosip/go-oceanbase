@@ -75,6 +75,9 @@ func batchRewriteDB(t *testing.T, cfg Config, variant string, serve func(context
 		} else {
 			ready = serveBaseline(ctx, t, p, status)
 		}
+		if ready && cfg.Session.NCharset != "" {
+			ready = serveOK(ctx, t, p, []byte("\x03SET NCHARACTER_SET_CONNECTION = '"+cfg.Session.NCharset+"'"), status)
+		}
 		if ready {
 			serve(context.Background(), p)
 		}
