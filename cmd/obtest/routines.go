@@ -13,10 +13,12 @@ func runRoutines(ctx context.Context, s *scenario) error {
 	proc := "(IN x BIGINT,INOUT y BIGINT,OUT z VARCHAR(40)) BEGIN SET y=x+y; SET z='ok'; END"
 	fn := "(x BIGINT) RETURNS BIGINT DETERMINISTIC RETURN x*2"
 	failing := "(OUT y BIGINT) BEGIN SET y=100; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='obtest'; END"
+	failureCode := uint32(1644)
 	if s.mode == oceanbase.ModeOracle {
 		proc = "(x IN NUMBER,y IN OUT NUMBER,z OUT VARCHAR2) AS BEGIN y:=x+y; z:='ok'; END;"
 		fn = "(x IN NUMBER) RETURN NUMBER AS BEGIN RETURN x*2; END;"
 		failing = "(y OUT NUMBER) AS BEGIN y:=100; RAISE_APPLICATION_ERROR(-20001,'obtest'); END;"
+		failureCode = 20001
 	}
 	p, err := s.create(ctx, "PROCEDURE", "P", proc)
 	if err != nil {
@@ -63,7 +65,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 		}
 		_, callErr := c.ExecContext(ctx, call, sql.Out{Dest: &y})
 		var server *oceanbase.Error
-		if err := expect(errors.As(callErr, &server) && y == 7, "failed routine published output or lost server error"); err != nil {
+		if err := expect(errors.As(callErr, &server) && server.Code == failureCode && y == 7, "routine failure code or output mismatch"); err != nil {
 			return err
 		}
 		return c.PingContext(ctx)

@@ -986,6 +986,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[TestCursorBatchAssertions](../cmd/obtest/cursor_test.go)22个离线流程，覆盖两列普通游标和单列 REF CURSOR；旧实现6个重复/额外行及后续读取错误被误判通过，修复后拒绝。另检查缺行、NULL/非法标识符、列宽/内容、关闭错误、所有结果关闭及自建表清理；夹具仅替代外部数据库。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；Windows/386 的22个新流程通过。独立只读复核未发现确认问题，不另存报告；obtest 重建，40项唯一列表、示例及游标/资源输出选择配置的离线检查通过，文档/链接/diff检查通过。工具保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
 
+#### D14/D32 独立工具的例程主动异常识别
+
+- 修复 routines/routines-client 把任意服务器错误作为“失败不发布输出”的成功证据：按自建 SQL 要求 MySQL1644/Oracle20001 的结构化错误，且 OUT 哨兵保持7；不接受语法/权限/例程缺失等无关失败。integration 的 TestScalarCall 同步收紧；错误码按固定 OceanBase 的 SIGNAL 映射和 Oracle 应用异常转换核对，依据见[工具说明](go-driver-test-tool.md)。无新 API、包或依赖。
+- 新增[TestRoutineFailureAssertions](../cmd/obtest/routines_test.go)48个离线流程，两模式和两个预处理场景完整执行三份例程的创建、两轮 INOUT/OUT、函数和主动异常，检查参数方向/初值、成功/失败状态与三份对象逆序清理；旧实现24个无关服务器错误被误判通过，修复后拒绝。另覆盖正确/包装错误、意外成功、传输/超时和失败输出发布；夹具不代表真实例程已验收。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；Windows/386 的48个例程流程通过。首次 lint 的重复类型字符串已提取测试常量；独立只读复核未发现确认问题，不另存报告。obtest 已重建，40项唯一列表、示例及例程场景选择配置的离线检查通过，文档/链接/diff检查通过。工具保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 40 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。
