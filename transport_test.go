@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -65,11 +64,7 @@ func runPlatformPeer(t *testing.T, listener net.Listener, cfg Config) {
 }
 
 func TestPlatformTransportUnix(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "ob.sock")
-	listener, err := net.Listen(networkUnix, path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	listener, path := listenUnix(t, unixTempDir(t), "ob.sock")
 	runPlatformPeer(t, listener, Config{Network: networkUnix, Addr: path, User: testUser})
 }
 
@@ -107,20 +102,12 @@ func runPlatformTLSGate(t *testing.T, listener net.Listener, cfg Config) {
 }
 
 func TestPlatformTransportUnixTLSGate(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tls.sock")
-	listener, err := net.Listen(networkUnix, path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	listener, path := listenUnix(t, unixTempDir(t), "tls.sock")
 	runPlatformTLSGate(t, listener, Config{User: testUser, Password: testPassword, Network: networkUnix, Addr: path})
 }
 
 func TestPlatformTransportUnixDeadline(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "timeout.sock")
-	listener, err := net.Listen(networkUnix, path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	listener, path := listenUnix(t, unixTempDir(t), "timeout.sock")
 	defer func() { _ = listener.Close() }()
 	created, err := NewConnector(Config{User: testUser, Network: networkUnix, Addr: path, ConnectTimeout: 30 * time.Millisecond})
 	if err != nil {

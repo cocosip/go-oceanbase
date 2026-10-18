@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -18,15 +17,7 @@ import (
 
 func TestPlatformTransportUnixMixedSessions(t *testing.T) {
 	// Subtest-derived TempDir names can exceed sockaddr_un's platform limit.
-	directory, err := os.MkdirTemp("", "ob-ipc-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(directory); err != nil {
-			t.Error(err)
-		}
-	})
+	directory := unixTempDir(t)
 	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {

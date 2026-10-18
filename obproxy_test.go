@@ -204,12 +204,9 @@ func TestOBProxyUnixPathLimit(t *testing.T) {
 func TestOBProxyDialerDeadlineAndClose(t *testing.T) {
 	spec := obProxyTestSpec(t)
 	// A short real Unix endpoint tests Go deadline/close behavior without starting OBProxy.
-	spec.socket = filepath.Join(t.TempDir(), "vc.sock")
-	l, err := net.Listen(networkUnix, spec.socket)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = l.Close() }()
+	listener, path := listenUnix(t, unixTempDir(t), "vc.sock")
+	spec.socket = path
+	defer func() { _ = listener.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var ready atomic.Bool
@@ -219,7 +216,7 @@ func TestOBProxyDialerDeadlineAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = c.Close() }()
-	s, err := l.Accept()
+	s, err := listener.Accept()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,11 +251,8 @@ func TestOBProxyDialerDeadlineAndClose(t *testing.T) {
 func obProxyProtocolPeer(t *testing.T, serve func(net.Conn)) obProxySpec {
 	t.Helper()
 	spec := obProxyTestSpec(t)
-	spec.socket = filepath.Join(t.TempDir(), "vc.sock")
-	listener, err := net.Listen(networkUnix, spec.socket)
-	if err != nil {
-		t.Fatal(err)
-	}
+	listener, path := listenUnix(t, unixTempDir(t), "vc.sock")
+	spec.socket = path
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
