@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -39,7 +40,15 @@ var targetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 func readConfig(r io.Reader) (configuration, error) {
 	var cfg configuration
-	d := json.NewDecoder(io.LimitReader(r, 1<<20))
+	const maxConfigBytes = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(r, maxConfigBytes+1))
+	if err != nil {
+		return cfg, errors.New("cannot read configuration")
+	}
+	if len(data) > maxConfigBytes {
+		return cfg, errors.New("configuration exceeds 1 MiB")
+	}
+	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&cfg); err != nil {
 		return cfg, errors.New("invalid configuration JSON or unknown field")

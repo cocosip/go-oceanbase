@@ -45,7 +45,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 
 ## 配置
 
-[最小配置示例](obtest.example.json)只需通过 `OB_DSN` 提供一个连接字符串。顶层字段如下：
+[最小配置示例](obtest.example.json)只需通过 `OB_DSN` 提供一个连接字符串。配置文件最大 1 MiB（含空白），超限或读取失败时在连接数据库前拒绝，不截断解析；文件只能包含一个 JSON 对象。顶层字段如下：
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |

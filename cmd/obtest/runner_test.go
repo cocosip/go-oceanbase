@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -47,6 +48,39 @@ func TestConfigRejectsMistakesWithoutSecrets(t *testing.T) {
 			t.Fatalf("invalid config accepted or exposed: %v", err)
 		}
 	}
+}
+
+func TestConfigInputBounds(t *testing.T) {
+	const limit = 1 << 20
+	valid := `{"targets":[{"name":"test","dsn":"secret"}]}`
+	atLimit := valid + strings.Repeat(" ", limit-len(valid))
+	for _, tc := range []struct {
+		name   string
+		input  io.Reader
+		wantOK bool
+	}{
+		{"at-limit", strings.NewReader(atLimit), true},
+		{"over-limit-whitespace", strings.NewReader(atLimit + " "), false},
+		{"hidden-second-object", strings.NewReader(atLimit + "{}"), false},
+		{"hidden-malformed-tail", strings.NewReader(atLimit + "secret"), false},
+		{"read-failure-after-object", io.MultiReader(strings.NewReader(valid), configErrorReader{}), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := readConfig(tc.input)
+			if (err == nil) != tc.wantOK {
+				t.Fatalf("accepted=%v want=%v", err == nil, tc.wantOK)
+			}
+			if err != nil && strings.Contains(err.Error(), "secret") {
+				t.Fatal("configuration read error exposed input")
+			}
+		})
+	}
+}
+
+type configErrorReader struct{}
+
+func (configErrorReader) Read([]byte) (int, error) {
+	return 0, errors.New("secret reader failure")
 }
 
 func TestResultExitCode(t *testing.T) {
