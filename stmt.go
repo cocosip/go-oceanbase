@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -45,7 +46,7 @@ func (c *conn) prepareServerLocked(ctx context.Context, query string) (*stmt, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+	if int64(utf8.RuneCountInString(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return nil, wire.ErrMessageTooLarge
 	}
 	plan := bindPlan{query: query, sql: query, mode: c.session.mode}

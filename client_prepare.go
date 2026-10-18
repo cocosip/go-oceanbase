@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -26,7 +27,7 @@ type clientStmt struct {
 }
 
 func (c *conn) prepareClient(ctx context.Context, query string) (driver.Stmt, error) {
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+	if int64(utf8.RuneCountInString(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return nil, wire.ErrMessageTooLarge
 	}
 	if err := c.lock(ctx); err != nil {
@@ -96,7 +97,7 @@ func (s *clientStmt) queryRows(ctx context.Context, args []driver.NamedValue) (*
 // interpolate is called while owning the session gate, so status cannot change mid-encoding.
 func (c *conn) interpolate(query string, args []driver.NamedValue) (string, error) {
 	limit := c.cfg.Limits.MaxMessageBytes - 1
-	if int64(len(query)) > limit {
+	if int64(utf8.RuneCountInString(query)) > limit {
 		return "", wire.ErrMessageTooLarge
 	}
 	plan, err := buildBindPlanEscapes(query, c.session.mode, c.session.ok.Status&512 != 0)
@@ -116,33 +117,31 @@ func (c *conn) interpolatePlan(plan bindPlan, values []boundValue) (string, erro
 	var b strings.Builder
 	offset := 0
 	for i, slot := range plan.slots {
-		span := query[offset:slot.start]
-		if int64(b.Len())+int64(len(span)) > limit {
-			return "", wire.ErrMessageTooLarge
+		span, err := c.encodeSQLLimit(query[offset:slot.start], limit-int64(b.Len()))
+		if err != nil {
+			return "", err
 		}
-		b.WriteString(span)
+		b.Write(span)
 		literal, err := c.clientLiteral(values[i].value, limit-int64(b.Len())-2)
+		if err != nil {
+			return "", err
+		}
+		encoded, err := c.encodeSQLLimit(literal, limit-int64(b.Len())-2)
 		if err != nil {
 			return "", err
 		}
 		// Preserve token boundaries, including unary minus and numeric aliases.
 		b.WriteByte(' ')
-		b.WriteString(literal)
+		b.Write(encoded)
 		b.WriteByte(' ')
 		offset = slot.end
 	}
-	if int64(b.Len())+int64(len(query)-offset) > limit {
-		return "", wire.ErrMessageTooLarge
-	}
-	b.WriteString(query[offset:])
-	encoded, err := charset.Encode(c.cfg.Session.Charset, b.String())
+	tail, err := c.encodeSQLLimit(query[offset:], limit-int64(b.Len()))
 	if err != nil {
 		return "", err
 	}
-	if int64(len(encoded)) > limit {
-		return "", wire.ErrMessageTooLarge
-	}
-	return string(encoded), nil
+	b.Write(tail)
+	return b.String(), nil
 }
 
 func (c *conn) clientLiteral(v any, limit int64) (string, error) {
@@ -182,7 +181,7 @@ func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 			return "", err
 		}
 	case string:
-		if int64(len(v)) > limit {
+		if int64(utf8.RuneCountInString(v)) > limit {
 			return "", wire.ErrMessageTooLarge
 		}
 		encoded, err := charset.Encode(c.cfg.Session.Charset, v)
@@ -200,7 +199,7 @@ func (c *conn) clientLiteral(v any, limit int64) (string, error) {
 			}
 			return prefix + hex.EncodeToString(encoded) + "'", nil
 		}
-		return quoteClientString(v, limit)
+		return quoteClientString(v, len(encoded), limit)
 	case []byte:
 		if v == nil {
 			s = sqlNullLiteral
@@ -333,14 +332,16 @@ func clientFloat(v float64, mode Mode) (string, error) {
 	return "BINARY_DOUBLE_INFINITY", nil
 }
 
-func quoteClientString(text string, limit int64) (string, error) {
-	n := int64(2)
+func quoteClientString(text string, encodedBytes int, limit int64) (string, error) {
+	if int64(encodedBytes) > limit-2 {
+		return "", wire.ErrMessageTooLarge
+	}
+	n := int64(encodedBytes) + 2
 	hasNUL := strings.ContainsRune(text, 0)
 	if hasNUL {
 		n += 2
 	}
 	for i := 0; i < len(text); i++ {
-		n++
 		switch text[i] {
 		case '\'':
 			n++

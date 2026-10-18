@@ -313,6 +313,8 @@ go test -tags=integration ./tests/integration -count=1
 - [x] 复用 D07 词法/参数计划，按实际会话编码；只有发送前确认 prepare 不支持时才允许已配置的降级。
 - [ ] 同命令通过；`TestPrepareEquivalence` 在两模式比较客户端/服务端的值和错误，不以字符串相似替代执行等价。
 
+SQL/客户端预算补充：TestSQLTextEncodedBudget、TestClientSQLTextEncodedBudget、TestSQLBudgetStrictEncoding、TestSQLExecutionEncodedBudget、TestOutputSQLTextEncodedBudget 覆盖实际编码大小、片段累计、字面量转义、两模式三包流公开文本/server/client 预处理及 Oracle OUT，共58个本地场景。原文解析预检按码点数有界；完整消息按转码后的内容、命令/协议开销及空格限制，超限发送前拒绝后原会话仍可 Ping。GBK/latin1 收缩误拒已复现并修复，真实 SQL 等价与服务端验收仍单列。
+
 ### D11 Execute、多结果摘要与计数策略
 
 依赖：D08、D09。对应：M08；架构 §11.4。

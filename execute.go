@@ -138,7 +138,7 @@ func (c *conn) prepareArguments(ctx context.Context, query string, args []driver
 }
 
 func (c *conn) validatePrepareArguments(query string, args []driver.NamedValue) error {
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+	if int64(utf8.RuneCountInString(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return wire.ErrMessageTooLarge
 	}
 	if len(args) > 65535 {
@@ -194,7 +194,11 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 }
 
 func (c *conn) encodeSQL(query string) ([]byte, error) {
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+	return c.encodeSQLLimit(query, c.cfg.Limits.MaxMessageBytes-1)
+}
+
+func (c *conn) encodeSQLLimit(query string, limit int64) ([]byte, error) {
+	if int64(utf8.RuneCountInString(query)) > limit {
 		return nil, wire.ErrMessageTooLarge
 	}
 	if !utf8.ValidString(query) || strings.ContainsRune(query, 0) {
@@ -208,7 +212,7 @@ func (c *conn) encodeSQL(query string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) >= c.cfg.Limits.MaxMessageBytes {
+	if int64(len(data)) > limit {
 		return nil, wire.ErrMessageTooLarge
 	}
 	return data, nil

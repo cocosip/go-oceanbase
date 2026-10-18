@@ -9,6 +9,7 @@ import (
 	"io"
 	"reflect"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -70,7 +71,7 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	if err := c.clearStatementsLocked(ctx); err != nil {
 		return nil, err
 	}
-	if int64(len(query)) >= c.cfg.Limits.MaxMessageBytes {
+	if int64(utf8.RuneCountInString(query)) >= c.cfg.Limits.MaxMessageBytes {
 		return nil, wire.ErrMessageTooLarge
 	}
 	plan, err := buildBindPlanEscapes(query, c.session.mode, c.session.ok.Status&512 != 0)
