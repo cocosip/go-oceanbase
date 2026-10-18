@@ -117,8 +117,10 @@ func runScalars(ctx context.Context, s *scenario) error {
 	}
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, location)
 	var dateValue any = "2024-02-29"
+	wantDate := "2024-02-29"
 	if s.mode == oceanbase.ModeOracle {
 		dateValue = time.Date(2024, 2, 29, 0, 0, 0, 0, location)
+		wantDate += " 00:00:00"
 	}
 	if _, err = s.db.ExecContext(ctx, "INSERT INTO "+table+" VALUES (?,?,?,?,?,?,?)", 1, oceanbase.Number(exactNumber), unicodeValue, binary, dateValue, instant, nil); err != nil {
 		return err
@@ -141,12 +143,21 @@ func runScalars(ctx context.Context, s *scenario) error {
 			if err := expect(ok && got.Cmp(want) == 0 && v == unicodeValue && bytes.Equal(raw, []byte{0, 1, 127, 128, 255}) && !null.Valid, "scalar precision, Unicode, binary or NULL mismatch"); err != nil {
 				return err
 			}
-			if err := expect(strings.HasPrefix(date, "2024-02-29") && strings.HasPrefix(timestamp, "2026-01-02 03:04:05.123456"), "date or timestamp mismatch"); err != nil {
+			if err := expect(date == wantDate && scalarTimestampMatches(timestamp, instant), "date or timestamp mismatch"); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+func scalarTimestampMatches(text string, want time.Time) bool {
+	// A canonical 19-byte wall prefix makes the bound reject fractions Go would truncate.
+	if len(text) > 29 || !strings.HasPrefix(text, want.Format(time.DateTime)) {
+		return false
+	}
+	parsed, err := time.Parse(time.DateTime, text)
+	return err == nil && parsed.Nanosecond() == want.Nanosecond()
 }
 
 func runTransactions(ctx context.Context, s *scenario) (err error) {

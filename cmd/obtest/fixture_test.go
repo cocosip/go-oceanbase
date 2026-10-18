@@ -14,6 +14,8 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
+const fixtureDroppedState = "dropped"
+
 type fixtureStep struct {
 	query    string
 	values   [][]driver.Value
@@ -133,8 +135,18 @@ func (f *fixtureConn) QueryContext(ctx context.Context, query string, _ []driver
 
 type fixtureRows struct{ values [][]driver.Value }
 
-func (*fixtureRows) Columns() []string { return []string{"V"} }
-func (*fixtureRows) Close() error      { return nil }
+func (r *fixtureRows) Columns() []string {
+	n := 1
+	if len(r.values) != 0 {
+		n = len(r.values[0])
+	}
+	columns := make([]string, n)
+	for i := range columns {
+		columns[i] = "V"
+	}
+	return columns
+}
+func (*fixtureRows) Close() error { return nil }
 func (r *fixtureRows) Next(dest []driver.Value) error {
 	if len(r.values) == 0 {
 		return io.EOF
@@ -185,7 +197,7 @@ func TestCRUDOfflineWorkflow(t *testing.T) {
 			if valid {
 				want = statusPass
 			}
-			if r.Status != want || len(r.Objects) != 1 || r.Objects[0].State != "dropped" {
+			if r.Status != want || len(r.Objects) != 1 || r.Objects[0].State != fixtureDroppedState {
 				t.Fatalf("workflow result: %+v", r)
 			}
 		})
@@ -205,7 +217,7 @@ func TestOnlyConfirmedObjectsAreDropped(t *testing.T) {
 		_, err := s.table(ctx, "(V OBT_OFFLINE_O)")
 		return err
 	})
-	if r.Status != statusFail || len(r.Objects) != 2 || r.Objects[0].State != "dropped" || r.Objects[1].State != "create_unconfirmed" {
+	if r.Status != statusFail || len(r.Objects) != 2 || r.Objects[0].State != fixtureDroppedState || r.Objects[1].State != "create_unconfirmed" {
 		t.Fatalf("incorrect ownership/cleanup: %+v", r)
 	}
 }

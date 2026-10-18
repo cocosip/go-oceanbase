@@ -95,7 +95,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `connect` | 认证、会话初始化、Ping、OceanBase 版本非空 |
 | `crud` | 建表、插入/更新/读取/删除、受影响行数、重复键结构化错误、错误后继续使用 |
 | `prepare-server`、`prepare-client` | 分别使用服务端和客户端预处理，多次复用、Unicode/引号/反斜杠/NULL、Oracle 重复命名参数 |
-| `scalars` | 精确 NUMBER/DECIMAL、Unicode、RAW/二进制、闰日、微秒时间、NULL，文本与参数化查询；此场景显式使用 server prepare、关闭 ParseTime，按配置 location 构造输入墙上时间 |
+| `scalars` | 精确 NUMBER/DECIMAL、Unicode、RAW/二进制、闰日、微秒时间、NULL，文本与参数化查询；完整比较日期及时间值（允许等价的尾随零，拒绝额外非零纳秒、超九位小数及尾随内容）。此场景显式使用 server prepare、关闭 ParseTime，按配置 location 构造输入墙上时间 |
 | `transactions` | 建表、提交/回滚、保存点回滚、只读拒绝写入、最终持久化行数 |
 | `metadata` | 自建表的表/列/主键字典投影，ColumnTypes 名称与数据库类型 |
 | `execution` | Execute、读取结果、提前 Close、完成摘要、原会话继续 Ping |
@@ -142,6 +142,8 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 ## 本阶段验证
 
 工具自身的离线回归验证严格配置、完整 CRUD 编排、错误数据不能通过、部分建表失败后的所有权清理、取消后独立清理、清理失败传播、XA 原会话清理及取消错误码识别。它们用进程内 fixture 校验执行器，不是实际数据库验收证据；可执行程序不依赖这些 fixture 或 Go testing。
+
+[TestScalarsTemporalAssertions](../cmd/obtest/scalars_test.go) 在两种兼容模式的文本与参数化查询上覆盖32个离线流程：精确值、等价小数尾零、日期时间变化、额外纳秒、超九位小数和非法尾部。包含单数字小时缩短整串后夹带超精度小数的拒绝回归。每个流程检查实际场景状态及自建表清理；Oracle DATE 必须保留预期的午夜，不能只比较日期前缀。本地 fixture 不证明真实服务端的日期/精度行为。
 
 Windows amd64 的 Go 1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译已通过；最终工具回归分别重复 10 轮，两个工具链的普通及 integration 标签全仓库 golangci-lint 均为 0 issues。`-list`、示例配置 `-check`、38 场景名称唯一性及文档链接检查通过；CI 仅增加不连接数据库的 `-list` 检查。
 
