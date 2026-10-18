@@ -23,7 +23,7 @@ func (r result) RowsAffected() (int64, error) {
 	return int64(r.affected), nil
 }
 func (r result) LastInsertId() (int64, error) {
-	if !r.known {
+	if !r.known || r.id == 0 {
 		return 0, ErrUnsupported
 	}
 	if r.id > math.MaxInt64 {

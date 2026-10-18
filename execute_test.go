@@ -103,14 +103,18 @@ func TestTextRows(t *testing.T) {
 
 func TestResultCounts(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		response     []byte
-		affected, id int64
-		overflow     bool
+		name               string
+		response           []byte
+		affected, id       int64
+		affectedErr, idErr error
 	}{
-		{"zero", []byte{0, 0, 0, 2, 0, 0, 0}, 0, 0, false},
-		{"counts", []byte{0, 5, 7, 2, 0, 0, 0}, 5, 7, false},
-		{"overflow", []byte{0, 254, 255, 255, 255, 255, 255, 255, 255, 255, 0, 2, 0, 0, 0}, 0, 0, true},
+		{"zero", []byte{0, 0, 0, 2, 0, 0, 0}, 0, 0, nil, ErrUnsupported},
+		{"counts", []byte{0, 5, 7, 2, 0, 0, 0}, 5, 7, nil, nil},
+		{"no-insert-id", []byte{0, 5, 0, 2, 0, 0, 0}, 5, 0, nil, ErrUnsupported},
+		{"maximum-insert-id", []byte{0, 1, 254, 255, 255, 255, 255, 255, 255, 255, 127, 2, 0, 0, 0}, 1, math.MaxInt64, nil, nil},
+		{"insert-id-overflow", []byte{0, 1, 254, 255, 255, 255, 255, 255, 255, 255, 255, 2, 0, 0, 0}, 1, 0, nil, errCountOverflow},
+		{"count-overflow", []byte{0, 254, 255, 255, 255, 255, 255, 255, 255, 255, 7, 2, 0, 0, 0}, 0, 7, errCountOverflow, nil},
+		{"both-overflow", []byte{0, 254, 255, 255, 255, 255, 255, 255, 255, 255, 254, 255, 255, 255, 255, 255, 255, 255, 255, 2, 0, 0, 0}, 0, 0, errCountOverflow, errCountOverflow},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := queryDB(t, func(ctx context.Context, p *wire.PacketIO) {
@@ -133,17 +137,11 @@ func TestResultCounts(t *testing.T) {
 				t.Fatal(err)
 			}
 			affected, err := result.RowsAffected()
-			if tc.overflow {
-				if err == nil || affected == math.MaxInt64 {
-					t.Fatal("count overflow hidden")
-				}
-				return
-			}
-			if err != nil || affected != tc.affected {
+			if !errors.Is(err, tc.affectedErr) || affected != tc.affected {
 				t.Fatal(affected, err)
 			}
 			id, err := result.LastInsertId()
-			if err != nil || id != tc.id {
+			if !errors.Is(err, tc.idErr) || id != tc.id {
 				t.Fatal(id, err)
 			}
 		})

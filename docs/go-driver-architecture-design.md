@@ -906,7 +906,7 @@ type CursorOut struct {
 ### 13.3 RETURNING 和生成键
 
 - Oracle 使用 `RETURNING ... INTO ...` 配合输出绑定；Java 对应服务端接口明确要求 PrepareExecute。D14 实现其最低必要协议及版本/能力门禁，普通分离式 prepare/execute 未经取证不能被当作等价替代；不支持时在发送业务前返回能力错误。[J17]
-- MySQL 的 OK insert ID 可支持 LastInsertId；不能表示为 int64 时该标准方法返回溢出错误，Execute 摘要中的 InsertID 可保留完整十进制值。
+- 服务端 OK 包中非零的 insert ID 可支持 LastInsertId；零表示未提供可用生成 ID，该标准方法返回 ErrUnsupported，不能把成功的受影响行数当作 ID 已知。不能表示为 int64 时返回溢出错误；RowsAffected 与 LastInsertId 分别判断自身是否溢出，Execute 摘要中的 InsertID 可保留完整十进制值。该规则共用于文本、预处理和多结果执行，不根据 SQL 文字猜测主键。
 - Oracle 不为了凑出 LastInsertId 另查全局序列或猜测主键；调用方通过显式 RETURNING 获得所需列。
 - Java 的指定生成列能力通过明确的 RETURNING 绑定/小型返回列 helper 表达，不要求用户设置 JDBC 风格常量。
 

@@ -129,6 +129,8 @@ return tx.Commit()
 
 `Execute` 的命令结果不伪装成行集；`ResultInfo` 的计数只有在对应 `Known` 为真时才可使用。Oracle 匿名块不合成内部每条 DML 的独立计数。读取异常、关闭异常和 `Snapshot.Err` 均需要处理。
 
+标准 `sql.Result` 的两个方法分别处理可用性与 int64 范围：`RowsAffected()` 可以成功返回0；服务端没有报告非零 insert ID 时，`LastInsertId()` 返回 `oceanbase.ErrUnsupported`，不会猜测主键或另查序列。非零 ID 超出 int64 时返回错误，需要完整无符号 ID 的调用使用 `Execute` 的十进制 `InsertID` 并检查 `InsertIDKnown`；Oracle 需要返回列时使用显式 RETURNING。结果字段不可用不表示已经成功执行的写入失败，不应据此重放写入。
+
 标准 `Rows.Columns()` / `ColumnTypes().Name()` 返回结果标签。需要原列/原表来源时，从 `e.Snapshot().Results` 中选 `Kind == oceanbase.ResultRows` 的项，再按投影顺序读取 `Columns`：`Name` 是标签，`OriginalName` 是原列名，`Table` / `OriginalTable` 保留协议表名/原表名，另有 `Schema` / `Catalog`。字段为空表示服务端未提供，不能从标签推断；快照和列切片为独立副本，执行关闭后仍保留已观察的来源。`RowSetIndex` 对应标准 Rows 的行集顺序，命令/Failure 没有 Columns。列来源不证明结果可更新或具有访问权限；累计预算及 Java 差异见[架构 §16.1.2](go-driver-architecture-design.md#1612-d32-结果列来源与产品身份)。
 
 `MetadataServerInfo` 分开返回 OceanBase 版本和兼容模式，MySQL/Oracle 不是另一种数据库产品；不提供 `useCompatibleMetadata` 等 Java 元数据开关。

@@ -241,7 +241,7 @@ go test -tags=integration ./tests/integration -count=1
 
 文件：新增 `execute.go`、`rows.go`、`result.go`、`error.go`、`codec.go`、`codec_mysql.go`、`codec_oracle.go` 及测试；新增 `tests/integration/query_test.go`。
 
-交付：ExecerContext/QueryerContext、driver.Rows/RowsNextResultSet、基础列信息、EOF/OK/ERR/session tracking；标准结果计数溢出检查，服务端错误可 errors.As；首次行读取后仍正确处理后续响应。
+交付：ExecerContext/QueryerContext、driver.Rows/RowsNextResultSet、基础列信息、EOF/OK/ERR/session tracking；标准结果计数溢出检查，服务端错误可 errors.As；首次行读取后仍正确处理后续响应。LastInsertId 在没有非零 OK insert ID 时返回 ErrUnsupported，与已知的 RowsAffected=0 分开处理；两个字段各自检查 int64 溢出，完整无符号 ID 由 Execute 摘要保留，不能推断主键。
 
 - [x] 测试 `TestTextRows`、`TestResultCounts`、`TestRowsDrain`：NULL/空值不同、[]byte 所有权、EOF/OK 终止、多结果切换、计数为 0/溢出、错误 SQLState、提前 Close 后连接同步。
 - [x] 执行 `go test . -run 'Test(TextRows|ResultCounts|RowsDrain)' -count=1`，确认失败。

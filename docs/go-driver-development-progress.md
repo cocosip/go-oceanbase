@@ -1010,6 +1010,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[TestDuplicateKeyWorkflows / TestBatchDuplicateAssertions](../cmd/obtest/duplicate_test.go)：最终56个完整 SQL 编排流程和80个批量结果场景，覆盖正确/包装/同类合并错误、错误模式/语法/权限/缺表/数据超长/零码、意外成功、传输及取消错误，以及汇总/输入不一致、错位、完成数、缺失/额外输入和状态/错误组合。初始48流程复现28个误判；进一步复核与回归确认首轮修复仍漏检4个混合错误工作流和12个批量合并错误场景，已改为检查完整错误树，仅当所有叶子均为同模式重复键才接受，避免掩盖清理失败。工作流替代 SQL 驱动、批量直接提供结果，不代表真实优化或原生 array binding 已运行；集成策略/批量断言同步，新增不连接数据库的 TestDuplicateKeyErrors。
 - Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译、离线 TestDuplicateKeyErrors 及全部工具回归各10轮通过；两版本普通/integration 标签 golangci-lint 均0 issues。首次 lint 的新增测试重复字符串已提取常量；Windows/386 的136个新增场景及集成辅助分类回归通过。独立只读复核确认合并错误问题修复后无剩余明确问题，不另存报告；obtest 已重建，43项名称唯一性、示例及相关四场景选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
 
+#### D05 标准生成键的未知值与独立溢出
+
+- 修正共享 result.LastInsertId：OK 包 insert ID 为0时返回 ErrUnsupported，不再因 RowsAffected 已知而把0当作可用生成 ID；不改变 RowsAffected=0 的合法结果。文本、标准预处理、多结果及内部命令共用此边界；不新增查询、模式猜测、公开 API 或依赖。架构 §13.3 与使用指南同步明确字段可用性和错误含义。
+- 扩充[TestResultCounts](../execute_test.go)为7个公开 database/sql + 协议对端场景：零计数/零 ID、普通计数/ID、有影响行却无 ID、最大 int64 ID、ID 单独溢出、计数单独溢出且保留可用 ID、两者同时溢出。先复现两处零 ID 错误接受，再修复通过；移除旧测试在计数溢出后提前返回的盲区，始终校验两个方法。既有 Execute 的完整 uint64/未知 ID 摘要回归保留；这些测试不证明实际服务端生成键 SQL 行为。
+- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译通过；TestResultCounts、既有未知值/溢出与 Execute 摘要回归两版本各重复10轮通过，两版本普通/integration 标签 golangci-lint 均0 issues。Windows/386 的上述目标回归通过；obtest 已重建，43项名称唯一性及示例配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 43 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。
