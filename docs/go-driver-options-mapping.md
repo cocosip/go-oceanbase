@@ -2,7 +2,7 @@
 
 基线：obconnector-j 2.4.14，提交 `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`。DefaultOptions 共 **160 项**，每项保留固定源码链接、Java 字段初值与拥有任务；D32 补正原155项提取遗漏的5个带空格枚举。历史别名、枚举外入口和初始化联动见后文；清单和默认值核对齐全不等于功能完成。
 
-当前已进入 D32 逐项收口，D28 平台缺口及 D30/D31 的依赖未闭环；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。每行关联具体本地测试入口；测试证明的范围、归类和剩余条件见 §5，后续随行为变更维护。
+当前已进入 D32 逐项收口，D28/D30/D31 的目标平台运行及真实服务验证待补，不作为全部本地开发的阻塞；“配置已实现”不表示对应网络/SQL 功能可用。未列入 ParseDSN 白名单的 Java 名称一律拒绝，不透传给服务端。每行关联具体本地测试入口；测试证明的范围、归类和剩余条件见 §5，后续随行为变更维护。
 
 Go DSN 使用 `oceanbase://user:password@host:2881/database`，各段按 net/url 转义。基础选项：mode、prepareMode、connectTimeout、readTimeout、skipVersionProbe、charset、collation、ncharset、location、parseTime、rowsAffectedMode、resetMode、allowMultiStatements、interactive、proxyUser、createDatabaseIfMissing、maxMessageBytes、maxLOBBytes、fetchSize、maxResultItems、cleanupTimeout；认证新增 allowOldPassword、passwordCharset。后续协议/执行/路由/发现选项见对应章节及白名单。所有选项拒绝重复/空值；时间使用 Go duration，布尔只接受 true/false。凭据只放 userinfo；logger/TLS/回调和 ConnectionAttributes map 只能程序化注入。`connectTimeout` 是两端同名但单位和零值含义不同的选项，必须显式迁移，见 §4。
 
