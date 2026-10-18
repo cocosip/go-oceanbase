@@ -392,6 +392,73 @@ func TestBatchRewriteGuardChanges(t *testing.T) {
 	}
 }
 
+func TestBatchRewriteGuardRowError(t *testing.T) {
+	for _, framing := range []string{testStandard, testCompression, testOB20} {
+		for _, prefix := range []bool{false, true} {
+			for _, afterRow := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/prefix=%t/after-row=%t", framing, prefix, afterRow), func(t *testing.T) {
+					testBatchRewriteGuardRowError(t, framing, prefix, afterRow)
+				})
+			}
+		}
+	}
+}
+
+func testBatchRewriteGuardRowError(t *testing.T, framing string, prefix, afterRow bool) {
+	t.Helper()
+	db := batchRewriteDB(t, Config{AllowMultiStatements: true}, framing, func(ctx context.Context, p *wire.PacketIO) {
+		if prefix && (!serveBatchRewriteGuard(ctx, t, p, "0", 2) || !readQuery(ctx, t, p, batchRewritePair) || !sendPackets(ctx, t, p, commandPacket(1, 0, 10), commandPacket(1, 0, 2))) {
+			return
+		}
+		if !readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{1}, textColumn("v", 253, 45, 0), []byte{254, 0, 0, 2, 0}) {
+			return
+		}
+		if afterRow && !sendPackets(ctx, t, p, []byte{1, '0'}) {
+			return
+		}
+		if !sendPackets(ctx, t, p, []byte{255, 21, 4, '#', '4', '2', '0', '0', '0', 'n', 'o'}) {
+			return
+		}
+		if prefix {
+			for _, q := range []string{"INSERT INTO t VALUES ( 3 )", "INSERT INTO t VALUES ( 4 )"} {
+				if !readQuery(ctx, t, p, q) || !sendPackets(ctx, t, p, commandPacket(1, 0, 2)) {
+					return
+				}
+			}
+		} else {
+			for i := int64(1); i <= 4; i++ {
+				if !servePrepareStatus(ctx, t, p, testBatchSQL, 7, 1, nil, 2) || !readCommand(ctx, t, p, batchExecutePacket(t, i)) || !sendPackets(ctx, t, p, commandPacket(1, 0, 2)) || !readCommand(ctx, t, p, stmtPacket(25, 7)) {
+					return
+				}
+			}
+		}
+		if !serveOK(ctx, t, p, []byte{14}, 2) {
+			return
+		}
+		p.ResetSequence()
+		serveQuit(t, p)
+	})
+	defer func() { _ = db.Close() }()
+	pinned := pinnedSession(t, db)
+	defer func() { _ = pinned.Close() }()
+	r, err := ExecBatch(context.Background(), pinned, testBatchSQL, [][]any{{1}, {2}, {3}, {4}}, BatchOptions{Strategy: BatchRewrite, ChunkRows: 2})
+	want := BatchSequential
+	if prefix {
+		want = BatchRewrite
+	}
+	if err != nil || r.Strategy != want || batchSucceeded(&r) != 4 {
+		t.Fatal(r, err)
+	}
+	for _, item := range r.Items {
+		if !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 || item.Err != nil {
+			t.Fatal("fallback lost per-item acknowledgement", item)
+		}
+	}
+	if err = pinned.PingContext(context.Background()); err != nil {
+		t.Fatal("guard error discarded the original session", err)
+	}
+}
+
 func TestBatchRewriteCancellation(t *testing.T) {
 	for _, beforeBusiness := range []bool{false, true} {
 		t.Run(fmt.Sprint(beforeBusiness), func(t *testing.T) {

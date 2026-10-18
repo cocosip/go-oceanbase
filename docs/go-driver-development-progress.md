@@ -838,6 +838,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增 [TestXAMySQLErrorCodes、TestXAOracleServerErrorNamespace](../xa_errors_test.go)：MySQL 十个错误码 × 三种包流 × 开启/一阶段提交，共60个场景，检查原始 code/SQLSTATE/message、ErrXA、完整拒绝不归未知结果或 ErrBadConn、本地关联状态、原连接 Ping、失败提交后的显式回滚及退出普通池；Oracle 九个同号 SQL 错误检查独立命名空间与错误链。旧实现对新增三个 MySQL 码分类错误，Oracle 路径也复现已有编号冲突；修复后通过。
 - Windows Go1.25.0/1.26.0 全包构建、单测/vet、integration 仅编译及普通/integration 标签 golangci-lint 均通过；首次 lint 的测试复杂度及 switch 提示已修正。未连接数据库，不推断服务器会在相应阶段产生上述错误，也不据本地分类测试证明超时/死锁或真实恢复语义。实现28/32、验收0/32保持。
 
+#### D30 会话标量读取的错误边界
+
+- 修复会话读取辅助函数在首行前或首行后收到完整服务端 ERR 时额外淘汰连接的问题：保留原 Error，连接处置沿用共享 Rows 状态机；只在完整单行响应后发布值，空结果、额外行/结果及畸形响应仍拒绝并淘汰。不增加公开 API、包或依赖。
+- 新增 [TestSessionReadResponseBoundary](../session_ops_failure_test.go)，覆盖 schema/catalog、client info、会话变量，两模式和三种包流共84个错误/形状场景；新增 [TestBatchRewriteGuardRowError](../batch_rewrite_test.go)，以12个场景确认初始探测错误安全回退，分块后错误只执行剩余输入，逐项确认结果且不重放已完成前缀。旧实现已复现会话读取失败；本轮临时编译覆盖旧实现时12个批量场景全部失败，修复后通过。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译通过；两版本普通及 integration 标签的 golangci-lint 均0 issues。独立工具已重新构建，38项列表及示例配置离线检查通过，未连接数据库。实现28/32、验收0/32保持；缺少的数据库及平台验证继续单列，不阻塞本地开发。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

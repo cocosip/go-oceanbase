@@ -260,10 +260,17 @@ func (c *conn) sessionValuesLocked(ctx context.Context, query []byte, columns in
 	}
 	values := make([]driver.Value, columns)
 	if err = rows.Next(values); err != nil {
+		if err != io.EOF {
+			return nil, err
+		}
 		c.discard()
 		return nil, rows.fail(wire.ErrMalformed, true)
 	}
-	if err = rows.Next(make([]driver.Value, columns)); err != io.EOF || rows.more {
+	err = rows.Next(make([]driver.Value, columns))
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if err != io.EOF || rows.more {
 		c.discard()
 		return nil, rows.fail(wire.ErrMalformed, true)
 	}

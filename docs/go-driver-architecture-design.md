@@ -1266,6 +1266,8 @@ func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
 - CurrentSchema 在 Oracle 兼容模式查询 SYS_CONTEXT 当前 schema，在 MySQL 兼容模式查询当前数据库；没有选定数据库时返回空字符串。SetSchema 接受确切名称，不自动大小写折叠：Oracle 标识符双引号转义，MySQL 使用 COM_INIT_DB；名称按连接字符集编码，不拼接为多条 SQL。catalog 只适用于 MySQL 兼容模式，Oracle 明确返回 ErrUnsupported。
 - ClientInfo 是 ApplicationName、ClientUser、ClientHostname 三个 string 字段，映射同名会话用户变量；SetClientInfo 一次替换全部字段，空字段发送 NULL，读取 NULL 转为空字符串。变量值复用当前模式和 NO_BACKSLASH_ESCAPES 状态的字符串转义与严格 SQL 编码，不写入全局变量。
 - SessionVariable 只接受 ASCII 系统变量标识符，保留 SQL NULL；SetSessionVariable 的值是字符串，实际变量可写性/值域由服务端校验。time_zone、ncharacter_set_connection、character_set_*、collation_* 由 Config.Session 管理，运行时 setter 拒绝修改，防止解码配置与服务端状态不一致。两模式实际 SQL 支持仍需联调。
+- 读取辅助函数只在完整的一行响应结束后发布值，失败返回零值。首行前或首行后的完整服务端 ERR 保留原 Error，沿用 Rows 状态机的连接复用规则；不因标量形状检查额外关闭连接。空结果、额外行/结果和畸形响应仍拒绝并淘汰，网络及取消错误的淘汰由共享 Rows 路径处理。[TestSessionReadResponseBoundary](../session_ops_failure_test.go) 覆盖读取入口、两模式及三种包流的84个本地错误/形状场景，不代替真实 SQL 行为验收。
+- 批量改写的安全变量探测复用同一读取路径；完整服务端错误允许既有安全回退，已确认执行的前缀不得重放。[TestBatchRewriteGuardRowError](../batch_rewrite_test.go) 覆盖三种包流下初始探测及分块后的探测、首行前/后 ERR，共12个场景，检查逐项结果及原会话复用。
 - setter 只在无托管/服务端事务且 autocommit 开启时执行。发送修改前标记物理会话不可归还原池，成功或完整服务端错误后仍可在原 pinned 连接继续使用，关闭 sql.Conn 后淘汰；校验失败不标记。所有 setter 在发送前清理自动预处理缓存及类型描述缓存，覆盖 sql_mode 等解析语义变更；调用方显式持有的 sql.Stmt 仍遵循服务端原生绑定语义。此策略以重建连接代替不完整的变量恢复，不更改其他普通 SQL 的既有 reset 契约。
 - WarningSummary{Count uint16, Known bool} 保存协议 OK/EOF 数量；Known=false 表示尚无完整响应提供计数。Warnings 只读取最新普通 SQL 命令的最近完整结果快照，新的 SQL 清空并替换它，Ping/本节 helper/内部清理不覆盖；归还池后 reset 清空。Execute 的每项 ResultInfo.Warnings 独立保存各完整结果的数量，未完成结果保持未知。成功带 warning 仍是成功，nil logger 不影响快照。
 - 本节数量快照不编造警告码、SQLSTATE 或消息；详情/清除见 §16.3.3，ChangeUser 见 §16.3.2，显式取消见 §16.3.4。各子项与平台认证/传输的完成状态分别记录。
