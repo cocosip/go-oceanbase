@@ -93,6 +93,46 @@ func optimizedConfig(cfg *oceanbase.Config) {
 func fullResetConfig(cfg *oceanbase.Config)    { cfg.ResetMode = oceanbase.ResetFull }
 func multiResultsConfig(cfg *oceanbase.Config) { cfg.AllowMultiStatements = true }
 
+func duplicateKey(err error, mode oceanbase.Mode) bool {
+	if group, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := group.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !duplicateKey(cause, mode) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return duplicateKey(wrapped.Unwrap(), mode)
+	}
+	code := uint32(1062)
+	if mode == oceanbase.ModeOracle {
+		code = 1
+	}
+	server, ok := err.(*oceanbase.Error)
+	return ok && server != nil && server.Code == code
+}
+
+func checkBatchDuplicate(result oceanbase.BatchResult, err error, mode oceanbase.Mode, keepGoing bool) error {
+	completed, last := 1, oceanbase.BatchNotExecuted
+	if keepGoing {
+		completed, last = 2, oceanbase.BatchSucceeded
+	}
+	var batch *oceanbase.BatchError
+	if !errors.As(err, &batch) || batch == nil || batch.Index != 1 || batch.Completed != completed || len(result.Items) != 3 {
+		return checkFailure("batch duplicate key attribution mismatch")
+	}
+	items := result.Items
+	if !duplicateKey(err, mode) || !duplicateKey(items[1].Err, mode) {
+		return checkFailure("batch duplicate key error code mismatch")
+	}
+	return expect(items[0].Status == oceanbase.BatchSucceeded && items[0].Err == nil && items[1].Status == oceanbase.BatchFailed && items[2].Status == last && items[2].Err == nil, "batch stop/continue status mismatch")
+}
+
 func closeInto(c io.Closer, result *error) { *result = errors.Join(*result, c.Close()) }
 
 func rollbackInto(tx *sql.Tx, result *error) {

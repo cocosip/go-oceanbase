@@ -89,6 +89,9 @@ func testBatchDatabase(t *testing.T, p profile, db *sql.DB, rewrite bool) {
 			if !errors.As(err, &be) || be.Index != 1 || len(r.Items) != 3 || r.Items[0].Status != oceanbase.BatchSucceeded || r.Items[1].Status != oceanbase.BatchFailed {
 				t.Fatal("batch results differ from sequential contract")
 			}
+			if !duplicateKey(err, p.mode) || !duplicateKey(r.Items[1].Err, p.mode) {
+				t.Fatal("batch duplicate key error code mismatch")
+			}
 			want := 1
 			if keepGoing {
 				want = 2
@@ -176,7 +179,7 @@ func testBatchArrayBindingProfile(t *testing.T, p profile) {
 	}
 	var batch *oceanbase.BatchError
 	var server *oceanbase.Error
-	if r.Strategy != want || !errors.As(err, &batch) || batch.Index != 1 || batch.Completed != 2 || !errors.As(err, &server) || server.Code == 0 {
+	if r.Strategy != want || !errors.As(err, &batch) || batch.Index != 1 || batch.Completed != 2 || len(r.Items) != 3 || !errors.As(err, &server) || !duplicateKey(err, p.mode) || !duplicateKey(r.Items[1].Err, p.mode) {
 		t.Fatal("array binding strategy or error attribution differs")
 	}
 	if r.Items[0].Status != oceanbase.BatchSucceeded || r.Items[1].Status != oceanbase.BatchFailed || r.Items[2].Status != oceanbase.BatchSucceeded {

@@ -37,11 +37,10 @@ func runBatchArray(ctx context.Context, s *scenario) (err error) {
 	defer rollbackInto(tx, &err)
 	r, e := oceanbase.ExecBatch(ctx, tx, "INSERT INTO "+table+" VALUES (?,?)", [][]any{{1, seedOne}, {1, "duplicate"}, {2, seedTwo}}, oceanbase.BatchOptions{Strategy: oceanbase.BatchArrayBinding, ContinueOnError: true, ChunkRows: 3})
 	s.observe("effective_strategy", strategyName(r.Strategy))
-	var batchErr *oceanbase.BatchError
-	if r.Strategy != oceanbase.BatchArrayBinding || !errors.As(e, &batchErr) || batchErr.Index != 1 || len(r.Items) != 3 {
-		return checkFailure("native array binding strategy or error attribution mismatch")
+	if r.Strategy != oceanbase.BatchArrayBinding {
+		return checkFailure("native array binding strategy mismatch")
 	}
-	if err = expect(r.Items[0].Status == oceanbase.BatchSucceeded && r.Items[1].Status == oceanbase.BatchFailed && r.Items[2].Status == oceanbase.BatchSucceeded, "native array binding input statuses mismatch"); err != nil {
+	if err = checkBatchDuplicate(r, e, s.mode, true); err != nil {
 		return err
 	}
 	var count int
@@ -77,8 +76,8 @@ func runOptimized(ctx context.Context, s *scenario) error {
 			return e
 		}
 	}
-	if _, err = s.db.ExecContext(ctx, "INSERT INTO "+table+" VALUES (?,?)", 0, "duplicate"); err == nil {
-		return checkFailure("optimized execution lost duplicate error")
+	if _, err = s.db.ExecContext(ctx, "INSERT INTO "+table+" VALUES (?,?)", 0, "duplicate"); !duplicateKey(err, s.mode) {
+		return checkFailure("optimized execution duplicate key error code mismatch")
 	}
 	for i, value := range values {
 		var got sql.NullString

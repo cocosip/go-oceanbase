@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"testing"
@@ -88,6 +89,54 @@ func failOperation(t *testing.T, operation string, err error) {
 		t.Fatalf("%s failed: server code=%d SQLSTATE=%s", operation, server.Code, server.SQLState)
 	}
 	t.Fatalf("%s failed: %T", operation, err)
+}
+
+func duplicateKey(err error, mode oceanbase.Mode) bool {
+	if group, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := group.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !duplicateKey(cause, mode) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return duplicateKey(wrapped.Unwrap(), mode)
+	}
+	code := uint32(1062)
+	if mode == oceanbase.ModeOracle {
+		code = 1
+	}
+	server, ok := err.(*oceanbase.Error)
+	return ok && server != nil && server.Code == code
+}
+
+func TestDuplicateKeyErrors(t *testing.T) {
+	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+		for _, code := range []uint32{0, 1, 1062, 1064, 1031, 942} {
+			want := mode == oceanbase.ModeMySQL && code == 1062 || mode == oceanbase.ModeOracle && code == 1
+			server := &oceanbase.Error{Code: code}
+			for _, err := range []error{server, fmt.Errorf("wrapped: %w", server), &oceanbase.BatchError{Index: 1, Err: server}, errors.Join(server, server)} {
+				if duplicateKey(err, mode) != want {
+					t.Errorf("mode=%d code=%d: duplicate classification mismatch", mode, code)
+				}
+			}
+		}
+		for _, err := range []error{nil, context.Canceled, context.DeadlineExceeded, (*oceanbase.Error)(nil)} {
+			if duplicateKey(err, mode) {
+				t.Errorf("mode=%d: non-server error accepted as duplicate", mode)
+			}
+		}
+		for _, code := range []uint32{1, 1062} {
+			if duplicateKey(errors.Join(&oceanbase.Error{Code: code}, context.DeadlineExceeded), mode) {
+				t.Error("joined unrelated failure accepted as duplicate")
+			}
+		}
+	}
 }
 
 func TestProfiles(t *testing.T) {

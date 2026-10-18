@@ -93,7 +93,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | 场景 | 自动准备及断言 |
 | --- | --- |
 | `connect` | 认证、会话初始化、Ping、OceanBase 版本非空 |
-| `crud` | 建表、插入/更新/读取/删除、受影响行数、重复键结构化错误、错误后继续使用 |
+| `crud` | 建表、插入/更新/读取/删除、受影响行数、模式对应的重复键错误码、错误后继续使用 |
 | `counts-matched`、`counts-changed` | 自动建整数表，分别固定 MatchedRows/ChangedRows；普通 Exec、Execute 完成摘要和单项逐次批量入口均检查 INSERT、无变化/有变化/无匹配 UPDATE、DELETE/空 DELETE 的已知计数，MySQL 另检查 upsert 的插入/无变化/有变化三条分支；最后确认无残留行并清理表。ChangedRows 场景仅适用 MySQL，Oracle 使用原生匹配行数；每个入口重新准备数据，不比较不同数据库的计数差异 |
 | `prepare-server`、`prepare-client` | 分别使用服务端和客户端预处理，多次复用、Unicode/引号/反斜杠/NULL、Oracle 重复命名参数 |
 | `scalars` | 精确 NUMBER/DECIMAL、Unicode、RAW/二进制、闰日、微秒时间、NULL，文本与参数化查询；完整比较日期及时间值（允许等价的尾随零，拒绝额外非零纳秒、超九位小数及尾随内容）。此场景显式使用 server prepare、关闭 ParseTime，按配置 location 构造输入墙上时间 |
@@ -103,9 +103,9 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `metadata` | 自建表的表/列/主键字典内容：catalog/schema/表身份、列名/顺序/类型/长度/精度/NULL、主键列；两列 ColumnTypes 名称/类型，以及缺行/多行拒绝 |
 | `metadata-parameters` | 自建表和单行数据，描述带位置参数的 UPDATE、Oracle 重复命名参数 UPDATE 及无参数 SELECT；固定11列、物理/逻辑位置、规范化名称和未知方向、模式对应的 nullable、描述尺寸及原始协议字节。未知类型/尺寸保持未知，不要求参数描述等于业务列定义；每次描述后读取原值，最后确认仅有种子行并清理表。Metadata 始终采用服务端 prepare，即使目标选择客户端预处理 |
 | `execution` | Execute、读取结果、提前 Close、完成摘要、原会话继续 Ping |
-| `batch` | 五种优选策略的重复键定位、stop/continue、事务回滚；报告 `observations` 保留实际策略，回退不等于原生能力通过 |
+| `batch` | 五种优选策略的重复键定位、汇总/对应输入的错误码、完成数、stop/continue 状态及事务回滚；报告 `observations` 保留实际策略，回退不等于原生能力通过 |
 | `batch-rewrite` | MySQL 专用，显式开启多语句并设置批量协商变量，要求实际策略为 Rewrite |
-| `batch-array` | Oracle 专用，要求实际原生 array binding、逐项重复键状态及事务回滚；要求 OceanBase ≥ 4.2.1，不能以顺序回退算成功 |
+| `batch-array` | Oracle 专用，要求实际原生 array binding、汇总/对应输入的重复键错误码、完成数、逐项状态及事务回滚；要求 OceanBase ≥ 4.2.1，不能以顺序回退算成功 |
 | `optimized-execution` | 显式 prepare-execute/statement cache/参数类型复用/checksum 配置，参数类型变化、NULL、重复键与读取结果；服务器内部是否采用具体优化仍取决于协商 |
 | `reset-full` | 开启 Full Reset，标准 sql.Stmt 多轮借还后仍正确执行 |
 | `multi-results` | MySQL 专用，显式允许多语句，两个结果集顺序/值/边界及原会话复用 |
@@ -160,6 +160,10 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 [TestRowsAffectedWorkflows](../cmd/obtest/counts_test.go) 提供51个离线流程，使用标准库内存连接与独立字节协议夹具，通过真实公开驱动执行计数场景，检查 CLIENT_FOUND_ROWS、三种入口、异常计数/零、超 int64 计数、服务端错误及失败后的自建表清理。Execute 计数溢出导致原会话淘汰时，夹具还检查新连接初始化后只清理已登记表。SQL 均无参数，批量为单项 Sequential，用于隔离计数契约；不代表多项批量、参数绑定或服务端 SQL 语义已验收。
 
 [TestParameterMetadataWorkflow](../cmd/obtest/parameter_metadata_test.go) 提供53个离线流程，检查元数据请求的原始 Query/Kind、完整列和参数身份、已报告或未知描述、原始方向字节、Oracle 重复名称，以及错位/缺行/多行、非法 nullable/尺寸/协议范围、读取/关闭失败和种子被修改时的失败传播；已打开结果均关闭，失败后仍清理自建表。该夹具替代公开 Metadata 的返回结果，验证工具编排和断言；服务端 prepare、临时 statement 关闭及 PrepareClient 下仍服务端描述由既有[驱动协议测试](../metadata_test.go)覆盖，不把这些离线证据当作真实参数推断或 SQL 行为验收。
+
+[TestDuplicateKeyWorkflows / TestBatchDuplicateAssertions](../cmd/obtest/duplicate_test.go) 分别提供56个完整工具流程和80个批量结果校验场景。CRUD/优化执行检查正确、包装或同类合并的重复键错误、错误模式/语法/权限/缺表/数据超长/零码、意外成功、传输和取消错误，并检查自建表清理；批量校验汇总与对应输入的错误码、错误位置、完成数和 stop/continue 状态，不能由汇总错误掩盖不同的输入错误。遍历合并错误的全部分支，重复键伴随清理/传输等其他错误时仍判失败；回归先复现误判，再修复通过。工作流使用替代的 SQL 驱动，批量测试直接提供结果；不证明优化或原生 array binding 协议和真实 SQL 已验收。对应[集成执行策略](../tests/integration/execute_strategies_test.go)和[集成批量](../tests/integration/batch_test.go)同步加强断言；[集成辅助分类回归](../tests/integration/env_test.go)不连接数据库，其余数据库流程仅编译。
+
+自建主键的重复键错误码按固定 OceanBase [OB_ERR_PRIMARY_KEY_DUPLICATE 定义](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L695)判断：MySQL 模式的 [ER_DUP_ENTRY 为1062](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L79)，Oracle 模式为1；不依赖消息文字或从 SQLSTATE 推断。原生 array binding 的诊断可能没有 SQLSTATE，因此只要求其真实错误码与输入归属。
 
 错误码按固定 OceanBase 源码核对：[未处理的 SIGNAL](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L1183)映射到[ER_SIGNAL_EXCEPTION 1644](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L661)；[Oracle 错误码转换](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.cpp#L27832)保留应用异常号码，并将负值转换为协议正值，所以自建 `RAISE_APPLICATION_ERROR(-20001,...)` 应为20001。源码和离线夹具不替代实际版本/代理的联调证据。
 

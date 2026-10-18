@@ -65,8 +65,8 @@ func testExecuteStrategy(t *testing.T, p profile, optimized bool) {
 			t.Fatal("strategy affected rows", n, err)
 		}
 	}
-	if _, err = db.ExecContext(ctx, insert, 0, "duplicate"); err == nil {
-		t.Fatal("strategy lost duplicate error")
+	if _, err = db.ExecContext(ctx, insert, 0, "duplicate"); !duplicateKey(err, p.mode) {
+		t.Fatal("strategy duplicate key error code mismatch")
 	}
 	for i, want := range []sql.NullString{{String: "中🙂", Valid: true}, {}, {String: "strategy-updated", Valid: true}} {
 		var got sql.NullString

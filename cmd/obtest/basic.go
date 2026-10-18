@@ -44,9 +44,8 @@ func runCRUD(ctx context.Context, s *scenario) error {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, "INSERT INTO "+table+" VALUES (1,'duplicate')")
-	var server *oceanbase.Error
-	if !errors.As(err, &server) || server.Code == 0 {
-		return checkFailure("duplicate key did not return a structured server error")
+	if !duplicateKey(err, s.mode) {
+		return checkFailure("duplicate key did not return the expected server error code")
 	}
 	if err = countRows(ctx, s.db, table, 1); err != nil {
 		return err
@@ -290,16 +289,12 @@ func runBatch(ctx context.Context, s *scenario) (err error) {
 		for _, keepGoing := range []bool{false, true} {
 			r, e := oceanbase.ExecBatch(ctx, s.db, "INSERT INTO "+table+" VALUES (?,?)", [][]any{{1, seedOne}, {1, "duplicate"}, {2, unicodeValue}}, oceanbase.BatchOptions{Strategy: strategy, ContinueOnError: keepGoing, ChunkRows: 2, ChunkParameters: 4})
 			s.observe(fmt.Sprintf("preferred_%s_continue_%t", strategyName(strategy), keepGoing), strategyName(r.Strategy))
-			var batchErr *oceanbase.BatchError
-			if !errors.As(e, &batchErr) || batchErr.Index != 1 || len(r.Items) != 3 {
-				return checkFailure("batch did not attribute duplicate key to input 1")
-			}
-			last, want := oceanbase.BatchNotExecuted, 1
-			if keepGoing {
-				last, want = oceanbase.BatchSucceeded, 2
-			}
-			if err = expect(r.Items[0].Status == oceanbase.BatchSucceeded && r.Items[1].Status == oceanbase.BatchFailed && r.Items[2].Status == last, "batch stop/continue status mismatch"); err != nil {
+			if err = checkBatchDuplicate(r, e, s.mode, keepGoing); err != nil {
 				return err
+			}
+			want := 1
+			if keepGoing {
+				want = 2
 			}
 			if err = countRows(ctx, s.db, table, want); err != nil {
 				return err

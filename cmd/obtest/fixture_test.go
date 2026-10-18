@@ -220,7 +220,7 @@ func TestCRUDOfflineWorkflow(t *testing.T) {
 			if valid {
 				steps[3].values[0][0] = "updated"
 				steps = append(steps,
-					fixtureStep{query: "INSERT INTO OBT_OFFLINE_T VALUES (1,'duplicate')", err: &oceanbase.Error{Code: 1062, Message: "private"}},
+					fixtureStep{query: "INSERT INTO OBT_OFFLINE_T VALUES (1,'duplicate')", err: &oceanbase.Error{Code: 1, Message: "private"}},
 					fixtureStep{query: "SELECT COUNT(*) FROM OBT_OFFLINE_T", values: [][]driver.Value{{int64(1)}}},
 					fixtureStep{query: "DELETE FROM OBT_OFFLINE_T WHERE ID=1", affected: 1},
 					fixtureStep{query: "SELECT V FROM OBT_OFFLINE_T WHERE ID=1"})
