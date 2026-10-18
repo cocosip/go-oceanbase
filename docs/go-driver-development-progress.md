@@ -844,6 +844,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增 [TestSessionReadResponseBoundary](../session_ops_failure_test.go)，覆盖 schema/catalog、client info、会话变量，两模式和三种包流共84个错误/形状场景；新增 [TestBatchRewriteGuardRowError](../batch_rewrite_test.go)，以12个场景确认初始探测错误安全回退，分块后错误只执行剩余输入，逐项确认结果且不重放已完成前缀。旧实现已复现会话读取失败；本轮临时编译覆盖旧实现时12个批量场景全部失败，修复后通过。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译通过；两版本普通及 integration 标签的 golangci-lint 均0 issues。独立工具已重新构建，38项列表及示例配置离线检查通过，未连接数据库。实现28/32、验收0/32保持；缺少的数据库及平台验证继续单列，不阻塞本地开发。
 
+#### D31 XA 提交的客户端取消边界
+
+- 新增 [TestXACommitContextBoundary](../xa_context_test.go)：通过公开 XACommit、固定 sql.Conn 和本地协议对端，覆盖两模式 × 标准/压缩/OB20 × 调用前已取消/完整发送后取消/等待响应期限，共18个场景。调用前已取消时保留可用会话且不归未知结果；发送后保留 ErrXA、ErrXAOutcomeUnknown、ErrCommitUnknown 及 context 原因，并在任何测试清理前确认底层 EOF/ErrClosedPipe，检查无额外命令或重拨；未据此覆盖驱动内部所有发送前取消位置。
+- 临时编译覆盖移除未知结果分类时，六个发送后取消场景均按预期失败；另移除底层 Close 时，MySQL 标准包流场景明确检出传输未关闭。生产源码没有修改，不将既有正确行为写成新修复。
+- Go1.25 的 FuzzComplex、FuzzHandshake、FuzzAuthPlugins 各30秒通过；该有限本地探索不代表全部输入、平台或认证服务已验证。没有连接数据库，不推断 XA 实际提交/回滚结果，任务计数保持28/32实现、0/32验收。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。测试重复字符串已局部提取常量；只读复核无确认问题，不保存独立走查记录。文档链接、配置/任务计数及 diff 检查通过。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

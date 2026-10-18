@@ -1241,6 +1241,8 @@ TestExecutionColumn* 覆盖两模式文本/二进制、GBK、合并执行、多�
 
 `xa_test.go` 覆盖两模式、标准/压缩/OB20、1PC/2PC、挂起/恢复、阶段与 flags、rollback-only、原生 XID/OUT、返回码、恢复数据/边界及部分写/丢确认/尾部失败。`TestXATransactions` 和 `TestXARecoveryAfterDisconnect` 已加入四目标手动 CI，验证 DML 可见性及准备后关闭、新物理连接恢复；当前只编译，未连接数据库。示例在 `examples/xa/`，明确不包含持久协调器。D30 的 D28 平台依赖未闭环，D31 本地实现与整体依赖闭环分别记录。
 
+[TestXACommitContextBoundary](../xa_context_test.go) 补充两模式、三种包流下的18个本地场景：调用前已取消的 context 不归未知结果且原会话可用；完整接收提交命令后取消或等待客户端期限，保留 context 原因及双重未知结果分类、确认原传输关闭、禁止额外命令和重拨。测试在清理连接前检查真实 EOF/关闭，不用后续清理代替淘汰证据；不证明真实服务端是否提交或取消了分支，也未覆盖已进入驱动但尚未写出的每个取消位置。
+
 ### 16.3 其他会话功能
 
 schema/catalog、用户切换、客户端信息、warning、会话变量及版本能力通过固定 sql.Conn 上的函数承载。ChangeUser 必须重新认证、重建基线并使所有旧 statement/locator/cursor 失效；不在普通池连接上隐式切用户。显式 ChangeUser 后将该物理连接标记为不可归还原池，调用方关闭 sql.Conn 时淘汰它，防止另一个调用方取得错误身份的会话。
