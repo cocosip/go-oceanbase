@@ -1,5 +1,7 @@
 # Go 驱动本地性能基准
 
+当前最低 Go 版本为1.26；以下历史样本保留采集时的 Go1.25/1.26 版本及原始指标，Go1.25 不再属于当前支持范围。复现命令使用 Go1.26。
+
 ## 1. 范围与读数
 
 `BenchmarkDriver` 在单个物理连接上，通过进程内 `net.Pipe` 协议对端运行两种 OceanBase 兼容模式，共18个场景（基础16项，另含 MySQL 批量改写和 Oracle 原生数组绑定）。入口见 [driver_benchmark_test.go](../driver_benchmark_test.go)。没有连接数据库，不执行真实 SQL，也不包含网络往返或服务端执行、存储和锁开销。
@@ -28,13 +30,11 @@ LOB 两模式后端不同，不能把其差值解释为模式性能优劣；当�
 ## 3. 重现与正确性检查
 
 ```sh
-GOTOOLCHAIN=go1.25.0 go test . -run '^TestDriverBenchmarkFixtures$' -count=30
-GOTOOLCHAIN=go1.25.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -benchtime=100x -count=3
 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverBenchmarkFixtures$' -count=30
 GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -benchtime=100x -count=3
 ```
 
-以上为 POSIX shell 写法；PowerShell 先设置 `$env:GOTOOLCHAIN='go1.25.0'` 或 `'go1.26.0'`，再执行对应 go 命令。无需 DSN、凭据或数据库。普通 `go test ./...` 也会运行相同夹具的预热及每项两轮操作，CI 默认检查返回值和清理；普通 push 不默认采集性能结果，PR/手动 CI 则执行独立基准任务并保存 artifact。
+以上为 POSIX shell 写法；PowerShell 先设置 `$env:GOTOOLCHAIN='go1.26.0'`，再执行对应 go 命令。无需 DSN、凭据或数据库。普通 `go test ./...` 也会运行相同夹具的预热及每项两轮操作，CI 默认检查返回值和清理；普通 push 不默认采集性能结果，PR/手动 CI 则执行独立基准任务并保存 artifact。
 
 每个夹具从建连起有2分钟总预算；对端保留到 DB.Close 完成，再关闭传输并等待 goroutine 退出，最后取消 context。testing.TB.Context 在 Cleanup 前取消，因此夹具使用 WithoutCancel 后自行施加预算。长时间 benchtime 必须与该预算匹配；独立资源检查见 §6，不能直接延长这个单连接短基准并宣称完成验收。
 
@@ -103,11 +103,10 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -b
 `TestDriverResourceStability` 复用以上18场景，在固定8轮中反复创建、使用并关闭会话。每个场景每轮先预热一次，再执行 N 次；默认 N=2，普通单测和 CI 都运行。通过 `OB_TEST_STABILITY_ITERATIONS` 指定1–10000的 N 可增加负载，不改变样本/测试树大小，也不访问 DSN 或真实数据库。每个场景仍有独立2分钟预算，整个命令需设置足够的 timeout。
 
 ```sh
-OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.25.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
 ```
 
-PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOLCHAIN`，再执行 go 命令。手动 CI 的 `stability` 输入可单独开启两版本、Linux/Windows 的同一检查，不依赖 integration 输入或数据库 secrets；远程任务未运行不计通过。
+PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOLCHAIN`，再执行 go 命令。手动 CI 的 `stability` 输入可单独开启 Go1.26、Linux/Windows 的同一检查，不依赖 integration 输入或数据库 secrets；远程任务未运行不计通过。
 
 每个场景完整执行 Cleanup 后才进入下一个场景；每轮结束主动 GC，记录 `resource_sample` 的 elapsed_ms、HeapAlloc、HeapObjects 和 NumGoroutine。样本0为空载基线；共9个采样点。资源所有权、缓存容量及池关闭是硬断言；堆和 goroutine 为进程级观测，含 testing 的固定测试树、输出、运行时缓存及对端开销，不设置任意阈值，也不能据此断言无泄漏。此运行覆盖反复建连和基础串行路径，尚未覆盖同一长寿命会话、全部扩展/错误/并发/包流组合。net.Pipe 不提供真实 OS socket/文件句柄曲线，数据库负载和生产长期运行继续待验收。
 
@@ -184,7 +183,6 @@ PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOL
 默认每组合8轮，普通单测和自动 CI 都执行。`OB_TEST_STABILITY_ITERATIONS` 指定每组合的总轮数（1–10000），与 §6 的每场景每采样轮迭代数含义不同；4096时共24576轮混合循环。每组合有2分钟总预算；若负载或慢机器超过预算应降低迭代数，不能把超时视为性能验收。
 
 ```sh
-OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.25.0 go test . -run '^TestDriverSessionStability$' -count=1 -v -timeout 10m
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverSessionStability$' -count=1 -v -timeout 10m
 ```
 
@@ -224,7 +222,6 @@ PowerShell 的环境变量写法见 §6。手动 `stability` CI 先以4096次迭
 默认每连接8轮，每组合24轮；`OB_TEST_STABILITY_ITERATIONS` 指定每连接轮数（1–10000）。按最多8段分批运行，保留至多9个 GC 后进程采样点，记录已完成的每连接轮数、连接数、耗时、堆/对象、goroutine 和拨号次数；采样时工作 goroutine 已全部退出，三条租约仍固定。每组合总预算2分钟；手动 CI 使用每连接1024轮，避免三倍负载直接沿用单连接的4096轮预算。
 
 ```sh
-OB_TEST_STABILITY_ITERATIONS=1024 GOTOOLCHAIN=go1.25.0 go test . -run '^TestDriverConcurrentSessionStability$' -count=1 -v -timeout 5m
 OB_TEST_STABILITY_ITERATIONS=1024 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverConcurrentSessionStability$' -count=1 -v -timeout 5m
 ```
 

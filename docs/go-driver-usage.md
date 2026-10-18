@@ -1,6 +1,6 @@
 # OceanBase Go 驱动使用指南
 
-本文描述当前公开 API 的用法。实现状态见[开发进度](go-driver-development-progress.md)，目标限制见[兼容矩阵](go-driver-compatibility-matrix.md)。Go 最低版本为 1.25，同时验证 1.26；本阶段暂不连接真实数据库，下列联网示例只有编译证据。
+本文描述当前公开 API 的用法。实现状态见[开发进度](go-driver-development-progress.md)，目标限制见[兼容矩阵](go-driver-compatibility-matrix.md)。Go 最低版本为 1.26；本阶段暂不连接真实数据库，下列联网示例只有编译证据。
 
 ## 1. 建连、兼容模式与日志
 
@@ -77,7 +77,7 @@ TCP 源接口、keep-alive、缓冲和 NODELAY 使用标准 `net.Dialer` / `net.
 
 初始 MySQL 数据库需要由连接显式创建时，设置 `Config.CreateDatabaseIfMissing=true` 或 DSN `createDatabaseIfMissing=true`，并指定非空 Database。默认关闭，Oracle 拒绝。驱动认证后在同一连接执行 IF NOT EXISTS 并选库，随后才运行 InitSQL；需账户具备相应权限，初始化失败也可能已经留下数据库，不会自动删除或重试建库。池替换连接会再次创建/选择；ChangeUser 和取消查询辅助连接不执行创建。详见[架构 §6.4](go-driver-architecture-design.md#64-d32-已实现的初始数据库创建)。
 
-SOCKS5 使用现有 `Config.DialContext`，应用通过 `golang.org/x/net/proxy.SOCKS5` 创建显式代理，再取 `proxy.ContextDialer.DialContext`，见[可编译示例](../socks_example_test.go)。代理地址明确写端口（例如1080）；不要丢弃驱动传入的候选 address，也不要改用无 context 的 Dial。示例不读取 ALL_PROXY/NO_PROXY，失败不绕过代理；目标域名由代理解析。可选 `proxy.Auth` 只用于代理，不能复用数据库 Credentials/ProxyUser；其协商不提供加密，数据库 TLS 仍独立验证目标入口。默认驱动仍直连，无 Java 同名 DSN 开关；完整边界及 Go1.25 依赖约束见[架构 §9.0.3](go-driver-architecture-design.md#903-d32-socks5-代理的-go-承载)。
+SOCKS5 使用现有 `Config.DialContext`，应用通过 `golang.org/x/net/proxy.SOCKS5` 创建显式代理，再取 `proxy.ContextDialer.DialContext`，见[可编译示例](../socks_example_test.go)。代理地址明确写端口（例如1080）；不要丢弃驱动传入的候选 address，也不要改用无 context 的 Dial。示例不读取 ALL_PROXY/NO_PROXY，失败不绕过代理；目标域名由代理解析。可选 `proxy.Auth` 只用于代理，不能复用数据库 Credentials/ProxyUser；其协商不提供加密，数据库 TLS 仍独立验证目标入口。默认驱动仍直连，无 Java 同名 DSN 开关；完整边界及 Go1.26 依赖基线见[架构 §9.0.3](go-driver-architecture-design.md#903-d32-socks5-代理的-go-承载)。
 
 目标不提供初始化版本查询时，可显式设置 `Session.SkipVersionProbe = true` 或 DSN `skipVersionProbe=true`；默认仍探测版本，失败不会自动跳过。该选项只省略初始化 `ob_version()`，保留认证、实际兼容模式和必要基线；不会隐含启用 SOCKS 或其他代理。未知版本下普通 SQL/事务和标准预处理可继续使用，Oracle OUT、敏感游标、原生长参数及 XA 等版本受限能力会拒绝，优化路径保守回退。显式业务查询不受抑制，部署前需评估限制，见[架构 §9.0.4](go-driver-architecture-design.md#904-d32-显式跳过版本探测)。
 

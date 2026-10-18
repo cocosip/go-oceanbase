@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -74,7 +74,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -82,7 +82,7 @@ jobs:
           go-version: ${{ matrix.go }}
           cache: true
       - name: Check formatting and module files
-        if: runner.os == 'Linux' && matrix.go == '1.25.x'
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           files=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
@@ -92,7 +92,7 @@ jobs:
           fi
           go mod tidy -diff
       - name: Check GitHub Actions workflows
-        if: runner.os == 'Linux' && matrix.go == '1.25.x'
+        if: runner.os == 'Linux'
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
       - uses: golangci/golangci-lint-action@v9
         with:
@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -135,7 +135,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -155,7 +155,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
         group: [framing-auth, prepared-values, sql-bind, resources-routing]
         include:
           - group: framing-auth
@@ -211,7 +211,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -237,7 +237,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -260,7 +260,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.x', '1.26.x']
+        go: ['1.26.x']
         profile: [mysql, oracle, proxy-mysql, proxy-oracle]
     env:
       OB_TEST_REQUIRE: '1'

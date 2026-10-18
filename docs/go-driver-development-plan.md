@@ -6,7 +6,7 @@
 
 架构：以 `database/sql` 和标准连接池为入口，一个公共 `oceanbase` 包承载配置、标准接口及必要的扩展；共享协议与会话内核，按实际 Oracle/MySQL 兼容模式处理差异。
 
-技术基线：Go 1.25、1.26；标准库 `database/sql`、`net`、`crypto/tls`、`log/slog`；优先纯 Go。必要的字符集和平台认证依赖由对应任务单独评估。
+技术基线：Go 1.26；标准库 `database/sql`、`net`、`crypto/tls`、`log/slog`；优先纯 Go。必要的字符集和平台认证依赖由对应任务单独评估。
 
 规范：[架构设计](go-driver-architecture-design.md)；功能依据：[Java 结构与功能大纲](obconnector-j-architecture-outline.md)；实时状态：[开发进度](go-driver-development-progress.md)。
 
@@ -25,7 +25,7 @@
 ## 2. 全局约束
 
 - OceanBase 是数据库；Oracle、MySQL 是其兼容模式，模式来自认证响应，配置仅作为期望约束。
-- `go.mod` 使用 `go 1.25.0`，同时验证 Go 1.26；不得使用 Go 1.27 才提供的接口或标准库内部符号。
+- `go.mod` 使用 `go 1.26.0`，验证 Go 1.26；不得使用 Go 1.27 才提供的接口或标准库内部符号。
 - 普通使用保持 `sql.Open` / `sql.OpenDB`、`sql.DB/Conn/Tx/Stmt/Rows`；不增加自有连接池、JDBC 类层次或 ORM。
 - `Logger *slog.Logger` 外部传入，nil 静默；禁止默认/全局 logger 和替代输出。
 - Connector 保存配置快照。不得在已建立会话中换 Socket、换实际模式或透明重放可能已发送的业务操作。
@@ -160,7 +160,7 @@ go test -tags=integration ./tests/integration -count=1
 
 ### 5.3 工具链与故障验证
 
-- D01 建立 `.github/workflows/ci.yml`，分别安装 Go `1.25.x`、`1.26.x`，在 Linux/Windows amd64 执行 `go version`、`go list -deps ./...`、`go test ./...`、`go vet ./...`；不能只改 GOTOOLCHAIN 字符串就声称测试了另一个版本。
+- D01 建立 `.github/workflows/ci.yml`，安装 Go `1.26.x`，在 Linux/Windows amd64 执行 `go version`、`go list -deps ./...`、`go test ./...`、`go vet ./...`；不能只改 GOTOOLCHAIN 字符串就声称测试了另一个版本。
 - Linux/Windows amd64 验证基本能力；支持的系统执行 `go test -race ./...`；386 重点验证协议长度、索引和整数转换。不能运行的目标只记编译证据。
 - 使用仓库现有 `.golangci.yml` 和兼容工具链的 golangci-lint v2，锁定 CI 工具版本，执行 `golangci-lint run`。
 - D02 接入架构依赖边守卫、协议 fuzz 和 386 边界；D04 接入 §5.2 的集成 job，验收运行设置 OB_TEST_REQUIRE=1；D06 接入支持平台的 race。缺少外部凭据的普通 PR 可只运行本地 job，但不得把它当作集成验收；后续任务随能力增加 job/场景，D32 只做汇总和缺口收口。
@@ -695,7 +695,7 @@ D31 本地实现：新增 xa.go / xa_protocol.go，原生 OUT 复用内部调用
 
 文件：完善 `docs/go-driver-options-mapping.md`、`docs/go-driver-compatibility-matrix.md`、`README.md`、`examples/`、`.github/workflows/ci.yml`、`tests/integration/` 和 benchmark。
 
-交付：逐项 Java option 的 Go 配置/标准库替代/平台适配/仅 Java API 用途；两种模式完整验证清单、Go 1.25/1.26 与平台 CI、可运行示例、基准与资源稳定性证据。配置表从 D01 起随功能维护；CI 从 D01 建立，本项扩展和核对完整矩阵，不首次引入。按进度 §5 核对 D01–D31 所有必需条目，不能在收口时缩减目标以换取全绿。
+交付：逐项 Java option 的 Go 配置/标准库替代/平台适配/仅 Java API 用途；两种模式完整验证清单、Go 1.26 与平台 CI、可运行示例、基准与资源稳定性证据。配置表从 D01 起随功能维护；CI 从 D01 建立，本项扩展和核对完整矩阵，不首次引入。按进度 §5 核对 D01–D31 所有必需条目，不能在收口时缩减目标以换取全绿。
 
 - [ ] 从固定 Java 版本 DefaultOptions、注册入口及测试逐项对照：每个选项有归类、拥有任务、实际 Go 字段/替代、默认值差异与测试；只有更名不是功能完成依据。
 - [ ] 执行 §5 的工具链/平台检查、全套 integration、故障用例和目标 fuzz；显式 require 环境，不允许 SKIP 冒充全量通过。
@@ -720,7 +720,7 @@ D32 TLS 配置已核对12个 Java 选项，以 TLSConfig/crypto/tls/crypto/x509 
 
 D32 本地性能子项已补 `BenchmarkDriver` 的两模式 CRUD、预处理、缓存、批量、LOB 和 fetch 基础16场景，另补 MySQL 批量改写和 Oracle 原生数组绑定，共18场景；普通单测共用结果/协议断言。范围、计时、复现命令及双版本短样本见[本地基准](go-driver-benchmarks.md)；对端开销计入统计，真实数据库性能与长期资源曲线仍待验证，D32 整项不勾选完成。
 
-D32 离线资源子项增加 `TestDriverResourceStability`：复用18场景，固定8轮、每场景可配置迭代数；每次完整清理后检查原会话的租约/事务/响应/资源和缓存界限、池与物理关闭，再记录 GC 后的进程堆/goroutine。普通单测采用小负载，手动 `stability` CI 可独立执行两版本/两平台扩展运行。该串行 net.Pipe 证据不代替真实句柄、多连接/错误组合或数据库长期验收，细节见本地基准 §6。
+D32 离线资源子项增加 `TestDriverResourceStability`：复用18场景，固定8轮、每场景可配置迭代数；每次完整清理后检查原会话的租约/事务/响应/资源和缓存界限、池与物理关闭，再记录 GC 后的进程堆/goroutine。普通单测采用小负载，手动 `stability` CI 可独立执行 Go1.26/Linux 与 Windows 两平台扩展运行。该串行 net.Pipe 证据不代替真实句柄、多连接/错误组合或数据库长期验收，细节见本地基准 §6。
 
 D32 同会话资源子项增加 `TestDriverSessionStability`：两模式/三包流各持续使用一条物理连接，混合缓存预处理与类型复用、Rows 提前关闭、标准事务交替提交/回滚，以及可恢复 SQL 错误后的句柄释放/Ping；每轮直接检查原会话和池，不用重借连接的 reset 掩盖残留。默认每组合8轮，手动 `stability` 可扩展并采样进程资源，细节见本地基准 §7；完整并发/故障/高级能力及生产长期稳定性仍待验收。
 
@@ -797,7 +797,7 @@ D05/D22/D24/D32 错误语义补正：独立工具 CRUD、优化执行、普通�
 | M13 池化/复用 | D06、D09、D15、D30 | 标准池压力、reset、句柄清理 |
 | M14 XA | D31 | 两模式 1PC/2PC/flags/恢复 |
 | M15 日志/诊断/OB20/FLT | D01、D23–D25 | nil 静默、脱敏、追踪隔离 |
-| M16 构建/平台/性能 | D01、D28、D32 | 双工具链与各支持平台 |
+| M16 构建/平台/性能 | D01、D28、D32 | Go1.26 与各支持平台 |
 | LOCAL INFILE | D29 | 受控 Reader、失败与事务 |
 | JDBC scroll/updatable | D19 | static/sensitive/更新定位各自验收 |
 | Java OSGi/JMX/序列化/旧类名 | D01、D25、D32 | Go module/DB.Stats/显式值契约映射；不引入 Java 运行时 |

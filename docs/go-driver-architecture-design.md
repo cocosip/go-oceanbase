@@ -9,7 +9,7 @@
 1. 驱动面向 OceanBase，统一承载 Oracle、MySQL 两种兼容模式。
 2. 将 Java 驱动的完整功能纳入 Go 架构，逐项说明承载方式和验证条件。
 3. 遵守 Go 习惯，保持普通业务的 API 简洁，不复刻 JDBC 的类层次。
-4. 最低 Go 版本为 **1.25**，同时支持 **1.26**；本设计不依赖 Go 1.27 新增接口。
+4. 最低 Go 版本为 **1.26**；本设计不依赖 Go 1.27 新增接口。
 5. 日志使用调用方传入的 `*slog.Logger`；不使用全局默认 logger。
 6. 设计文档保存在本仓库 `docs` 目录。
 
@@ -18,7 +18,7 @@
 - [Java 源码结构与功能大纲](obconnector-j-architecture-outline.md)。
 - 实施拆解见 [开发计划](go-driver-development-plan.md)，任务状态与验证证据统一维护在 [开发进度](go-driver-development-progress.md)。
 - Java 源码：[oceanbase/obconnector-j](https://github.com/oceanbase/obconnector-j)，版本 `2.4.14`，提交 `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`。
-- 标准库源码参考版本：Go `1.27.2`。已阅读 `database/sql` 和 `database/sql/driver` 的接口契约；选用的是 Go 1.25 已存在的接口。最终需要用真正的 Go 1.25、1.26 工具链分别编译及测试。
+- 标准库源码参考版本：Go `1.27.2`。已阅读 `database/sql` 和 `database/sql/driver` 的接口契约；选用的是 Go 1.26 已存在的接口。必须用真正的 Go 1.26 工具链编译及测试。
 - Go 历史 API 清单也已核对：`RowsNextResultSet` 自 Go 1.8 提供，`sql.Out` / `NamedValueChecker` 自 Go 1.9 提供，`slog` / `context.AfterFunc` 自 Go 1.21 提供；这些核心机制均不要求 Go 1.26 或 1.27。
 - 以下 API 名称、包划分、默认策略和资源限制是本方案建议；不是已经发布的兼容承诺。
 
@@ -38,7 +38,7 @@
 | 兼容模式 | 从认证响应识别；配置中的模式仅作为期望约束 |
 | 扩展能力 | 标准接口能表达的继续使用标准接口；不能表达的提供小型函数或具体类型 |
 | 类型扩展 | 输入使用 `NamedValueChecker`；普通读取使用 `Scanner` 和标准值 |
-| Go 1.25 适配 | 不依赖 `RowsColumnScanner`、`sql.ConvertAssign`，不使用标准库内部符号或 `go:linkname` |
+| Go 1.26 适配 | 不依赖 `RowsColumnScanner`、`sql.ConvertAssign`，不使用标准库内部符号或 `go:linkname` |
 | 日志 | Connector 实例持有调用方 logger，nil 表示关闭日志 |
 | 重试 | 新建连接可更换候选地址；已发送业务操作不自动重放 |
 | 实现方式 | 优先纯 Go、标准库；字符集及平台认证等确有需要时使用范围明确的依赖 |
@@ -82,7 +82,7 @@ flowchart TD
 
 ```text
 go-oceanbase/
-├── go.mod                         go 1.25
+├── go.mod                         go 1.26
 ├── driver.go / connector.go        注册、配置快照、建连入口
 ├── config.go / dsn.go              Go 配置与连接串
 ├── conn.go / session.go            物理会话、生命周期、操作状态
@@ -298,7 +298,7 @@ Go 保持一个 Config 与严格 URL 入口。历史别名、Properties、Java s
 | rows | 五个 `RowsColumnType*` 接口 | 支持 `Rows.ColumnTypes()`；未知属性返回 `ok=false` |
 | result | `driver.Result` | int64 溢出检查；无可靠生成 ID 时 LastInsertId 返回错误 |
 
-Go 1.25/1.26 不提供 `RowsColumnScanner` 和 `sql.ConvertAssign`，本方案不将自定义 struct 作为普通 `Rows.Next` 的输出。Go 1.27 未来若优化扫描，只作为内部优化，不改变公开值语义。[G03][G05]
+Go 1.26 不提供 `RowsColumnScanner` 和 `sql.ConvertAssign`，本方案不将自定义 struct 作为普通 `Rows.Next` 的输出。Go 1.27 未来若优化扫描，只作为内部优化，不改变公开值语义。[G03][G05]
 
 ## 8. 模式、版本、能力和会话状态
 
@@ -361,7 +361,7 @@ TCP 的七个 Java 配置项通过现有 `Config.DialContext` 与 Go 标准库�
 
 | Java option | Go 承载和默认差异 |
 | --- | --- |
-| tcpNoDelay | `(*net.TCPConn).SetNoDelay(bool)`；Go 1.25/1.26 的内置 TCP 连接默认 true，与 Java 相同 |
+| tcpNoDelay | `(*net.TCPConn).SetNoDelay(bool)`；Go 1.26 的内置 TCP 连接默认 true，与 Java 相同 |
 | tcpAbortiveClose | `SetLinger(0)` 显式开启，`SetLinger(-1)` 保持正常后台发送/关闭；默认不强制 RST，与 Java false 对应 |
 | localSocketAddress | `net.Dialer.LocalAddr = &net.TCPAddr{IP: localIP}`，端口0由系统分配；这是 TCP 源接口绑定，不是 Unix socket 地址 |
 | tcpKeepAlive | `net.Dialer.KeepAliveConfig`；禁用可用 KeepAlive=-1 且 KeepAliveConfig.Enable=false。Go 默认尝试启用，idle/interval 各15秒、count9；Java 默认 true，但没有在此项固定相同探测参数 |
@@ -374,7 +374,7 @@ TCP 的七个 Java 配置项通过现有 `Config.DialContext` 与 Go 标准库�
 
 这些策略只通过程序化 Config 注入，七个同名 Java DSN 参数继续明确拒绝，不静默透传。TCP 专用示例对 unix/pipe 返回 ErrUnsupported，不回退 TCP；原有 IPC 实现保持独立。TestTCPDialContext* 在本地原生 TCP 对端验证源地址、选中入口、单次工厂调用、握手/初始化/Ping/QUIT、明文认证拒绝、取消及显式 abortive close；ExampleConfig_tcpOptions 本身不联网。实际远端接口、OS 缓冲/探测行为与数据库部署仍待验证。
 
-固定 Java 依据：DefaultOptions 的 tcpNoDelay/tcpAbortiveClose/localSocketAddress（L100–L116）、tcpKeepAlive/tcpRcvBuf/tcpSndBuf/socketFactory（L225–L249），以及 AbstractConnectProtocol.createSocket（L249–L285）。默认 Go 行为以1.25/1.26标准库 net.Dialer/newTCPConn 为依据；不把 Java 选项有对应 Go API 当作真实网络验收已完成。
+固定 Java 依据：DefaultOptions 的 tcpNoDelay/tcpAbortiveClose/localSocketAddress（L100–L116）、tcpKeepAlive/tcpRcvBuf/tcpSndBuf/socketFactory（L225–L249），以及 AbstractConnectProtocol.createSocket（L249–L285）。默认 Go 行为以1.26标准库 net.Dialer/newTCPConn 为依据；不把 Java 选项有对应 Go API 当作真实网络验收已完成。
 
 ### 9.0.3 D32 SOCKS5 代理的 Go 承载
 
@@ -386,7 +386,7 @@ Java socksProxyHost 默认 null、socksProxyPort 默认1080；Go 默认仍直连
 
 ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协商、后续数据库握手/初始化；取消或失败由拨号器关闭隧道。预算到期时 socket deadline 可能先于 context 定时器触发，错误可能为 context.DeadlineExceeded 或 net.Error.Timeout；不要求所有自定义拨号器归一成同一个错误。成功返回的连接不继承建连 context 的寿命，后续命令继续使用各自的 context/ReadTimeout。仅支持 TCP 目标，IPC 不享有代理豁免。`connectProxy` 是另一项 Java 初始化策略，不是 SOCKS 或 HTTP CONNECT 开关，其显式初始化策略见 §9.0.4，不由 SOCKS 自动启用。
 
-示例和本地测试使用 x/net v0.58.0；核对时 v0.59.0 及更新版要求 Go1.26，故保留 Go1.25 基线。模块最小版本选择同步提升 x/sys 至 v0.47.0、x/text 至 v0.41.0，需全包及跨平台回归；驱动生产包不导入 x/net，公开 API 和生产包依赖方向不变。本地 TestSOCKS* 覆盖两模式/三种包流、域名远端解析、认证、失败前零数据库凭据、路由切换、取消与连接关闭、TLS 正反向和目标身份；真实代理部署、DNS/权限、吞吐及数据库联调未验收。
+Go1.26 基线下，示例和本地测试使用 x/net v0.61.0，模块依赖为 x/sys v0.49.0、x/text v0.43.0；依赖升级需全包及跨平台回归；驱动生产包不导入 x/net，公开 API 和生产包依赖方向不变。本地 TestSOCKS* 覆盖两模式/三种包流、域名远端解析、认证、失败前零数据库凭据、路由切换、取消与连接关闭、TLS 正反向和目标身份；真实代理部署、DNS/权限、吞吐及数据库联调未验收。
 
 ### 9.0.4 D32 显式跳过版本探测
 
@@ -872,7 +872,7 @@ type Out struct {
 
 ### 13.2 REF CURSOR 及连接相关输出
 
-Go 1.25 的驱动不能自行构造 `*sql.Rows` 写入 `sql.Out.Dest`。过程的普通结果集、逐项摘要及一个或多个输出游标统一通过 §11.4 的 Execute 承载：
+Go 1.26 的驱动不能自行构造 `*sql.Rows` 写入 `sql.Out.Dest`。过程的普通结果集、逐项摘要及一个或多个输出游标统一通过 §11.4 的 Execute 承载：
 
 ```go
 type CursorOut struct {
@@ -1012,13 +1012,13 @@ _, err := tx.ExecContext(ctx, "INSERT INTO files(id, content) VALUES (?, ?)", id
 
 源码依据为 Java 同一基线的 [二进制流](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBStreamParameter.java)、[字符流](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBReaderParameter.java)、[MySQL 长数据](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/StreamParameter.java) 及 [原生执行](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java)。当前使用有界块，不暴露 Java 分块大小开关，不整流物化；真实大小限制、空流存储语义、LOB 转换和代理行为仍待四目标联调。
 
-## 14. LOB 和复杂类型的 Go 1.25 方案
+## 14. LOB 和复杂类型的 Go 1.26 方案
 
 ### 14.1 普通值与连接句柄分开
 
 普通 BLOB/CLOB 查询返回数据内容。对 out-row LOB，Oracle 查询使用服务器游标/完整 fetch 响应边界，再在原会话读取内容；受自动物化大小上限约束。文本流式路径无法安全插入 LOB 命令时，要先使用有界完整响应缓冲，或选择游标路径。
 
-需要超大对象、随机访问、流式上传下载、空 LOB 或修改 locator 时，使用明确的 Blob/Clob 扩展。Go 1.25 不要求把有连接身份的对象塞进 Scanner。
+需要超大对象、随机访问、流式上传下载、空 LOB 或修改 locator 时，使用明确的 Blob/Clob 扩展。Go 1.26 不要求把有连接身份的对象塞进 Scanner。
 
 ```go
 // Session 只表示标准库已有的固定会话调用面，不创建新的 Session 对象。
@@ -1529,7 +1529,7 @@ Java 的12项 TLS 配置通过现有 `Config.TLSConfig` 与 `crypto/tls`、`cryp
 | serverSslCert / trustStore / trustStoreType | 应用用 x509.NewCertPool/AppendCertsFromPEM 或 AddCert 构建 RootCAs；nil 使用 Go/OS 系统信任源。自定义池替换默认根，若要追加，应先取得 x509.SystemCertPool 并检查错误。DER 先 ParseCertificate；没有 classpath、JVM 系统属性或 Java store 类型解释 |
 | keyStore / keyStoreType | 应用用 tls.LoadX509KeyPair/X509KeyPair 加载 PEM 证书链与私钥，传 Certificates；动态证书使用 GetClientCertificate。证书链按叶证书在前排列；硬件私钥可由实现 crypto.Signer 的对象提供，具体实现由应用负责 |
 | trustStorePassword / keyStorePassword / keyPassword | Java store 的解锁/格式转换由应用或部署侧完成；驱动接收已加载的池/证书/签名器，不获取这些密码。Go 标准加载器不直接解码 JKS/PKCS12 或加密 PEM 私钥；不得将忽略密码、加载失败后空证书连接当作等价支持 |
-| enabledSslProtocolSuites | MinVersion/MaxVersion 控制连续版本范围；Go 1.25/1.26 默认最低 TLS1.2、最高当前支持的 TLS1.3，建议应用显式设 MinVersion。Java 未配置时沿用其 JSSE 运行时，不能从旧注释推断实际默认。离散版本集合可额外用 VerifyConnection 拒绝不在集合内的结果，不能关闭标准验证 |
+| enabledSslProtocolSuites | MinVersion/MaxVersion 控制连续版本范围；Go 1.26 默认最低 TLS1.2、最高当前支持的 TLS1.3，建议应用显式设 MinVersion。Java 未配置时沿用其 JSSE 运行时，不能从旧注释推断实际默认。离散版本集合可额外用 VerifyConnection 拒绝不在集合内的结果，不能关闭标准验证 |
 | enabledSslCipherSuites | CipherSuites 只控制 TLS1.0–1.2，列表顺序由 Go 忽略；TLS1.3 套件不可通过该字段配置。应用可在 VerifyConnection 检查实际协商结果并拒绝，但不能用它改变 ClientHello 的 TLS1.3 套件列表。TLS1.2 及以下无共同可用套件、或无共同版本时由标准 TLS 握手失败；未知套件 ID 不会增加支持能力，TLS1.3 仍忽略该字段 |
 | tlsSocketType | 固定 Java 注册的默认 TLS provider 对应 Go crypto/tls；额外验证及客户端证书选择由 tls.Config 回调承载，不迁移类名/SPI 加载，也不允许 DialContext 声称连接已验证。替换整个 TLS 引擎不属于该回调能力 |
 
@@ -1656,7 +1656,7 @@ OB20 Full Link Trace 与 slog 是两项能力：
 | M13 池化 | sql.DB 管池；reset/Validator 保证复用契约；DB.Stats 替代自有池 JMX | 池压力、取消、reset 后 sql.Stmt 重用 |
 | M14 XA | XID 与显式 XA 函数、DBMS_XA/原生命令、恢复 | 两阶段、join/resume、进程/网络故障验证 |
 | M15 日志/包诊断/OB20/FLT | 注入 slog、受限诊断回调、OB20/校验、请求级 trace | nil logger 静默、隔离、追踪串扰与校验测试 |
-| M16 构建/SPI/平台/性能测试 | Go module、接口注入、build tags、go test/fuzz/bench | Go 1.25/1.26 工具链和目标平台 CI |
+| M16 构建/SPI/平台/性能测试 | Go module、接口注入、build tags、go test/fuzz/bench | Go 1.26 工具链和目标平台 CI |
 | LOCAL INFILE | 显式 Reader/回调；请求级权限和大小限制 | 拒绝任意文件、传输中断和清理测试 |
 | JDBC scroll/updatable 与旧 API | Cursor/参数化 DML；保留能力而不复制 JDBC 方法名 | 真实支持条件、语义与并发变更测试 |
 | OSGi/JMX/Java 序列化/兼容类名 | Go 模块和接口、DB.Stats/诊断；序列化值由调用方显式处理 | Go 侧能力可观察，不引入 Java 运行时依赖 |
@@ -1673,12 +1673,12 @@ OB20 Full Link Trace 与 slog 是两项能力：
 4. **直连与 OBProxy**：能力协商、trace、用户格式、会话行为、路由和失败。
 5. **故障注入**：发送前断线、部分写、响应丢失、COMMIT 丢响应、取消与完成竞态、LOB 中断、XA 恢复。
 6. **资源和并发**：Rows 提前关闭、句柄泄漏、池复用、reset 代次、凭据刷新、Logger 隔离、共享地址状态。
-7. **工具链与平台**：Go 1.25、1.26；Linux/Windows，支持平台上的 socket/认证适配；重点解析和边界代码在 386 验证。
+7. **工具链与平台**：Go 1.26；Linux/Windows，支持平台上的 socket/认证适配；重点解析和边界代码在 386 验证。
 8. **性能**：普通 CRUD、prepare 缓存、批量、LOB 流式、游标 fetch；对照结果正确性后再讨论吞吐。本地协议基准已覆盖两模式的基础路径，计时/分配含对端及断言；离线资源测试分别覆盖重建会话和同一物理会话持续混合执行，直接检查原会话所有权、缓存边界及池/物理关闭，记录 GC 后进程堆/goroutine，详见[本地基准](go-driver-benchmarks.md)。真实数据库性能、OS 句柄、完整并发/故障组合和生产长期资源曲线仍待验证。
 
 类型矩阵至少交叉模式、文本/二进制协议、NULL/空值、最大/最小/越界、字符编码、时区和精度。复杂类型及 locator 测试不能仅用 mock 声称与服务器兼容。
 
-CI 在 D01 建立，实际安装 Go 1.25.x/1.26.x，在 Linux/Windows amd64 执行 test/vet 和依赖检查；D02 增加包依赖边检查及协议 fuzz/386，D04 接入显式 require 的集成入口，D06 增加受支持平台的 race。后续能力同步扩展检查，D32 汇总补全矩阵，不到交付末期才建立 CI。每项必需验证集及状态聚合规则固定在[开发进度 §5](go-driver-development-progress.md#5-验证组合与证据)，不能由实现者临时选择一个成功组合验收。
+CI 在 D01 建立，实际安装 Go 1.26.x，在 Linux/Windows amd64 执行 test/vet 和依赖检查；D02 增加包依赖边检查及协议 fuzz/386，D04 接入显式 require 的集成入口，D06 增加受支持平台的 race。后续能力同步扩展检查，D32 汇总补全矩阵，不到交付末期才建立 CI。每项必需验证集及状态聚合规则固定在[开发进度 §5](go-driver-development-progress.md#5-验证组合与证据)，不能由实现者临时选择一个成功组合验收。
 
 ### 20.2 本次补齐契约的验收场景
 
@@ -1721,7 +1721,7 @@ CI 在 D01 建立，实际安装 Go 1.25.x/1.26.x，在 Linux/Windows amd64 执�
 - 平台认证和特定传输适配的实际目标平台与必要依赖。
 - Java 功能测试中被忽略或服务端不支持的场景；不能把源码类名存在当作已承诺行为。
 
-核心及扩展能力已有本地实现，Go 1.25/1.26 的 Windows 构建、单元测试和 lint 已实际验证；平台运行和真实数据库兼容性仍需独立证据。逐项实现、依赖和验收状态以[开发进度](go-driver-development-progress.md)为准，不能将架构设计或本地对端测试视为服务端验收。
+核心及扩展能力已有本地实现；升级前 Go 1.25/1.26 的 Windows 构建、单元测试和 lint 已实际验证，当前 Go 1.26 基线的验证见开发进度；平台运行和真实数据库兼容性仍需独立证据。逐项实现、依赖和验收状态以[开发进度](go-driver-development-progress.md)为准，不能将架构设计或本地对端测试视为服务端验收。
 
 ## 22. 核心证据索引
 
@@ -1745,7 +1745,7 @@ Java 深入阅读：
 - [J16：明文密码插件的 SSL 要求与握手检查][J16]
 - [J17：Oracle RETURNING 对 PrepareExecute 的明确要求][J17]
 
-Go 标准库契约；链接固定到 Go 1.27.2 源码，设计接口范围限定为 Go 1.25 已有 API：
+Go 标准库契约；链接固定到 Go 1.27.2 源码，设计接口范围限定为 Go 1.26 已有 API：
 
 - [G01：ErrBadConn 的重复执行约束][G01]
 - [G02：database/sql 对 ErrBadConn 的重试][G02]

@@ -124,7 +124,7 @@ TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模�
 | enableQueryTimeouts | 每次调用 context；无全局禁用开关，不改 SQL、不隐式 KILL | TestStatementContextDeadline 覆盖两模式/三包流/两种预处理、过期前后连接可用性、期限早于 ReadTimeout 和不重放。Rows/事务期限复用既有测试；不保证服务端停止或回滚 |
 | serverAffinityOrder | Endpoints 替换 Addr；Strategy、Weight、Group 明确表达排序 | 固定 Java 列表也受 strategy 控制，Go 不把它错误地仅映射成 Ordered。既有 TestFailoverBudget、路由/选择器测试覆盖候选替换、顺序、快照与有界切换；新增 TestAddressAffinityWeights 检查权重偏好与不重复，不是概率或吞吐验收；真实 HA 待联调 |
 
-固定源码及默认差异见架构 §9.0.4、§10.2、§12.5、§17.1.1。四项 Java 同名 DSN 均拒绝；本地证据不补造服务端/平台验收，任务计数保持28/32实现、0/32验收。FuzzStmtArray 已加入两工具链 protocol-boundaries CI 的30秒目标，远程 CI 尚未运行。
+固定源码及默认差异见架构 §9.0.4、§10.2、§12.5、§17.1.1。四项 Java 同名 DSN 均拒绝；本地证据不补造服务端/平台验收，任务计数保持28/32实现、0/32验收。FuzzStmtArray 已加入 Go1.26 CI 的30秒 fuzz 目标和386边界检查，远程 CI 尚未运行。
 
 ## 2. 后续高级协议条件
 
