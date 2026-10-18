@@ -138,11 +138,11 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 	if err != nil {
 		return nil, err
 	}
-	charset, err := handshakeCharset(c.cfg.Session.Charset)
+	collation, err := handshakeCharset(c.cfg.Session.Charset)
 	if err != nil {
 		return nil, err
 	}
-	response := wire.HandshakeResponse{Capabilities: s.capabilities, MaxPacketBytes: uint32(min(c.cfg.Limits.MaxMessageBytes, math.MaxUint32)), Charset: charset, Database: c.cfg.Database}
+	response := wire.HandshakeResponse{Capabilities: s.capabilities, MaxPacketBytes: uint32(min(c.cfg.Limits.MaxMessageBytes, math.MaxUint32)), Charset: collation}
 	if c.cfg.TLSConfig != nil {
 		if err = c.upgradeTLS(ctx, s, response); err != nil {
 			return nil, err
@@ -152,11 +152,23 @@ func (c *connector) authenticate(ctx context.Context, raw net.Conn) (result *han
 	if err != nil {
 		return nil, err
 	}
+	user, err := charset.Encode(c.cfg.Session.Charset, credentials.User)
+	if err != nil {
+		return nil, &ConfigError{Field: "Credentials.User"}
+	}
+	response.User = string(user)
+	if s.capabilities&wire.ClientConnectWithDB != 0 {
+		database, err := charset.Encode(c.cfg.Session.Charset, c.cfg.Database)
+		if err != nil {
+			return nil, &ConfigError{Field: configDatabaseField}
+		}
+		response.Database = string(database)
+	}
 	response.Attributes, err = c.authenticationAttributes(credentials, s.capabilities)
 	if err != nil {
 		return nil, err
 	}
-	response.User, response.Plugin = credentials.User, s.hello.Plugin
+	response.Plugin = s.hello.Plugin
 	plugin, err := c.newAuthPlugin(response.Plugin)
 	if err != nil {
 		return nil, err

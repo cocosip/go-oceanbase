@@ -72,7 +72,8 @@ type SessionOptions struct {
 	SkipVersionProbe bool
 	// ParseTime converts unzoned dates and timestamps using Location; invalid or ambiguous times fail.
 	ParseTime bool
-	Charset   string
+	// Charset encodes SQL and handshake user/database names; default utf8mb4.
+	Charset string
 	// Collation optionally selects a MySQL-mode collation for Charset; empty uses its default.
 	Collation string
 	NCharset  string

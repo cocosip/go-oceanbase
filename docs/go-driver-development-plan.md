@@ -218,6 +218,7 @@ go test -tags=integration ./tests/integration -count=1
 - [x] 测试 `TestAuthSecurityGate`、`TestAuthSwitch`、`TestTLSRequired`、`TestActualMode`：无 TLS 的 clear/full-auth 阶段发送明文凭据字节数为 0；证书/主机名失败不降级；自定义 Dial 伪造安全状态无效；模式不符关闭连接。
 - [x] 执行 `go test ./internal/auth ./internal/wire . -run 'Test(Auth|TLS|ActualMode)' -count=1`，确认失败。
 - [x] 实现握手、固定公钥的无 TLS 加密路径和认证阶段检查；根包适配公开认证工厂与 auth 算法输入/结果，工厂按会话创建状态，不泄漏 internal 类型或 Socket，不产生 auth→根包/wire 依赖。
+- [x] `TestHandshakeIdentityEncoding`、`TestHandshakeIdentityEncodingRejected` 验证初始握手身份与选库按 Session.Charset 严格编码，覆盖两模式及静态/动态凭据；非法编码在插件创建和认证响应发送前拒绝，逻辑身份仍保留 Go 字符串。
 - [x] 同命令通过；建立版本能力证据表 `docs/go-driver-compatibility-matrix.md`，只写已确认的源码条件，其余标记待取证，不猜服务端版本门槛。
 
 ### D04 建连、初始化、Ping 与集成测试入口

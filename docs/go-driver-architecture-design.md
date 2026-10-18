@@ -210,6 +210,8 @@ func NewConnector(cfg Config) (driver.Connector, error)
 
 认证配置现有接口为 `Credentials func(context.Context) (Credentials, error)`、`AuthOptions{RSAKey, Plugins}`。Plugins 按协议插件名映射到每次认证的工厂，返回实现 Security/Respond 的插件。RSAKey 使用调用方固定的公钥且在 Connector 中复制，禁自动检索。回调、插件工厂及外部 TLS 对象内的回调/私钥对象需满足并发安全与 context 契约。接口的安全边界见 [兼容矩阵](go-driver-compatibility-matrix.md)。
 
+首次握手的用户名及 CLIENT_CONNECT_WITH_DB 选择的数据库名均从 Go UTF-8 字符串严格编码为 `Session.Charset`，与握手 collation 声明及 ChangeUser 一致。无效 UTF-8 或不可表示的字符在创建认证插件/发送认证响应前返回脱敏 ConfigError 并关闭连接；未声明选库位时不在握手内编码或发送 Database。插件收到的 Credentials 及认证成功后的会话身份仍是原始 Go 字符串；密码编码独立由 `Auth.PasswordCharset` 控制。不依赖 Java 用户名 getBytes() 的平台默认编码。
+
 配置规则：
 
 - DSN 使用 `net/url` 的转义规则；参数名严格校验，未知项报错，敏感重复项报错。

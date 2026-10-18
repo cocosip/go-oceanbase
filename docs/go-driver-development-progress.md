@@ -905,6 +905,12 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 新增[资源 OUT 代次回归](../resource_out_epoch_test.go)：三包流 × Cursor/BLOB/CLOB × 直接结束/读完普通行/提前 Close × 元数据/最终 OK 失效共54场景；prepare/长参数上传失效6场景、普通 OUT 正向3场景、复杂类型最终响应/字典响应失效6场景、复杂输入编码失效6场景、普通资源结果缓冲/嵌套 LOB 字典失效15场景，共90场景。旧实现复现失效发布、失效后读取输入/继续发送主命令、字典查询、fetch 和 DBMS_LOB.READ；回归检查普通 OUT 保持原值、无句柄发布、摘要保留 ErrResource、清理及原会话后续执行。
 - Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译通过，普通及 integration 标签 golangci-lint 均0 issues；90场景各重复10轮通过。并发验证期间 TestMetadataCatalogAndRemarks 曾出现2秒超时，未修改该测试，最终两版串行全量及各10轮重跑通过。独立只读复核发现的辅助错误分类与普通资源缓冲缺口已补回归并修复，最终无剩余确认问题。obtest 重建、38项列表、示例配置离线检查及文档/diff检查通过；数据库、其他平台与 race 继续暂缓，实现28/32、验收0/32保持。
 
+#### D03/D04/D12 初始握手身份的字符集边界
+
+- 初始认证现在按 `Session.Charset` 严格编码用户名及 CLIENT_CONNECT_WITH_DB 选择的数据库名，与握手 collation 声明和既有 ChangeUser 路径一致；未选择数据库时不在握手编码或发送 Database。编码失败返回仅字段名的 ConfigError，在创建认证插件和发送认证响应前关闭连接；Credentials 回调/认证插件和成功会话的逻辑身份仍使用原始 Go 字符串，密码编码继续独立由 Auth.PasswordCharset 控制。不依赖 Java 用户名 getBytes() 的平台默认编码，无新增公开 API、包或依赖。
+- 新增[握手身份编码回归](../authentication_identity_test.go)：两模式 × UTF-8/UTF8MB3/GBK/GB18030/latin1 × 静态/动态身份20场景，用户名/数据库名各覆盖非法 UTF-8、ASCII/GBK/UTF8MB3 不可表示字符8场景。旧实现12个非 UTF-8 正向场景发送错误字节，8个拒绝场景均创建插件并发送77–84字节认证响应；修复后验证正确字节、原逻辑身份、凭据回调次数、拒绝时零认证字节与零插件创建，以及错误脱敏。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过，28个新增场景两版本各重复10轮通过；两版本普通及 integration 标签 golangci-lint 均0 issues。初次 lint 提示新测试触发全局重复字符串阈值，已在新文件提取/复用常量后重新完成验证。独立只读复核及相关认证/TLS/切用户/建库目标通过，未发现剩余确认问题；架构、开发计划与使用指南同步。真实数据库、其他平台及 race 继续暂缓，实现28/32、验收0/32保持。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 38 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

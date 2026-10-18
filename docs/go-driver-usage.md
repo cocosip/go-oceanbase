@@ -73,6 +73,8 @@ TCP 源接口、keep-alive、缓冲和 NODELAY 使用标准 `net.Dialer` / `net.
 
 `Session.Collation` 只适用于 MySQL 兼容模式，且必须与 `Session.Charset` 匹配；Oracle 显式拒绝。`Interactive` 请求服务端交互超时策略，不是客户端保活。`ConnectionAttributes` 只能传应用元数据，不得注入协议保留键。
 
+用户名和数据库名传入 Go UTF-8 字符串，无需预先转码；首次握手与 ChangeUser 均按 `Session.Charset` 编码，不可表示的名称明确失败。密码字符集使用独立的 `Auth.PasswordCharset`。
+
 初始 MySQL 数据库需要由连接显式创建时，设置 `Config.CreateDatabaseIfMissing=true` 或 DSN `createDatabaseIfMissing=true`，并指定非空 Database。默认关闭，Oracle 拒绝。驱动认证后在同一连接执行 IF NOT EXISTS 并选库，随后才运行 InitSQL；需账户具备相应权限，初始化失败也可能已经留下数据库，不会自动删除或重试建库。池替换连接会再次创建/选择；ChangeUser 和取消查询辅助连接不执行创建。详见[架构 §6.4](go-driver-architecture-design.md#64-d32-已实现的初始数据库创建)。
 
 SOCKS5 使用现有 `Config.DialContext`，应用通过 `golang.org/x/net/proxy.SOCKS5` 创建显式代理，再取 `proxy.ContextDialer.DialContext`，见[可编译示例](../socks_example_test.go)。代理地址明确写端口（例如1080）；不要丢弃驱动传入的候选 address，也不要改用无 context 的 Dial。示例不读取 ALL_PROXY/NO_PROXY，失败不绕过代理；目标域名由代理解析。可选 `proxy.Auth` 只用于代理，不能复用数据库 Credentials/ProxyUser；其协商不提供加密，数据库 TLS 仍独立验证目标入口。默认驱动仍直连，无 Java 同名 DSN 开关；完整边界及 Go1.25 依赖约束见[架构 §9.0.3](go-driver-architecture-design.md#903-d32-socks5-代理的-go-承载)。
