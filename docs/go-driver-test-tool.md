@@ -99,7 +99,7 @@ $env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
 | `mysql-scalars` | MySQL 专用，自动准备三组边界值及全 NULL 行；正负超24小时/零 TIME(6)、YEAR、完整 unsigned/signed BIGINT、TINYINT(1) 整数、BIT(1/9)、空/含零 VARBINARY、BINARY(4) 补零；文本与参数化读取、精确值/NULL/行数、数据库类型/ScanType 和二进制字节长度，显式 server prepare、ParseTime=false |
 | `oracle-scalars` | Oracle 专用，自动创建 NVARCHAR2、TIMESTAMP(9) WITH TIME ZONE / LOCAL TIME ZONE 及 interval 列；公开类型绑定与读取、纳秒和原 TZ 偏移、LTZ 等价时刻、最大负 interval、ROWID 回绑定位及各列 typed NULL；文本与参数化读取。显式 server prepare、UTF-16 national charset，保留配置 location |
 | `transactions` | 建表、提交/回滚、保存点回滚、只读拒绝写入、最终持久化行数 |
-| `metadata` | 自建表的表/列/主键字典投影，ColumnTypes 名称与数据库类型 |
+| `metadata` | 自建表的表/列/主键字典内容：catalog/schema/表身份、列名/顺序/类型/长度/精度/NULL、主键列；两列 ColumnTypes 名称/类型，以及缺行/多行拒绝 |
 | `execution` | Execute、读取结果、提前 Close、完成摘要、原会话继续 Ping |
 | `batch` | 五种优选策略的重复键定位、stop/continue、事务回滚；报告 `observations` 保留实际策略，回退不等于原生能力通过 |
 | `batch-rewrite` | MySQL 专用，显式开启多语句并设置批量协商变量，要求实际策略为 Rewrite |
@@ -148,6 +148,8 @@ Oracle 专用场景在 MySQL 目标上标为 `not_applicable`，反之亦然；�
 [TestScalarsTemporalAssertions](../cmd/obtest/scalars_test.go) 在两种兼容模式的文本与参数化查询上覆盖32个离线流程：精确值、等价小数尾零、日期时间变化、额外纳秒、超九位小数和非法尾部。包含单数字小时缩短整串后夹带超精度小数的拒绝回归。每个流程检查实际场景状态及自建表清理；Oracle DATE 必须保留预期的午夜，不能只比较日期前缀。本地 fixture 不证明真实服务端的日期/精度行为。
 
 [TestComplexOutputAssertions/TestComplexCollectionAssertions](../cmd/obtest/complex_test.go) 覆盖20个离线流程，验证 OBJECT OUT 的数值/RAW/schema/属性顺序，以及集合首尾不同值、错序/重复/缺项/NULL 和对象/集合 schema。每个流程检查事务回滚及表、集合类型、对象类型的逆序清理；等价十进制尾零允许通过。夹具只替代数据库依赖，不证明真实类型描述或服务端往返。
+
+[TestMetadataContentWorkflow/TestMetadataSchemaFilters](../cmd/obtest/metadata_test.go) 提供90个离线流程：两模式验证自建 ID/V 表的完整表/列/主键字典身份、列顺序、INTEGER 精度/scale、VARCHAR 长度与 NULL，以及两列结果元数据；错误值、缺行/多行、未知必需属性、读取/关闭错误均失败。另检查非空 schema 的 LIKE 转义和精确大小写匹配；每次结果均关闭，完整场景在失败后仍删除自建表。旧实现仅计数时50个错误输入被误判通过；夹具不代表真实字典或权限已经验收。
 
 [TestMySQLScalarsWorkflow](../cmd/obtest/mysql_scalars_test.go) 提供44个离线流程：两条读取路径上的完整边界值、最大整秒/零 TIME 的两种合法表示及非零越界小数、整数溢出/精度、TINYINT 非 bool、TIME 尾部、BIT 宽度、YEAR 零值与空二进制非 NULL、定长补零、缺行/多行、NULL 及错误元数据。检查原始输入类型、查询参数、Rows 关闭及自建表清理；夹具元数据和行值不证明实际服务端行为。
 

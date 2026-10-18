@@ -973,6 +973,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 按固定 OceanBase TIME_MAX_VAL/time_overflow_trunc 核对 SQL 范围，修正初始越界种子及原 integration 的同类输入/断言；改用最大整秒838:59:59和-838:59:58.999999分别验证边界/微秒。最大整秒允许六位零小数，非零小数拒绝；新增正反例先在旧种子/断言上失败，再修正通过。范围源码见[工具说明](go-driver-test-tool.md)，原 integration 仍仅编译。
 - Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，Windows/386 的44个新增流程通过。首次 lint 的重复测试字符串已调整；独立只读复核发现的 TIME 范围问题已修正，复核无剩余确认问题，不另存报告。obtest 重建，40项唯一列表、示例配置和单独选择 mysql-scalars 的离线检查通过。实现28/32、验收0/32保持，真实数据库、其他平台及race继续暂缓。
 
+#### D13/D32 独立工具的元数据内容校验
+
+- 修复 metadata 场景只检查字典行数导致错误内容仍通过的缺口。保持原自建 ID/V 表和三类字典查询，新增 catalog/schema/表身份、列名/位置/类型/长度/精度/scale/NULL、主键及两列 ColumnTypes 内容断言；完整关闭每份结果后再复用会话，失败仍清理表。复用公开 Metadata，不新增驱动 API、包或依赖。
+- [TestMetadataContentWorkflow/TestMetadataSchemaFilters](../cmd/obtest/metadata_test.go) 共90个离线流程：旧实现50个错误输入被误判通过，修复后全部通过；另覆盖缺行/多行、未知必需属性、读取/关闭错误、非空 schema 的转义和精确大小写。夹具使用独立字面量元数据，仅替代外部数据库，不代表真实字典行为。
+- 独立复核发现 MySQL 字典 DATA_TYPE 的 int 与公开 ColumnTypes 的 INTEGER 不能共用预期；按驱动实际归一化路径拆分断言，夹具结果类型采用独立字面量。更正夹具先复现正常 MySQL 结果被拒，再修正通过；复核无剩余确认问题，不另存报告。
+- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，新增重复测试字符串已提取常量或调整。Windows/386 的90个元数据流程通过；obtest 重建，40项唯一列表、示例及单独选择 metadata 的配置离线检查通过，文档/链接/diff检查通过。场景保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 40 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；Windows Go 1.25.0/1.26.0 的构建、全包单测/vet、integration 仅编译、普通/integration 标签 lint、工具回归各10轮及离线配置检查通过。真实数据库场景尚未运行，不据此增加数据库验收计数。

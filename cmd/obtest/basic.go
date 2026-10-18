@@ -227,23 +227,8 @@ func runMetadata(ctx context.Context, s *scenario) error {
 		if err != nil {
 			return err
 		}
-		for _, item := range []struct {
-			kind  oceanbase.MetadataKind
-			count int
-		}{{oceanbase.MetadataTables, 1}, {oceanbase.MetadataColumns, 2}, {oceanbase.MetadataPrimaryKeys, 1}} {
-			rows, err := oceanbase.Metadata(ctx, c, oceanbase.MetadataFilter{Kind: item.kind, SchemaPattern: exactPattern(schema), NamePattern: exactPattern(table)})
-			if err != nil {
-				return err
-			}
-			n := 0
-			for rows.Next() {
-				n++
-			}
-			err = errors.Join(rows.Err(), rows.Close())
-			if err != nil {
-				return err
-			}
-			if err = expect(n == item.count, "dictionary metadata row count mismatch"); err != nil {
+		for _, kind := range []oceanbase.MetadataKind{oceanbase.MetadataTables, oceanbase.MetadataColumns, oceanbase.MetadataPrimaryKeys} {
+			if err = checkDictionaryMetadata(ctx, c, s.mode, schema, table, kind); err != nil {
 				return err
 			}
 		}
@@ -256,7 +241,11 @@ func runMetadata(ctx context.Context, s *scenario) error {
 		if err != nil {
 			return err
 		}
-		return expect(len(columns) == 2 && strings.EqualFold(columns[0].Name(), "ID") && columns[0].DatabaseTypeName() != "", "ColumnTypes lost column metadata")
+		idType, textType, _ := metadataScalarTypes(s.mode)
+		if s.mode == oceanbase.ModeMySQL {
+			idType = "INTEGER" // Result type names are normalized; dictionary DATA_TYPE is INT.
+		}
+		return expect(len(columns) == 2 && strings.EqualFold(columns[0].Name(), "ID") && strings.EqualFold(columns[0].DatabaseTypeName(), idType) && strings.EqualFold(columns[1].Name(), "V") && strings.EqualFold(columns[1].DatabaseTypeName(), textType), "ColumnTypes lost column metadata")
 	})
 }
 
