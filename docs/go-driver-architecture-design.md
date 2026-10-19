@@ -1248,6 +1248,8 @@ MySQL 旧版或版本未知时，MetadataRoutineParameters 支持精确 schema/�
 
 MySQL 简单 CALL 的 sql.Named 通过声明参数名称（忽略大小写）映射到占位符，支持 IN/OUT/INOUT 和保留位置的标量常量；全部占位符必须具名。普通 SQL 继续拒绝具名参数，复杂表达式、会话变量、函数返回等不猜测。server/client、直接/显式预处理、Exec/Query/输出路径共享 gate 内的映射；逐次读精确元数据，不缓存陈旧的 schema/签名，不额外开会话，不在校验时执行 CALL。现有事务、取消与预算仍生效。
 
+MySQL 参数字典按 ROUTINE_TYPE 关联同名例程，具名 CALL 只读取 PROCEDURE；旧版具名 CALL 的 SHOW CREATE PROCEDURE 失败时不改查同名 FUNCTION，公开参数元数据查询仍可回退 FUNCTION。SHOW CREATE 声明解析接受 YEAR 和 YEAR(4)。列与例程参数元数据的 TIME/DATETIME/TIMESTAMP scale 使用 DATETIME_PRECISION，其他类型继续读取 NUMERIC_SCALE。
+
 ### 16.1.2 D32 结果列来源与产品身份
 
 标准 `Rows.Columns()` 和 `Rows.ColumnTypes()[i].Name()` 始终提供服务端的结果标签；需要来源时使用 `Execute(...).Snapshot().Results[i].Columns`，与行集内的投影顺序对应。`ResultColumn.Name` 是标签，`OriginalName` 是服务端提供的原列名；`Table` 是协议表名（可能是别名），`OriginalTable` 是原表名，`Schema`、`Catalog` 保留协议原值。六个字符串按会话字符集严格解码为 UTF-8，不折叠大小写、不把协议 catalog 自动解释为业务数据库。

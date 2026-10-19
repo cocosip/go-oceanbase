@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
+
+const testRoutineOldVersion = "3.2.4.0"
 
 type namedRoutineConnector struct{ c *conn }
 
@@ -28,6 +31,7 @@ func serveNamedRoutineMetadata(ctx context.Context, t *testing.T, p *wire.Packet
 	}
 	c := &conn{cfg: outputTestConfig(), session: &handshakeSession{mode: ModeMySQL}}
 	query, err := c.interpolate(plan.query, plan.args)
+	query = strings.Replace(query, " WHERE 1=1", " WHERE 1=1 AND (p.ROUTINE_TYPE='PROCEDURE')", 1)
 	if err != nil || !readQuery(ctx, t, p, query) || !sendPackets(ctx, t, p, []byte{15}) {
 		return false
 	}
@@ -89,20 +93,47 @@ func TestNamedRoutineOldMetadata(t *testing.T) {
 		if !readQuery(ctx, t, p, "SHOW CREATE PROCEDURE `app`.`P`") {
 			return
 		}
-		ddl := "CREATE PROCEDURE p(IN a BIGINT, IN b BIGINT) SELECT 1"
+		ddl := "CREATE PROCEDURE p(IN a YEAR(4), IN b BIGINT) SELECT 1"
 		if !sendPackets(ctx, t, p, []byte{1}, textColumn("Create Procedure", 253, 45, 0), []byte{254, 0, 0, 2, 0}, append([]byte{byte(len(ddl))}, ddl...), []byte{254, 0, 0, 2, 0}) || !serveOK(ctx, t, p, []byte("\x03CALL app.P( 11 , 22 )"), 2) {
 			return
 		}
 		p.ResetSequence()
 		serveQuit(t, p)
 	})
-	c.session.mode, c.session.obVersion, c.cfg.PrepareMode = ModeMySQL, "3.2.4.0", PrepareClient
+	c.session.mode, c.session.obVersion, c.cfg.PrepareMode = ModeMySQL, testRoutineOldVersion, PrepareClient
 	c.session.ok.Status = 2
 	defer c.discard()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_, err := c.ExecContext(ctx, "CALL app.P(?,?)", []driver.NamedValue{{Name: "B", Ordinal: 1, Value: int64(22)}, {Name: "a", Ordinal: 2, Value: int64(11)}})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNamedRoutineOldMissingProcedure(t *testing.T) {
+	c := outputTestConn(t, 0, func(ctx context.Context, p *wire.PacketIO) {
+		if !readQuery(ctx, t, p, "SHOW CREATE PROCEDURE `app`.`p`") ||
+			!sendPackets(ctx, t, p, []byte{255, 0x19, 0x05, '#', '4', '2', '0', '0', '0', 'm', 'i', 's', 's', 'i', 'n', 'g'}) ||
+			!serveOK(ctx, t, p, []byte{14}, 2) {
+			return
+		}
+		p.ResetSequence()
+		serveQuit(t, p)
+	})
+	c.session.mode, c.session.obVersion, c.cfg.PrepareMode = ModeMySQL, testRoutineOldVersion, PrepareClient
+	defer c.discard()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := c.ExecContext(ctx, "CALL app.p(?)", []driver.NamedValue{{Name: "a", Ordinal: 1, Value: int64(1)}})
+	var server *Error
+	if !errors.As(err, &server) || server.Code != 1305 {
+		t.Fatal("missing procedure was replaced by function metadata", err)
+	}
+	if err = c.Ping(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err = c.Close(); err != nil {

@@ -175,7 +175,7 @@ func (c *conn) bindCommandArgumentsLocked(ctx context.Context, plan bindPlan, ar
 		}
 		call.schema = values[0].String
 	}
-	rows, err := c.metadataLocked(ctx, MetadataFilter{Kind: MetadataRoutineParameters, SchemaPattern: exactRoutinePattern(call.schema), NamePattern: exactRoutinePattern(call.name)})
+	rows, err := c.metadataLocked(ctx, MetadataFilter{Kind: MetadataRoutineParameters, SchemaPattern: exactRoutinePattern(call.schema), NamePattern: exactRoutinePattern(call.name)}, true)
 	if err != nil {
 		return nil, err
 	}

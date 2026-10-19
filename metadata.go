@@ -110,7 +110,7 @@ func metadataPlan(mode Mode, version string, filter MetadataFilter) (metadataQue
 	if mode == ModeOracle {
 		return oracleMetadataPlan(filter)
 	}
-	return mysqlMetadataPlan(version, filter)
+	return mysqlMetadataPlan(version, filter, false)
 }
 
 type metadataSource struct {
@@ -315,7 +315,7 @@ func (c *conn) queryMetadata(ctx context.Context, f MetadataFilter) (driver.Rows
 	if err := c.lock(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := c.metadataLocked(ctx, f)
+	rows, err := c.metadataLocked(ctx, f, false)
 	if err != nil {
 		c.unlock()
 		return nil, err
@@ -328,7 +328,7 @@ func (c *conn) queryMetadata(ctx context.Context, f MetadataFilter) (driver.Rows
 }
 
 // metadataLocked shares the public SQL plan, never calls database/sql, and leaves mu owned.
-func (c *conn) metadataLocked(ctx context.Context, f MetadataFilter) (*textRows, error) {
+func (c *conn) metadataLocked(ctx context.Context, f MetadataFilter, procedureOnly bool) (*textRows, error) {
 	if c.responseActive {
 		return nil, errResponseActive
 	}
@@ -339,9 +339,15 @@ func (c *conn) metadataLocked(ctx context.Context, f MetadataFilter) (*textRows,
 		return nil, err
 	}
 	if f.Kind == MetadataRoutineParameters && c.session.mode == ModeMySQL && !hasParameterDictionary(c.session.obVersion) {
-		return c.routineMetadataFallbackLocked(ctx, f)
+		return c.routineMetadataFallbackLocked(ctx, f, procedureOnly)
 	}
-	plan, err := metadataPlan(c.session.mode, c.session.obVersion, f)
+	var plan metadataQuery
+	var err error
+	if procedureOnly && f.Kind == MetadataRoutineParameters && c.session.mode == ModeMySQL {
+		plan, err = mysqlMetadataPlan(c.session.obVersion, f, true)
+	} else {
+		plan, err = metadataPlan(c.session.mode, c.session.obVersion, f)
+	}
 	if err != nil {
 		return nil, err
 	}

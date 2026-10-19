@@ -241,13 +241,13 @@ func TestMetadataInternalBoundary(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if _, err = c.metadataLocked(ctx, MetadataFilter{Kind: MetadataCatalogs}); !errors.Is(err, errResponseActive) {
+		if _, err = c.metadataLocked(ctx, MetadataFilter{Kind: MetadataCatalogs}, false); !errors.Is(err, errResponseActive) {
 			return errors.New("unread response allowed an internal command")
 		}
 		if err = business.Close(); err != nil {
 			return err
 		}
-		rows, err := c.metadataLocked(ctx, MetadataFilter{Kind: MetadataCatalogs})
+		rows, err := c.metadataLocked(ctx, MetadataFilter{Kind: MetadataCatalogs}, false)
 		if err != nil {
 			return err
 		}

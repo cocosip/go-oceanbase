@@ -46,7 +46,7 @@ func validateRoutineFallback(f MetadataFilter) (schema, name string, err error) 
 	return schema, name, nil
 }
 
-func (c *conn) routineMetadataFallbackLocked(ctx context.Context, f MetadataFilter) (*textRows, error) {
+func (c *conn) routineMetadataFallbackLocked(ctx context.Context, f MetadataFilter, procedureOnly bool) (*textRows, error) {
 	schema, name, err := validateRoutineFallback(f)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (c *conn) routineMetadataFallbackLocked(ctx context.Context, f MetadataFilt
 	sets, err := c.tableBlobQueryLocked(ctx, "SHOW CREATE PROCEDURE "+qualified, nil, false)
 	if err != nil {
 		var server *Error
-		if !errors.As(err, &server) || server.Code != 1305 {
+		if procedureOnly || !errors.As(err, &server) || server.Code != 1305 {
 			return nil, err
 		}
 		sets, err = c.tableBlobQueryLocked(ctx, "SHOW CREATE FUNCTION "+qualified, nil, false)
@@ -608,7 +608,11 @@ func routineTypeFields(row []driver.Value, typ string, numbers []int64, enumLeng
 		}
 	case metadataLowerEnum, metadataLowerSet:
 		row[9] = enumLength
-	case metadataLowerDate, "year", "tinytext", "text", "mediumtext", "longtext", "tinyblob", "blob", "mediumblob", "longblob", "json":
+	case "year":
+		if len(numbers) > 1 || len(numbers) == 1 && numbers[0] != 4 {
+			return ErrBind
+		}
+	case metadataLowerDate, "tinytext", "text", "mediumtext", "longtext", "tinyblob", "blob", "mediumblob", "longblob", "json":
 		if len(numbers) > 0 {
 			return ErrBind
 		}

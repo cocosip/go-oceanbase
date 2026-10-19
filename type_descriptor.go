@@ -38,7 +38,7 @@ func exactDescriptorPattern(name string) string {
 }
 
 func (c *conn) descriptorMetadataLocked(ctx context.Context, kind MetadataKind, schema, name string) ([][]driver.Value, error) {
-	r, err := c.metadataLocked(ctx, MetadataFilter{Kind: kind, SchemaPattern: exactDescriptorPattern(schema), NamePattern: exactDescriptorPattern(name)})
+	r, err := c.metadataLocked(ctx, MetadataFilter{Kind: kind, SchemaPattern: exactDescriptorPattern(schema), NamePattern: exactDescriptorPattern(name)}, false)
 	if err != nil {
 		return nil, err
 	}

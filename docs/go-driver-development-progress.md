@@ -1066,6 +1066,13 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 多 VALUES：追加显式 BatchMultiValues，仅合并简单 MySQL INSERT 占位符元组；BatchResult.Chunks 提供实际聚合计数/ID和输入范围，逐项不推算。覆盖三包流、参数/字节/行分块、有效前缀、本地错误、服务器继续/停止、取消、损坏/断线、安全回退及原事务回滚。BatchRewrite 和默认策略保持原行为。
 - 验证范围：本轮仅使用 Windows Go1.27.2 与内存协议对端；全包测试跳过已确认被沙箱拒绝访问的 TestPlatformTransportNamedPipe 系列，数据库 integration 仅编译。全包构建/vet、普通与integration标签 golangci-lint（均0 issues）、全包回归及integration仅编译通过；文档链接/格式/diff检查通过；未执行 Linux 部署、数据库/OBProxy联调、race或Go1.26最低版本运行验证。实现28/32、真实验收0/32不变；按用户请求本地提交，不推送。
 
+#### D32 例程元数据走查修复
+
+- MySQL 参数字典关联补上 ROUTINE_TYPE，具名 CALL 仅查询 PROCEDURE，避免同名函数的返回值/参数混入；旧版 CALL 不再改查同名 FUNCTION，公开元数据的函数回退保留。
+- SHOW CREATE 声明接受 YEAR/YEAR(4)，保留非法长度拒绝；列与例程参数的 TIME/DATETIME/TIMESTAMP scale 改读 DATETIME_PRECISION，其他类型保留 NUMERIC_SCALE。
+- TestRoutineCreateYear、TestMySQLMetadataTemporalScale、TestMySQLRoutineMetadataNamespaces 和具名 CALL 协议断言在修复前失败、修复后通过；补充旧版 YEAR(4) 具名调用及过程不存在后原会话 Ping 的回归，既有公开函数回退和多字符集/三包流元数据契约通过。未连接数据库或运行 Linux 部署，实现28/32、真实验收0/32不变。
+- Windows Go1.27.2 下 build、vet、普通/integration 标签 lint（均0 issues）、integration 仅编译及全包测试通过；测试跳过沙箱访问受限的 Named Pipe 系列。首次全包测试在未修改的 TestPlatformTransportUnix 清理等待中超时，主包和随后全包复跑均通过；保留此偶发测试阻塞记录。未运行 race 或 Go1.26 最低版本验证。
+
 ## 6. 待取证条件与推进方式
 
 D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 44 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。

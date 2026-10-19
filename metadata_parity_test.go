@@ -178,7 +178,7 @@ func TestRoutineMetadataFallbackErrors(t *testing.T) {
 		serveQuit(t, p)
 	})
 	pinned := pinnedSession(t, db)
-	_ = pinned.Raw(func(raw any) error { raw.(*conn).session.obVersion = "3.2.4.0"; return nil })
+	_ = pinned.Raw(func(raw any) error { raw.(*conn).session.obVersion = testRoutineOldVersion; return nil })
 	for _, f := range []MetadataFilter{{Kind: MetadataRoutineParameters}, {Kind: MetadataRoutineParameters, SchemaPattern: "s%", NamePattern: "p"}, {Kind: MetadataRoutineParameters, SchemaPattern: "s", NamePattern: "p_"}} {
 		if _, err := Metadata(context.Background(), pinned, f); !errors.Is(err, ErrUnsupported) {
 			t.Fatal("ambiguous fallback accepted", err)
@@ -248,5 +248,54 @@ func TestMetadataBufferedBudgets(t *testing.T) {
 	cancel()
 	if _, err := c.bufferedMetadataRows(ctx, MetadataTypeInfo, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+func TestRoutineCreateYear(t *testing.T) {
+	for _, typ := range []string{"YEAR", "YEAR(4)"} {
+		for _, ddl := range []string{
+			"CREATE PROCEDURE p(IN y " + typ + ") SELECT y",
+			"CREATE FUNCTION p() RETURNS " + typ + " RETURN 2026",
+		} {
+			rows, err := parseRoutineCreateMode(ddl, "app", "p", false)
+			if err != nil || len(rows) != 1 || rows[0][8] != "year" {
+				t.Errorf("%s: rows=%v err=%v", ddl, rows, err)
+			}
+		}
+	}
+	for _, typ := range []string{"YEAR(2)", "YEAR(0)", "YEAR(5)", "YEAR(4,0)"} {
+		if _, err := parseRoutineCreateMode("CREATE PROCEDURE p(y "+typ+") SELECT y", "app", "p", false); !errors.Is(err, ErrBind) {
+			t.Errorf("invalid %s: %v", typ, err)
+		}
+	}
+}
+
+func TestMySQLMetadataTemporalScale(t *testing.T) {
+	for _, tc := range []struct {
+		kind  MetadataKind
+		alias string
+	}{{MetadataColumns, "c"}, {MetadataRoutineParameters, "p"}} {
+		plan, err := metadataPlan(ModeMySQL, "4.3.5.0", MetadataFilter{Kind: tc.kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := tc.alias
+		want := "CASE WHEN " + a + ".DATA_TYPE IN ('time','datetime','timestamp') THEN " + a + ".DATETIME_PRECISION ELSE " + a + ".NUMERIC_SCALE END AS \"scale\""
+		if !strings.Contains(plan.query, want) {
+			t.Errorf("kind %d lacks temporal precision: %s", tc.kind, plan.query)
+		}
+	}
+}
+
+func TestMySQLRoutineMetadataNamespaces(t *testing.T) {
+	plan, err := metadataPlan(ModeMySQL, "4.3.5.0", MetadataFilter{Kind: MetadataRoutineParameters})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.query, "r.ROUTINE_TYPE=p.ROUTINE_TYPE") {
+		t.Fatal("same-named functions and procedures cross-join: " + plan.query)
+	}
+	if strings.Contains(plan.query, "ROUTINE_TYPE='PROCEDURE'") {
+		t.Fatal("public metadata excluded functions: " + plan.query)
 	}
 }
