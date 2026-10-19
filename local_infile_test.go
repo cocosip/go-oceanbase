@@ -406,14 +406,14 @@ func TestLocalInfileServerResponse(t *testing.T) {
 }
 
 func TestLocalInfileTransaction(t *testing.T) {
-	db := localInfileDB(t, ModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
-		if !serveTxSteps(ctx, t, p, []txStep{{testMySQLReadWrite, 3}}) || !localRequest(ctx, t, p, localInputName) {
+	db := localInfileDB(t, ModeOracle, true, func(ctx context.Context, p *wire.PacketIO) {
+		if !serveTxSteps(ctx, t, p, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}) || !localRequest(ctx, t, p, localInputName) {
 			return
 		}
 		if string(readLocalUpload(ctx, t, p)) != "1\tx\n" {
 			t.Error("transaction import data")
 		}
-		if !sendPackets(ctx, t, p, []byte{0, 1, 0, 3, 0, 0, 0}) || !serveTxSteps(ctx, t, p, []txStep{{testRollbackSQL, 2}}) {
+		if !sendPackets(ctx, t, p, []byte{0, 1, 0, 5, 0, 0, 0}) || !serveTxSteps(ctx, t, p, []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}) {
 			return
 		}
 		p.ResetSequence()
@@ -430,6 +430,109 @@ func TestLocalInfileTransaction(t *testing.T) {
 	}
 	if err = tx.Rollback(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLocalInfileMySQLTransactionRefused(t *testing.T) {
+	var reads atomic.Int32
+	db := localInfileDB(t, ModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
+		if !serveTxSteps(ctx, t, p, []txStep{{testMySQLReadWrite, 3}, {testRollbackSQL, 2}}) || !serveOK(ctx, t, p, []byte{14}, 2) {
+			return
+		}
+		p.ResetSequence()
+		serveQuit(t, p)
+	})
+	defer func() { _ = db.Close() }()
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = Import(context.Background(), tx, localImportSQL, &LocalInfile{Name: localInputName, Reader: longReaderFunc(func([]byte) (int, error) { reads.Add(1); return 0, io.EOF })})
+	if !errors.Is(err, ErrUnsupported) || !errors.Is(err, ErrLocalInfile) || reads.Load() != 0 {
+		t.Fatalf("unsafe transaction import: reads=%d err=%v", reads.Load(), err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLocalInfileMySQLManualTransactionRefused(t *testing.T) {
+	for _, command := range []string{"SET autocommit=0", testManualTxStart} {
+		t.Run(command, func(t *testing.T) {
+			status := byte(0)
+			if command == testManualTxStart {
+				status = 3
+			}
+			db := localInfileDB(t, ModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
+				if !serveOK(ctx, t, p, []byte("\x03"+command), status) || !serveOK(ctx, t, p, []byte("\x03ROLLBACK"), 2) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			c, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = c.Close() }()
+			if _, err := c.ExecContext(context.Background(), command); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Import(context.Background(), c, localImportSQL, &LocalInfile{Name: localInputName, Reader: strings.NewReader("x")}); !errors.Is(err, ErrUnsupported) {
+				t.Fatal(err)
+			}
+			if _, err := c.ExecContext(context.Background(), "ROLLBACK"); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestLocalInfileMySQLXASessionRefused(t *testing.T) {
+	for _, ended := range []bool{false, true} {
+		t.Run(map[bool]string{false: "active", true: "ended"}[ended], func(t *testing.T) {
+			db := localInfileDB(t, ModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
+				if !serveOK(ctx, t, p, []byte("\x03"+testXAStartSQL), 2) {
+					return
+				}
+				if !serveOK(ctx, t, p, []byte("\x03"+testXAEndSQL), 2) || !serveOK(ctx, t, p, []byte("\x03XA ROLLBACK X'67',X'',0x1"), 2) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			c, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = c.Close() }()
+			x := XID{FormatID: 1, GlobalID: []byte("g")}
+			if err := XAStart(context.Background(), c, x, XANoFlags); err != nil {
+				t.Fatal(err)
+			}
+			if ended {
+				if err := XAEnd(context.Background(), c, x, XASuccess); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Import(context.Background(), c, localImportSQL, &LocalInfile{Name: localInputName, Reader: strings.NewReader("x")}); !errors.Is(err, ErrUnsupported) {
+				t.Fatal(err)
+			}
+			if !ended {
+				if err := XAEnd(context.Background(), c, x, XASuccess); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := XARollback(context.Background(), c, x); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -534,3 +637,5 @@ func TestLocalInfileFraming(t *testing.T) {
 		})
 	}
 }
+
+const testManualTxStart = "START TRANSACTION"

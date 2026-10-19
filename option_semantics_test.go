@@ -16,8 +16,12 @@ import (
 
 // A rejected authentication or initialization must not send later session commands or retry.
 func TestInitializationErrorBoundary(t *testing.T) {
-	queries := []string{transactionUTF8Names, testAutocommitOn, transactionUTCZone, "SET SESSION wait_timeout = '600'", readySQL}
 	for _, status := range []byte{2, 6} {
+		assignment := "600"
+		if status == 6 {
+			assignment = testQuotedTimeout
+		}
+		queries := []string{transactionUTF8Names, testAutocommitOn, transactionUTCZone, "SET SESSION wait_timeout = " + assignment, readySQL}
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			for failed := -1; failed < len(queries); failed++ {
 				t.Run(fmt.Sprintf("%d/%s/%d", status, framing, failed), func(t *testing.T) {
@@ -49,7 +53,7 @@ func TestInitializationErrorBoundary(t *testing.T) {
 						}
 					})
 					var dials atomic.Int32
-					cfg := Config{User: testUser, Session: SessionOptions{SkipVersionProbe: true, Variables: map[string]string{"wait_timeout": "600"}, InitSQL: []string{readySQL}}, DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					cfg := Config{User: testUser, Session: SessionOptions{SkipVersionProbe: true, Variables: map[string]string{testSessionVariable: "600"}, InitSQL: []string{readySQL}}, DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 						dials.Add(1)
 						return peer(ctx, network, addr)
 					}}

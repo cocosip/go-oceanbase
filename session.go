@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,7 +122,7 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 		if !sessionVariableName(name) {
 			return &ConfigError{Field: "Session.Variables"}
 		}
-		query := "SET SESSION " + name + " = " + c.quoteSessionValue(c.cfg.Session.Variables[name])
+		query := "SET SESSION " + name + " = " + c.systemVariableLiteral(c.cfg.Session.Variables[name])
 		if err := c.initSQL(ctx, query); err != nil {
 			return err
 		}
@@ -256,4 +257,17 @@ func (c *conn) quoteSessionValue(value string) string {
 		value = strings.ReplaceAll(value, "\\", "\\\\")
 	}
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func (c *conn) systemVariableLiteral(value string) string {
+	// OceanBase MySQL integer system variables reject quoted numeric values.
+	if c.session.mode == ModeMySQL {
+		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return strconv.FormatInt(n, 10)
+		}
+		if n, err := strconv.ParseUint(value, 10, 64); err == nil {
+			return strconv.FormatUint(n, 10)
+		}
+	}
+	return c.quoteSessionValue(value)
 }

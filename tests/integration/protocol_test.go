@@ -46,9 +46,8 @@ func TestPacketModes(t *testing.T) {
 					defer func() { _ = db.Close() }()
 					ctx := testContext(t)
 					if err = db.PingContext(ctx); err != nil {
-						if !tc.requireSuccess && errors.Is(err, oceanbase.ErrUnsupported) {
-							t.Log("required capability explicitly rejected before business execution")
-							return
+						if errors.Is(err, oceanbase.ErrUnsupported) && tc.name != "standard" && tc.name != "auto" && (!tc.requireSuccess || os.Getenv("OB_TEST_REQUIRE") != "1") {
+							t.Skip("required capability explicitly rejected; framed business execution not verified")
 						}
 						failOperation(t, "packet negotiation", err)
 					}

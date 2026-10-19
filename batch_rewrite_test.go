@@ -96,6 +96,28 @@ func serveBatchRewriteGuard(ctx context.Context, t testing.TB, p *wire.PacketIO,
 		append([]byte{byte(len(value))}, value...), []byte{254, 0, 0, status, 0})
 }
 
+func TestBatchRewriteGuardServerError(t *testing.T) {
+	for _, code := range []uint16{1064, 1142} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			db := batchRewriteDB(t, Config{Mode: ModeMySQL, AllowMultiStatements: true}, "standard", func(ctx context.Context, p *wire.PacketIO) {
+				if !readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{255, byte(code), byte(code >> 8), '#', 'H', 'Y', '0', '0', '0', 'n', 'o'}) {
+					return
+				}
+				serveOK(ctx, t, p, []byte{14}, 2)
+			})
+			defer func() { _ = db.Close() }()
+			r, err := ExecBatch(context.Background(), db, "INSERT INTO t VALUES (?)", [][]any{{1}, {2}}, BatchOptions{Strategy: BatchRewrite})
+			var server *Error
+			if !errors.As(err, &server) || server.Code != uint32(code) || r.Items[0].Started || r.Items[1].Started {
+				t.Fatalf("guard error swallowed or DML sent: result=%+v err=%v", r, err)
+			}
+			if err = db.PingContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestBatchRewriteResults(t *testing.T) {
 	for _, variant := range []string{testStandard, testCompression, testOB20} {
 		for _, fail := range []bool{false, true} {
@@ -245,7 +267,7 @@ func TestBatchRewriteFallback(t *testing.T) {
 				if name == "server-merge-on" && !serveBatchRewriteGuard(ctx, t, p, "1", status) {
 					return
 				}
-				if name == "missing-variable" && (!readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{255, 38, 4, '#', 'H', 'Y', '0', '0', '0', 'n', 'o'})) {
+				if name == "missing-variable" && (!readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{255, 169, 4, '#', 'H', 'Y', '0', '0', '0', 'n', 'o'})) {
 					return
 				}
 				for i := int64(1); i <= 2; i++ {
@@ -425,19 +447,6 @@ func testBatchRewriteGuardRowError(t *testing.T, framing string, prefix, afterRo
 		if !sendPackets(ctx, t, p, []byte{255, 21, 4, '#', '4', '2', '0', '0', '0', 'n', 'o'}) {
 			return
 		}
-		if prefix {
-			for _, q := range []string{"INSERT INTO t VALUES ( 3 )", "INSERT INTO t VALUES ( 4 )"} {
-				if !readQuery(ctx, t, p, q) || !sendPackets(ctx, t, p, commandPacket(1, 0, 2)) {
-					return
-				}
-			}
-		} else {
-			for i := int64(1); i <= 4; i++ {
-				if !servePrepareStatus(ctx, t, p, testBatchSQL, 7, 1, nil, 2) || !readCommand(ctx, t, p, batchExecutePacket(t, i)) || !sendPackets(ctx, t, p, commandPacket(1, 0, 2)) || !readCommand(ctx, t, p, stmtPacket(25, 7)) {
-					return
-				}
-			}
-		}
 		if !serveOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -449,15 +458,23 @@ func testBatchRewriteGuardRowError(t *testing.T, framing string, prefix, afterRo
 	defer func() { _ = pinned.Close() }()
 	r, err := ExecBatch(context.Background(), pinned, testBatchSQL, [][]any{{1}, {2}, {3}, {4}}, BatchOptions{Strategy: BatchRewrite, ChunkRows: 2})
 	want := BatchSequential
+	completed := 0
 	if prefix {
 		want = BatchRewrite
+		completed = 2
 	}
-	if err != nil || r.Strategy != want || batchSucceeded(&r) != 4 {
+	var server *Error
+	if !errors.As(err, &server) || server.Code != 1045 || r.Strategy != want || batchSucceeded(&r) != completed {
 		t.Fatal(r, err)
 	}
-	for _, item := range r.Items {
+	for _, item := range r.Items[:completed] {
 		if !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 || item.Err != nil {
-			t.Fatal("fallback lost per-item acknowledgement", item)
+			t.Fatal("guard failure lost earlier acknowledgement", item)
+		}
+	}
+	for _, item := range r.Items[completed:] {
+		if item.Started {
+			t.Fatal("guard failure sent more DML")
 		}
 	}
 	if err = pinned.PingContext(context.Background()); err != nil {

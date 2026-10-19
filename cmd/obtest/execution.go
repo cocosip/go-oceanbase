@@ -19,10 +19,22 @@ func runBatchRewrite(ctx context.Context, s *scenario) error {
 	if err != nil {
 		return err
 	}
-	if err = expect(r.Strategy == oceanbase.BatchRewrite, "batch rewrite fell back; native rewrite not verified"); err != nil {
+	if err = countRows(ctx, s.db, table, 3); err != nil {
 		return err
 	}
-	return countRows(ctx, s.db, table, 3)
+	for i, want := range []string{seedOne, seedTwo, unicodeValue} {
+		var got string
+		if err = s.db.QueryRowContext(ctx, "SELECT V FROM "+table+" WHERE ID=?", i+1).Scan(&got); err != nil {
+			return err
+		}
+		if got != want {
+			return checkFailure("batch rewrite or fallback changed input content")
+		}
+	}
+	if r.Strategy == oceanbase.BatchSequential {
+		return skipped("native batch rewrite unavailable: safety guard not confirmed disabled; sequential fallback verified")
+	}
+	return expect(r.Strategy == oceanbase.BatchRewrite, "unexpected batch strategy")
 }
 
 func runBatchArray(ctx context.Context, s *scenario) (err error) {

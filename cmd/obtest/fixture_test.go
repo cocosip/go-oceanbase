@@ -290,3 +290,25 @@ func TestCLIConfigurationOnly(t *testing.T) {
 		t.Fatal("valid selection was not preserved", err)
 	}
 }
+
+func TestXAFlagRejectionClassification(t *testing.T) {
+	server := &oceanbase.Error{Code: 1398}
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{errors.Join(oceanbase.ErrXA, &oceanbase.XAError{Code: -5, Err: server}), true},
+		{server, true}, {oceanbase.ErrXA, false}, {nil, false},
+		{errors.Join(oceanbase.ErrXA, server, context.DeadlineExceeded), false},
+		{errors.Join(oceanbase.ErrXA, server, errors.New("cleanup")), false},
+		{errors.Join(oceanbase.ErrXA, &oceanbase.Error{Code: 1064}), false},
+		{errors.Join(oceanbase.ErrXA, server, &oceanbase.Error{Code: 1142}), false},
+	} {
+		if xaFlagRejected(tc.err, oceanbase.ModeMySQL) != tc.want {
+			t.Errorf("classification mismatch: %v", tc.err)
+		}
+		if xaFlagRejected(tc.err, oceanbase.ModeOracle) {
+			t.Error("Oracle error classified as MySQL flag rejection")
+		}
+	}
+}

@@ -42,6 +42,8 @@ var ErrLocalInfile = errors.New("oceanbase: refused or failed local infile")
 // Only this command can read input; ordinary Exec/Query never authorize uploads.
 // Import neither starts nor commits a transaction and never retries consumed input.
 // Failure may leave database effects; use a transaction where the server supports it.
+// OceanBase MySQL-mode imports require autocommit outside local transactions and
+// XA sessions; otherwise Import returns ErrUnsupported before sending SQL/input.
 func Import(ctx context.Context, exec Execer, query string, input *LocalInfile) (sql.Result, error) {
 	if err := input.validate(); err != nil {
 		return nil, err
@@ -128,9 +130,6 @@ type localInfileRequest struct {
 type localInfileContextKey struct{}
 
 func (c *conn) execLocalInfile(ctx context.Context, request localInfileRequest) (driver.Result, error) {
-	if c.session.capabilities&wire.ClientLocalFiles == 0 {
-		return nil, ErrUnsupported
-	}
 	ctx = context.WithValue(ctx, localInfileContextKey{}, request.input)
 	rows, err := c.queryText(ctx, request.query)
 	if err != nil {

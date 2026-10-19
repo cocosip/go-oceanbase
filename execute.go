@@ -188,6 +188,17 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 		c.unlock()
 		return nil, driver.ErrBadConn
 	}
+	if input, _ := ctx.Value(localInfileContextKey{}).(*LocalInfile); input != nil {
+		if c.session.capabilities&wire.ClientLocalFiles == 0 {
+			c.unlock()
+			return nil, ErrUnsupported
+		}
+		// MySQL LOAD DATA implicitly commits even DML preceding the import.
+		if c.session.mode == ModeMySQL && (c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 || c.xaUsed) {
+			c.unlock()
+			return nil, fmt.Errorf("%w: MySQL LOCAL INFILE requires autocommit without an active transaction", ErrUnsupported)
+		}
+	}
 	if err := c.clearStatementsLocked(ctx); err != nil {
 		c.unlock()
 		return nil, err

@@ -112,7 +112,8 @@ func SessionVariable(ctx context.Context, pinned *sql.Conn, name string) (sql.Nu
 	return r.values[0], err
 }
 
-// SetSessionVariable sets a session system variable to a string value.
+// SetSessionVariable sets a session system variable. MySQL decimal integer strings
+// within int64/uint64 range are sent as integer literals; other values are quoted.
 // Encoding and time-zone variables are reserved by Config.Session. Closing pinned discards it.
 func SetSessionVariable(ctx context.Context, pinned *sql.Conn, name, value string) error {
 	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionSetVariable, name: name, value: value})
@@ -238,7 +239,7 @@ func (c *conn) sessionOperationSQL(r *sessionOperationRequest) (query string, co
 			if name == "time_zone" || name == "ncharacter_set_connection" || strings.HasPrefix(name, "character_set_") || strings.HasPrefix(name, "collation_") {
 				return "", 0, false, fmt.Errorf("%w: encoding and time zone are configured by Session", ErrUnsupported)
 			}
-			query, columns, mutate = "SET SESSION "+r.name+" = "+c.quoteSessionValue(r.value), 0, true
+			query, columns, mutate = "SET SESSION "+r.name+" = "+c.systemVariableLiteral(r.value), 0, true
 		}
 	default:
 		return "", 0, false, ErrUnsupported

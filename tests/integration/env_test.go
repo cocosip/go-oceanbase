@@ -99,24 +99,34 @@ func duplicateKey(err error, mode oceanbase.Mode) bool {
 	return onlyServerErrorCode(err, code)
 }
 
-func onlyServerErrorCode(err error, code uint32) bool {
+func onlyServerErrorCode(err error, code uint32, allowed ...error) bool {
+	for _, sentinel := range allowed {
+		if err == sentinel {
+			return true
+		}
+	}
 	if group, ok := err.(interface{ Unwrap() []error }); ok {
 		causes := group.Unwrap()
 		if len(causes) == 0 {
 			return false
 		}
 		for _, cause := range causes {
-			if !onlyServerErrorCode(cause, code) {
+			if !onlyServerErrorCode(cause, code, allowed...) {
 				return false
 			}
 		}
 		return true
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return onlyServerErrorCode(wrapped.Unwrap(), code)
+		return onlyServerErrorCode(wrapped.Unwrap(), code, allowed...)
 	}
 	server, ok := err.(*oceanbase.Error)
 	return ok && server != nil && server.Code == code
+}
+
+func xaFlagRejected(err error, mode oceanbase.Mode) bool {
+	var server *oceanbase.Error
+	return mode == oceanbase.ModeMySQL && errors.As(err, &server) && server != nil && onlyServerErrorCode(err, 1398, oceanbase.ErrXA)
 }
 
 func TestDuplicateKeyErrors(t *testing.T) {
@@ -189,5 +199,27 @@ func TestProfiles(t *testing.T) {
 	}
 	if _, err = profiles("unexpected"); err == nil {
 		t.Fatal("invalid profile silently selected")
+	}
+}
+
+func TestXAFlagRejectionClassification(t *testing.T) {
+	server := &oceanbase.Error{Code: 1398}
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{errors.Join(oceanbase.ErrXA, &oceanbase.XAError{Code: -5, Err: server}), true},
+		{server, true}, {oceanbase.ErrXA, false}, {nil, false},
+		{errors.Join(oceanbase.ErrXA, server, context.DeadlineExceeded), false},
+		{errors.Join(oceanbase.ErrXA, server, errors.New("cleanup")), false},
+		{errors.Join(oceanbase.ErrXA, &oceanbase.Error{Code: 1064}), false},
+		{errors.Join(oceanbase.ErrXA, server, &oceanbase.Error{Code: 1142}), false},
+	} {
+		if xaFlagRejected(tc.err, oceanbase.ModeMySQL) != tc.want {
+			t.Errorf("classification mismatch: %v", tc.err)
+		}
+		if xaFlagRejected(tc.err, oceanbase.ModeOracle) {
+			t.Error("Oracle error classified as MySQL flag rejection")
+		}
 	}
 }

@@ -427,6 +427,29 @@ func TestConnectSessionValueEncoding(t *testing.T) {
 	}
 }
 
+func TestConnectIntegerSystemVariable(t *testing.T) {
+	cfg := Config{User: testUser, Session: SessionOptions{Variables: map[string]string{testSessionVariable: "600"}}, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+		if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) ||
+			!serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = 600"), 2) ||
+			!serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), 2) ||
+			!serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), 2) ||
+			!serveOK(context.Background(), t, p, []byte{14}, 2) {
+			return
+		}
+		p.ResetSequence()
+		serveQuit(t, p)
+	})}
+	c, err := NewConnector(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(c)
+	defer func() { _ = db.Close() }()
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestConnectOceanBaseVersion(t *testing.T) {
 	c, err := NewConnector(Config{User: testUser, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) {

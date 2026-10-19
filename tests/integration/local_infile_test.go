@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/cocosip/go-oceanbase"
 )
+
+const localImportName = "input"
 
 func TestLocalImport(t *testing.T) {
 	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
@@ -53,6 +56,10 @@ func testLocalImportProfile(t *testing.T, p profile) {
 			failOperation(t, "drop local import table", err)
 		}
 	}()
+	if p.mode == oceanbase.ModeMySQL {
+		testMySQLImportAutocommit(t, db, table, command)
+		return
+	}
 	for _, commit := range []bool{false, true} {
 		tx, err := db.BeginTx(testContext(t), nil)
 		if err != nil {
@@ -60,7 +67,7 @@ func testLocalImportProfile(t *testing.T, p profile) {
 		}
 		func() {
 			defer func() { _ = tx.Rollback() }()
-			result, err := oceanbase.Import(testContext(t), tx, command, &oceanbase.LocalInfile{Name: "input", Reader: strings.NewReader("1\tx\n2\ty\n")})
+			result, err := oceanbase.Import(testContext(t), tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: strings.NewReader("1\tx\n2\ty\n")})
 			if err != nil {
 				failOperation(t, "local import", err)
 			}
@@ -94,7 +101,7 @@ func testLocalImportProfile(t *testing.T, p profile) {
 		failOperation(t, "begin failed local import transaction", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := oceanbase.Import(testContext(t), tx, command, &oceanbase.LocalInfile{Name: "input", Reader: strings.NewReader(strings.Repeat("3\tz\n", 20000)), MaxBytes: 65536}); !errors.Is(err, oceanbase.ErrLocalInfile) {
+	if _, err := oceanbase.Import(testContext(t), tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: strings.NewReader(strings.Repeat("3\tz\n", 20000)), MaxBytes: 65536}); !errors.Is(err, oceanbase.ErrLocalInfile) {
 		t.Fatal("local import size failure was not reported")
 	}
 	if _, err := tx.ExecContext(testContext(t), "SELECT 1"); err == nil {
@@ -108,5 +115,64 @@ func testLocalImportProfile(t *testing.T, p profile) {
 	var count int
 	if err := db.QueryRowContext(testContext(t), "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != 2 {
 		t.Fatal("failed import retained partial transaction effects")
+	}
+}
+
+func testMySQLImportAutocommit(t *testing.T, db *sql.DB, table, command string) {
+	t.Helper()
+	ctx := testContext(t)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		failOperation(t, "begin protected import transaction", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (9,'before-import')"); err != nil {
+		failOperation(t, "write before refused import", err)
+	}
+	data := "1\tx\n2\ty\n"
+	reader := strings.NewReader(data)
+	if _, err := oceanbase.Import(ctx, tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: reader}); !errors.Is(err, oceanbase.ErrUnsupported) || reader.Len() != len(data) {
+		t.Fatal("transactional import not refused before reading input")
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != 1 {
+		t.Fatal("refused import changed transaction contents", err)
+	}
+	if err = tx.Rollback(); err != nil {
+		failOperation(t, "rollback protected import transaction", err)
+	}
+	if err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != 0 {
+		t.Fatal("refused import committed preceding DML", err)
+	}
+	result, err := oceanbase.Import(ctx, db, command, &oceanbase.LocalInfile{Name: localImportName, Reader: strings.NewReader(data)})
+	if err != nil {
+		failOperation(t, "autocommit import", err)
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 2 {
+		t.Fatal("autocommit import affected count differs")
+	}
+	rows, err := db.QueryContext(ctx, "SELECT ID,V FROM "+table+" ORDER BY ID")
+	if err != nil {
+		failOperation(t, "read autocommit import", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for i, want := range []string{"x", "y"} {
+		if !rows.Next() {
+			t.Fatal("missing imported row", rows.Err())
+		}
+		var id int
+		var value string
+		if err := rows.Scan(&id, &value); err != nil || id != i+1 || value != want {
+			t.Fatal("imported content mismatch", err)
+		}
+	}
+	if rows.Next() || rows.Err() != nil {
+		t.Fatal("unexpected imported rows", rows.Err())
+	}
+	if err = rows.Close(); err != nil {
+		failOperation(t, "close imported rows", err)
+	}
+	if err = db.PingContext(ctx); err != nil {
+		failOperation(t, "ping after autocommit import", err)
 	}
 }

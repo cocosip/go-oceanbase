@@ -16,7 +16,7 @@ All scenarios run by default. Mode-inapplicable cases are recorded separately. M
 - [x] Database scenarios: CRUD, preparation/client binding, exact numbers/NULL/Unicode/time, transactions/savepoints, metadata, execution summaries, batches, long parameters, table BLOBs, procedure outputs, cursors, Oracle native LOBs/complex types/RETURNING/resource outputs, XA, sessions, warnings, cancellation and user changes.
 - [x] Usage instructions, configuration example and links from development progress.
 - [x] Before the baseline upgrade: Go 1.25/1.26 build, offline tool checks, unit tests, vet, lint and dependency guards; review found no remaining confirmed issues.
-- [ ] Run the complete workflows against actual test databases and save reports; this development stage did not connect to a database.
+- [ ] Complete real-target acceptance across the required environments. The [MySQL-mode run and fixes on 2026-10-19](mysql-live-validation-2026-10-19.md) saved baseline/retest reports; the final full tool run returned 33 passed, 0 failed, 4 skipped and 7 not applicable. Skips remain incomplete acceptance; other combinations are outstanding.
 
 ## Running the tool
 
@@ -105,7 +105,7 @@ Each scenario uses an independent pool and random uppercase OBT_ object names to
 | `metadata-parameters` | Owned table/one seed row; describe positional UPDATE, Oracle repeated-named UPDATE and parameterless SELECT. Check fixed 11 columns, physical/logical positions, normalized names/unknown direction, mode-specific nullability, dimensions and raw protocol bytes. Unknown types/sizes remain unknown; parameter descriptions need not equal application-column definitions. Reread unchanged seed after each description, verify one row, clean up. Metadata always prepares on the server even under client preparation |
 | `execution` | Execute, result reads, early Close, completion summary and Ping on the original session |
 | `batch` | Duplicate-key location for five preferred strategies, aggregate/per-input codes, completion counts, stop/continue status and rollback. Report observations retain actual strategy; fallback does not prove native capability |
-| `batch-rewrite` | MySQL-only, explicitly enable multi-statements/set batch negotiation variable; require actual Rewrite strategy |
+| `batch-rewrite` | MySQL-only, explicitly enable multi-statements and preserve the driver's safety gate; require actual Rewrite for pass. Verify fallback content/counts before reporting native rewrite unavailable as skip |
 | `batch-array` | Oracle-only, actual native array binding, aggregate/per-input duplicate codes, completion counts, per-item status and rollback. Requires OceanBase >=4.2.1; sequential fallback is not success |
 | `optimized-execution` | Explicit prepare-execute/cache/type-reuse/checksum settings; parameter type changes, NULL, duplicate keys and reads. Actual server optimization still depends on negotiation |
 | `reset-full` | Full Reset with standard sql.Stmt working across repeated pool borrows/returns |
@@ -127,9 +127,9 @@ Each scenario uses an independent pool and random uppercase OBT_ object names to
 | `cancel-context` | Owned table/transaction lock, another connection's lock wait until context timeout; unchanged original value and usable replacement connection |
 | `cancel-query` | Separate helper cancels a lock-waiting command; explicit code across the complete error chain, reusable original session, one-shot token and no persisted side effects. Expected cancellation mixed with other failures must fail |
 | `change-user` | Configured second identity, identity switch, old-statement invalidation and standard-pool restoration of original identity |
-| `local-import` | Create table, import two rows from an in-memory Reader, compare each value and separately roll back/commit; no local data file |
+| `local-import` | MySQL: refuse import before SQL/upload inside a transaction, verify earlier DML still rolls back, then import in autocommit and compare every value/count. Oracle: import inside transactions and verify rollback/commit. No local data file |
 
-Creation, assertion, privilege and protocol errors fail explicitly; ErrUnsupported never becomes success automatically. The tool does not cover every scalar, metadata filter, platform authentication, HA fault or stress combination. This table is the actual scope; see the [plan](go-driver-development-plan.md) and [matrix](go-driver-compatibility-matrix.md) for other acceptance requirements.
+Creation, assertion, privilege and protocol errors fail explicitly; ErrUnsupported never becomes success automatically. Exact MySQL 1398 rejection of XA SUSPEND/JOIN is reported as unavailable (skip); other or mixed errors still fail, and cleanup failure overrides skip. Strict require_all also fails skips. The tool does not cover every scalar, metadata filter, platform authentication, HA fault or stress combination. This table is the actual scope; see the [plan](go-driver-development-plan.md) and [matrix](go-driver-compatibility-matrix.md) for other acceptance requirements.
 
 ## Reports and exit codes
 

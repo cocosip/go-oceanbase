@@ -54,7 +54,7 @@ func runXA(ctx context.Context, s *scenario, variant string) (err error) {
 	if _, err = c.ExecContext(ctx, "INSERT INTO "+table+" VALUES (1)"); err != nil {
 		return err
 	}
-	if err = endAndReassociateXA(ctx, c, xid, variant, record); err != nil {
+	if err = endAndReassociateXA(ctx, c, xid, variant, record, s.mode); err != nil {
 		return err
 	}
 	want := 1
@@ -182,13 +182,16 @@ func cleanupXA(ctx context.Context, db *sql.DB, xid oceanbase.XID, record *objec
 	})
 }
 
-func endAndReassociateXA(ctx context.Context, c *sql.Conn, xid oceanbase.XID, variant string, record *objectRecord) error {
+func endAndReassociateXA(ctx context.Context, c *sql.Conn, xid oceanbase.XID, variant string, record *objectRecord, mode oceanbase.Mode) error {
 	var err error
 	flag := oceanbase.XASuccess
 	if variant == xaSuspendVariant {
 		flag = oceanbase.XASuspend
 	}
 	if err = oceanbase.XAEnd(ctx, c, xid, flag); err != nil {
+		if variant == xaSuspendVariant && xaFlagRejected(err, mode) {
+			return skipped("server rejected XA END SUSPEND (1398); suspend/resume unavailable")
+		}
 		return err
 	}
 	record.State = xaEndedState
@@ -201,6 +204,9 @@ func endAndReassociateXA(ctx context.Context, c *sql.Conn, xid oceanbase.XID, va
 			flag = oceanbase.XAJoin
 		}
 		if err = oceanbase.XAStart(ctx, c, xid, flag); err != nil {
+			if xaFlagRejected(err, mode) {
+				return skipped("server rejected XA reassociation flag (1398); join/resume unavailable")
+			}
 			return err
 		}
 		record.State = xaActiveState

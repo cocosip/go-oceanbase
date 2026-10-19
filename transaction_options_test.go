@@ -193,6 +193,9 @@ func TestTransactionNativeInitialization(t *testing.T) {
 				if variable {
 					options = SessionOptions{Variables: map[string]string{"autocommit": "0"}}
 					query = "SET SESSION autocommit = '0'"
+					if mode == ModeMySQL {
+						query = "SET SESSION autocommit = 0"
+					}
 				}
 				connector, err := NewConnector(Config{User: testUser, Mode: mode, Session: options, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 					if !serveConnect(ctx, t, p, ready) || !serveBaseline(ctx, t, p, ready) {

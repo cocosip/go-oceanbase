@@ -178,14 +178,22 @@ func compareMetadataColumns(t *testing.T, p profile, pinned *sql.Conn, base ocea
 	if err != nil {
 		failOperation(t, "metadata column descriptions", err)
 	}
+	defer func() { _ = rows.Close() }()
 	names := make([]string, 0, 3)
 	for rows.Next() {
 		var catalog, defaultValue, remarks, owner sql.NullString
 		var gotSchema, table, name, dataType string
 		var ordinal int64
-		var length, precision, scale, nullable sql.NullInt64
-		if err = rows.Scan(&catalog, &gotSchema, &table, &name, &ordinal, &dataType, &length, &precision, &scale, &nullable, &defaultValue, &remarks, &owner); err != nil {
+		var length, precision, scale, nullable, autoIncrement, generated sql.NullInt64
+		if err = rows.Scan(&catalog, &gotSchema, &table, &name, &ordinal, &dataType, &length, &precision, &scale, &nullable, &defaultValue, &remarks, &owner, &autoIncrement, &generated); err != nil {
 			failOperation(t, "scan metadata columns", err)
+		}
+		autoOK := autoIncrement.Valid && autoIncrement.Int64 == 0
+		if p.mode == oceanbase.ModeOracle {
+			autoOK = !autoIncrement.Valid
+		}
+		if !autoOK || !generated.Valid || generated.Int64 != 0 {
+			t.Fatal("ordinary column marked auto-increment or generated")
 		}
 		names = append(names, name)
 		if strings.EqualFold(name, "amount") && (!precision.Valid || precision.Int64 != 10 || !scale.Valid || scale.Int64 != 2) {

@@ -57,7 +57,7 @@ func (c *conn) batchRewriteAllowedLocked(ctx context.Context) (bool, error) {
 	values, err := c.sessionValuesLocked(ctx, []byte("SELECT @@SESSION.ob_enable_batched_multi_statement"), 1)
 	if err != nil {
 		var server *Error
-		if errors.As(err, &server) && !c.closed.Load() && ctx.Err() == nil {
+		if errors.As(err, &server) && server.Code == 1193 && !c.closed.Load() && ctx.Err() == nil {
 			return false, nil
 		}
 		return false, err

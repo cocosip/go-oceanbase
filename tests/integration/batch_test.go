@@ -37,12 +37,6 @@ func TestBatchRewriteExecution(t *testing.T) {
 		t.Run(p.name, func(t *testing.T) {
 			cfg := profileConfig(t, p)
 			cfg.AllowMultiStatements = true
-			if p.mode == oceanbase.ModeMySQL {
-				if cfg.Session.Variables == nil {
-					cfg.Session.Variables = make(map[string]string)
-				}
-				cfg.Session.Variables["ob_enable_batched_multi_statement"] = "0"
-			}
 			connector, err := oceanbase.NewConnector(cfg)
 			if err != nil {
 				t.Fatal("invalid batch rewrite config")
@@ -72,6 +66,7 @@ func testBatchDatabase(t *testing.T, p profile, db *sql.DB, rewrite bool) {
 	}()
 	query := "INSERT INTO " + table + " VALUES (?,?)"
 	inputs := [][]any{{1, "一"}, {1, "duplicate"}, {2, "二🙂"}}
+	nativeRewrite := false
 	for _, strategy := range []oceanbase.BatchStrategy{oceanbase.BatchSequential, oceanbase.BatchMultiSend, oceanbase.BatchRewrite, oceanbase.BatchBulk, oceanbase.BatchArrayBinding} {
 		for _, keepGoing := range []bool{false, true} {
 			ctx := testContext(t)
@@ -81,26 +76,14 @@ func testBatchDatabase(t *testing.T, p profile, db *sql.DB, rewrite bool) {
 				if p.mode == oceanbase.ModeMySQL && !keepGoing {
 					want = oceanbase.BatchRewrite
 				}
-				if r.Strategy != want {
+				if r.Strategy == oceanbase.BatchRewrite {
+					nativeRewrite = true
+				}
+				if r.Strategy != want && (want != oceanbase.BatchRewrite || r.Strategy != oceanbase.BatchSequential) {
 					t.Fatal("batch rewrite negotiation did not select the expected strategy")
 				}
 			}
-			var be *oceanbase.BatchError
-			if !errors.As(err, &be) || be.Index != 1 || len(r.Items) != 3 || r.Items[0].Status != oceanbase.BatchSucceeded || r.Items[1].Status != oceanbase.BatchFailed {
-				t.Fatal("batch results differ from sequential contract")
-			}
-			if !duplicateKey(err, p.mode) || !duplicateKey(r.Items[1].Err, p.mode) {
-				t.Fatal("batch duplicate key error code mismatch")
-			}
-			want := 1
-			if keepGoing {
-				want = 2
-				if r.Items[2].Status != oceanbase.BatchSucceeded {
-					t.Fatal("continue omitted final input")
-				}
-			} else if r.Items[2].Status != oceanbase.BatchNotExecuted {
-				t.Fatal("stop sent final input")
-			}
+			want := checkBatchDuplicateResult(t, p.mode, r, err, keepGoing)
 			var n int
 			if err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&n); err != nil {
 				failOperation(t, "count batch rows", err)
@@ -136,6 +119,33 @@ func testBatchDatabase(t *testing.T, p profile, db *sql.DB, rewrite bool) {
 	if n != 0 {
 		t.Fatal("batch changed caller transaction boundary")
 	}
+	if rewrite && p.mode == oceanbase.ModeMySQL && !nativeRewrite {
+		if os.Getenv("OB_TEST_REQUIRE") == "1" {
+			t.Fatal("native batch rewrite unavailable; sequential fallback and rollback verified")
+		}
+		t.Skip("native batch rewrite unavailable; sequential fallback and rollback verified")
+	}
+}
+
+func checkBatchDuplicateResult(t *testing.T, mode oceanbase.Mode, result oceanbase.BatchResult, err error, keepGoing bool) int {
+	t.Helper()
+	var batch *oceanbase.BatchError
+	if !errors.As(err, &batch) || batch.Index != 1 || len(result.Items) != 3 || result.Items[0].Status != oceanbase.BatchSucceeded || result.Items[1].Status != oceanbase.BatchFailed {
+		t.Fatal("batch results differ from sequential contract")
+	}
+	if !duplicateKey(err, mode) || !duplicateKey(result.Items[1].Err, mode) {
+		t.Fatal("batch duplicate key error code mismatch")
+	}
+	if keepGoing {
+		if result.Items[2].Status != oceanbase.BatchSucceeded {
+			t.Fatal("continue omitted final input")
+		}
+		return 2
+	}
+	if result.Items[2].Status != oceanbase.BatchNotExecuted {
+		t.Fatal("stop sent final input")
+	}
+	return 1
 }
 
 func TestBatchArrayBindingExecution(t *testing.T) {

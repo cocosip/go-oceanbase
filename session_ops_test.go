@@ -68,7 +68,7 @@ func TestSessionOperations(t *testing.T) {
 			if info, err := GetClientInfo(ctx, pinned); err != nil || info != (ClientInfo{"service", "caller", "host"}) {
 				t.Fatalf("client info=%+v error=%v", info, err)
 			}
-			if value, err := SessionVariable(ctx, pinned, "wait_timeout"); err != nil || value != (sql.NullString{String: "600", Valid: true}) {
+			if value, err := SessionVariable(ctx, pinned, testSessionVariable); err != nil || value != (sql.NullString{String: "600", Valid: true}) {
 				t.Fatalf("variable=%+v error=%v", value, err)
 			}
 			catalog, err := CurrentCatalog(ctx, pinned)
@@ -97,8 +97,12 @@ func TestSessionMutationIsolation(t *testing.T) {
 				} else if !serveOK(ctx, t, p, []byte("\x03ALTER SESSION SET CURRENT_SCHEMA = \"a\"\"b\""), status) {
 					return
 				}
+				assignment := testQuotedTimeout
+				if mode == ModeMySQL {
+					assignment = "600"
+				}
 				if !serveOK(ctx, t, p, []byte("\x03SET @ApplicationName = 'svc''x', @ClientUser = NULL, @ClientHostname = 'host'"), status) ||
-					!serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = '600'"), status) || !serveOK(ctx, t, p, []byte{14}, status) {
+					!serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte{14}, status) {
 					return
 				}
 				p.ResetSequence()
@@ -124,7 +128,7 @@ func TestSessionMutationIsolation(t *testing.T) {
 			if err = SetClientInfo(ctx, pinned, ClientInfo{ApplicationName: "svc'x", ClientHostname: "host"}); err != nil {
 				t.Fatal(err)
 			}
-			if err = SetSessionVariable(ctx, pinned, "wait_timeout", "600"); err != nil {
+			if err = SetSessionVariable(ctx, pinned, testSessionVariable, "600"); err != nil {
 				t.Fatal(err)
 			}
 			if err = pinned.PingContext(ctx); err != nil {
@@ -183,6 +187,30 @@ func TestSessionOperationValidation(t *testing.T) {
 	}
 	if err = pinned.PingContext(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSessionVariableIntegerAndStringSQL(t *testing.T) {
+	for _, tc := range []struct{ value, want string }{
+		{"600", "600"}, {"+00600", "600"}, {"-1", "-1"},
+		{"-9223372036854775808", "-9223372036854775808"},
+		{testMaxUint64Text, testMaxUint64Text},
+		{"18446744073709551616", "'18446744073709551616'"},
+		{"", "''"}, {"1; DROP TABLE t", "'1; DROP TABLE t'"},
+		{"1' OR '1", "'1'' OR ''1'"}, {"1.5", "'1.5'"},
+		{"0x10", "'0x10'"}, {"1e3", "'1e3'"}, {" 1", "' 1'"},
+	} {
+		for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+			c := &conn{session: &handshakeSession{mode: mode, ok: wire.OK{Status: 2}}}
+			want := tc.want
+			if mode == ModeOracle {
+				want = c.quoteSessionValue(tc.value)
+			}
+			query, _, _, err := c.sessionOperationSQL(&sessionOperationRequest{op: sessionSetVariable, name: testSessionVariable, value: tc.value})
+			if err != nil || query != "SET SESSION wait_timeout = "+want {
+				t.Errorf("mode=%d value=%q query=%q err=%v", mode, tc.value, query, err)
+			}
+		}
 	}
 }
 
@@ -425,3 +453,7 @@ func TestSessionMutationStatementCache(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+const testSessionVariable = "wait_timeout"
+
+const testQuotedTimeout = "'600'"

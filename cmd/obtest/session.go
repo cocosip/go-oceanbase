@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -326,6 +327,9 @@ func runLocalImport(ctx context.Context, s *scenario) (err error) {
 		return err
 	}
 	command = strings.ReplaceAll(command, "{table}", table)
+	if s.mode == oceanbase.ModeMySQL {
+		return importMySQLAutocommit(ctx, s, table, command)
+	}
 	for _, commit := range []bool{false, true} {
 		if err = importTransaction(ctx, s, table, command, commit); err != nil {
 			return err
@@ -334,13 +338,58 @@ func runLocalImport(ctx context.Context, s *scenario) (err error) {
 	return nil
 }
 
+func importMySQLAutocommit(ctx context.Context, s *scenario, table, command string) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackInto(tx, &err)
+	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (9,'before-import')"); err != nil {
+		return err
+	}
+	data := "1\tone\n2\ttwo\n"
+	reader := strings.NewReader(data)
+	_, refusal := oceanbase.Import(ctx, tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: reader})
+	if err = expect(errors.Is(refusal, oceanbase.ErrUnsupported) && reader.Len() == len(data), "transactional MySQL import was not refused before consuming input"); err != nil {
+		return err
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil {
+		return err
+	}
+	if err = expect(count == 1, "refused import changed transaction content"); err != nil {
+		return err
+	}
+	if err = tx.Rollback(); err != nil {
+		return err
+	}
+	if err = countRows(ctx, s.db, table, 0); err != nil {
+		return err
+	}
+	r, err := oceanbase.Import(ctx, s.db, command, &oceanbase.LocalInfile{Name: localImportName, Reader: strings.NewReader(data)})
+	if err = affected(r, err, 2); err != nil {
+		return err
+	}
+	for id, want := range []string{seedOne, seedTwo} {
+		var value string
+		if err = s.db.QueryRowContext(ctx, "SELECT V FROM "+table+" WHERE ID="+fmt.Sprint(id+1)).Scan(&value); err != nil {
+			return err
+		}
+		if err = expect(value == want, "autocommit import content mismatch"); err != nil {
+			return err
+		}
+	}
+	s.observe("transaction_policy", "MySQL transaction refused before upload; earlier DML rolled back; autocommit import verified")
+	return countRows(ctx, s.db, table, 2)
+}
+
 func importTransaction(ctx context.Context, s *scenario, table, command string, commit bool) (err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer rollbackInto(tx, &err)
-	r, err := oceanbase.Import(ctx, tx, command, &oceanbase.LocalInfile{Name: "input", Reader: strings.NewReader("1\tone\n2\ttwo\n")})
+	r, err := oceanbase.Import(ctx, tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: strings.NewReader("1\tone\n2\ttwo\n")})
 	if err = affected(r, err, 2); err != nil {
 		return err
 	}
@@ -362,3 +411,5 @@ func importTransaction(ctx context.Context, s *scenario, table, command string, 
 	}
 	return countRows(ctx, s.db, table, want)
 }
+
+const localImportName = "input"

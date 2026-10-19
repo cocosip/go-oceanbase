@@ -251,7 +251,7 @@ func TestVersionProbeCancelQuery(t *testing.T) {
 func TestVersionProbeInitialization(t *testing.T) {
 	for _, status := range []byte{2, 6} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			cfg := Config{User: testUser, Session: SessionOptions{SkipVersionProbe: true, Variables: map[string]string{"wait_timeout": "600"}, InitSQL: []string{readySQL}}}
+			cfg := Config{User: testUser, Session: SessionOptions{SkipVersionProbe: true, Variables: map[string]string{testSessionVariable: "600"}, InitSQL: []string{readySQL}}}
 			if status == 6 {
 				cfg.Session.NCharset = charsetUTF8MB4
 			}
@@ -263,7 +263,11 @@ func TestVersionProbeInitialization(t *testing.T) {
 				if status == 6 && !serveOK(ctx, t, p, []byte("\x03SET NCHARACTER_SET_CONNECTION = 'utf8mb4'"), status) {
 					return
 				}
-				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = '600'"), status) || !serveOK(ctx, t, p, []byte("\x03"+readySQL), status) || !serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), status) || !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status) {
+				assignment := "600"
+				if status == 6 {
+					assignment = testQuotedTimeout
+				}
+				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte("\x03"+readySQL), status) || !serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), status) || !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status) {
 					return
 				}
 				if status == 6 && !serveOK(ctx, t, p, []byte("\x03SET NCHARACTER_SET_CONNECTION = 'utf8mb4'"), status) {

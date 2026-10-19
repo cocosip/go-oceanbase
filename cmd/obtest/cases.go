@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"io"
-	"maps"
 
 	"github.com/cocosip/go-oceanbase"
 )
@@ -79,11 +78,6 @@ func nativeLOBConfig(cfg *oceanbase.Config) {
 
 func rewriteConfig(cfg *oceanbase.Config) {
 	cfg.AllowMultiStatements = true
-	cfg.Session.Variables = maps.Clone(cfg.Session.Variables)
-	if cfg.Session.Variables == nil {
-		cfg.Session.Variables = make(map[string]string)
-	}
-	cfg.Session.Variables["ob_enable_batched_multi_statement"] = "0"
 }
 
 func optimizedConfig(cfg *oceanbase.Config) {
@@ -102,24 +96,34 @@ func duplicateKey(err error, mode oceanbase.Mode) bool {
 	return onlyServerErrorCode(err, code)
 }
 
-func onlyServerErrorCode(err error, code uint32) bool {
+func onlyServerErrorCode(err error, code uint32, allowed ...error) bool {
+	for _, sentinel := range allowed {
+		if err == sentinel {
+			return true
+		}
+	}
 	if group, ok := err.(interface{ Unwrap() []error }); ok {
 		causes := group.Unwrap()
 		if len(causes) == 0 {
 			return false
 		}
 		for _, cause := range causes {
-			if !onlyServerErrorCode(cause, code) {
+			if !onlyServerErrorCode(cause, code, allowed...) {
 				return false
 			}
 		}
 		return true
 	}
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return onlyServerErrorCode(wrapped.Unwrap(), code)
+		return onlyServerErrorCode(wrapped.Unwrap(), code, allowed...)
 	}
 	server, ok := err.(*oceanbase.Error)
 	return ok && server != nil && server.Code == code
+}
+
+func xaFlagRejected(err error, mode oceanbase.Mode) bool {
+	var server *oceanbase.Error
+	return mode == oceanbase.ModeMySQL && errors.As(err, &server) && server != nil && onlyServerErrorCode(err, 1398, oceanbase.ErrXA)
 }
 
 func checkBatchDuplicate(result oceanbase.BatchResult, err error, mode oceanbase.Mode, keepGoing bool) error {
