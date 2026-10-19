@@ -59,8 +59,10 @@ func (c *connector) protocolAttributes() map[string]string {
 	if c.cfg.Protocol.NewMetadata != FeatureOff {
 		client |= 2
 	}
-	attrs := map[string]string{"__ob_client_attribute_capability_flag": strconv.FormatUint(client, 10)}
-	var proxy uint64
+	// The driver wire dialect makes OceanBase return negotiated capabilities in login OK.
+	attrs := map[string]string{"__mysql_client_type": "__ob_jdbc_client", "__ob_client_attribute_capability_flag": strconv.FormatUint(client, 10)}
+	// Capability alone never supplies file access; Import still requires an explicit Reader.
+	proxy := uint64(1 << 20)
 	if c.cfg.Protocol.ProxyChecksum != FeatureOff {
 		proxy |= 1<<3 | 1<<6
 	}
@@ -71,9 +73,7 @@ func (c *connector) protocolAttributes() map[string]string {
 			proxy |= 1<<14 | 1<<18
 		}
 	}
-	if proxy != 0 {
-		attrs["__proxy_capability_flag"] = strconv.FormatUint(proxy, 10)
-	}
+	attrs["__proxy_capability_flag"] = strconv.FormatUint(proxy, 10)
 	return attrs
 }
 

@@ -218,9 +218,6 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 		}
 		wanted |= wire.ClientCompress
 	}
-	if c.cfg.AllowMultiStatements {
-		wanted |= wire.ClientMultiStatements
-	}
 	if c.cfg.RowsAffectedMode == MatchedRows {
 		wanted |= wire.ClientFoundRows
 	}
@@ -238,6 +235,9 @@ func (c *connector) clientCapabilities(server uint64) (uint64, error) {
 	}
 	capabilities := wanted & server
 	// This is a client request, independent of the server greeting (Connector/J agrees).
+	if c.cfg.AllowMultiStatements {
+		capabilities |= wire.ClientMultiStatements
+	}
 	if c.cfg.Interactive {
 		capabilities |= wire.ClientInteractive
 	}

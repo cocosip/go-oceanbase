@@ -76,8 +76,8 @@ func TestBatchValuesBudgetsAndErrors(t *testing.T) {
 			rows := [][]any{{1}, {2}, {3}, {4}}
 			opts := BatchOptions{Strategy: BatchMultiValues, ChunkParameters: 2}
 			if scenario == testValuesBytes {
-				cfg.Limits.MaxMessageBytes = 128
-				rows = [][]any{{strings.Repeat("a", 30)}, {strings.Repeat("b", 30)}}
+				cfg.Limits.MaxMessageBytes = 192
+				rows = [][]any{{strings.Repeat("a", 50)}, {strings.Repeat("b", 50)}}
 			}
 			if scenario == testValuesInvalid {
 				rows[2] = []any{3, 4}
@@ -88,7 +88,7 @@ func TestBatchValuesBudgetsAndErrors(t *testing.T) {
 			db := batchRewriteDB(t, cfg, testStandard, func(peerCtx context.Context, p *wire.PacketIO) {
 				first := "INSERT INTO t VALUES ( 1 ),( 2 )"
 				if scenario == testValuesBytes {
-					first = "INSERT INTO t VALUES ( _utf8mb4 X'" + strings.Repeat("61", 30) + "' )"
+					first = "INSERT INTO t VALUES ( _utf8mb4 X'" + strings.Repeat("61", 50) + "' )"
 				}
 				if !readQuery(peerCtx, t, p, first) {
 					return
@@ -112,7 +112,7 @@ func TestBatchValuesBudgetsAndErrors(t *testing.T) {
 				if scenario != testValuesInvalid {
 					second := "INSERT INTO t VALUES ( 3 ),( 4 )"
 					if scenario == testValuesBytes {
-						second = "INSERT INTO t VALUES ( _utf8mb4 X'" + strings.Repeat("62", 30) + "' )"
+						second = "INSERT INTO t VALUES ( _utf8mb4 X'" + strings.Repeat("62", 50) + "' )"
 					}
 					if !readQuery(peerCtx, t, p, second) || !sendPackets(peerCtx, t, p, commandPacket(2, 31, 2)) {
 						return

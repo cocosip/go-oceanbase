@@ -235,9 +235,11 @@ func TestBindAmbiguousQuotes(t *testing.T) {
 func TestMultiStatementsCapability(t *testing.T) {
 	for _, allow := range []bool{false, true} {
 		c := &connector{cfg: Config{AllowMultiStatements: allow}}
-		flags, err := c.clientCapabilities(wire.ClientProtocol41 | wire.ClientSecureConnection | wire.ClientMultiStatements)
-		if err != nil || (flags&wire.ClientMultiStatements != 0) != allow {
-			t.Fatalf("allow=%v flags=%x err=%v", allow, flags, err)
+		for _, offer := range []uint64{0, wire.ClientMultiStatements} {
+			flags, err := c.clientCapabilities(wire.ClientProtocol41 | wire.ClientSecureConnection | offer)
+			if err != nil || (flags&wire.ClientMultiStatements != 0) != allow {
+				t.Fatalf("allow=%v offer=%x flags=%x err=%v", allow, offer, flags, err)
+			}
 		}
 	}
 }

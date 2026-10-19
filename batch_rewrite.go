@@ -5,7 +5,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -54,15 +53,17 @@ func (c *conn) tryBatchRewrite(ctx context.Context, request batchRequest) (bool,
 
 func (c *conn) batchRewriteAllowedLocked(ctx context.Context) (bool, error) {
 	// OceanBase can collapse a multi-statement request into one aggregate response.
-	values, _, err := c.sessionValuesLocked(ctx, []byte("SELECT @@SESSION.ob_enable_batched_multi_statement"), 1)
+	// This is a tenant parameter; every observer must explicitly report False.
+	query := "SELECT MAX(COALESCE(LOWER(VALUE),'')!='false') FROM oceanbase.GV$OB_PARAMETERS WHERE NAME='ob_enable_batched_multi_statement'"
+	values, _, err := c.sessionValuesLocked(ctx, []byte(query), 1)
 	if err != nil {
 		var server *Error
-		if errors.As(err, &server) && server.Code == 1193 && !c.closed.Load() && ctx.Err() == nil {
+		if errors.As(err, &server) && server.Code == 1146 && !c.closed.Load() && ctx.Err() == nil {
 			return false, nil
 		}
 		return false, err
 	}
-	return values[0].Valid && (values[0].String == "0" || strings.EqualFold(values[0].String, "OFF")), nil
+	return values[0].Valid && values[0].String == "0", nil
 }
 
 func (c *conn) execBatchRewriteLocked(ctx context.Context, request batchRequest) error {

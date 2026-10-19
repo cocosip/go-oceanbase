@@ -13,7 +13,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-const batchRewriteGuard = "SELECT @@SESSION.ob_enable_batched_multi_statement"
+const batchRewriteGuard = "SELECT MAX(COALESCE(LOWER(VALUE),'')!='false') FROM oceanbase.GV$OB_PARAMETERS WHERE NAME='ob_enable_batched_multi_statement'"
 const batchRewritePair = "INSERT INTO t VALUES ( 1 )\n;\nINSERT INTO t VALUES ( 2 )"
 const batchRewriteEarlyEnd = "early-end"
 const batchRewriteUnexpectedMore = "unexpected-more"
@@ -97,7 +97,7 @@ func serveBatchRewriteGuard(ctx context.Context, t testing.TB, p *wire.PacketIO,
 }
 
 func TestBatchRewriteGuardServerError(t *testing.T) {
-	for _, code := range []uint16{1064, 1142} {
+	for _, code := range []uint16{1064, 1142, 1193} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			db := batchRewriteDB(t, Config{Mode: ModeMySQL, AllowMultiStatements: true}, "standard", func(ctx context.Context, p *wire.PacketIO) {
 				if !readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{255, byte(code), byte(code >> 8), '#', 'H', 'Y', '0', '0', '0', 'n', 'o'}) {
@@ -182,7 +182,7 @@ func TestBatchRewriteChunks(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := batchRewriteDB(t, Config{AllowMultiStatements: true, Limits: Limits{MaxResultItems: tc.limit}}, testStandard, func(ctx context.Context, p *wire.PacketIO) {
 				for _, query := range []string{batchRewritePair, "INSERT INTO t VALUES ( 3 )\n;\nINSERT INTO t VALUES ( 4 )"} {
-					if !serveBatchRewriteGuard(ctx, t, p, "OFF", 2) || !readQuery(ctx, t, p, query) || !sendPackets(ctx, t, p, commandPacket(1, 0, 10), commandPacket(math.MaxUint64, 0, 2)) {
+					if !serveBatchRewriteGuard(ctx, t, p, "0", 2) || !readQuery(ctx, t, p, query) || !sendPackets(ctx, t, p, commandPacket(1, 0, 10), commandPacket(math.MaxUint64, 0, 2)) {
 						return
 					}
 				}
@@ -200,9 +200,9 @@ func TestBatchRewriteChunks(t *testing.T) {
 }
 
 func TestBatchRewriteMessageLimit(t *testing.T) {
-	const query = "INSERT INTO batch_table_with_a_deliberately_long_name VALUES (?)"
-	db := batchRewriteDB(t, Config{AllowMultiStatements: true, Limits: Limits{MaxMessageBytes: 128}}, testStandard, func(ctx context.Context, p *wire.PacketIO) {
-		for _, q := range []string{"INSERT INTO batch_table_with_a_deliberately_long_name VALUES ( 1 )", "INSERT INTO batch_table_with_a_deliberately_long_name VALUES ( 2 )"} {
+	const query = "INSERT INTO batch_table_with_a_deliberately_long_name_for_single_statement_packet_budget VALUES (?)"
+	db := batchRewriteDB(t, Config{AllowMultiStatements: true, Limits: Limits{MaxMessageBytes: 192}}, testStandard, func(ctx context.Context, p *wire.PacketIO) {
+		for _, q := range []string{"INSERT INTO batch_table_with_a_deliberately_long_name_for_single_statement_packet_budget VALUES ( 1 )", "INSERT INTO batch_table_with_a_deliberately_long_name_for_single_statement_packet_budget VALUES ( 2 )"} {
 			if !serveBatchRewriteGuard(ctx, t, p, "0", 2) || !readQuery(ctx, t, p, q) || !sendPackets(ctx, t, p, commandPacket(1, 0, 2)) {
 				return
 			}
@@ -252,7 +252,7 @@ func TestBatchRewriteValidationOrder(t *testing.T) {
 }
 
 func TestBatchRewriteFallback(t *testing.T) {
-	for _, name := range []string{"permission-off", "no-offer", transactionOracleLabel, "keep-going", "server-merge-on", "missing-variable", "chunk-one"} {
+	for _, name := range []string{"permission-off", transactionOracleLabel, "keep-going", "server-merge-on", "missing-view", "missing-parameter", "chunk-one"} {
 		t.Run(name, func(t *testing.T) {
 			cfg := Config{AllowMultiStatements: name != "permission-off"}
 			status := byte(2)
@@ -264,10 +264,15 @@ func TestBatchRewriteFallback(t *testing.T) {
 				opts.ChunkRows = 1
 			}
 			db := batchRewriteDB(t, cfg, name, func(ctx context.Context, p *wire.PacketIO) {
+				if name == "missing-parameter" && (!readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p,
+					[]byte{1}, textColumn("server-merge-on", 253, 45, 0), []byte{254, 0, 0, status, 0},
+					[]byte{251}, []byte{254, 0, 0, status, 0})) {
+					return
+				}
 				if name == "server-merge-on" && !serveBatchRewriteGuard(ctx, t, p, "1", status) {
 					return
 				}
-				if name == "missing-variable" && (!readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{255, 169, 4, '#', 'H', 'Y', '0', '0', '0', 'n', 'o'})) {
+				if name == "missing-view" && (!readQuery(ctx, t, p, batchRewriteGuard) || !sendPackets(ctx, t, p, []byte{255, 122, 4, '#', '4', '2', 'S', '0', '2', 'n', 'o'})) {
 					return
 				}
 				for i := int64(1); i <= 2; i++ {
@@ -284,6 +289,21 @@ func TestBatchRewriteFallback(t *testing.T) {
 				t.Fatal(r, err)
 			}
 		})
+	}
+}
+
+func TestBatchRewriteUnadvertisedMultiStatements(t *testing.T) {
+	db := batchRewriteDB(t, Config{AllowMultiStatements: true}, "no-offer", func(ctx context.Context, p *wire.PacketIO) {
+		if !serveBatchRewriteGuard(ctx, t, p, "0", 2) || !readQuery(ctx, t, p, batchRewritePair) || !sendPackets(ctx, t, p, commandPacket(1, 0, 10), commandPacket(1, 0, 2)) {
+			return
+		}
+		p.ResetSequence()
+		serveQuit(t, p)
+	})
+	defer func() { _ = db.Close() }()
+	r, err := ExecBatch(context.Background(), db, testBatchSQL, [][]any{{1}, {2}}, BatchOptions{Strategy: BatchRewrite})
+	if err != nil || r.Strategy != BatchRewrite || batchSucceeded(&r) != 2 {
+		t.Fatal(r, err)
 	}
 }
 

@@ -21,6 +21,20 @@ const testAttributePrivate = "private"
 const testClientAttributeCapability = "__ob_client_attribute_capability_flag"
 const testAttributeGBKValue = "\xb2\xe2\xca\xd4"
 
+const testDriverDialectAttribute = "__mysql_client_type"
+const testDriverDialectValue = "__ob_jdbc_client"
+
+func TestConnectionAttributesDriverDialect(t *testing.T) {
+	c := &connector{}
+	attrs := c.protocolAttributes()
+	if attrs[testDriverDialectAttribute] != testDriverDialectValue {
+		t.Fatal("OceanBase driver dialect missing from authentication attributes")
+	}
+	if attrs[testProxyRequestCapability] != "1360200" {
+		t.Fatal("driver dialect omitted LOCAL INFILE protocol capability")
+	}
+}
+
 func TestConnectionAttributesSnapshot(t *testing.T) {
 	attributes := map[string]string{testAttributeKey: testAttributeValue, "应用": "测试", testAttributeEmpty: ""}
 	created, err := NewConnector(Config{User: testUser, Session: SessionOptions{Charset: localFilenameCharset}, ConnectionAttributes: attributes})
@@ -84,7 +98,7 @@ func TestConnectionAttributesEncodedBudget(t *testing.T) {
 		{charsetUTF8MB4, strings.Repeat("a", 65536), strings.Repeat("a", 65536)},
 	} {
 		t.Run(fmt.Sprintf("%s/%d", tc.charset, len(tc.value)), func(t *testing.T) {
-			packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testAttributeKey: tc.encoded, testClientAttributeCapability: "3", "__proxy_capability_flag": "311624"}})
+			packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: tc.encoded, testClientAttributeCapability: "3", testProxyRequestCapability: "1360200"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -126,7 +140,7 @@ func TestConnectionAttributesHandshake(t *testing.T) {
 						if interactive {
 							caps |= 1 << 10
 						}
-						want, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: caps, MaxPacketBytes: 64 << 20, Charset: tc.collation, User: testUser, Plugin: authNative, Attributes: map[string]string{testAttributeKey: testAttributeValue, tc.key: tc.value, testAttributeEmpty: "", testClientAttributeCapability: "1"}})
+						want, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: caps, MaxPacketBytes: 64 << 20, Charset: tc.collation, User: testUser, Plugin: authNative, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: testAttributeValue, tc.key: tc.value, testAttributeEmpty: "", testClientAttributeCapability: "1", testProxyRequestCapability: "1048576"}})
 						if err != nil {
 							t.Error(err)
 							return
@@ -244,7 +258,7 @@ func TestConnectionAttributesChangeUser(t *testing.T) {
 					if variant.charset == localFilenameCharset {
 						key, value = "\xd3\xa6\xd3\xc3", testAttributeGBKValue
 					}
-					attrs, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testAttributeKey: testAttributeValue, key: value, testClientAttributeCapability: "3", "__proxy_capability_flag": map[bool]string{false: "72", true: "311624"}[framing == testOB20]}})
+					attrs, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: testAttributeValue, key: value, testClientAttributeCapability: "3", testProxyRequestCapability: map[bool]string{false: "1048648", true: "1360200"}[framing == testOB20]}})
 					if err != nil {
 						t.Error(err)
 						return

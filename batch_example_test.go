@@ -14,9 +14,6 @@ func ExampleExecBatch_rewrite() {
 		User: "app@tenant#cluster", Addr: "localhost:2883", Mode: oceanbase.ModeMySQL,
 		AllowMultiStatements: true,
 		Logger:               slog.New(slog.NewJSONHandler(os.Stderr, nil)),
-		Session: oceanbase.SessionOptions{Variables: map[string]string{
-			"ob_enable_batched_multi_statement": "0",
-		}},
 	}
 	connector, err := oceanbase.NewConnector(cfg)
 	if err != nil {

@@ -204,8 +204,8 @@ func TestBatchArrayChunks(t *testing.T) {
 		{"parameters", [][]any{{1}, {2}, {3}, {4}}, [][]any{{1, 2}, {3, 4}}, BatchOptions{ChunkParameters: 2}, Limits{}, -1},
 		{"results", [][]any{{1}, {2}}, [][]any{{1}, {2}}, BatchOptions{}, Limits{MaxResultItems: 1}, -1},
 		{"types", [][]any{{1}, {2}, {"a"}, {"b"}, {nil}, {nil}}, [][]any{{1, 2}, {"a", "b"}, {nil, nil}}, BatchOptions{}, Limits{}, -1},
-		{"bytes", [][]any{{strings.Repeat("a", 40)}, {strings.Repeat("b", 40)}, {strings.Repeat("c", 40)}}, [][]any{{strings.Repeat("a", 40), strings.Repeat("b", 40)}, {strings.Repeat("c", 40)}}, BatchOptions{}, Limits{MaxMessageBytes: 128}, -1},
-		{"local-error", [][]any{{"a"}, {"b"}, {strings.Repeat("x", 200)}, {"c"}, {"d"}}, [][]any{{"a", "b"}, {"c", "d"}}, BatchOptions{}, Limits{MaxMessageBytes: 128}, 2},
+		{"bytes", [][]any{{strings.Repeat("a", 70)}, {strings.Repeat("b", 70)}, {strings.Repeat("c", 70)}}, [][]any{{strings.Repeat("a", 70), strings.Repeat("b", 70)}, {strings.Repeat("c", 70)}}, BatchOptions{}, Limits{MaxMessageBytes: 192}, -1},
+		{"local-error", [][]any{{"a"}, {"b"}, {strings.Repeat("x", 200)}, {"c"}, {"d"}}, [][]any{{"a", "b"}, {"c", "d"}}, BatchOptions{}, Limits{MaxMessageBytes: 192}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := batchRewriteDB(t, Config{Mode: ModeOracle, Limits: tc.limits}, testStandard, func(ctx context.Context, p *wire.PacketIO) {

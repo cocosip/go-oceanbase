@@ -64,7 +64,8 @@ func TestProxyUserHandshake(t *testing.T) {
 			}
 			want, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{
 				Capabilities: 0x28ba8203, MaxPacketBytes: 64 << 20, Charset: 45, User: testUser, Plugin: authNative,
-				Attributes: map[string]string{testClientAttributeCapability: "1", testProxyUserAttribute: testProxyUser},
+				Attributes: map[string]string{testClientAttributeCapability: "1", testProxyUserAttribute: testProxyUser,
+					testDriverDialectAttribute: testDriverDialectValue, testProxyRequestCapability: "1048576"},
 			})
 			if err != nil {
 				t.Error(err)
@@ -254,7 +255,7 @@ func TestProxyUserEncodedBudget(t *testing.T) {
 			encoded = strings.Repeat("\xb2\xe2", 130)
 		}
 		packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{
-			testProxyUserAttribute: encoded, testClientAttributeCapability: "3", testProxyRequestCapability: "311624",
+			testDriverDialectAttribute: testDriverDialectValue, testProxyUserAttribute: encoded, testClientAttributeCapability: "3", testProxyRequestCapability: "1360200",
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -315,7 +316,7 @@ func testProxyUserChangeUser(t *testing.T, framing, charset string) {
 		}
 		ctx = context.Background()
 		for _, proxy := range []string{"测试", ""} {
-			attrs := map[string]string{testClientAttributeCapability: "1"}
+			attrs := map[string]string{testDriverDialectAttribute: testDriverDialectValue, testClientAttributeCapability: "1", testProxyRequestCapability: "1048576"}
 			if proxy != "" {
 				attrs[testProxyUserAttribute] = proxy
 				if charset == localFilenameCharset {
@@ -323,7 +324,7 @@ func testProxyUserChangeUser(t *testing.T, framing, charset string) {
 				}
 			}
 			if framing == testOB20 {
-				attrs[testProxyRequestCapability] = "33024"
+				attrs[testProxyRequestCapability] = "1081600"
 			}
 			encoded, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: attrs})
 			if err != nil {

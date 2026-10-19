@@ -132,9 +132,9 @@ func TestCollationLifecycle(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					attrs := map[string]string{testClientAttributeCapability: "1"}
+					attrs := map[string]string{testDriverDialectAttribute: testDriverDialectValue, testClientAttributeCapability: "1", testProxyRequestCapability: "1048576"}
 					if framing == testOB20 {
-						attrs["__proxy_capability_flag"] = "33024"
+						attrs[testProxyRequestCapability] = "1081600"
 					}
 					packet, err := wire.EncodeChangeUser(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs | wire.ClientSecureConnection | wire.ClientPluginAuth | wire.ClientPluginAuthLenEnc, User: changeUserName, Auth: response, Plugin: authNative, Attributes: attrs})
 					if err != nil {

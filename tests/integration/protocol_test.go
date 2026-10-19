@@ -3,16 +3,49 @@
 package integration
 
 import (
+	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cocosip/go-oceanbase"
 )
 
-// TestPacketModes is opt-in against the four configured profiles; local validation only compiles it.
+func TestTLSDisabledEndpoint(t *testing.T) {
+	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range selected {
+		t.Run(p.name, func(t *testing.T) {
+			if os.Getenv(strings.TrimSuffix(p.env, "_DSN")+"_TLS_DISABLED") != "1" {
+				t.Skip("endpoint without SSL not configured")
+			}
+			cfg := profileConfig(t, p)
+			cfg.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+			var credentials atomic.Int32
+			cfg.Credentials = func(context.Context) (oceanbase.Credentials, error) {
+				credentials.Add(1)
+				return oceanbase.Credentials{}, errors.New("credentials requested before verified TLS")
+			}
+			connector, err := oceanbase.NewConnector(cfg)
+			if err != nil {
+				failOperation(t, "TLS-required config", err)
+			}
+			db := sql.OpenDB(connector)
+			defer func() { _ = db.Close() }()
+			if err = db.PingContext(testContext(t)); !errors.Is(err, oceanbase.ErrTLSRequired) || credentials.Load() != 0 {
+				t.Fatalf("TLS refusal did not precede credentials: error=%T calls=%d", err, credentials.Load())
+			}
+		})
+	}
+}
+
+// TestPacketModes verifies required wire modes against explicitly configured profiles.
 func TestPacketModes(t *testing.T) {
 	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
 	if err != nil {
