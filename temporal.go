@@ -297,7 +297,7 @@ func decimalField(text string, maxValue int) (int, error) {
 // performs the range checks, so encodeInterval never converts a wider integer.
 type intervalParts struct {
 	negative             bool
-	major, nanos         int
+	major, nanos         uint32
 	minor, precision     byte
 	hour, minute, second byte
 	scale                byte
@@ -326,15 +326,15 @@ func parseInterval(text string, days bool) (intervalParts, error) {
 		return p, ErrType
 	}
 	p.precision = byte(len(parts[0]))
-	var err error
-	p.major, err = decimalField(parts[0], 999999999)
-	if err != nil {
-		return p, err
+	major, err := decimalField(parts[0], 999999999)
+	if err != nil || major < 0 || major > 999999999 {
+		return p, ErrType
 	}
+	p.major = uint32(major)
 	if !days {
 		minor, err := decimalField(parts[1], 11)
-		if err != nil {
-			return p, err
+		if err != nil || minor < 0 || minor > 11 {
+			return p, ErrType
 		}
 		p.minor = byte(minor)
 		return p, nil
@@ -357,6 +357,6 @@ func parseInterval(text string, days bool) (intervalParts, error) {
 	}
 	// time.Parse bounds these to 0-23, 0-59 and 0-59, so each fits a byte.
 	p.hour, p.minute, p.second = byte(t.Hour()), byte(t.Minute()), byte(t.Second())
-	p.nanos = t.Nanosecond()
+	p.nanos = uint32(t.Nanosecond())
 	return p, nil
 }

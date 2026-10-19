@@ -13,6 +13,8 @@ import (
 // and the nonce seed is SHA512(password)[32:], so the digest is part of the
 // authentication algorithm rather than a password-storage choice. CodeQL's
 // go/weak-sensitive-data-hashing flags it as a false positive for that reason.
+// Dismiss that alert as a false positive in GitHub code scanning; replacing the
+// hash with a password-storage KDF would break client_ed25519 interoperability.
 func Ed25519(password string, challenge []byte) ([]byte, error) {
 	if password == "" {
 		return nil, nil

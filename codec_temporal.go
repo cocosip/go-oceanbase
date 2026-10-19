@@ -300,11 +300,11 @@ func encodeInterval(p intervalParts, days bool) []byte {
 	if p.negative {
 		data[0] = 1
 	}
-	data = binary.LittleEndian.AppendUint32(data, uint32(p.major))
+	data = binary.LittleEndian.AppendUint32(data, p.major)
 	if !days {
 		return append(data, p.minor, p.precision)
 	}
 	data = append(data, p.hour, p.minute, p.second)
-	data = binary.LittleEndian.AppendUint32(data, uint32(p.nanos))
+	data = binary.LittleEndian.AppendUint32(data, p.nanos)
 	return append(data, p.precision, p.scale)
 }

@@ -41,8 +41,10 @@ func TestTemporalLossless(t *testing.T) {
 		TimestampTZ("2024-02-30 00:00:00 +00:00"), TimestampTZ("2024-01-01 00:00:00.1234567890 +00:00"),
 		TimestampTZ("2024-01-01 00:00:00 +14:01"), TimestampTZ("2024-03-10 02:30:00 -05:00 America/New_York"),
 		TimestampTZ("2024-01-01 00:00:00 +00:00 x';select"), TimestampLTZ("2024-01-01 00:00:00"),
-		IntervalYM("1000000000-0"), IntervalYM("1-12"), IntervalYM("1--1"), IntervalDS("1 24:00:00"),
+		IntervalYM("1000000000-0"), IntervalYM("1-12"), IntervalYM("1--1"), IntervalYM("1-256"),
+		IntervalYM("1-999999999"), IntervalYM("4294967296-0"), IntervalDS("1 24:00:00"),
 		IntervalDS("1 00:00:00.1234567890"), IntervalDS("1000000000 00:00:00"),
+		IntervalDS("4294967296 00:00:00"),
 	} {
 		if _, err := value.Value(); !errors.Is(err, ErrType) {
 			t.Fatal("invalid temporal accepted", value, err)
@@ -95,6 +97,8 @@ func TestTemporalWire(t *testing.T) {
 		typ   uint16
 		data  []byte
 	}{
+		{IntervalYM("0-00"), 204, []byte{0, 0, 0, 0, 0, 0, 1}},
+		{IntervalDS("0 00:00:00"), 205, []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0}},
 		{TimestampTZ("2026-01-02 03:04:05.123456789 -00:30"), 200, append(append([]byte{}, base...), 0, 226, 0, 0)},
 		{TimestampLTZ("2026-01-02 03:04:05.123456789 +00:00"), 201, base},
 		{IntervalYM("-999999999-11"), 204, []byte{1, 255, 201, 154, 59, 11, 9}},
