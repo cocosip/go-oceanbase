@@ -430,6 +430,7 @@ func TestConnectSessionValueEncoding(t *testing.T) {
 func TestConnectIntegerSystemVariable(t *testing.T) {
 	cfg := Config{User: testUser, Session: SessionOptions{Variables: map[string]string{testSessionVariable: "600"}}, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) ||
+			!sessionScalarTyped(ctx, t, p, testReadSessionVariable, 2, 8, "28800") ||
 			!serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = 600"), 2) ||
 			!serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), 2) ||
 			!serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), 2) ||

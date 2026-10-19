@@ -50,7 +50,7 @@ func sessionReadFixture(mode Mode, helper string) (string, int) {
 	case sessionReadInfo:
 		query, columns = "SELECT @ApplicationName, @ClientUser, @ClientHostname", 3
 	case sessionReadVariable:
-		query = "SELECT @@SESSION.wait_timeout"
+		query = testReadSessionVariable
 	}
 	if mode == ModeOracle {
 		query += sessionReadDualSuffix

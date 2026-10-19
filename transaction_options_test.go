@@ -201,6 +201,9 @@ func TestTransactionNativeInitialization(t *testing.T) {
 					if !serveConnect(ctx, t, p, ready) || !serveBaseline(ctx, t, p, ready) {
 						return
 					}
+					if variable && mode == ModeMySQL && !sessionScalarTyped(ctx, t, p, "SELECT @@SESSION.autocommit", ready, 8, "1") {
+						return
+					}
 					if !serveTxSteps(ctx, t, p, []txStep{{query, off}, {transactionUTF8Names, off}, {transactionUTCZone, off}}) {
 						return
 					}

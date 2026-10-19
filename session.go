@@ -113,16 +113,16 @@ func (c *conn) initializeLocked(ctx context.Context) error {
 	if err := c.createInitialDatabase(ctx); err != nil {
 		return err
 	}
-	variables := make([]string, 0, len(c.cfg.Session.Variables))
-	for name := range c.cfg.Session.Variables {
-		variables = append(variables, name)
-	}
-	slices.Sort(variables)
+	variables := slices.Sorted(maps.Keys(c.cfg.Session.Variables))
 	for _, name := range variables {
 		if !sessionVariableName(name) {
 			return &ConfigError{Field: "Session.Variables"}
 		}
-		query := "SET SESSION " + name + " = " + c.systemVariableLiteral(c.cfg.Session.Variables[name])
+		literal, err := c.systemVariableLiteral(ctx, name, c.cfg.Session.Variables[name])
+		if err != nil {
+			return err
+		}
+		query := "SET SESSION " + name + " = " + literal
 		if err := c.initSQL(ctx, query); err != nil {
 			return err
 		}
@@ -259,15 +259,26 @@ func (c *conn) quoteSessionValue(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
-func (c *conn) systemVariableLiteral(value string) string {
-	// OceanBase MySQL integer system variables reject quoted numeric values.
+func (c *conn) systemVariableLiteral(ctx context.Context, name, value string) (string, error) {
+	quoted := c.quoteSessionValue(value)
 	if c.session.mode == ModeMySQL {
+		var integer string
 		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
-			return strconv.FormatInt(n, 10)
+			integer = strconv.FormatInt(n, 10)
+		} else if n, err := strconv.ParseUint(value, 10, 64); err == nil {
+			integer = strconv.FormatUint(n, 10)
 		}
-		if n, err := strconv.ParseUint(value, 10, 64); err == nil {
-			return strconv.FormatUint(n, 10)
+		if integer != "" {
+			// The current variable's wire type distinguishes numeric values from numeric-looking strings.
+			_, columns, err := c.sessionValuesLocked(ctx, []byte("SELECT @@SESSION."+name), 1)
+			if err != nil {
+				return "", err
+			}
+			switch columns[0].Type {
+			case 0, 1, 2, 3, 4, 5, 8, 9, 13, 246:
+				return integer, nil
+			}
 		}
 	}
-	return c.quoteSessionValue(value)
+	return quoted, nil
 }

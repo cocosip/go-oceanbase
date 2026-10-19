@@ -16,7 +16,7 @@ All scenarios run by default. Mode-inapplicable cases are recorded separately. M
 - [x] Database scenarios: CRUD, preparation/client binding, exact numbers/NULL/Unicode/time, transactions/savepoints, metadata, execution summaries, batches, long parameters, table BLOBs, procedure outputs, cursors, Oracle native LOBs/complex types/RETURNING/resource outputs, XA, sessions, warnings, cancellation and user changes.
 - [x] Usage instructions, configuration example and links from development progress.
 - [x] Before the baseline upgrade: Go 1.25/1.26 build, offline tool checks, unit tests, vet, lint and dependency guards; review found no remaining confirmed issues.
-- [ ] Complete real-target acceptance across the required environments. The [MySQL-mode run and fixes on 2026-10-19](mysql-live-validation-2026-10-19.md) saved baseline/retest reports; the final full tool run returned 33 passed, 0 failed, 4 skipped and 7 not applicable. Skips remain incomplete acceptance; other combinations are outstanding.
+- [ ] Complete real-target acceptance across the required environments. The [MySQL-mode run and fixes on 2026-10-19](mysql-live-validation-2026-10-19.md) saved baseline/retest reports; the latest full tool run with a disposable second identity returned 34 passed, 0 failed, 3 skipped and 7 not applicable. Skips remain incomplete acceptance; other combinations are outstanding.
 
 ## Running the tool
 

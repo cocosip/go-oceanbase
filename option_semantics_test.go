@@ -21,7 +21,11 @@ func TestInitializationErrorBoundary(t *testing.T) {
 		if status == 6 {
 			assignment = testQuotedTimeout
 		}
-		queries := []string{transactionUTF8Names, testAutocommitOn, transactionUTCZone, "SET SESSION wait_timeout = " + assignment, readySQL}
+		queries := []string{transactionUTF8Names, testAutocommitOn, transactionUTCZone}
+		if status == 2 {
+			queries = append(queries, testReadSessionVariable)
+		}
+		queries = append(queries, "SET SESSION wait_timeout = "+assignment, readySQL)
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			for failed := -1; failed < len(queries); failed++ {
 				t.Run(fmt.Sprintf("%d/%s/%d", status, framing, failed), func(t *testing.T) {
@@ -36,6 +40,12 @@ func TestInitializationErrorBoundary(t *testing.T) {
 								return
 							}
 							for _, query := range queries[:failed] {
+								if query == testReadSessionVariable {
+									if !sessionScalarTyped(ctx, t, p, query, status, 8, "28800") {
+										return
+									}
+									continue
+								}
 								if !serveOK(ctx, t, p, append([]byte{3}, query...), status) {
 									return
 								}

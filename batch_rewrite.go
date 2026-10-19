@@ -54,7 +54,7 @@ func (c *conn) tryBatchRewrite(ctx context.Context, request batchRequest) (bool,
 
 func (c *conn) batchRewriteAllowedLocked(ctx context.Context) (bool, error) {
 	// OceanBase can collapse a multi-statement request into one aggregate response.
-	values, err := c.sessionValuesLocked(ctx, []byte("SELECT @@SESSION.ob_enable_batched_multi_statement"), 1)
+	values, _, err := c.sessionValuesLocked(ctx, []byte("SELECT @@SESSION.ob_enable_batched_multi_statement"), 1)
 	if err != nil {
 		var server *Error
 		if errors.As(err, &server) && server.Code == 1193 && !c.closed.Load() && ctx.Err() == nil {

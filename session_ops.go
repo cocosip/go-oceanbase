@@ -113,7 +113,8 @@ func SessionVariable(ctx context.Context, pinned *sql.Conn, name string) (sql.Nu
 }
 
 // SetSessionVariable sets a session system variable. MySQL decimal integer strings
-// within int64/uint64 range are sent as integer literals; other values are quoted.
+// within int64/uint64 range use integer literals only for numeric server variables.
+// String variables retain quoted values, including leading zeros.
 // Encoding and time-zone variables are reserved by Config.Session. Closing pinned discards it.
 func SetSessionVariable(ctx context.Context, pinned *sql.Conn, name, value string) error {
 	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionSetVariable, name: name, value: value})
@@ -175,6 +176,13 @@ func (c *conn) execSessionOperation(ctx context.Context, r *sessionOperationRequ
 	if mutate && (c.xaUsed || c.activeTx != nil || c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0) {
 		return nil, fmt.Errorf("%w: session mutation requires autocommit without a transaction", ErrUnsupported)
 	}
+	if r.op == sessionSetVariable {
+		literal, err := c.systemVariableLiteral(ctx, r.name, r.value)
+		if err != nil {
+			return nil, err
+		}
+		query = "SET SESSION " + r.name + " = " + literal
+	}
 	encoded, err := c.encodeSQL(query)
 	if err != nil {
 		return nil, err
@@ -195,7 +203,7 @@ func (c *conn) execSessionOperation(ctx context.Context, r *sessionOperationRequ
 		}
 		err = c.commandOK(ctx, append([]byte{command}, encoded...))
 	} else {
-		r.values, err = c.sessionValuesLocked(ctx, encoded, columns)
+		r.values, _, err = c.sessionValuesLocked(ctx, encoded, columns)
 	}
 	return result{known: true}, err
 }
@@ -239,7 +247,7 @@ func (c *conn) sessionOperationSQL(r *sessionOperationRequest) (query string, co
 			if name == "time_zone" || name == "ncharacter_set_connection" || strings.HasPrefix(name, "character_set_") || strings.HasPrefix(name, "collation_") {
 				return "", 0, false, fmt.Errorf("%w: encoding and time zone are configured by Session", ErrUnsupported)
 			}
-			query, columns, mutate = "SET SESSION "+r.name+" = "+c.systemVariableLiteral(r.value), 0, true
+			query, columns, mutate = "SET SESSION "+r.name+" = "+c.quoteSessionValue(r.value), 0, true
 		}
 	default:
 		return "", 0, false, ErrUnsupported
@@ -250,36 +258,37 @@ func (c *conn) sessionOperationSQL(r *sessionOperationRequest) (query string, co
 	return query, columns, mutate, nil
 }
 
-func (c *conn) sessionValuesLocked(ctx context.Context, query []byte, columns int) ([]sql.NullString, error) {
+func (c *conn) sessionValuesLocked(ctx context.Context, query []byte, columns int) ([]sql.NullString, []wire.Column, error) {
 	rows, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, query...), false, nil, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(rows.columns) != columns || rows.items != 1 {
 		c.discard()
-		return nil, rows.fail(wire.ErrMalformed, true)
+		return nil, nil, rows.fail(wire.ErrMalformed, true)
 	}
+	descriptions := rows.columns
 	values := make([]driver.Value, columns)
 	if err = rows.Next(values); err != nil {
 		if err != io.EOF {
-			return nil, err
+			return nil, nil, err
 		}
 		c.discard()
-		return nil, rows.fail(wire.ErrMalformed, true)
+		return nil, nil, rows.fail(wire.ErrMalformed, true)
 	}
 	err = rows.Next(make([]driver.Value, columns))
 	if err != nil && err != io.EOF {
-		return nil, err
+		return nil, nil, err
 	}
 	if err != io.EOF || rows.more {
 		c.discard()
-		return nil, rows.fail(wire.ErrMalformed, true)
+		return nil, nil, rows.fail(wire.ErrMalformed, true)
 	}
 	out := make([]sql.NullString, columns)
 	for i, value := range values {
 		if err = out[i].Scan(value); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return out, nil
+	return out, descriptions, nil
 }

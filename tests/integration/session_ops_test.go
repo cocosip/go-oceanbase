@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"strings"
@@ -18,6 +19,57 @@ func TestSessionOperations(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.name, func(t *testing.T) { testSessionOperations(t, p) })
+	}
+}
+
+func TestMySQLNumericStringVariable(t *testing.T) {
+	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range selected {
+		if p.mode != oceanbase.ModeMySQL {
+			continue
+		}
+		t.Run(p.name, func(t *testing.T) {
+			db := openProfile(t, p)
+			ctx := testContext(t)
+			c, err := db.Conn(ctx)
+			if err != nil {
+				failOperation(t, "pin string variable", err)
+			}
+			defer func() { _ = c.Close() }()
+			if _, err = c.ExecContext(ctx, "SET SESSION ob_trace_info='000123'"); err != nil {
+				failOperation(t, "quoted numeric string baseline", err)
+			}
+			before, err := oceanbase.SessionVariable(ctx, c, "ob_trace_info")
+			if err != nil || !before.Valid || before.String != "000123" {
+				t.Fatal("server did not retain quoted numeric string", before, err)
+			}
+			if err = oceanbase.SetSessionVariable(ctx, c, "ob_trace_info", "000123"); err != nil {
+				failOperation(t, "set numeric string variable", err)
+			}
+			after, err := oceanbase.SessionVariable(ctx, c, "ob_trace_info")
+			if err != nil || after != before {
+				t.Fatal("session setter changed string value", after, before, err)
+			}
+			cfg := profileConfig(t, p)
+			cfg.Session.Variables = map[string]string{"ob_trace_info": "000123", "wait_timeout": "600"}
+			connector, err := oceanbase.NewConnector(cfg)
+			if err != nil {
+				failOperation(t, "typed variable initialization config", err)
+			}
+			initialized := sql.OpenDB(connector)
+			defer func() { _ = initialized.Close() }()
+			var trace string
+			var timeout int
+			if err = initialized.QueryRowContext(ctx, "SELECT @@SESSION.ob_trace_info,@@SESSION.wait_timeout").Scan(&trace, &timeout); err != nil {
+				failOperation(t, "typed variable initialization", err)
+			}
+			if trace != "000123" || timeout != 600 {
+				t.Fatal("initialization changed typed variable values", trace, timeout)
+			}
+		})
 	}
 }
 

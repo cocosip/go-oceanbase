@@ -267,6 +267,9 @@ func TestVersionProbeInitialization(t *testing.T) {
 				if status == 6 {
 					assignment = testQuotedTimeout
 				}
+				if status == 2 && !sessionScalarTyped(ctx, t, p, testReadSessionVariable, status, 8, "28800") {
+					return
+				}
 				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte("\x03"+readySQL), status) || !serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), status) || !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status) {
 					return
 				}

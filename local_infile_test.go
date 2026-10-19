@@ -28,6 +28,58 @@ const localFilenameCharset = "gbk"
 const localTypedNilStage = "typed-nil-source"
 const localMalformedNameStage = "malformed-infile-name"
 
+func TestMySQLImportStatementSyntax(t *testing.T) {
+	for _, tc := range []struct {
+		query              string
+		noBackslash, valid bool
+	}{
+		{localImportSQL, false, true},
+		{"/* import */ " + localImportSQL + " ; -- done\n", false, true},
+		{localImportSQL + " FIELDS TERMINATED BY ';'", false, true},
+		{`LOAD DATA LOCAL INFILE 'input' INTO TABLE ` + "`t;name`", false, true},
+		{localImportSQL + ` FIELDS TERMINATED BY '\\'`, false, true},
+		{localImportSQL + ` FIELDS TERMINATED BY '\'`, true, true},
+		{localImportSQL + ";;", false, false},
+		{localImportSQL + "; SET autocommit=0", false, false},
+		{`LOAD DATA LOCAL INFILE 'input' INTO TABLE "t\"; START TRANSACTION; -- "`, false, false},
+		{localImportSQL + " /* unterminated", false, false},
+		{"SELECT 'LOAD DATA'", false, false},
+	} {
+		err := mysqlImportStatement(tc.query, tc.noBackslash)
+		if (err == nil) != tc.valid || err != nil && !errors.Is(err, ErrUnsupported) {
+			t.Errorf("query=%q noBackslash=%v: %v", tc.query, tc.noBackslash, err)
+		}
+	}
+}
+
+func TestLocalInfileMySQLCommandBoundary(t *testing.T) {
+	for _, query := range []string{
+		"START TRANSACTION; " + localImportSQL,
+		localImportSQL + "; START TRANSACTION",
+		"CALL unsafe_import()",
+		"/*! START TRANSACTION; */ " + localImportSQL,
+	} {
+		t.Run(query, func(t *testing.T) {
+			db := localInfileDB(t, ModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
+				if !serveOK(ctx, t, p, []byte{14}, 2) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			reader := strings.NewReader("x")
+			_, err := Import(context.Background(), db, query, &LocalInfile{Name: localInputName, Reader: reader})
+			if !errors.Is(err, ErrUnsupported) || !errors.Is(err, ErrLocalInfile) || reader.Len() != 1 {
+				t.Fatal("unsafe command sent or input consumed", err, reader.Len())
+			}
+			if err = db.PingContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func localInfileDB(t *testing.T, mode Mode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*Config)) *sql.DB {
 	t.Helper()
 	cfg := Config{User: testUser, Mode: mode}

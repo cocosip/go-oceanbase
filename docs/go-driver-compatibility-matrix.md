@@ -2,7 +2,7 @@
 
 This matrix separates Java source conditions, Go implementation, and real-environment verification. Java baseline: obconnector-j 2.4.14, commit `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`. Source conditions are not server-support promises; the MySQL handshake version string is not directly treated as an OceanBase version.
 
-Current live evidence: [2026-10-19 OceanBase 4.4.2.2 MySQL-mode validation](mysql-live-validation-2026-10-19.md), after fixes: 33 standalone scenarios passed, 0 failed, 4 skipped and 7 not applicable; the full MySQL integration package had no failures. This qualifies historical "unverified/pending integration" entries below for one combination only. Native rewrite, XA suspend/join and advanced packet negotiation are unavailable here; MySQL Import requires autocommit and refuses transactions before sending. Complete multi-target acceptance remains 0/32.
+Current live evidence: [2026-10-19 OceanBase 4.4.2.2 MySQL-mode validation](mysql-live-validation-2026-10-19.md), after continued fixes: 34 standalone scenarios passed, 0 failed, 3 skipped and 7 not applicable; the extended MySQL integration package had no failures. Distinct-identity ChangeUser, native multi-VALUES, metadata regressions, six charsets and single-target discovery/routing checks passed. This qualifies historical "unverified/pending integration" entries below for one combination only. Native rewrite keeps a conservative fallback; XA suspend/join and advanced packet negotiation remain unaccepted here. MySQL Import requires autocommit and one LOAD DATA statement, refusing unsafe requests before SQL/input. Complete multi-target acceptance remains 0/32.
 
 ## 1. Handshake, Authentication, and Modes
 

@@ -44,6 +44,7 @@ var ErrLocalInfile = errors.New("oceanbase: refused or failed local infile")
 // Failure may leave database effects; use a transaction where the server supports it.
 // OceanBase MySQL-mode imports require autocommit outside local transactions and
 // XA sessions; otherwise Import returns ErrUnsupported before sending SQL/input.
+// MySQL accepts one LOAD DATA statement, with an optional trailing semicolon.
 func Import(ctx context.Context, exec Execer, query string, input *LocalInfile) (sql.Result, error) {
 	if err := input.validate(); err != nil {
 		return nil, err
@@ -128,6 +129,26 @@ type localInfileRequest struct {
 }
 
 type localInfileContextKey struct{}
+
+func mysqlImportStatement(query string, noBackslash bool) error {
+	bad := fmt.Errorf("%w: MySQL Import requires a single LOAD DATA statement", ErrUnsupported)
+	// A double-quoted backslash must not hide a separator under ANSI_QUOTES.
+	for _, ansiQuotes := range []bool{false, true} {
+		tokens, err := lexSQL(query, ModeMySQL, noBackslash, ansiQuotes)
+		if err != nil {
+			return errors.Join(bad, err)
+		}
+		if len(tokens) < 2 || tokens[0].kind != 'w' || tokens[1].kind != 'w' || !strings.EqualFold(query[tokens[0].start:tokens[0].end], "LOAD") || !strings.EqualFold(query[tokens[1].start:tokens[1].end], "DATA") {
+			return bad
+		}
+		for i, token := range tokens {
+			if token.kind == ';' && i != len(tokens)-1 {
+				return bad
+			}
+		}
+	}
+	return nil
+}
 
 func (c *conn) execLocalInfile(ctx context.Context, request localInfileRequest) (driver.Result, error) {
 	ctx = context.WithValue(ctx, localInfileContextKey{}, request.input)

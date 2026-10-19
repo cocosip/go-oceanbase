@@ -4,18 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 func sessionScalar(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, status byte, values ...string) bool {
+	return sessionScalarTyped(ctx, t, p, query, status, 253, values...)
+}
+
+func sessionScalarTyped(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, status, typ byte, values ...string) bool {
 	t.Helper()
 	if !readQuery(ctx, t, p, query) || !sendPackets(ctx, t, p, []byte{byte(len(values))}) {
 		return false
 	}
 	for range values {
-		if !sendPackets(ctx, t, p, textColumn("v", 253, 45, 0)) {
+		if !sendPackets(ctx, t, p, textColumn("v", typ, 45, 0)) {
 			return false
 		}
 	}
@@ -33,7 +38,7 @@ func TestSessionOperations(t *testing.T) {
 			status := byte(2)
 			schemaQuery := "SELECT DATABASE()"
 			clientQuery := "SELECT @ApplicationName, @ClientUser, @ClientHostname"
-			variableQuery := "SELECT @@SESSION.wait_timeout"
+			variableQuery := testReadSessionVariable
 			if mode == ModeOracle {
 				status = 6
 				schemaQuery = "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual"
@@ -101,8 +106,13 @@ func TestSessionMutationIsolation(t *testing.T) {
 				if mode == ModeMySQL {
 					assignment = "600"
 				}
-				if !serveOK(ctx, t, p, []byte("\x03SET @ApplicationName = 'svc''x', @ClientUser = NULL, @ClientHostname = 'host'"), status) ||
-					!serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte{14}, status) {
+				if !serveOK(ctx, t, p, []byte("\x03SET @ApplicationName = 'svc''x', @ClientUser = NULL, @ClientHostname = 'host'"), status) {
+					return
+				}
+				if mode == ModeMySQL && !sessionScalarTyped(ctx, t, p, testReadSessionVariable, status, 8, "28800") {
+					return
+				}
+				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte{14}, status) {
 					return
 				}
 				p.ResetSequence()
@@ -201,16 +211,54 @@ func TestSessionVariableIntegerAndStringSQL(t *testing.T) {
 		{"0x10", "'0x10'"}, {"1e3", "'1e3'"}, {" 1", "' 1'"},
 	} {
 		for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-			c := &conn{session: &handshakeSession{mode: mode, ok: wire.OK{Status: 2}}}
 			want := tc.want
 			if mode == ModeOracle {
-				want = c.quoteSessionValue(tc.value)
+				want = (&conn{session: &handshakeSession{mode: mode}}).quoteSessionValue(tc.value)
 			}
-			query, _, _, err := c.sessionOperationSQL(&sessionOperationRequest{op: sessionSetVariable, name: testSessionVariable, value: tc.value})
-			if err != nil || query != "SET SESSION wait_timeout = "+want {
-				t.Errorf("mode=%d value=%q query=%q err=%v", mode, tc.value, query, err)
+			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
+				status := byte(2)
+				if mode == ModeOracle {
+					status = 6
+				}
+				if mode == ModeMySQL && !strings.HasPrefix(tc.want, "'") && !sessionScalarTyped(ctx, t, p, testReadSessionVariable, status, 8, "28800") {
+					return
+				}
+				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+want), status) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			c := pinnedSession(t, db)
+			if err := SetSessionVariable(context.Background(), c, testSessionVariable, tc.value); err != nil {
+				t.Errorf("mode=%d value=%q: %v", mode, tc.value, err)
 			}
+			_ = c.Close()
+			_ = db.Close()
 		}
+	}
+}
+
+func TestSessionVariableTypeProbeError(t *testing.T) {
+	for _, code := range []uint16{1193, 1142} {
+		db := txDB(t, ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			if !readQuery(ctx, t, p, testReadSessionVariable) || !sendPackets(ctx, t, p, []byte{255, byte(code), byte(code >> 8), '#', 'H', 'Y', '0', '0', '0', 'e'}) || !serveOK(ctx, t, p, []byte{14}, 2) {
+				return
+			}
+			p.ResetSequence()
+			serveQuit(t, p)
+		})
+		c := pinnedSession(t, db)
+		err := SetSessionVariable(context.Background(), c, testSessionVariable, "600")
+		var server *Error
+		if !errors.As(err, &server) || server.Code != uint32(code) {
+			t.Fatal("variable type probe error swallowed", err)
+		}
+		if err = c.PingContext(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		_ = c.Close()
+		_ = db.Close()
 	}
 }
 
@@ -455,5 +503,6 @@ func TestSessionMutationStatementCache(t *testing.T) {
 }
 
 const testSessionVariable = "wait_timeout"
+const testReadSessionVariable = "SELECT @@SESSION.wait_timeout"
 
 const testQuotedTimeout = "'600'"

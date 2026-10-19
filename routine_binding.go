@@ -166,7 +166,7 @@ func (c *conn) bindCommandArgumentsLocked(ctx context.Context, plan bindPlan, ar
 		names[name] = true
 	}
 	if call.schema == "" {
-		values, e := c.sessionValuesLocked(ctx, []byte("SELECT DATABASE()"), 1)
+		values, _, e := c.sessionValuesLocked(ctx, []byte("SELECT DATABASE()"), 1)
 		if e != nil {
 			return nil, e
 		}

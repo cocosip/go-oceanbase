@@ -16,6 +16,57 @@ import (
 
 const localImportName = "input"
 
+func TestMySQLImportCommandBoundary(t *testing.T) {
+	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range selected {
+		if p.mode != oceanbase.ModeMySQL {
+			continue
+		}
+		t.Run(p.name, func(t *testing.T) {
+			cfg := profileConfig(t, p)
+			cfg.AllowMultiStatements = true
+			connector, err := oceanbase.NewConnector(cfg)
+			if err != nil {
+				failOperation(t, "multi-command import config", err)
+			}
+			db := sql.OpenDB(connector)
+			defer func() { _ = db.Close() }()
+			ctx := testContext(t)
+			c, err := db.Conn(ctx)
+			if err != nil {
+				failOperation(t, "pin multi-command import", err)
+			}
+			defer func() { _ = c.Close() }()
+			table := fmt.Sprintf("OBGLIBOUND_%d", time.Now().UnixNano())
+			if _, err = c.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(32))"+integrationInnoDBSuffix); err != nil {
+				failOperation(t, "create import boundary table", err)
+			}
+			defer func() {
+				_, _ = c.ExecContext(testContext(t), "ROLLBACK")
+				if _, err := c.ExecContext(testContext(t), "DROP TABLE "+table); err != nil {
+					failOperation(t, "drop import boundary table", err)
+				}
+			}()
+			command := "START TRANSACTION; INSERT INTO " + table + " VALUES (9,'before-import'); LOAD DATA LOCAL INFILE 'input' INTO TABLE " + table + " FIELDS TERMINATED BY '\\t' LINES TERMINATED BY '\\n' (ID,V)"
+			reader := strings.NewReader("1\tx\n2\ty\n")
+			_, importErr := oceanbase.Import(ctx, c, command, &oceanbase.LocalInfile{Name: localImportName, Reader: reader})
+			if _, err = c.ExecContext(ctx, "ROLLBACK"); err != nil {
+				failOperation(t, "rollback import boundary", err)
+			}
+			var count int
+			if err = c.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil {
+				failOperation(t, "read import boundary effects", err)
+			}
+			if !errors.Is(importErr, oceanbase.ErrUnsupported) || reader.Len() != len("1\tx\n2\ty\n") || count != 0 {
+				t.Fatalf("unsafe multi-command import: err=%v unread=%d committed rows=%d", importErr, reader.Len(), count)
+			}
+		})
+	}
+}
+
 func TestLocalImport(t *testing.T) {
 	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
 	if err != nil {

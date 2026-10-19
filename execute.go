@@ -189,6 +189,12 @@ func (c *conn) queryText(ctx context.Context, query string) (*textRows, error) {
 		return nil, driver.ErrBadConn
 	}
 	if input, _ := ctx.Value(localInfileContextKey{}).(*LocalInfile); input != nil {
+		if c.session.mode == ModeMySQL {
+			if err := mysqlImportStatement(query, c.session.ok.Status&512 != 0); err != nil {
+				c.unlock()
+				return nil, err
+			}
+		}
 		if c.session.capabilities&wire.ClientLocalFiles == 0 {
 			c.unlock()
 			return nil, ErrUnsupported
