@@ -78,7 +78,7 @@ func (c *conn) queryOutputsLocked(ctx context.Context, query string, args []driv
 	if err != nil {
 		return nil, err
 	}
-	values, err := bindArguments(plan, args)
+	values, err := c.bindCommandArgumentsLocked(ctx, plan, args)
 	if err != nil {
 		return nil, err
 	}

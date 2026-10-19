@@ -23,8 +23,11 @@ func Encode(name, text string) ([]byte, error) {
 		return nil, ErrEncoding
 	}
 	switch strings.ToLower(name) {
-	case "utf8mb4":
+	// Connector/J Options.getCharacterEncoding uses UTF-8 payloads for HKSCS names.
+	case "utf8mb4", "hkscs", "hkscs31":
 		return []byte(text), nil
+	case "gb18030_2022":
+		return encodeGB180302022(text)
 	case "utf8", "utf8mb3":
 		for _, r := range text {
 			if r > 65535 {
@@ -62,6 +65,9 @@ func Encode(name, text string) ([]byte, error) {
 
 // Decode converts connection bytes to Go UTF-8 text, rejecting invalid input.
 func Decode(name string, data []byte) (string, error) {
+	if strings.EqualFold(name, "gb18030_2022") {
+		return decodeGB180302022(data)
+	}
 	if strings.EqualFold(name, "latin1") {
 		s, err := charmap.Windows1252.NewDecoder().Bytes(data)
 		if err != nil || bytes.Contains(s, []byte("�")) {
@@ -161,12 +167,26 @@ func Collation(id uint16) (string, bool) {
 		return "gbk", true
 	case id == 54 || id == 55 || id >= 101 && id <= 124:
 		return "utf16", true
-	case id >= 248 && id <= 250:
-		return "gb18030", true
+	// OceanBase ob_charset.h: CS_TYPE_HKSCS_BIN, CS_TYPE_HKSCS31_BIN,
+	// and CS_TYPE_GB18030_2022_BIN through CS_TYPE_GB18030_2022_STROKE_CS.
+	case id == 152:
+		return "hkscs", true
+	case id == 153:
+		return "hkscs31", true
 	case id == 33 || id == 76 || id == 83 || id >= 192 && id <= 215:
 		return "utf8mb3", true
 	case id == 45 || id == 46 || id >= 224 && id <= 247 || id == 255:
 		return "utf8mb4", true
+	}
+	return gb18030Collation(id)
+}
+
+func gb18030Collation(id uint16) (string, bool) {
+	switch {
+	case id >= 248 && id <= 250:
+		return "gb18030", true
+	case id >= 216 && id <= 222:
+		return "gb18030_2022", true
 	}
 	return "", false
 }

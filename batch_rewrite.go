@@ -5,7 +5,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -200,9 +199,7 @@ func (c *conn) runBatchRewriteLocked(ctx context.Context, payload []byte, items 
 		c.session.ok = ok
 		c.lastWarnings = WarningSummary{Count: ok.Warnings, Known: true}
 		items[i].Status = BatchSucceeded
-		if ok.AffectedRows <= math.MaxInt64 {
-			items[i].RowsAffected, items[i].RowsAffectedKnown = int64(ok.AffectedRows), true
-		}
+		items[i].recordResult(result{known: true, affected: ok.AffectedRows, id: ok.InsertID})
 	}
 	return nil
 }

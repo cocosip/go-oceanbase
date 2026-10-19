@@ -86,7 +86,15 @@ func (s *clientStmt) queryRows(ctx context.Context, args []driver.NamedValue) (*
 	if hasOutputArguments(args) {
 		return c.queryOutputsLocked(ctx, s.query, args, nil)
 	}
-	query, err := c.interpolate(s.query, args)
+	plan, err := buildBindPlanEscapes(s.query, c.session.mode, c.session.ok.Status&512 != 0)
+	var values []boundValue
+	if err == nil {
+		values, err = c.bindCommandArgumentsLocked(ctx, plan, args)
+	}
+	var query string
+	if err == nil {
+		query, err = c.interpolatePlan(plan, values)
+	}
 	if err != nil {
 		c.unlock()
 		return nil, err

@@ -107,6 +107,12 @@ func metadataContractFixtures(mode Mode) []metadataContractFixture {
 		tableQuery = `SELECT NULL AS "catalog",o.OWNER AS "schema",o.OBJECT_NAME AS "name",o.OBJECT_TYPE AS "type",c.COMMENTS AS "remarks" FROM ALL_OBJECTS o LEFT JOIN ALL_TAB_COMMENTS c ON c.OWNER=o.OWNER AND c.TABLE_NAME=o.OBJECT_NAME AND c.TABLE_TYPE=o.OBJECT_TYPE WHERE 1=1 AND (o.OBJECT_TYPE IN ('TABLE','VIEW','SYNONYM','MATERIALIZED VIEW') AND o.SUBOBJECT_NAME IS NULL) ORDER BY o.OWNER,o.OBJECT_NAME,o.OBJECT_TYPE`
 		columnQuery = `SELECT NULL AS "catalog",c.OWNER AS "schema",c.TABLE_NAME AS "table_name",c.COLUMN_NAME AS "name",c.COLUMN_ID AS "ordinal_position",c.DATA_TYPE AS "data_type",CASE WHEN c.CHAR_USED='C' THEN c.CHAR_LENGTH ELSE c.DATA_LENGTH END AS "length",c.DATA_PRECISION AS "precision",c.DATA_SCALE AS "scale",CASE c.NULLABLE WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END AS "nullable",c.DATA_DEFAULT AS "default_value",m.COMMENTS AS "remarks",c.DATA_TYPE_OWNER AS "type_owner" FROM ALL_TAB_COLUMNS c LEFT JOIN ALL_COL_COMMENTS m ON m.OWNER=c.OWNER AND m.TABLE_NAME=c.TABLE_NAME AND m.COLUMN_NAME=c.COLUMN_NAME WHERE 1=1 ORDER BY c.OWNER,c.TABLE_NAME,c.COLUMN_ID`
 	}
+	if mode == ModeOracle {
+		columnQuery = strings.Replace(columnQuery, ` FROM ALL_TAB_COLUMNS c`, `,NULL AS "auto_increment",CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END AS "generated" FROM ALL_TAB_COLS c`, 1)
+		columnQuery = strings.Replace(columnQuery, "WHERE 1=1 ORDER", "WHERE 1=1 AND (c.HIDDEN_COLUMN='NO') ORDER", 1)
+	} else {
+		columnQuery = strings.Replace(columnQuery, ` FROM information_schema.COLUMNS c`, `,CASE WHEN c.EXTRA IS NULL THEN NULL WHEN LOWER(c.EXTRA) LIKE '%auto_increment%' THEN 1 ELSE 0 END AS "auto_increment",CASE WHEN c.EXTRA IS NULL THEN NULL WHEN UPPER(c.EXTRA) IN ('VIRTUAL','PERSISTENT') OR UPPER(c.EXTRA) LIKE '%VIRTUAL GENERATED%' OR UPPER(c.EXTRA) LIKE '%STORED GENERATED%' THEN 1 ELSE 0 END AS "generated" FROM information_schema.COLUMNS c`, 1)
+	}
 	var catalogRows [][]any
 	if mode == ModeMySQL {
 		catalogRows = [][]any{{executionColumnCatalog}}
@@ -119,10 +125,10 @@ func metadataContractFixtures(mode Mode) []metadataContractFixture {
 			{catalog, metadataContractOther, metadataContractName, metadataContractView, emptyRemark},
 			{catalog, "Third", "unannotated", metadataContractTable, nil},
 		}},
-		{MetadataColumns, columnQuery, "catalog schema table_name name ordinal_position data_type length precision scale nullable default_value remarks type_owner", map[int]bool{4: true, 6: true, 7: true, 8: true, 9: true}, [][]any{
-			{catalog, metadataContractSchema, metadataContractName, "c", int64(1), typeNameVarchar, int64(12), nil, nil, int64(1), nil, metadataContractRemark, nil},
-			{catalog, metadataContractOther, metadataContractName, "c", int64(1), typeNameVarchar, int64(12), nil, nil, int64(1), nil, emptyRemark, nil},
-			{catalog, "Third", "unannotated", "c", int64(1), typeNameVarchar, int64(12), nil, nil, int64(1), nil, nil, nil},
+		{MetadataColumns, columnQuery, "catalog schema table_name name ordinal_position data_type length precision scale nullable default_value remarks type_owner auto_increment generated", map[int]bool{4: true, 6: true, 7: true, 8: true, 9: true, 13: true, 14: true}, [][]any{
+			{catalog, metadataContractSchema, metadataContractName, "c", int64(1), typeNameVarchar, int64(12), nil, nil, int64(1), nil, metadataContractRemark, nil, int64(0), int64(1)},
+			{catalog, metadataContractOther, metadataContractName, "c", int64(1), typeNameVarchar, int64(12), nil, nil, int64(1), nil, emptyRemark, nil, int64(1), int64(0)},
+			{catalog, "Third", "unannotated", "c", int64(1), typeNameVarchar, int64(12), nil, nil, int64(1), nil, nil, nil, nil, nil},
 		}},
 	}
 }

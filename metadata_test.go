@@ -24,6 +24,9 @@ func TestColumnTypes(t *testing.T) {
 		lengthOK, decimalOK      bool
 	}{
 		{"utf8 characters", ModeMySQL, wire.Column{Type: 253, Charset: 45, Length: 40}, 10, 0, 0, true, false},
+		{"gb18030 2022 characters", ModeMySQL, wire.Column{Type: 253, Charset: 217, Length: 40}, 10, 0, 0, true, false},
+		{"hkscs characters", ModeMySQL, wire.Column{Type: 253, Charset: 152, Length: 40}, 20, 0, 0, true, false},
+		{"hkscs31 characters", ModeMySQL, wire.Column{Type: 253, Charset: 153, Length: 40}, 20, 0, 0, true, false},
 		{"binary bytes", ModeMySQL, wire.Column{Type: 252, Charset: 63, Length: 400}, 400, 0, 0, true, false},
 		{"unknown collation", ModeMySQL, wire.Column{Type: 253, Charset: 999, Length: 40}, 0, 0, 0, false, false},
 		{"nonintegral length", ModeMySQL, wire.Column{Type: 253, Charset: 45, Length: 41}, 0, 0, 0, false, false},

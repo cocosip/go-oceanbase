@@ -239,8 +239,8 @@ func TestScalarClientCharsetRestrictions(t *testing.T) {
 	if _, err := handshakeCharset(testCharsetUTF16); err == nil {
 		t.Fatal("UTF16 cannot be used as a SQL client charset")
 	}
-	if _, err := NewConnector(Config{User: testUser, Session: SessionOptions{NCharset: "gb18030_2022"}}); err == nil {
-		t.Fatal("GB18030-2022 silently aliased to older mapping")
+	if _, err := NewConnector(Config{User: testUser, Session: SessionOptions{NCharset: "gb18030_2022"}}); err != nil {
+		t.Fatal("GB18030-2022 national charset rejected", err)
 	}
 }
 

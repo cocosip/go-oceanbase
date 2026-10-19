@@ -241,11 +241,7 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	values, err := bindArguments(s.plan, args)
-	if err != nil {
-		return nil, err
-	}
-	if err = s.conn.lock(ctx); err != nil {
+	if err := s.conn.lock(ctx); err != nil {
 		return nil, err
 	}
 	gateOwned := true
@@ -260,6 +256,10 @@ func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (
 	}
 	if s.conn.closed.Load() {
 		return nil, driver.ErrBadConn
+	}
+	values, err := s.conn.bindCommandArgumentsLocked(ctx, s.plan, args)
+	if err != nil {
+		return nil, err
 	}
 	if !s.conn.cacheableSQL(s.plan.query) {
 		if err = s.conn.clearStatementsLocked(ctx); err != nil {

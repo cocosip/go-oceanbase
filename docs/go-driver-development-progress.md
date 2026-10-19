@@ -331,7 +331,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 - 开发：已实现；验证：本地通过。新增 `metadata.go`、两模式 SQL 文件、`metadata_test.go`、`metadata_fuzz_test.go` 和仅编译的集成源码；补齐普通 Rows 的五个 ColumnType 接口及 prepare 参数描述保存。公开 Metadata 仅接受固定 Conn/Tx，返回普通 Rows；17 种 Kind 的字段/NULL/类型/模式边界见架构 §16.1.1。
 - 筛选值参数化，内部复用现有安全字面量编码和同一物理会话；保留大小写与 LIKE 转义。不把任意名字拼入标识符位置。公开 Rows 接管连接 gate，内部 Rows 保留外层所有权；未读响应拒绝内部命令，错误/关闭有界排空。描述缓存待 D18，当前没有任意字典行集缓存。
-- StatementParameters 无论 PrepareMode 都只做服务端 prepare/close，按物理位置描述并保留重复逻辑参数；方向未取证时 NULL，同时保存原始协议字节。Oracle catalog 为空行集，MySQL 不提供的类型/同义词字典返回 ErrUnsupported；PARAMETERS 仅按真实 ob_version >=4.1 开放，未知/旧版本拒绝。字典权限错误保留服务端代码。
+- StatementParameters 无论 PrepareMode 都只做服务端 prepare/close，按物理位置描述并保留重复逻辑参数；方向未取证时 NULL，同时保存原始协议字节。Oracle catalog 为空行集，MySQL 不提供的类型/同义词字典返回 ErrUnsupported；PARAMETERS 仅按真实 ob_version >=4.1 开放，未知/旧版本现已补精确例程 SHOW CREATE 回退（见2026-10-19补充）。字典权限错误保留服务端代码。
 - RED→GREEN 覆盖统一入口、过滤/枚举/数量边界、未知长度/精度、内部响应及锁边界、参数身份和协议描述。独立走查发现的 FLOAT 二进制精度、两个字典 NUMBER_PRECISION 字段、索引 A/D 到 ASC/DESC 规范化均已用回归验证修复；未发现其他 Important/Critical，不另存报告。
 - Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 运行通过；普通和 integration 两套 golangci-lint 均 0 issues。Metadata/ColumnTypes 目标用例重复 10 次通过；FuzzMetadataFilters 两版本各 30 秒，117,697 / 117,036 次，通过，CI 定义已加入。
 - `TestMetadataCatalog` 在四目标创建表/外键/视图，比较 DDL、独立字典列顺序和模式字典可用性；当前仅编译，未连接真实数据库。Linux/远程 CI/race、字典字段的目标版本兼容及实际权限仍待验证，验收保持 0/32。
@@ -658,7 +658,7 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 
 #### D22/D32 受限批量多语句改写
 
-- 显式 BatchRewrite 在 MySQL 兼容模式、遇错停止、允许且实际协商多语句时，以独立 INSERT/UPDATE/DELETE/REPLACE 合并请求；复用现有标量和客户端字面量编码。每个合并块前读取同会话 ob_enable_batched_multi_statement，仅明确关闭才合并；不修改服务端开关。Oracle、继续执行策略和其他不满足条件的请求仍逐项；多 VALUES、bulk 未启用；array binding 由下述独立子项推进，契约见架构 §13.4。
+- 显式 BatchRewrite 在 MySQL 兼容模式、遇错停止、允许且实际协商多语句时，以独立 INSERT/UPDATE/DELETE/REPLACE 合并请求；复用现有标量和客户端字面量编码。每个合并块前读取同会话 ob_enable_batched_multi_statement，仅明确关闭才合并；不修改服务端开关。Oracle、继续执行策略和其他不满足条件的请求仍逐项；多 VALUES 现由显式 BatchMultiValues 补齐（见2026-10-19补充），bulk 未启用；array binding 由下述独立子项推进，契约见架构 §13.4。
 - 按行数、参数位、结果项和编码后消息字节分块，换行分隔语句以结束尾部注释；探测后重新验证 SQL mode 和绑定边界。本地非法后项先等待有效前缀执行，不能遮蔽更早的服务器错误。严格匹配逐项 OK/ERR 和 MORE_RESULTS；保留确认成功，已提交但未确认项标 Unknown 并淘汰连接，不重放、不引入事务边界；完整 ERR 确认跳过的同命令尾项为 NotExecuted/Started=true。
 - 固定 Connector/J 分号拼接实现和固定 OceanBase ObMPQuery 的遇错停止/服务端聚合开关已取证并链接到架构；不将该源码证据推广为任意历史服务器或代理的验收。增加外部 slog 示例、TestBatchRewriteExecution 四目标源码及手动 CI 选择器，集成仅编译，未连接数据库。
 - TestBatchRewrite* 覆盖标准/压缩/OB20、分块/字节限制、计数溢出、有效前缀与本地错误顺序、门禁回退、断线/损坏/额外或缺失响应、尾部注释/字面量、GBK、事务及取消。首次执行路径、探测后的 SQL mode 边界变化、完整服务器 ERR 与取消错误链均已验证失败后修复通过；两版本目标测试各20次通过。独立只读走查未发现已确认的严重问题，不保存独立报告。
@@ -1056,6 +1056,15 @@ V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前
 - 修复 Windows 与 macOS 的 CI 失败。Windows：PowerShell 会把未加引号的 `-flag=value.ext` 从点处拆成两个参数，`-coverprofile=coverage.out` 因而变成 `-coverprofile=coverage` 与 `.out`，报 `no required module provides package .out`；改为引用参数值。macOS：`sockaddr_un.sun_path` 仅 104 字节，`t.TempDir()` 以测试名生成目录，长子测试名使 socket 路径达 107–109 字节，`bind` 返回 `EINVAL`；新增 `unixTempDir`/`listenUnix` 辅助函数，在短前缀 `os.MkdirTemp` 目录内绑定，五处 Unix socket 测试统一改走该路径。
 - 移除 CI 的 `-race` 并显式设置 `CGO_ENABLED=0`。驱动为纯 Go，仓库无 `import "C"`，而 `-race` 按工具链设计强制 cgo（`CGO_ENABLED=0` 下直接报 `-race requires cgo`）。此前本机 race 进程启动即返回 `0xc0000139`，正是该依赖暴露的症状。现每次 CI 均验证零 cgo 构建；竞态检测改为 cgo 环境手动执行，不计入常规检查。README、架构 §20.1、开发计划 §5.3 及进度 §5 的 V03 同步。
 - 本地验证：Go1.27.2 Windows/amd64、`CGO_ENABLED=0` 全包 `go test ./...` 通过（含全部命名管道与 Unix socket 用例，无 skip、无 FAIL），`go vet ./...` 与 gofmt 干净；CI 同款命令覆盖率 85.8%，`coverage.out` 正常生成。命名管道用例在受限沙箱下因禁止访问命名管道而失败，属环境限制，完全权限下全部通过。未连接真实数据库，Linux/macOS 与远程 GitHub Actions 仍未运行；实现28/32、验收0/32保持。
+
+### 2026-10-19 Connector/J 功能差异修复
+
+- 批量生成键：BatchItem 追加 InsertID/InsertIDKnown，逐项、多发、多语句和单项 array 块保留服务端实际非零 ID，十进制字符串覆盖完整 uint64；多项聚合不分配或推算各行键。
+- 字符集：增加 HKSCS/HKSCS31 的 UTF-8 载荷和 OceanBase 协议编号152/153，GB18030_2022 使用独立2022映射、默认编号217，SET NAMES 保留名称；补齐新 collation 的列长度解释，旧 GB18030 行为保持。独立 OpenJDK BMP 全量编码/双字节及 BMP 四字节解码摘要、认证和数据路径向量通过；字符集 fuzz 20秒通过。
+- MySQL 具名 CALL：原会话 gate 内按声明名映射 IN/OUT/INOUT，覆盖 server/client、直接/显式预处理、Exec/Query/输出路径；校验期间仅查元数据，普通 MySQL SQL 仍只接受位置参数。旧版/未知版本精确例程元数据使用 SHOW CREATE PROCEDURE/FUNCTION 回退，保留权限错误、预算和取消，不执行或重放业务。
+- 元数据：MetadataColumns 保留原13列并追加 auto_increment/generated；追加 MetadataTypeInfo 提供内置 SQL 类型族，保持 Oracle MetadataTypes 的 UDT 语义。未知/服务端相关属性保持 NULL。
+- 多 VALUES：追加显式 BatchMultiValues，仅合并简单 MySQL INSERT 占位符元组；BatchResult.Chunks 提供实际聚合计数/ID和输入范围，逐项不推算。覆盖三包流、参数/字节/行分块、有效前缀、本地错误、服务器继续/停止、取消、损坏/断线、安全回退及原事务回滚。BatchRewrite 和默认策略保持原行为。
+- 验证范围：本轮仅使用 Windows Go1.27.2 与内存协议对端；全包测试跳过已确认被沙箱拒绝访问的 TestPlatformTransportNamedPipe 系列，数据库 integration 仅编译。全包构建/vet、普通与integration标签 golangci-lint（均0 issues）、全包回归及integration仅编译通过；文档链接/格式/diff检查通过；未执行 Linux 部署、数据库/OBProxy联调、race或Go1.26最低版本运行验证。实现28/32、真实验收0/32不变；按用户请求本地提交，不推送。
 
 ## 6. 待取证条件与推进方式
 

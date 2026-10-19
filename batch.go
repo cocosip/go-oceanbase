@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 )
 
 // Execer is implemented by sql.DB, sql.Conn and sql.Tx.
@@ -25,6 +26,7 @@ const (
 	BatchRewrite
 	BatchBulk
 	BatchArrayBinding
+	BatchMultiValues
 )
 
 // BatchOptions controls error handling and bounds each encoded chunk. Zero limits use defaults.
@@ -55,12 +57,35 @@ type BatchItem struct {
 	RowsAffected      int64
 	RowsAffectedKnown bool
 	Err               error
+	InsertID          string
+	InsertIDKnown     bool
 }
 
 // BatchResult keeps input order, including items left unsent after a failure.
 type BatchResult struct {
 	Items    []BatchItem
 	Strategy BatchStrategy
+	Chunks   []BatchChunk
+}
+
+// BatchChunk reports the server's aggregate result for a multi-VALUES command.
+// Start is inclusive and End is exclusive; no per-row counts or IDs are inferred.
+type BatchChunk struct {
+	Start, End int
+	BatchItem
+}
+
+func (item *BatchItem) recordResult(res sql.Result) {
+	if n, err := res.RowsAffected(); err == nil && n >= 0 {
+		item.RowsAffected, item.RowsAffectedKnown = n, true
+	}
+	if native, ok := res.(result); ok {
+		if native.known && native.id != 0 {
+			item.InsertID, item.InsertIDKnown = strconv.FormatUint(native.id, 10), true
+		}
+	} else if id, err := res.LastInsertId(); err == nil && id > 0 {
+		item.InsertID, item.InsertIDKnown = strconv.FormatInt(id, 10), true
+	}
 }
 
 // BatchError identifies the first input with an error and the number of confirmed successes.
@@ -79,7 +104,7 @@ func (e *BatchError) Unwrap() error { return e.Err }
 // ExecBatch runs on one physical session without starting or finishing a transaction.
 func ExecBatch(ctx context.Context, exec Execer, query string, rows [][]any, opts BatchOptions) (BatchResult, error) {
 	result := BatchResult{Items: make([]BatchItem, len(rows)), Strategy: BatchSequential}
-	if opts.Strategy > BatchArrayBinding || opts.ChunkRows < 0 || opts.ChunkParameters < 0 {
+	if opts.Strategy > BatchMultiValues || opts.ChunkRows < 0 || opts.ChunkParameters < 0 {
 		return result, &ConfigError{Field: "BatchOptions"}
 	}
 	if nilExecer(exec) {
@@ -146,6 +171,9 @@ type batchAttempt struct {
 type batchExec func(context.Context, []any, *batchAttempt) (sql.Result, error)
 
 func (c *conn) execBatch(ctx context.Context, request batchRequest) (driver.Result, error) {
+	if handled, err := c.tryBatchMultiValues(ctx, request); handled {
+		return result{}, err
+	}
 	if handled, err := c.tryBatchArray(ctx, request); handled {
 		return result{}, err
 	}
@@ -212,10 +240,7 @@ func runBatchSequential(ctx context.Context, rows [][]any, opts BatchOptions, re
 				res = attempt.result
 			}
 			if res != nil {
-				n, countErr := res.RowsAffected()
-				if countErr == nil && n >= 0 {
-					item.RowsAffected, item.RowsAffectedKnown = n, true
-				}
+				item.recordResult(res)
 			}
 			if err == nil {
 				continue

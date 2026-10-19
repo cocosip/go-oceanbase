@@ -14,7 +14,7 @@
 
 认证扩展使用 `AuthOptions.Plugins` 的每次认证工厂。`Security` 在 `Respond` 获得凭据前执行；每阶段重新判定，插件声明需 TLS 的阶段在未验证时不会调用 Respond。扩展属于调用方可信代码，需正确声明安全级别，并遵守 context；不暴露原始 Socket。Credentials 回调在每次新认证调用，NewConnector 不调用回调，事务中不刷新。
 
-握手字符集已实现 utf8mb4、utf8/utf8mb3、latin1、GBK、GB18030、ASCII、binary 的协议编号；其他显式客户端字符集返回能力错误。认证阶段保留服务端版本原文，D05 已通过模式对应的 ob_version() 查询保留 OceanBase 版本原文；真实版本仍待联调，会话初始化已在 D04 接通。
+握手字符集已实现 utf8mb4、utf8/utf8mb3、latin1、GBK、GB18030、HKSCS/HKSCS31、GB18030_2022、ASCII、binary 的协议编号；其他显式客户端字符集返回能力错误。认证阶段保留服务端版本原文，D05 已通过模式对应的 ob_version() 查询保留 OceanBase 版本原文；真实版本仍待联调，会话初始化已在 D04 接通。
 
 标准文本与 COM_STMT_PREPARE/EXECUTE/CLOSE 已实现：沿用 [Java prepare 协议](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtPrepare.java) 的元数据/EOF 边界；MySQL 参数数以服务端元数据为准，Oracle 命名映射后复核物理数量。二进制 NUMBER 协议类型 3 按固定 4 字节整数读取，246 保留精确十进制文本，不从 Java 类型名称猜测字节布局。基础两模式合成对端、EOF 两路径、混合多结果、错误和关闭已本地测试；真实目标尚未验证。D12 已实现标量扩展类型；D18 已提供复杂类型的本地协议实现，支持边界见 §9，客户端预处理已在 D10 实现。
 
@@ -130,7 +130,7 @@ TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模�
 
 | 能力 | 固定 Java 条件 | Go 所属任务与状态 |
 | --- | --- | --- |
-| INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；使用 ob_version 门禁，未知/旧版本拒绝；真实字典待验证 |
+| INFORMATION_SCHEMA.PARAMETERS | [OceanBase 版本 >= 4.1](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1774) | D13 已实现；已知 >=4.1 使用参数字典，未知/旧版本对精确 schema/例程请求使用 SHOW CREATE 回退；真实字典待验证 |
 | PrepareExecute | [Oracle 模式 + useOraclePrepareExecute + OceanBase >= 2.2.76](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1778) | D14 已实现 OUT/INOUT/RETURNING 必需路径，含带字段标志与尾随响应；D24 已实现显式可选通用策略，见 §15；真实版本待联调 |
 | 带 offset 的 fetch | [Oracle 模式 + 服务端预处理 + useCursorOffset + OceanBase >= 2.2.5](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1783) | D19 已实现 Oracle 已知 >=2.2.5 的 offset/尾 OK；旧/未知版本向前 fetch，真实版本待联调 |
 | LOB locator V2 / array binding / OB20 / reset | LOB 声明 1<<29，协商 CONNECT_ATTRS 后声明 locator-v2 掩码 1；D23 新元数据掩码 2 另行协商；其他能力分别取证，不外推版本支持 | D16 协商/解析已实现，目标版本未验证；D09 Full 淘汰旧会话；原生 reset 未实现；D23 OB20 已本地实现，见 §14；D22 原生 array binding 已按 §13 的版本/事务/参数门禁本地实现 |
@@ -159,7 +159,8 @@ TestPool* 使用真实 database/sql/驱动和本地协议对端，覆盖两模�
 | latin1 / ASCII / binary | latin1 按 MySQL Windows-1252，未定义字节拒绝；ASCII 拒绝非 ASCII；二进制字段保持字节 | 正反例和 fuzz 通过 |
 | GBK / GB18030 | 使用 x/text 固定映射，拒绝不可表示/非法编码，允许可解码的旧字节别名 | 已知向量、SQL/参数/列名/结果及 fuzz 通过 |
 | UTF16 | Big Endian、无 BOM；严格验证代理对，仅 NCHAR/结果使用，SQL 客户端字符集明确拒绝 | BMP/补充字符及无效代理对本地通过 |
-| 未知 collation / GB18030-2022 | 明确拒绝；不把 GB18030-2022 冒充为旧 GB18030 表 | 拒绝测试通过；新版本映射须经目标条件与向量补充后才能声明支持 |
+| HKSCS / HKSCS31 | OceanBase 编号152/153，按 Java 契约使用 UTF-8 载荷，保留 SET NAMES 名称 | 配置、认证、SQL/参数和结果本地对端通过 |
+| GB18030_2022 | 独立2022映射、默认编号217；旧 GB18030 不变，未知 collation 仍拒绝 | OpenJDK 独立 BMP 全量摘要及向量、严格解码、协议对端通过；真实目标未验收 |
 
 现有 collations 按固定映射解析；未取证的新编号不猜测字符集。`TestAllScalarTypes` 已建立四目标、文本/服务端/客户端三路径的真实测试源码与显式 CI 入口，仅完成编译；本阶段没有连接数据库。本地协议对端验证驱动转换和字节布局，不能证明目标服务端 SQL/时区表或字符集组合兼容。
 
@@ -266,7 +267,7 @@ MySQL BINARY/VARBINARY 结果及参数类型名已按字符集63修正，文本 
 | 状态和计数 | 输入顺序，NotExecuted/Succeeded/Failed/Unknown、Started、已知/未知行数；失败不承诺零副作用 | 中间失败/后项、uint64 计数溢出、确认成功后清理错误本地通过 |
 | multi-send | Auto/MultiSend + ContinueOnError + server prepare + 简单 DML/标量；独立命令并发写/按序读，按行/物理参数位/总字节分块 | 提前发包、双向背压、16MiB 续包、错误和事务测试通过；服务器/代理缓冲行为待联调 |
 | 保守回退 | 默认遇错停止、OUT、一次性长参数、复杂值及自定义 Valuer 采用逐项；复用现有协议和输出规则 | 流一次消费、标量 OUT、全部六种策略偏好本地通过；句柄输出仍限 Execute |
-| 改写/bulk/array binding | BatchRewrite 支持受限 MySQL 多语句改写：显式多语句权限、遇错停止、逐块确认服务端合并优化关闭；BatchArrayBinding 在已知>=4.2.1 的 Oracle 可写事务、显式继续及标量门禁下原生执行；其余及多 VALUES/bulk 逐项，见架构 §13.4 | 改写、原生 array 和拒绝/回退已本地验证；TestBatchRewriteExecution / TestBatchArrayBindingExecution 四目标仅编译，真实语义/性能待验收 |
+| 改写/bulk/array binding | BatchRewrite 支持受限 MySQL 多语句改写：显式多语句权限、遇错停止、逐块确认服务端合并优化关闭；BatchArrayBinding 在已知>=4.2.1 的 Oracle 可写事务、显式继续及标量门禁下原生执行；显式 BatchMultiValues 支持简单 MySQL 占位符 INSERT，多项聚合结果由 Chunks 报告；其余及 bulk 逐项，见架构 §13.4 | 改写、原生 array 和拒绝/回退已本地验证；TestBatchRewriteExecution / TestBatchArrayBindingExecution 四目标仅编译，真实语义/性能待验收 |
 | 不确定性与取消 | 不重放；保留确认项，只将可能已发出且未确认的项标 Unknown；淘汰损坏连接并等待写协程；保留 SQL/context/清理错误链 | 单次拨号、部分发送、损坏/额外结果、Tx/操作取消及最终响应后取消本地通过 |
 
 具体接口、默认值及 Java 源码证据见架构 §13.4。`TestBatchExecution` 与手动 CI 四目标入口已加入，本阶段仅编译，不连接数据库，不计入验收。
@@ -401,3 +402,14 @@ TestXATransactions、TestXARecoveryAfterDisconnect 四目标源码已加入手�
 `TestDriverSessionStability` 补充两模式/三包流的同一物理会话持续混合执行：缓存及类型复用、Rows 提前关闭、事务提交/回滚、明确 SQL 错误后的 statement 释放与 Ping。各组合只允许一次拨号，逐轮直接检查原会话资源和池；进程样本保留活动的闲置连接，定义见本地基准 §7。有限离线检查不代替真实平台、完整高级能力/故障或生产长期验收。
 
 `TestDriverConcurrentSessionStability` 在同一连接池固定三条物理会话，以独立 ID/参数及每采样段首轮协议屏障并发运行上述混合流程，检查原会话、释放后重借、池计数及对端实际关闭。两模式/三包流、双工具链各18432轮的样本和范围见[本地基准 §8](go-driver-benchmarks.md#8-同池三连接并发混合负载)；有限三连接样本不替代完整并发/故障/高级资源或真实平台的长期验收。
+
+### 2026-10-19 Java 功能差异修复
+
+| 能力 | 当前契约 | 验证边界 |
+| --- | --- | --- |
+| 批量生成键 | BatchItem.InsertID/InsertIDKnown 保留实际非零 uint64 ID；多项聚合不推算 | 逐项、多发、多语句、单项 array 对端覆盖 |
+| 具名过程参数 | MySQL 简单 CALL 支持声明名映射 IN/OUT/INOUT，原连接按次读取元数据；普通 SQL 仍位置绑定 | server/client、显式预处理/直接调用、Exec/Query、输出和失败对端覆盖 |
+| 列与内置类型元数据 | MetadataColumns 末尾追加 auto_increment/generated；MetadataTypeInfo 与 Oracle UDT MetadataTypes 分开 | 两模式公开 Rows、NULL、类型/列序及过滤对端覆盖 |
+| 多 VALUES | 显式 BatchMultiValues；仅简单占位符元组；Chunks 保留聚合计数/ID，逐项数值未知 | 三种包流、预算、继续/停止、取消、断线与安全回退覆盖；服务器语义/性能未验收 |
+
+本轮没有连接数据库或运行 Linux 部署；实现28/32、真实验收0/32的总体统计不变。

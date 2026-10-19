@@ -144,10 +144,12 @@ func (c *conn) validatePrepareArguments(query string, args []driver.NamedValue) 
 	if len(args) > 65535 {
 		return fmt.Errorf("%w: too many arguments", ErrBind)
 	}
-	for i := range args {
-		if c.session.mode == ModeMySQL && args[i].Name != "" {
-			return fmt.Errorf("%w: unexpected named argument", ErrBind)
+	if c.session.mode == ModeMySQL && hasNamedArguments(args) {
+		if _, err := parseNamedRoutine(query, c.session.ok.Status&512 != 0); err != nil {
+			return err
 		}
+	}
+	for i := range args {
 		value, err := convertArgument(args[i].Value)
 		if err != nil {
 			return err

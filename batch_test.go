@@ -156,12 +156,12 @@ func TestBatchStrategies(t *testing.T) {
 					if !readCommand(ctx, t, p, batchExecutePacket(t, int64(i+1))) {
 						return
 					}
-					response := commandPacket(1, 0, 2)
+					response := commandPacket(1, 17, 2)
 					if i == 1 {
 						response = []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'd', 'u', 'p'}
 					}
 					if i == 2 {
-						response = commandPacket(math.MaxUint64, 0, 2)
+						response = commandPacket(math.MaxUint64, math.MaxUint64, 2)
 					}
 					if !sendPackets(ctx, t, p, response) {
 						return
@@ -186,7 +186,7 @@ func TestBatchStrategies(t *testing.T) {
 			if !errors.As(err, &be) || be.Index != 1 || be.Completed != 2 || r.Strategy != want || len(r.Items) != 3 {
 				t.Fatal(r, err)
 			}
-			if r.Items[0].Status != BatchSucceeded || r.Items[1].Status != BatchFailed || r.Items[2].Status != BatchSucceeded || r.Items[2].RowsAffectedKnown {
+			if r.Items[0].InsertID != "17" || !r.Items[0].InsertIDKnown || r.Items[1].InsertIDKnown || r.Items[2].InsertID != testMaxUint64Text || !r.Items[2].InsertIDKnown || r.Items[0].Status != BatchSucceeded || r.Items[1].Status != BatchFailed || r.Items[2].Status != BatchSucceeded || r.Items[2].RowsAffectedKnown {
 				t.Fatal(r)
 			}
 		})
@@ -403,10 +403,11 @@ func TestBatchAcknowledgedBeforeCleanupError(t *testing.T) {
 		if !servePrepare(ctx, t, p, testBatchSQL, 7, 1, nil) || !readCommand(ctx, t, p, batchExecutePacket(t, 1)) {
 			return
 		}
-		_ = sendPackets(ctx, t, p, commandPacket(1, 0, 2))
+		_ = sendPackets(ctx, t, p, commandPacket(1, math.MaxUint64, 2))
 	})
 	defer func() { _ = db.Close() }()
 	r, err := ExecBatch(context.Background(), db, testBatchSQL, [][]any{{1}, {2}}, BatchOptions{Strategy: BatchSequential})
+	checkBatchInsertID(t, r.Items[0], testMaxUint64Text)
 	var be *BatchError
 	if !errors.As(err, &be) || be.Index != 0 || be.Completed != 1 || len(r.Items) != 2 || r.Items[0].Status != BatchSucceeded || !r.Items[0].RowsAffectedKnown || r.Items[0].RowsAffected != 1 || r.Items[0].Err == nil || r.Items[1].Status != BatchNotExecuted {
 		t.Fatal(r, err)

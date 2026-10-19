@@ -85,7 +85,7 @@ func TestBatchArrayResults(t *testing.T) {
 					if failed && !serveBatchArrayDiagnostics(ctx, t, p, batchArrayDiagnostic(1, 1062, "duplicate")) {
 						return
 					}
-					if !sendPackets(ctx, t, p, commandPacket(2, 0, 5)) || !readCommand(ctx, t, p, batchArrayPacket(t, []any{3}, options)) || !sendPackets(ctx, t, p, commandPacket(3, 0, 5)) {
+					if !sendPackets(ctx, t, p, commandPacket(2, 17, 5)) || !readCommand(ctx, t, p, batchArrayPacket(t, []any{3}, options)) || !sendPackets(ctx, t, p, commandPacket(3, math.MaxUint64, 5)) {
 						return
 					}
 					serveBatchArrayEnd(ctx, t, p)
@@ -97,6 +97,9 @@ func TestBatchArrayResults(t *testing.T) {
 				}
 				defer func() { _ = tx.Rollback() }()
 				r, err := ExecBatch(context.Background(), tx, testBatchSQL, [][]any{{1}, {2}, {3}}, BatchOptions{Strategy: BatchArrayBinding, ContinueOnError: true, ChunkRows: 2})
+				checkBatchInsertID(t, r.Items[0], "")
+				checkBatchInsertID(t, r.Items[1], "")
+				checkBatchInsertID(t, r.Items[2], testMaxUint64Text)
 				if r.Strategy != BatchArrayBinding || r.Items[0].Status != BatchSucceeded || r.Items[0].RowsAffectedKnown || r.Items[2].Status != BatchSucceeded || !r.Items[2].RowsAffectedKnown || r.Items[2].RowsAffected != 3 {
 					t.Fatalf("array outcomes: %+v %v", r, err)
 				}

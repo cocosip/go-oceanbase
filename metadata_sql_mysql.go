@@ -27,6 +27,7 @@ func mysqlMetadataPlan(version string, f MetadataFilter) (metadataQuery, error) 
 		s.column = metadataColumnName
 		s.order = "c.TABLE_SCHEMA,c.TABLE_NAME,c.ORDINAL_POSITION"
 		s.expressions = []string{"c.TABLE_CATALOG", s.schema, s.name, s.column, "c.ORDINAL_POSITION", "c.DATA_TYPE", "c.CHARACTER_MAXIMUM_LENGTH", "c.NUMERIC_PRECISION", "c.NUMERIC_SCALE", "CASE c.IS_NULLABLE WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END", "c.COLUMN_DEFAULT", "c.COLUMN_COMMENT", sqlNullLiteral}
+		s.expressions = append(s.expressions, "CASE WHEN c.EXTRA IS NULL THEN NULL WHEN LOWER(c.EXTRA) LIKE '%auto_increment%' THEN 1 ELSE 0 END", "CASE WHEN c.EXTRA IS NULL THEN NULL WHEN UPPER(c.EXTRA) IN ('VIRTUAL','PERSISTENT') OR UPPER(c.EXTRA) LIKE '%VIRTUAL GENERATED%' OR UPPER(c.EXTRA) LIKE '%STORED GENERATED%' THEN 1 ELSE 0 END")
 	case MetadataPrimaryKeys:
 		s.from = "information_schema.KEY_COLUMN_USAGE k JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_CATALOG=k.CONSTRAINT_CATALOG AND t.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND t.TABLE_NAME=k.TABLE_NAME AND t.CONSTRAINT_NAME=k.CONSTRAINT_NAME"
 		s.where = "t.CONSTRAINT_TYPE='PRIMARY KEY'"
@@ -70,7 +71,10 @@ func mysqlMetadataPlan(version string, f MetadataFilter) (metadataQuery, error) 
 		s.expressions = []string{"r.ROUTINE_CATALOG", s.schema, s.name, "r.SPECIFIC_NAME", sqlNullLiteral, "r.ROUTINE_TYPE", "r.DATA_TYPE"}
 	case MetadataRoutineParameters:
 		if !hasParameterDictionary(version) {
-			return metadataQuery{}, fmt.Errorf("%w: parameter dictionary requires verified OceanBase version >= 4.1", ErrUnsupported)
+			if _, _, err := validateRoutineFallback(f); err != nil {
+				return metadataQuery{}, err
+			}
+			return metadataQuery{columns: metadataColumns(f.Kind)}, nil
 		}
 		s.from = "information_schema.PARAMETERS p JOIN information_schema.ROUTINES r ON r.SPECIFIC_NAME=p.SPECIFIC_NAME AND r.ROUTINE_SCHEMA=p.SPECIFIC_SCHEMA AND r.ROUTINE_CATALOG=p.SPECIFIC_CATALOG"
 		s.schema = "p.SPECIFIC_SCHEMA"

@@ -125,6 +125,12 @@ return tx.Commit()
 
 `ExecBatch` 保留输入顺序、实际 `Strategy`、每项 `Status/Started`。`BatchFailed` 不保证没有副作用，`BatchUnknown` 不能自动重试；显式 BatchRewrite 在 MySQL 兼容模式、允许并协商多语句、遇错停止且逐块确认服务端合并优化关闭时，以独立 DML 合并请求；显式 BatchArrayBinding 在已知 OceanBase >=4.2.1 的 Oracle 可写事务中配合 ContinueOnError=true，使用原生列式参数和保存异常响应，多项成功的影响行数未知。其他条件及 bulk 回退逐项。用法见根包 ExampleExecBatch_rewrite 和 ExampleExecBatch_arrayBinding；详细门禁和 Started=true/NotExecuted 含义见架构 §13.4。批量成功同样不表示调用方事务已提交。
 
+显式 `BatchMultiValues` 可合并 MySQL 简单的 `INSERT INTO t (a,b) VALUES (?,?)` 标量批次，无需多语句权限。`BatchResult.Chunks` 返回每个 SQL 块的 `[Start,End)` 输入范围及实际聚合结果；多项块不分摊影响行数、不推算生成键。逐项结果及单项块通过 `InsertID/InsertIDKnown` 保留已确认的完整 uint64 十进制 ID。不支持的 SQL 形状回退逐项，实际策略以返回值为准。
+
+MySQL 简单 `CALL schema.p(?,?)` 支持按声明参数名绑定 `sql.Named`，包括 IN/OUT/INOUT；所有占位符均须具名，名称忽略大小写，调用参数中的常量保留其声明位置。普通 MySQL SQL 仍只支持位置绑定，表达式/会话变量等复杂 CALL 不支持具名推断。驱动在原连接读取参数元数据；旧版或版本未知时使用安全引用的 SHOW CREATE 回退，权限不足原样报错，不执行 CALL。
+
+`MetadataColumns` 在原列后追加 nullable 数值标志 `auto_increment`、`generated`（1/0/NULL）；Oracle 自增标志未知时为 NULL。`MetadataTypeInfo` 提供本模式内置 SQL 类型的十列描述，与查询 Oracle 用户类型的 `MetadataTypes` 分开；服务端或会话相关的未知上限为 NULL，不能将其视为实时能力探测。旧版 MySQL 例程参数元数据仅支持精确的 schema/例程模式，LIKE 通配符请求返回不支持。
+
 查询时限通过每次 ExecContext/QueryContext 的 context 指定，PrepareContext 的期限只覆盖准备过程；读取 Rows 时也继续受查询 context 约束。发送后超时会使物理连接失效，不能据此判断数据库已停止或回滚，也不要自动重放写操作。ReadTimeout 仅限制每次底层读取，不能代替总查询期限。初始化按顺序确认，客户端参数自动保留安全的空格边界；不需要迁移 Java 的 usePipelineAuth、enableQueryTimeouts 或 encloseParamInParentheses 开关。亲和地址列表使用 Routing.Endpoints/Weight/Strategy，默认 Ordered，需加权选择时显式 BalanceAffinity。
 
 `Execute` 的命令结果不伪装成行集；`ResultInfo` 的计数只有在对应 `Known` 为真时才可使用。Oracle 匿名块不合成内部每条 DML 的独立计数。读取异常、关闭异常和 `Snapshot.Err` 均需要处理。

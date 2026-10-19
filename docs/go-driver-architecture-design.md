@@ -948,10 +948,17 @@ type BatchItem struct {
     RowsAffected int64
     RowsAffectedKnown bool
     Err error
+    InsertID string
+    InsertIDKnown bool
 }
 type BatchResult struct {
     Items []BatchItem
     Strategy BatchStrategy
+    Chunks []BatchChunk
+}
+type BatchChunk struct {
+    Start, End int // 输入范围 [Start, End)
+    BatchItem      // 服务端聚合结果
 }
 type BatchError struct {
     Index int
@@ -960,7 +967,7 @@ type BatchError struct {
 }
 ```
 
-- Strategy 是偏好：BatchAuto（零值）、BatchSequential、BatchMultiSend、BatchRewrite、BatchBulk、BatchArrayBinding；结果报告实际策略。BatchRewrite 的受限多语句路径及 BatchArrayBinding 的 Oracle 原生路径见下文；Bulk 及不满足对应门禁的请求回退 BatchSequential。ContinueOnError 默认 false，确保失败后不再发后项；true 也必须在取消、损坏响应、断线或结果不确定时停止。
+- Strategy 是偏好：BatchAuto（零值）、BatchSequential、BatchMultiSend、BatchRewrite、BatchBulk、BatchArrayBinding、BatchMultiValues；新枚举追加，不改变旧值。结果报告实际策略；Bulk 及不满足对应门禁的请求回退 BatchSequential。ContinueOnError 默认 false，确保失败后不再发后项；true 也必须在取消、损坏响应、断线或结果不确定时停止。
 - ChunkRows=0 使用 128，ChunkParameters=0 使用 65535；负值和非法策略发送前拒绝。multi-send 同时限制块行数、展开后的物理参数位总数及编码内容总字节数，单命令受 MaxMessageBytes 和既有值上限约束；逐项路径逐行限制输入参数，不聚合数据包。
 - *sql.DB 在整个批次固定一个 *sql.Conn；原生 Conn/Tx 用一次标准 ExecContext 私有分派持有标准库连接锁。没有隐藏事务、提交、辅助会话或整批重试。自定义 Execer 逐项调用，物理会话和事务由其实现负责；未知错误保守记为 BatchUnknown 并停止。
 - Status 为 BatchNotExecuted、BatchSucceeded、BatchFailed、BatchUnknown。Started 只表示业务命令可能开始发送，辅助 prepare/上传/能力探测不算。多语句改写的同一命令已提交后，服务端 ERR 确认未执行的后项为 NotExecuted 且 Started=true；未提交的后续块仍为 NotExecuted/false。BatchFailed 记录已知错误，不保证没有数据库副作用；BatchSucceeded 同样不代表事务已提交。已读完整成功响应后发生清理/取消错误，保留成功状态和已知计数，并通过 Err 返回错误；不将确认成功改成未知。
@@ -968,7 +975,14 @@ type BatchError struct {
 - Auto/MultiSend 仅在 ContinueOnError=true、至少两行、PrepareServer、全部显式标量输入和单条 INSERT/UPDATE/DELETE/REPLACE 时启用；共享 prepare 前复用普通参数校验，本地非法项或 Oracle 物理参数位超过单块限制时整批回退逐项；共享 prepare 失败按首项错误处理，后项仍遵循逐项继续策略；SQL 在两种引号解释下均通过词法检查，排除分号、可执行注释、RETURNING、CALL/查询/会话 SQL。OUT、长参数、复杂值、自定义 Valuer 等回退逐项，继续复用既有绑定/输出/一次消费规则；资源句柄输出仍只接受 Execute。
 - multi-send 只 prepare 一次，将独立 COM_STMT_EXECUTE 命令并行写入/按序读响应，双向背压不产生先写完再读的死锁。每条命令独立重置序号；收齐 OK/ERR 才确认该项。服务端 ERR 可继续；断线/取消/损坏或额外结果淘汰连接，保留已确认前缀，仅可能发出且未确认的项标 Unknown，未发的后续块保留 NotExecuted；结束前等待写协程退出。
 
-原生优化证据与保守选择：固定 Java 基线的 [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) 明确记录 OceanBase 不支持 COM_STMT_BULK_EXECUTE；其中 MariaDB 风格的版本判断不能作为 OceanBase 支持证据。多 VALUES 合并也可能改变部分成功、触发器和错误边界，这两类优化仍逐项。Oracle array binding 的列式布局和保存异常响应已按固定 Java 与 OceanBase 服务端源码补证，采用下述独立路径；源码和本地协议测试不代替真实服务器/代理验收。
+原生优化证据与保守选择：固定 Java 基线的 [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) 明确记录 OceanBase 不支持 COM_STMT_BULK_EXECUTE；其中 MariaDB 风格的版本判断不能作为 OceanBase 支持证据，Bulk 仍逐项。多 VALUES 合并改变部分成功、触发器和错误边界，采用下面独立的显式策略。Oracle array binding 的列式布局和保存异常响应已按固定 Java 与 OceanBase 服务端源码补证；源码和本地协议测试不代替真实服务器/代理验收。
+
+生成键与多 VALUES 的公开契约：
+
+- BatchItem.InsertID/InsertIDKnown 保留该项完整确认响应中的非零生成 ID，十进制字符串可表示完整 uint64。逐项、多发、多语句和单项 array 块共用结果记录；自定义 Execer 只能保留其 LastInsertId 提供的有效正 int64。未返回 ID、错误项和多项聚合不能推算 ID，更不按自增步长生成区间。
+- BatchMultiValues 仅在 MySQL、至少两行、ChunkRows>=2、标量白名单及足够物理参数预算下，将简单 INSERT INTO [schema.]table [(columns)] VALUES (?,...) 合为单条 SQL。仅支持占位符元组；IGNORE、REPLACE、表达式、已有多元组、ON DUPLICATE KEY、RETURNING、多语句、Oracle、OUT/流/自定义 Valuer 等回退普通逐项。此路径不需要多语句权限，不改 BatchRewrite 或默认策略。
+- 每块按 ChunkRows、ChunkParameters 和编码后的 MaxMessageBytes（含 COM_QUERY、前缀、逗号）限制，复用字符集与字面量安全编码。先确认有效前缀再报告后项本地错误；会话 SQL mode 每块重新解析。不会隐式 Begin/Commit 或重放已发块。
+- Chunks 只为实际提交的 multi-VALUES 命令提供输入区间 [Start,End) 及聚合状态、计数、ID、错误；单项块可同时发布逐项计数和 ID，多项块的各项 Known 均为 false。成功项表示所属命令确认成功，不证明每项影响一行或事务提交。服务端 ERR 将该块各项记 Failed，不能保证无副作用；显式继续只在完整服务器错误且会话健康时执行后块。断线、取消、损坏或额外结果将未确认块记 Unknown 并停止，不自动重试。
 
 受限多语句改写已实现：仅显式 BatchRewrite、ContinueOnError=false、至少两行、ChunkRows>=2、MySQL 兼容模式、AllowMultiStatements=true 且实际协商 CLIENT_MULTI_STATEMENTS 时进入。仅接受现有标量白名单和单条 INSERT/UPDATE/DELETE/REPLACE；词法验证拒绝分号、可执行注释及 RETURNING，自定义 Valuer、OUT、流和复杂对象继续逐项。该显式策略使用既有客户端字面量编码，不改变普通 SQL 的 PrepareMode；不隐式开启多语句权限。Oracle 及 ContinueOnError=true 仍逐项。
 
@@ -1216,7 +1230,7 @@ Tables/Columns 固定返回 remarks，保留字典返回的中文、引号、首
 
 - MySQL 兼容模式使用 information_schema，catalog 为 `def`，database 对应 schema；Synonyms、Types、TypeAttributes、CollectionElements 返回 ErrUnsupported，不合成服务端类型字典。Oracle 使用 ALL_*，catalog 查询为空行集，其余查询的 catalog 为 NULL。视图/物化视图经 Tables 的 TableTypes 选择，同义词另有目标描述；Columns 不隐式展开同义词。
 - 例程与参数的 specific_name 是同一字典身份；Oracle 由 object_id/subprogram_id 组成，保留 package_name、data_level 和返回位置 0。direction 统一 `IN` / `OUT` / `INOUT` / `RETURN`。未知 update_rule、默认属性、grantor 等保持 NULL。主外键及索引的列位置从 1 开始；索引 ordering 为 ASC / DESC 或 NULL。
-- MySQL PARAMETERS 只在建连读取的 `ob_version()` 确认 OceanBase >= 4.1 时启用，不能使用 greeting 中的 MySQL 5.7/8.0 版本。未知或旧版本明确 ErrUnsupported，权限及字典 SQL 错误保留服务端 Error。ServerInfo 的字典能力位描述当前驱动开放的查询路径，不证明当前用户拥有字典权限。
+- MySQL PARAMETERS 只在建连读取的 `ob_version()` 确认 OceanBase >= 4.1 时启用，不能使用 greeting 中的 MySQL 5.7/8.0 版本。未知或旧版本对精确 schema/例程请求使用 SHOW CREATE 回退；不支持通配符枚举，权限及字典 SQL 错误保留服务端 Error。ServerInfo 的字典能力位描述当前驱动开放的查询路径，不证明当前用户拥有字典权限。
 - StatementParameters 对 Query 执行一次服务端 prepare，保存参数列描述，关闭临时 statement 后返回独立的内存 Rows，绝不执行 Query；即使 Config.PrepareMode=PrepareClient 也遵循此规则。物理位置与逻辑位置均从 1 开始，Oracle 重复命名参数共享逻辑位置，name 为规范化绑定名。protocol_type/protocol_direction 保留协议字节，不能把未取证的 direction 字节猜成 IN/OUT；该入口的 direction 为 NULL，例程方向请查询 RoutineParameters。MySQL 参数可空性未知，参数类型和尺寸仅为 prepare 回报的信息，不承诺推断出的业务列定义。
 - Columns.length：MySQL 为 CHARACTER_MAXIMUM_LENGTH；Oracle 字符语义为 CHAR_LENGTH，其余为 DATA_LENGTH（字节），需结合 data_type 使用。RoutineParameters/TypeAttributes/CollectionElements 的 length 保留字典原始单位；未知不补默认长度。普通结果 ColumnTypes 的长度按协议及已知字符集报告字符数/二进制字节数；未知字符集或不可解释的尺寸返回 ok=false。DECIMAL 的精度去掉符号和小数点，Oracle NUMBER 使用显式 precision 和带符号 scale；未指定/超出合法范围返回 ok=false。Oracle FLOAT 的二进制 precision 与 -127 浮动 scale 不作为十进制精度报告。
 - `metadataLocked` 在已拥有连接 gate 且响应已完整结束时执行，复用同一参数化计划和现有字符集/安全字面量编码；返回 Rows 只关闭自身取消回调，不释放外层 gate。未读响应直接拒绝；内部查询不会经 Metadata/Session 或另开物理连接。公开入口把锁所有权交给返回 Rows。D18 已实现单业务命令内的类型描述缓存，D13 不缓存任意字典行集。
@@ -1225,6 +1239,14 @@ Tables/Columns 固定返回 remarks，保留字典返回的中文、引号、首
 普通结果与 StatementParameters 的 MySQL 字符串类型名按字符集编号63区分：协议15/253报告 VARBINARY，254报告 BINARY；其他编号继续 VARCHAR/CHAR，即使存在 BINARY_FLAG。ScanType 仍为二进制 []byte、文本 string，长度保持字节/字符语义，空字节值与 NULL 分开。Oracle 仍报告 VARCHAR2/CHAR。依据固定 Java [类型名称](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L425)和[二进制列判定](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L715)。TestBinaryStringColumnTypes/TestBinaryStringParameterMetadata 提供两模式本地证据；TestAllScalarTypes 的 BINARY/VARBINARY 真实列对照仅编译。
 
 以上路径已由协议对端覆盖，真实数据库字典字段、版本差异及权限仍需集成验证；D16/D18 的 Query/Next 缓存未命中场景仍由各自任务验证。
+
+### 16.1.1a Java 元数据与具名过程兼容补齐
+
+MetadataColumns 保留原13列，末尾追加 auto_increment/generated 数值标志（1/0/NULL）。MySQL 从 EXTRA 明确标记判断；Oracle 使用 ALL_TAB_COLS 的 VIRTUAL_COLUMN 并排除隐藏列，无法可靠判断的自增标志为 NULL。MetadataTypeInfo 是追加枚举，提供 type_name/category/precision/minimum_scale/maximum_scale/radix/literal_prefix/literal_suffix/create_parameters/auto_increment 十列内置类型描述；静态 SQL 类型族不等于目标服务器能力探测，未知上限为 NULL。MetadataTypes 仍是 Oracle 用户定义类型字典。
+
+MySQL 旧版或版本未知时，MetadataRoutineParameters 支持精确 schema/例程模式（LIKE 的 / 转义还原，%/_ 通配符拒绝），同连接安全引用 SHOW CREATE PROCEDURE，只有1305不存在时尝试 FUNCTION；权限/网络/取消错误不吞掉。缺少 schema 时读同连接 DATABASE()，按声明解析参数名/位置/方向/类型，受既有响应/元数据预算限制。定义被隐藏、语法不支持或不完整时拒绝，未知属性保持 NULL。
+
+MySQL 简单 CALL 的 sql.Named 通过声明参数名称（忽略大小写）映射到占位符，支持 IN/OUT/INOUT 和保留位置的标量常量；全部占位符必须具名。普通 SQL 继续拒绝具名参数，复杂表达式、会话变量、函数返回等不猜测。server/client、直接/显式预处理、Exec/Query/输出路径共享 gate 内的映射；逐次读精确元数据，不缓存陈旧的 schema/签名，不额外开会话，不在校验时执行 CALL。现有事务、取消与预算仍生效。
 
 ### 16.1.2 D32 结果列来源与产品身份
 
@@ -1785,3 +1807,9 @@ Go 标准库契约；链接固定到 Go 1.27.2 源码，设计接口范围限定
 [G08]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L299
 [G09]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L2072
 [G10]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L3581
+
+### 2026-10-19 字符集兼容补充
+
+HKSCS/HKSCS31 按 Java Options.getCharacterEncoding 使用 UTF-8 载荷，分别使用 OceanBase 协议编号152/153。GB18030_2022 使用独立2022映射与默认编号217（其余已知2022 collation 216–222按同一编码解析），SET NAMES 保留实际名称；既有 GB18030/x-text 映射不变。Go 继续按配置字符集编码握手身份，不复制 Java 独立的 UTF-8 握手选择策略。
+
+映射来源与固定版本见 internal/charset/gb18030_2022.go：OceanBase 字符集实现和 OpenJDK 21；测试包含独立字节向量、全部 BMP 标量编码摘要、23940个双字节位置和39420个 BMP 四字节位置解码摘要，并覆盖认证、SQL、文本/二进制参数与结果。独立对照及本地协议通过不代表真实数据库/代理支持这些字符集。

@@ -186,8 +186,8 @@ func (c *conn) runBatchArrayLocked(ctx context.Context, payload []byte, items []
 		items[i].Status = BatchSucceeded
 		if failure := failures[i]; failure != nil {
 			items[i].Status, items[i].Err = BatchFailed, failure
-		} else if len(items) == 1 && ok.AffectedRows <= math.MaxInt64 {
-			items[i].RowsAffected, items[i].RowsAffectedKnown = int64(ok.AffectedRows), true
+		} else if len(items) == 1 {
+			items[i].recordResult(result{known: true, affected: ok.AffectedRows, id: ok.InsertID})
 		}
 	}
 	return nil

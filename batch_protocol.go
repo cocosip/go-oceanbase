@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -153,7 +152,7 @@ func (c *conn) encodeBatchItemLocked(ctx context.Context, prepared *stmt, args [
 	return wire.EncodeStmtExecuteOptions(prepared.id, params, c.cfg.Limits.MaxMessageBytes, c.executeOptions(query, false))
 }
 
-func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, payloads [][]byte, indices []int) bool {
+func (c *conn) runBatchPipelineLocked(ctx context.Context, batch *BatchResult, payloads [][]byte, indices []int) bool {
 	if c.beginCancelExecution() {
 		defer c.endCancelExecution(false)
 	}
@@ -162,7 +161,7 @@ func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, 
 		if e != nil {
 			return e
 		}
-		item := &result.Items[indices[i]]
+		item := &batch.Items[indices[i]]
 		if len(data) > 0 && data[0] == 255 {
 			e = decodeServerError(data)
 			if e == wire.ErrMalformed {
@@ -181,10 +180,7 @@ func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, 
 		c.observeResourceStatus(ok.Status)
 		c.session.ok = ok
 		*item = BatchItem{Status: BatchSucceeded, Started: true}
-		if ok.AffectedRows <= math.MaxInt64 {
-			item.RowsAffected = int64(ok.AffectedRows)
-			item.RowsAffectedKnown = true
-		}
+		item.recordResult(result{known: true, affected: ok.AffectedRows, id: ok.InsertID})
 		return nil
 	})
 	if err == nil {
@@ -193,7 +189,7 @@ func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, 
 	c.discard()
 	found := false
 	for i, index := range indices {
-		item := &result.Items[index]
+		item := &batch.Items[index]
 		if item.Status != BatchNotExecuted {
 			continue
 		}
@@ -204,13 +200,13 @@ func (c *conn) runBatchPipelineLocked(ctx context.Context, result *BatchResult, 
 	}
 	if !found {
 		for _, index := range indices {
-			if result.Items[index].Status == BatchNotExecuted {
-				result.Items[index].Err = err
+			if batch.Items[index].Status == BatchNotExecuted {
+				batch.Items[index].Err = err
 				return false
 			}
 		}
 		// Complete acknowledgments can precede a local transport failure.
-		item := &result.Items[indices[len(indices)-1]]
+		item := &batch.Items[indices[len(indices)-1]]
 		item.Err = errors.Join(item.Err, err)
 	}
 	return false

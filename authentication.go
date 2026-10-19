@@ -257,6 +257,13 @@ func handshakeCharset(name string) (byte, error) {
 		return 28, nil
 	case "gb18030":
 		return 248, nil
+	// OceanBase ob_charset.h: HKSCS_BIN, HKSCS31_BIN and GB18030_2022_PINYIN_CI.
+	case "hkscs":
+		return 152, nil
+	case "hkscs31":
+		return 153, nil
+	case "gb18030_2022":
+		return 217, nil
 	case "ascii":
 		return 11, nil
 	case charsetBinary:

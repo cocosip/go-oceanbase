@@ -44,6 +44,7 @@ const (
 	MetadataCollectionElements
 	MetadataServerInfo
 	MetadataStatementParameters
+	MetadataTypeInfo
 )
 
 // MetadataFilter uses case-preserving LIKE patterns with '/' as the escape.
@@ -91,6 +92,12 @@ func metadataPlan(mode Mode, version string, filter MetadataFilter) (metadataQue
 	if mode != ModeMySQL && mode != ModeOracle {
 		return metadataQuery{}, ErrUnsupported
 	}
+	if filter.Kind == MetadataTypeInfo {
+		if filter.Catalog != "" || filter.SchemaPattern != "" || filter.NamePattern != "" || filter.ColumnPattern != "" || filter.ReferencedSchemaPattern != "" || filter.ReferencedNamePattern != "" || len(filter.TableTypes) != 0 || filter.Query != "" {
+			return metadataQuery{}, fmt.Errorf("%w: type information does not accept filters", ErrBind)
+		}
+		return metadataQuery{columns: metadataColumns(filter.Kind)}, nil
+	}
 	if filter.Kind == MetadataStatementParameters {
 		if strings.TrimSpace(filter.Query) == "" || filter.Catalog != "" || filter.SchemaPattern != "" || filter.NamePattern != "" || filter.ColumnPattern != "" || filter.ReferencedSchemaPattern != "" || filter.ReferencedNamePattern != "" || len(filter.TableTypes) > 0 {
 			return metadataQuery{}, fmt.Errorf("%w: statement metadata requires only Query", ErrBind)
@@ -124,7 +131,7 @@ func metadataColumns(kind MetadataKind) []metadataColumn {
 	case MetadataSynonyms:
 		names = "catalog schema name target_schema target_name database_link"
 	case MetadataColumns:
-		names = "catalog schema table_name name #ordinal_position data_type #length #precision #scale #nullable default_value remarks type_owner"
+		names = "catalog schema table_name name #ordinal_position data_type #length #precision #scale #nullable default_value remarks type_owner #auto_increment #generated"
 	case MetadataPrimaryKeys:
 		names = "catalog schema table_name name column_name #ordinal_position"
 	case MetadataForeignKeys:
@@ -149,6 +156,8 @@ func metadataColumns(kind MetadataKind) []metadataColumn {
 		names = "oceanbase_version compatibility_mode #parameter_dictionary #type_dictionary"
 	case MetadataStatementParameters:
 		names = "#physical_ordinal #logical_ordinal name direction data_type #nullable #length #precision #scale #protocol_type #protocol_direction"
+	case MetadataTypeInfo:
+		names = "type_name category #precision #minimum_scale #maximum_scale #radix literal_prefix literal_suffix create_parameters #auto_increment"
 	}
 	fields := strings.Fields(names)
 	columns := make([]metadataColumn, len(fields))
@@ -326,12 +335,21 @@ func (c *conn) metadataLocked(ctx context.Context, f MetadataFilter) (*textRows,
 	if c.closed.Load() {
 		return nil, driver.ErrBadConn
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if f.Kind == MetadataRoutineParameters && c.session.mode == ModeMySQL && !hasParameterDictionary(c.session.obVersion) {
+		return c.routineMetadataFallbackLocked(ctx, f)
+	}
 	plan, err := metadataPlan(c.session.mode, c.session.obVersion, f)
 	if err != nil {
 		return nil, err
 	}
 	if f.Kind == MetadataStatementParameters {
 		return nil, ErrUnsupported
+	}
+	if f.Kind == MetadataTypeInfo {
+		return c.bufferedMetadataRows(ctx, f.Kind, builtinTypeInfo(c.session.mode))
 	}
 	query, err := c.interpolate(plan.query, plan.args)
 	if err != nil {

@@ -108,7 +108,7 @@ func TestBatchRewriteResults(t *testing.T) {
 					if fail {
 						second = []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'd', 'u', 'p'}
 					}
-					if !sendPackets(ctx, t, p, commandPacket(1, 0, 10), second) {
+					if !sendPackets(ctx, t, p, commandPacket(1, math.MaxUint64, 10), second) {
 						return
 					}
 					if !fail && !sendPackets(ctx, t, p, commandPacket(3, 0, 2)) {
@@ -124,6 +124,9 @@ func TestBatchRewriteResults(t *testing.T) {
 				pinned := pinnedSession(t, db)
 				defer func() { _ = pinned.Close() }()
 				r, err := ExecBatch(context.Background(), pinned, testBatchSQL, [][]any{{1}, {2}, {3}}, BatchOptions{Strategy: BatchRewrite})
+				if r.Items[0].InsertID != testMaxUint64Text || !r.Items[0].InsertIDKnown {
+					t.Fatal(r)
+				}
 				if r.Strategy != BatchRewrite || r.Items[0].Status != BatchSucceeded || !r.Items[0].RowsAffectedKnown || r.Items[0].RowsAffected != 1 {
 					t.Fatalf("results: %+v %v", r, err)
 				}
