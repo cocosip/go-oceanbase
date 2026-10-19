@@ -1,5 +1,7 @@
 # OceanBase Go Driver Architecture Design
 
+Current direct Oracle runtime evidence and remaining compatibility gaps are in [Oracle-mode live validation](oracle-live-validation-2026-10-19.md). Oracle 4.4.2.2 sensitive-cursor freshness remains a failing acceptance condition; native scroll support alone does not establish fresh committed values. Historical untested statements below are qualified only by the combinations in that report.
+
 Status: architecture and interface contracts. Refer to development progress for the local implementation and acceptance status of each item. This document targets complete feature adaptation; basic CRUD is not the final scope.
 
 ## 1. Goals, Confirmed Requirements, and Design Baseline
@@ -644,7 +646,7 @@ NULL fields/elements each consume one node and obey depth limits; trailing NULLs
 
 Descriptors reuse D13 type/attribute/collection/synonym query plans, preferring concrete types then private/PUBLIC synonyms and rejecting remote DB_LINK, cycles, or excessive dependencies. Cache lasts one business command on one physical session, keyed by mode/schema/name/protocol version, cleared per command/reset rather than reused across schema/permission changes. Frame/descriptor mismatch clears it and reparses buffered bytes only, never business SQL. Same-shape semantic type changes still require server-version/dictionary integration. Descriptor-query cumulative responses also obey MaxMessageBytes.
 
-These capabilities have local protocol/standard database/sql regressions. `TestComplexTypes` is compiled only; Oracle/OBProxy type definitions, synonyms, versions, and original-transaction visibility remain untested live.
+These capabilities have local protocol/standard database/sql regressions. Direct Oracle 4.4.2.2 now passes OBJECT storage, native PL/SQL collection binding, nested LOB reads and rollback. NULL object elements can be canonicalized by the server to objects with all-NULL attributes; tests verify the server predicate and preserve that representation. Nested-table column storage is rejected by this target. Other versions, synonyms, OBProxy and all remaining combinations still require live validation.
 
 
 ### 11.3 Errors

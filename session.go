@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	charsetUTF8         = "utf8"
-	charsetUTF8MB4      = "utf8mb4"
-	charsetBinary       = "binary"
-	fieldNCharset       = "Session.NCharset"
-	charsetUTF8MB3Alias = "utf8mb3"
+	sessionReadDualSuffix = " FROM dual"
+	charsetUTF8           = "utf8"
+	charsetUTF8MB4        = "utf8mb4"
+	charsetBinary         = "binary"
+	fieldNCharset         = "Session.NCharset"
+	charsetUTF8MB3Alias   = "utf8mb3"
 )
 
 func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
@@ -193,7 +194,7 @@ func (c *conn) readOceanBaseVersion(ctx context.Context) error {
 	const responseField = "server version response"
 	query := "SELECT ob_version()"
 	if c.session.mode == ModeOracle {
-		query += " FROM dual"
+		query += sessionReadDualSuffix
 	}
 	encoded, err := c.encodeSQL(query)
 	if err != nil {
@@ -261,23 +262,25 @@ func (c *conn) quoteSessionValue(value string) string {
 
 func (c *conn) systemVariableLiteral(ctx context.Context, name, value string) (string, error) {
 	quoted := c.quoteSessionValue(value)
-	if c.session.mode == ModeMySQL {
-		var integer string
-		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
-			integer = strconv.FormatInt(n, 10)
-		} else if n, err := strconv.ParseUint(value, 10, 64); err == nil {
-			integer = strconv.FormatUint(n, 10)
+	var integer string
+	if n, err := strconv.ParseInt(value, 10, 64); err == nil {
+		integer = strconv.FormatInt(n, 10)
+	} else if n, err := strconv.ParseUint(value, 10, 64); err == nil {
+		integer = strconv.FormatUint(n, 10)
+	}
+	if integer != "" {
+		// The current variable's wire type distinguishes numeric values from numeric-looking strings.
+		query := "SELECT @@SESSION." + name
+		if c.session.mode == ModeOracle {
+			query += sessionReadDualSuffix
 		}
-		if integer != "" {
-			// The current variable's wire type distinguishes numeric values from numeric-looking strings.
-			_, columns, err := c.sessionValuesLocked(ctx, []byte("SELECT @@SESSION."+name), 1)
-			if err != nil {
-				return "", err
-			}
-			switch columns[0].Type {
-			case 0, 1, 2, 3, 4, 5, 8, 9, 13, 246:
-				return integer, nil
-			}
+		_, columns, err := c.sessionValuesLocked(ctx, []byte(query), 1)
+		if err != nil {
+			return "", err
+		}
+		switch columns[0].Type {
+		case 0, 1, 2, 3, 4, 5, 8, 9, 13, 246:
+			return integer, nil
 		}
 	}
 	return quoted, nil

@@ -23,7 +23,7 @@ func DecodePrepareExecuteOK(data []byte) (PrepareExecuteOK, error) {
 	}, nil
 }
 
-// EncodePrepareExecute sends fresh types, one iteration, and no cached checksum.
+// EncodePrepareExecute sends fresh types, one iteration, and the required SQL checksum.
 func EncodePrepareExecute(id uint32, query []byte, params []Parameter, limit int64) ([]byte, error) {
 	return EncodePrepareExecuteOptions(id, query, params, limit, ExecuteOptions{})
 }
@@ -52,8 +52,7 @@ func EncodePrepareExecuteOptions(id uint32, query []byte, params []Parameter, li
 	b = binary.LittleEndian.AppendUint32(b, uint32(len(params)))
 	b = append(b, execute[10:]...)
 	b = append(b, make([]byte, 16)...)
-	if options.UseChecksum {
-		binary.LittleEndian.PutUint32(b[len(b)-8:], options.SQLChecksum)
-	}
+	// Unlike COM_STMT_EXECUTE, the combined command always validates its SQL checksum.
+	binary.LittleEndian.PutUint32(b[len(b)-8:], SQLChecksum(query))
 	return b, nil
 }

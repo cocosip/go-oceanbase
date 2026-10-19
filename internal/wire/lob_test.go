@@ -2,8 +2,25 @@ package wire
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"testing"
 )
+
+func TestOceanBase44LOBLocator(t *testing.T) {
+	// Captured from OceanBase 4.4.2.2; Connector/J 2.4.14 reads the payload as 0102.
+	data, err := hex.DecodeString("0184010002210100000000000000000002a2070000000000110000000e00100087000000020000007100970d030000000000e9030000000000003f000000000000000100000000000000040000002d0210ac000000000000000000000000420b0000830700eb2d5e0600d002000001928080800001818080800000d0c893cfbaebf8ef1800000200000000000003e90100ffffffffffffffffff0167414144445a63414141414141513d3d018400000102")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeLOBLocator(data)
+	if err != nil || !got.InRow || got.ByteLength != 2 || string(got.Data) != "\x01\x02" {
+		t.Fatalf("%+v: %v", got, err)
+	}
+	data[0] = 0xff
+	if _, err = DecodeLOBLocator(data); err == nil {
+		t.Fatal("invalid header accepted")
+	}
+}
 
 func TestLOBLocator(t *testing.T) {
 	v1 := make([]byte, 45)

@@ -14,7 +14,7 @@ const cursorEpochQuery = "SELECT id,b FROM s.t"
 
 func serveUpdatableEpochCursor(ctx context.Context, t *testing.T, p *wire.PacketIO, mode Mode, typ byte) bool {
 	t.Helper()
-	const columnsDictionary = "ALL_TAB_COLUMNS"
+	const columnsDictionary = "ALL_TAB_COLS"
 	status := byte(3)
 	steps := []txStep{{testMySQLReadWrite, 3}}
 	if mode == ModeOracle {

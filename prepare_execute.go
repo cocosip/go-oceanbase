@@ -129,6 +129,9 @@ func (c *conn) queryPrepareExecuteLocked(ctx context.Context, payload []byte, pl
 		return nil, r.fail(err, true)
 	}
 	r.nativeTail = true
+	if !header.HasRows {
+		p.RestartResponseSequence()
+	}
 	if header.HasRows {
 		r.items++
 		r.hiddenOut = header.Flags&5 != 0

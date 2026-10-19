@@ -38,7 +38,7 @@ func TestTableBlobOracle(t *testing.T) {
 				if !serveTableRows(ctx, t, p, 6, []string{"SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"}, []byte{253}, []any{"S"}) {
 					return
 				}
-				if !serveTableRows(ctx, t, p, 6, []string{"ALL_TABLES", "ALL_OBJECTS", "ALL_TAB_COLUMNS", "ALL_CONSTRAINTS", "ALL_CONS_COLUMNS"}, []byte{253, 253, 253, 253, 253, 253, 253, 253}, []any{"S", "T", blobBaseTable, nil, "ID", keyType, "NO", "1"}, []any{"S", "T", blobBaseTable, nil, "B\"?", typeNameBlob, "NO", nil}) {
+				if !serveTableRows(ctx, t, p, 6, []string{"ALL_TABLES", "ALL_OBJECTS", "ALL_TAB_COLS", "ALL_CONSTRAINTS", "ALL_CONS_COLUMNS"}, []byte{253, 253, 253, 253, 253, 253, 253, 253}, []any{"S", "T", blobBaseTable, nil, "ID", keyType, "NO", "1"}, []any{"S", "T", blobBaseTable, nil, "B\"?", typeNameBlob, "NO", nil}) {
 					return
 				}
 				if !serveLOBQuery(ctx, t, p, `SELECT "B""?" FROM "S"."T" WHERE "ID" =  7 `, 210, lobInlineFixture("ok")) {

@@ -102,14 +102,15 @@ func TestSessionMutationIsolation(t *testing.T) {
 				} else if !serveOK(ctx, t, p, []byte("\x03ALTER SESSION SET CURRENT_SCHEMA = \"a\"\"b\""), status) {
 					return
 				}
-				assignment := testQuotedTimeout
-				if mode == ModeMySQL {
-					assignment = "600"
-				}
+				assignment := "600"
 				if !serveOK(ctx, t, p, []byte("\x03SET @ApplicationName = 'svc''x', @ClientUser = NULL, @ClientHostname = 'host'"), status) {
 					return
 				}
-				if mode == ModeMySQL && !sessionScalarTyped(ctx, t, p, testReadSessionVariable, status, 8, "28800") {
+				variableQuery := testReadSessionVariable
+				if mode == ModeOracle {
+					variableQuery += sessionReadDualSuffix
+				}
+				if !sessionScalarTyped(ctx, t, p, variableQuery, status, 8, "28800") {
 					return
 				}
 				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte{14}, status) {
@@ -212,15 +213,16 @@ func TestSessionVariableIntegerAndStringSQL(t *testing.T) {
 	} {
 		for _, mode := range []Mode{ModeMySQL, ModeOracle} {
 			want := tc.want
-			if mode == ModeOracle {
-				want = (&conn{session: &handshakeSession{mode: mode}}).quoteSessionValue(tc.value)
-			}
 			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
 				status := byte(2)
 				if mode == ModeOracle {
 					status = 6
 				}
-				if mode == ModeMySQL && !strings.HasPrefix(tc.want, "'") && !sessionScalarTyped(ctx, t, p, testReadSessionVariable, status, 8, "28800") {
+				variableQuery := testReadSessionVariable
+				if mode == ModeOracle {
+					variableQuery += sessionReadDualSuffix
+				}
+				if !strings.HasPrefix(tc.want, "'") && !sessionScalarTyped(ctx, t, p, variableQuery, status, 8, "28800") {
 					return
 				}
 				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+want), status) {
@@ -504,5 +506,3 @@ func TestSessionMutationStatementCache(t *testing.T) {
 
 const testSessionVariable = "wait_timeout"
 const testReadSessionVariable = "SELECT @@SESSION.wait_timeout"
-
-const testQuotedTimeout = "'600'"

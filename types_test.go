@@ -104,6 +104,19 @@ func TestScalarByteAndTextBoundaries(t *testing.T) {
 	}
 }
 
+func TestOceanBaseRowID(t *testing.T) {
+	const id = "*AAEPAQAAwAEAAAA="
+	var got RowID
+	if err := got.Scan(id); err != nil || got != id {
+		t.Fatalf("OceanBase ROWID rejected: %v", err)
+	}
+	for _, invalid := range []RowID{"*", "a*b", "**AA", "*a'", "*a\x00"} {
+		if _, err := invalid.Value(); err == nil {
+			t.Fatal("malformed ROWID accepted")
+		}
+	}
+}
+
 func TestScalarBindings(t *testing.T) {
 	for _, tc := range []struct {
 		value any

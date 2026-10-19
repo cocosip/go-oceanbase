@@ -124,7 +124,7 @@ func runTableBlob(ctx context.Context, s *scenario) (err error) {
 }
 
 func runNativeLOB(ctx context.Context, s *scenario) (err error) {
-	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,B BLOB,C CLOB,N NCLOB)")
+	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,B BLOB,C CLOB)")
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func runNativeLOB(ctx context.Context, s *scenario) (err error) {
 		return err
 	}
 	defer rollbackInto(tx, &err)
-	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (1,EMPTY_BLOB(),TO_CLOB('a中😀z'),TO_NCLOB('a中😀z'))"); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (1,EMPTY_BLOB(),TO_CLOB('a中😀z'))"); err != nil {
 		return err
 	}
 	b, err := oceanbase.OpenBlob(ctx, tx, "SELECT B FROM "+table+" WHERE ID=1 FOR UPDATE")
@@ -202,7 +202,26 @@ func nativeClobs(ctx context.Context, tx *sql.Tx, table string) (err error) {
 	if err = expect(text == "a国😀", "CLOB mutation mismatch"); err != nil {
 		return err
 	}
-	n, err := oceanbase.OpenClob(ctx, tx, "SELECT N FROM "+table+" WHERE ID=1")
+	return nil
+}
+
+func runNativeNCLOB(ctx context.Context, s *scenario) (err error) {
+	table, err := s.table(ctx, "(N NCLOB)")
+	if err != nil {
+		if onlyServerErrorCode(err, 902) {
+			return skipped("server rejects NCLOB with OBE-00902; BLOB/CLOB tested separately")
+		}
+		return err
+	}
+	if _, err = s.db.ExecContext(ctx, "INSERT INTO "+table+" VALUES(TO_NCLOB('a中😀z'))"); err != nil {
+		return err
+	}
+	c, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeInto(c, &err)
+	n, err := oceanbase.OpenClob(ctx, c, "SELECT N FROM "+table)
 	if err != nil {
 		return err
 	}
@@ -210,7 +229,7 @@ func nativeClobs(ctx context.Context, tx *sql.Tx, table string) (err error) {
 		return checkFailure("native NCLOB handle missing")
 	}
 	defer closeInto(n, &err)
-	text, err = n.ReadChars(ctx, 1, 2)
+	text, err := n.ReadChars(ctx, 1, 2)
 	if err != nil {
 		return err
 	}

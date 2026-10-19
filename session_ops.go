@@ -112,7 +112,7 @@ func SessionVariable(ctx context.Context, pinned *sql.Conn, name string) (sql.Nu
 	return r.values[0], err
 }
 
-// SetSessionVariable sets a session system variable. MySQL decimal integer strings
+// SetSessionVariable sets a session system variable. Decimal integer strings
 // within int64/uint64 range use integer literals only for numeric server variables.
 // String variables retain quoted values, including leading zeros.
 // Encoding and time-zone variables are reserved by Config.Session. Closing pinned discards it.
@@ -253,7 +253,7 @@ func (c *conn) sessionOperationSQL(r *sessionOperationRequest) (query string, co
 		return "", 0, false, ErrUnsupported
 	}
 	if !mutate && c.session.mode == ModeOracle {
-		query += " FROM dual"
+		query += sessionReadDualSuffix
 	}
 	return query, columns, mutate, nil
 }

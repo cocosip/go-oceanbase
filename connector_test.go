@@ -92,7 +92,7 @@ func serveBaseline(ctx context.Context, t testing.TB, p *wire.PacketIO, status b
 func serveVersion(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, deprecate bool) bool {
 	query := "SELECT ob_version()"
 	if status&4 != 0 {
-		query += " FROM dual"
+		query += sessionReadDualSuffix
 	}
 	if !readQuery(ctx, t, p, query) {
 		return false

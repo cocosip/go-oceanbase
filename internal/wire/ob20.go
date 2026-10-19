@@ -29,7 +29,7 @@ func (f *frameIO) readOB20() error {
 	if int3(h[4:]) != 0 || binary.LittleEndian.Uint16(h[7:]) != 0x20ab || binary.LittleEndian.Uint16(h[9:]) != 20 || binary.LittleEndian.Uint32(h[11:]) != f.ob.ConnectionID || uint32(int3(h[15:])) != f.requestID {
 		return ErrMalformed
 	}
-	if h[3] != f.sequence || h[18] != f.sequence {
+	if h[3] != f.sequence || h[18] != f.obSequence {
 		return ErrSequence
 	}
 	checksum := binary.LittleEndian.Uint16(h[29:])
@@ -41,6 +41,7 @@ func (f *frameIO) readOB20() error {
 		return ErrMalformed
 	}
 	f.sequence++
+	f.obSequence++
 	data := make([]byte, int(payload))
 	if err := f.readFull(data); err != nil {
 		return err
@@ -91,7 +92,7 @@ func (f *frameIO) encodeOB20(data []byte, last bool) ([]byte, error) {
 	binary.LittleEndian.PutUint16(h[9:], 20)
 	binary.LittleEndian.PutUint32(h[11:], f.ob.ConnectionID)
 	put3(h[15:], f.requestID)
-	h[18] = f.sequence
+	h[18] = f.obSequence
 	binary.LittleEndian.PutUint32(h[19:], uint32(len(data)))
 	flags := extraFlag
 	if last {
@@ -108,5 +109,6 @@ func (f *frameIO) encodeOB20(data []byte, last bool) ([]byte, error) {
 	}
 	h = append(h, data...)
 	f.sequence++
+	f.obSequence++
 	return binary.LittleEndian.AppendUint32(h, tail), nil
 }

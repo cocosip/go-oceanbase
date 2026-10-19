@@ -217,7 +217,11 @@ func runTransactions(ctx context.Context, s *scenario) (err error) {
 }
 
 func runMetadata(ctx context.Context, s *scenario) error {
-	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,V VARCHAR(100))")
+	idType := "INTEGER"
+	if s.mode == oceanbase.ModeOracle {
+		idType = "NUMBER(38,0)"
+	}
+	table, err := s.table(ctx, "(ID "+idType+" PRIMARY KEY,V VARCHAR(100))")
 	if err != nil {
 		return err
 	}

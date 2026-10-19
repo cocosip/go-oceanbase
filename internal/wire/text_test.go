@@ -2,9 +2,24 @@ package wire
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"testing"
 )
+
+func TestComplexColumnUnknownVersion(t *testing.T) {
+	data, err := hex.DecodeString("0364656600000000000c2d00e3930400a00000ff0000035359531144424d535f58415f5849445f4152524159fb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecodeColumn(data)
+	if err != nil || got.ComplexSchema != "SYS" || got.ComplexName != "DBMS_XA_XID_ARRAY" || got.ComplexVersion != 0 {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if _, err = DecodeColumn(data[:len(data)-1]); err == nil {
+		t.Fatal("truncated version accepted")
+	}
+}
 
 func TestTextColumn(t *testing.T) {
 	data := []byte{3, 'd', 'e', 'f', 0, 0, 0, 1, 'v', 0, 12, 45, 0, 10, 0, 0, 0, 253, 1, 0, 0, 0, 0}

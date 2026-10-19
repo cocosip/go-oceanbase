@@ -137,6 +137,37 @@ func TestOB20Frames(t *testing.T) {
 	}
 }
 
+func TestOB20CombinedTailSequences(t *testing.T) {
+	for _, frames := range []byte{1, 2} {
+		var data []byte
+		for seq := byte(1); seq <= frames; seq++ {
+			data = append(data, ob20Fixture([]byte{1, 0, 0, seq, 'm'}, seq, 8)...)
+		}
+		// The compressed counter restarts at two; the OB20 counter continues.
+		tail := ob20Fixture([]byte{1, 0, 0, 1, 't'}, frames+1, 10)
+		tail[3] = 2
+		binary.LittleEndian.PutUint16(tail[29:], crc16Reference(tail[:29]))
+		data = append(data, tail...)
+		p := NewPacketIO(newBufferConn(data), 128)
+		if err := p.EnableOB20(OB20Options{ConnectionID: 42, RequireChecksum: true}); err != nil {
+			t.Fatal(err)
+		}
+		p.ResetSequence()
+		p.sequence, p.frames.sequence = 1, 1
+		p.frames.obSequence = 1
+		for seq := byte(1); seq <= frames; seq++ {
+			if _, err := p.ReadMessage(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		p.RestartResponseSequence()
+		got, err := p.ReadMessage(context.Background())
+		if err != nil || string(got) != "t" {
+			t.Fatalf("frames=%d: %q %v", frames, got, err)
+		}
+	}
+}
+
 func TestOB20InvalidFrames(t *testing.T) {
 	good := ob20Fixture([]byte{1, 0, 0, 0, 'x'}, 0, 2)
 	for _, index := range []int{0, 4, 7, 9, 11, 15, 18, 19, 29, 31, len(good) - 1} {

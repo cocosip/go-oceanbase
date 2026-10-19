@@ -12,7 +12,7 @@ import (
 
 const lobWriteSQL = "CALL DBMS_LOB.WRITE(?, ?, ?, ?)"
 const lobTrimSQL = "CALL DBMS_LOB.TRIM(?, ?)"
-const lobFreeSQL = "CALL DBMS_LOB.FREETEMPORARY(?)"
+const lobFreeSQL = "DECLARE l BLOB := ?; BEGIN IF DBMS_LOB.ISTEMPORARY(l) = 1 THEN DBMS_LOB.FREETEMPORARY(l); END IF; ? := l; END;"
 
 func (c *conn) mutateLOBLocked(ctx context.Context, lob *nativeLOBResource, request lobRequest) error {
 	if lob.locator.ReadOnly {
@@ -171,14 +171,9 @@ func (c *conn) freeLOBLocked(ctx context.Context, lob *nativeLOBResource) error 
 		return nil
 	}
 	query := lobFreeSQL
-	params := []wire.Parameter{lob.parameter()}
-	if lob.locator.Version == 1 {
-		typ := typeNameBlob
-		if lob.column.Type == 211 {
-			typ = typeNameClob
-		}
-		query = "DECLARE l " + typ + " := ?; BEGIN IF DBMS_LOB.ISTEMPORARY(l) = 1 THEN DBMS_LOB.FREETEMPORARY(l); END IF; ? := l; END;"
-		params = append(params, wire.Parameter{Type: 6})
+	params := []wire.Parameter{lob.parameter(), {Type: 6}}
+	if lob.column.Type == 211 {
+		query = "DECLARE l CLOB := ?; BEGIN IF DBMS_LOB.ISTEMPORARY(l) = 1 THEN DBMS_LOB.FREETEMPORARY(l); END IF; ? := l; END;"
 	}
 	_, err := c.lobCallLocked(ctx, query, params, 1)
 	if err != nil {

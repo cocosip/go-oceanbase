@@ -79,7 +79,7 @@ type SessionOptions struct {
 	NCharset  string
 	Location  *time.Location
 	// Variables uses integer literals for decimal int64/uint64 input when the
-	// MySQL variable's current result metadata is numeric. Other values are quoted.
+	// variable's current result metadata is numeric. Other values are quoted.
 	Variables map[string]string
 	InitSQL   []string
 }

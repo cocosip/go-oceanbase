@@ -14,7 +14,7 @@ func TestExecuteTypeReuseAndChecksum(t *testing.T) {
 		t.Fatalf("got %x want %x: %v", got, want, err)
 	}
 	combined, err := EncodePrepareExecuteOptions(7, []byte("?"), params, 128, ExecuteOptions{ReuseTypes: true, UseChecksum: true, SQLChecksum: 0x12345678})
-	if err != nil || binary.LittleEndian.Uint32(combined[len(combined)-8:]) != 0x12345678 || combined[17] != 0 {
+	if err != nil || binary.LittleEndian.Uint32(combined[len(combined)-8:]) != 0x6ef07595 || combined[17] != 0 {
 		t.Fatal(combined, err)
 	}
 	if SQLChecksum([]byte("123456789")) != 0x58e3fa20 {

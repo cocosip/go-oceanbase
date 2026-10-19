@@ -20,7 +20,7 @@ func runComplex(ctx context.Context, s *scenario) (err error) {
 	if err != nil {
 		return err
 	}
-	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,V "+obj+",A "+arr+")")
+	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,V "+obj+")")
 	if err != nil {
 		return err
 	}
@@ -32,19 +32,37 @@ func runComplex(ctx context.Context, s *scenario) (err error) {
 	value := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number(exactNumber)}, {Name: "B", Value: oceanbase.Raw{0, 255}}}}
 	other := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number(complexSecondNumber)}, {Name: "B", Value: oceanbase.Raw{255, 0}}}}
 	array := oceanbase.Array{Type: arr, Elements: []any{value, nil, other}}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (?,?,?)", 1, value, array); err != nil {
+	s.observe("complex_stage", "object input")
+	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES (?,?)", 1, value); err != nil {
 		return err
 	}
 	var got oceanbase.Object
 	var items oceanbase.Array
-	if err = tx.QueryRowContext(ctx, "SELECT V,A FROM "+table+" WHERE ID=1").Scan(&got, &items); err != nil {
+	s.observe("complex_stage", "object query")
+	if err = tx.QueryRowContext(ctx, "SELECT V FROM "+table+" WHERE ID=?", 1).Scan(&got); err != nil {
+		return err
+	}
+	var nullElement int
+	s.observe("complex_stage", "collection round trip")
+	if _, err = tx.ExecContext(ctx, "DECLARE a "+arr+" := ?; BEGIN ? := CASE WHEN a(2) IS NULL THEN 1 ELSE 0 END; ? := a; END;", array, sql.Out{Dest: &nullElement}, sql.Out{Dest: &items}); err != nil {
 		return err
 	}
 	if err = checkObject(got, obj, exactNumber, []byte{0, 255}); err != nil {
 		return err
 	}
-	if err = expect(items.Type == arr && items.Schema == got.Schema && len(items.Elements) == 3 && items.Elements[1] == nil, "collection identity, order or NULL mismatch"); err != nil {
+	if err = expect(items.Type == arr && items.Schema == got.Schema && len(items.Elements) == 3, "collection identity or order mismatch"); err != nil {
 		return err
+	}
+	if items.Elements[1] != nil {
+		if nullElement != 0 {
+			return checkFailure("server NULL object representation inconsistent")
+		}
+		if err = checkNullObject(items.Elements[1], obj, got.Schema); err != nil {
+			return err
+		}
+		s.observe("null_object_representation", "object with NULL attributes (Connector/J-compatible)")
+	} else if nullElement != 1 {
+		return checkFailure("server NULL element predicate inconsistent")
 	}
 	for _, index := range []int{0, 2} {
 		v, ok := items.Elements[index].(oceanbase.Object)
@@ -60,6 +78,7 @@ func runComplex(ctx context.Context, s *scenario) (err error) {
 		}
 	}
 	var out oceanbase.Object
+	s.observe("complex_stage", "object output")
 	if _, err = tx.ExecContext(ctx, "BEGIN ? := "+obj+"(42,HEXTORAW('00FF')); END;", sql.Out{Dest: &out}); err != nil {
 		return err
 	}
@@ -90,4 +109,17 @@ func checkObject(value oceanbase.Object, name, wantNumber string, wantRaw []byte
 	}
 	raw, ok := value.Fields[1].Value.(oceanbase.Raw)
 	return expect(ok && bytes.Equal(raw, wantRaw), "object RAW content mismatch")
+}
+
+func checkNullObject(value any, name, schema string) error {
+	n, ok := value.(oceanbase.Object)
+	if !ok || n.Type != name || n.Schema != schema || len(n.Fields) != 2 || n.Fields[0].Name != "N" || n.Fields[1].Name != "B" {
+		return checkFailure("NULL object identity mismatch")
+	}
+	for _, f := range n.Fields {
+		if f.Value != nil {
+			return checkFailure("NULL object attribute mismatch")
+		}
+	}
+	return nil
 }

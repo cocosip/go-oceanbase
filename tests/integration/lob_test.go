@@ -20,7 +20,12 @@ func TestNativeLOB(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		t.Run(p.name, func(t *testing.T) { testNativeLOBProfile(t, p) })
+		t.Run(p.name, func(t *testing.T) {
+			t.Run("BLOB-CLOB", func(t *testing.T) { testNativeLOBProfile(t, p) })
+			if p.mode == oceanbase.ModeOracle {
+				t.Run("NCLOB", func(t *testing.T) { testNativeNCLOB(t, p) })
+			}
+		})
 	}
 }
 
@@ -50,7 +55,7 @@ func testNativeLOBProfile(t *testing.T, p profile) {
 		return
 	}
 	table := fmt.Sprintf("OBGL_%d", time.Now().UnixNano())
-	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" (id NUMBER PRIMARY KEY,b BLOB,c CLOB,n NCLOB)"); err != nil {
+	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" (id NUMBER PRIMARY KEY,b BLOB,c CLOB)"); err != nil {
 		failOperation(t, "create LOB table", err)
 	}
 	defer func() {
@@ -68,18 +73,18 @@ func testNativeLOBProfile(t *testing.T, p profile) {
 		failOperation(t, "begin LOB transaction", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.ExecContext(testContext(t), "INSERT INTO "+table+" VALUES (1,EMPTY_BLOB(),TO_CLOB('a中😀z'),TO_NCLOB('a中😀z'))"); err != nil {
+	if _, err = tx.ExecContext(testContext(t), "INSERT INTO "+table+" VALUES (1,EMPTY_BLOB(),TO_CLOB('a中😀z'))"); err != nil {
 		failOperation(t, "insert uncommitted LOB", err)
 	}
 	b := testNativeBlob(t, tx, table)
 	defer func() { _ = b.Close() }()
 	testNativeClob(t, tx, table)
 	var binary []byte
-	var text, national string
-	if err = tx.QueryRowContext(testContext(t), "SELECT b,c,n FROM "+table+" WHERE id=1").Scan(&binary, &text, &national); err != nil {
+	var text string
+	if err = tx.QueryRowContext(testContext(t), "SELECT b,c FROM "+table+" WHERE id=1").Scan(&binary, &text); err != nil {
 		failOperation(t, "materialize uncommitted LOBs", err)
 	}
-	if string(binary) != string([]byte{0, 1}) || text != "a国😀" || national != "a中😀z" {
+	if string(binary) != string([]byte{0, 1}) || text != "a国😀" {
 		t.Fatal("ordinary LOB values differ from same-transaction modifications")
 	}
 	if err = b.Close(); err != nil {
@@ -132,7 +137,31 @@ func testNativeClob(t *testing.T, tx *sql.Tx, table string) {
 	if size, err := c.CharLength(testContext(t)); err != nil || size != 3 {
 		failOperation(t, "CLOB character length", err)
 	}
-	n, err := oceanbase.OpenClob(testContext(t), tx, "SELECT n FROM "+table+" WHERE id=1")
+}
+
+func testNativeNCLOB(t *testing.T, p profile) {
+	db := openProfile(t, p)
+	table := fmt.Sprintf("OBGN_%d", time.Now().UnixNano())
+	if _, err := db.ExecContext(testContext(t), "CREATE TABLE "+table+"(N NCLOB)"); err != nil {
+		if onlyServerErrorCode(err, 902) {
+			t.Skip("server rejects NCLOB with OBE-00902; BLOB/CLOB tested separately")
+		}
+		failOperation(t, "create NCLOB table", err)
+	}
+	defer func() {
+		if _, err := db.ExecContext(testContext(t), "DROP TABLE "+table); err != nil {
+			failOperation(t, "drop NCLOB table", err)
+		}
+	}()
+	if _, err := db.ExecContext(testContext(t), "INSERT INTO "+table+" VALUES(TO_NCLOB('a中😀z'))"); err != nil {
+		failOperation(t, "insert NCLOB", err)
+	}
+	s, err := db.Conn(testContext(t))
+	if err != nil {
+		failOperation(t, "pin NCLOB session", err)
+	}
+	defer func() { _ = s.Close() }()
+	n, err := oceanbase.OpenClob(testContext(t), s, "SELECT n FROM "+table)
 	if err != nil || n == nil {
 		failOperation(t, "open NCLOB", err)
 	}

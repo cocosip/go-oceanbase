@@ -18,13 +18,12 @@ import (
 func TestInitializationErrorBoundary(t *testing.T) {
 	for _, status := range []byte{2, 6} {
 		assignment := "600"
+		variableQuery := testReadSessionVariable
 		if status == 6 {
-			assignment = testQuotedTimeout
+			variableQuery += sessionReadDualSuffix
 		}
 		queries := []string{transactionUTF8Names, testAutocommitOn, transactionUTCZone}
-		if status == 2 {
-			queries = append(queries, testReadSessionVariable)
-		}
+		queries = append(queries, variableQuery)
 		queries = append(queries, "SET SESSION wait_timeout = "+assignment, readySQL)
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			for failed := -1; failed < len(queries); failed++ {
@@ -40,7 +39,7 @@ func TestInitializationErrorBoundary(t *testing.T) {
 								return
 							}
 							for _, query := range queries[:failed] {
-								if query == testReadSessionVariable {
+								if query == variableQuery {
 									if !sessionScalarTyped(ctx, t, p, query, status, 8, "28800") {
 										return
 									}

@@ -57,6 +57,15 @@ func (p *PacketIO) ResetSequence() {
 	}
 }
 
+// RestartResponseSequence begins the tail of a combined command without a rowset.
+// Inner and compressed counters restart; OB20 packet and request identities continue.
+func (p *PacketIO) RestartResponseSequence() {
+	p.sequence = 1
+	if p.frames != nil && p.frames.ob != nil {
+		p.frames.sequence = 2
+	}
+}
+
 // ReplaceConn switches a transport at a completed message boundary, preserving sequence.
 func (p *PacketIO) ReplaceConn(conn net.Conn) error {
 	if p.failed {

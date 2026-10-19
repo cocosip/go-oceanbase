@@ -7,10 +7,25 @@ import (
 	"testing"
 )
 
+func TestPrepareExecuteMandatoryChecksum(t *testing.T) {
+	// Connector/J 2.4.14 emits this checksum even without the optional statement setting.
+	query := []byte("BEGIN ? := 42; END;")
+	for _, options := range []ExecuteOptions{{}, {UseChecksum: true, SQLChecksum: 1}} {
+		got, err := EncodePrepareExecuteOptions(0, query, []Parameter{{Type: 6}}, 1024, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if checksum := binary.LittleEndian.Uint32(got[len(got)-8:]); checksum != 0x7b546759 {
+			t.Fatalf("combined command checksum=%08x; want 7b546759", checksum)
+		}
+	}
+}
+
 func TestPrepareExecute(t *testing.T) {
 	params := []Parameter{{Type: 6}, {Type: 8, Data: binary.LittleEndian.AppendUint64(nil, 42)}}
 	want := []byte{161, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 'a', '?', 'b', 2, 0, 0, 0, 1, 1, 6, 0, 8, 0, 42, 0, 0, 0, 0, 0, 0, 0}
 	want = append(want, make([]byte, 16)...)
+	binary.LittleEndian.PutUint32(want[len(want)-8:], SQLChecksum([]byte("a?b")))
 	got, err := EncodePrepareExecute(0, []byte("a?b"), params, int64(len(want)))
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("got %x want %x: %v", got, want, err)

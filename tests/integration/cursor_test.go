@@ -120,6 +120,7 @@ func testCursorModes(t *testing.T, p profile) {
 		if e != nil {
 			failOperation(t, "reposition sensitive cursor", e)
 		}
+		defer func() { _ = rows.Close() }()
 		checkCursorRow(t, rows, 1, value, true)
 		if e = rows.Close(); e != nil {
 			failOperation(t, "close sensitive batch", e)

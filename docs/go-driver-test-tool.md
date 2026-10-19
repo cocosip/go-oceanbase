@@ -18,6 +18,8 @@ All scenarios run by default. Mode-inapplicable cases are recorded separately. M
 - [x] Before the baseline upgrade: Go 1.25/1.26 build, offline tool checks, unit tests, vet, lint and dependency guards; review found no remaining confirmed issues.
 - [ ] Complete real-target acceptance across the required environments. The [MySQL-mode run and fixes on 2026-10-19](mysql-live-validation-2026-10-19.md) saved baseline/retest reports; the latest full tool run with a disposable second identity returned 35 passed, 0 failed, 2 skipped and 7 not applicable. Skips remain incomplete acceptance; other combinations are outstanding.
 
+Oracle continuation: [Oracle-mode live validation](oracle-live-validation-2026-10-19.md) records **35 pass / 1 fail / 4 skip / 5 not applicable**. Sensitive-cursor freshness remains a failure. Splitting NCLOB from BLOB/CLOB adds one scenario; MySQL results from the earlier 44-case catalog retain their historical counts.
+
 ## Running the tool
 
 Use a dedicated test database only. The account needs table creation, read/write and deletion privileges for owned objects. Full coverage also requires procedures, functions, Oracle types, dictionary access and XA privileges. The tool creates no accounts and grants no privileges. The database/schema must exist; createDatabaseIfMissing=true is forbidden.
@@ -50,7 +52,7 @@ The [minimal example](obtest.example.json) needs only OB_DSN. Configuration is l
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `targets` | Required in files | One or more targets, executed sequentially without concurrent target-object modification |
-| `cases` | All 44 | Optional scenario-name array; unknown or duplicate names fail instead of silently reducing coverage |
+| `cases` | All 45 | Optional scenario-name array; unknown or duplicate names fail instead of silently reducing coverage |
 | `timeout` | `2m` | Independent timeout per scenario and target probe; maximum 1h |
 | `cleanup_timeout` | `30s` | Independent timeout per cleanup action; maximum 1h; outside the execution budget |
 | `require_all` | `false` | Treat missing-fixture skips as failures; mode-inapplicable cases remain separate |
@@ -65,7 +67,7 @@ Each target supports:
 | `local_import_sql` | Deployment-specific Oracle LOCAL import SQL containing {table}, requesting filename input; MySQL generates LOAD DATA LOCAL INFILE by default |
 | `warning_sql` | Optional successful SQL producing nonzero warnings; MySQL defaults to a nonnumeric CAST; Oracle skips the positive warning case if absent |
 | `cancel_sql` | Optional long-running SQL; by default, create a table and hold a row lock, then cancel another session's waiting UPDATE |
-| `cancel_code` | Optional expected explicit-cancellation server code; defaults to MySQL 1317 / Oracle 1013; override deployment-specific mappings explicitly |
+| `cancel_code` | Optional expected explicit-cancellation server code; defaults to MySQL 1317 / Oracle 1013, also recognizing the exact Oracle 600/70100/-5065 interruption envelope through the complete error chain; other mappings require an explicit override |
 
 warning_sql, cancel_sql and local_import_sql are caller-supplied SQL sent to the server. The tool neither analyzes application-object references nor replays these commands. Use dedicated fixtures only.
 
@@ -117,8 +119,9 @@ Each scenario uses an independent pool and random uppercase OBT_ object names to
 | `cursor`, `cursor-update` | Two seed rows, forward/static positioning; update/refresh/insert/delete, post-rollback values and transaction-end invalidation. Single-row batches verify all content, no extra rows and later read errors |
 | `cursor-sensitive` | Oracle-only, reposition/read after another session commits an update; requires sensitive-cursor support |
 | `returning` | Oracle-only, INSERT RETURNING INTO numeric/text outputs and count |
-| `native-lob` | Oracle-only BLOB/CLOB/NCLOB fixtures, streaming read/write, Unicode offsets, truncation and transaction lifetime; explicit UTF-16 national charset |
-| `complex` | Oracle-only OBJECT/TABLE OF types and table, exact numbers/RAW, distinct first/last collection values and ordering/NULL, complete OBJECT OUT values/attribute order/schema, rollback |
+| `native-lob` | Oracle-only BLOB/CLOB fixtures, streaming read/write, Unicode offsets, truncation and transaction lifetime |
+| `native-nclob` | Independent NCLOB Unicode locator reads with UTF-16; exact target 902 rejection is skipped without hiding BLOB/CLOB results |
+| `complex` | Oracle-only OBJECT column storage with a server-prepared query, TABLE OF binding through PL/SQL IN/OUT, exact numbers/RAW, distinct ordered first/last values, server NULL-object representation and complete OBJECT OUT identity; rollback. Nested-table column storage is a separate integration capability |
 | `resource-outputs` | Oracle-only procedure/temporary LOBs, REF CURSOR/BLOB/CLOB content and closure; single-row REF CURSOR batches reject extra rows/later read errors |
 | `xa-one-phase`, `xa-two-phase`, `xa-rollback` | Owned table/unique XID, branch state, prepare/recover, commit/rollback and persisted visibility |
 | `xa-suspend`, `xa-join`, `xa-recovery` | Suspend/resume, end/join and recovery after original-connection closure; touch only this run's XID, never another coordinator's branches |
@@ -129,7 +132,7 @@ Each scenario uses an independent pool and random uppercase OBT_ object names to
 | `change-user` | Configured second identity, identity switch, old-statement invalidation and standard-pool restoration of original identity |
 | `local-import` | MySQL: refuse import before SQL/upload inside a transaction, verify earlier DML still rolls back, then import in autocommit and compare every value/count. Oracle: import inside transactions and verify rollback/commit. No local data file |
 
-Creation, assertion, privilege and protocol errors fail explicitly; ErrUnsupported never becomes success automatically. Exact MySQL 1398 rejection of XA SUSPEND/JOIN is reported as unavailable (skip); other or mixed errors still fail, and cleanup failure overrides skip. Strict require_all also fails skips. The tool does not cover every scalar, metadata filter, platform authentication, HA fault or stress combination. This table is the actual scope; see the [plan](go-driver-development-plan.md) and [matrix](go-driver-compatibility-matrix.md) for other acceptance requirements.
+Creation, assertion, privilege and protocol errors fail explicitly; ErrUnsupported never becomes success automatically. Exact MySQL 1398 rejection of XA SUSPEND/JOIN and Oracle 902 rejection of NCLOB are reported as unavailable (skip); other or mixed errors still fail, and cleanup failure overrides skip. Strict require_all also fails skips. The tool does not cover every scalar, metadata filter, platform authentication, HA fault or stress combination. This table is the actual scope; see the [plan](go-driver-development-plan.md) and [matrix](go-driver-compatibility-matrix.md) for other acceptance requirements.
 
 ## Reports and exit codes
 
@@ -181,6 +184,6 @@ TIME seeds use maximum whole seconds `838:59:59` and `-838:59:58.999999` to cove
 
 The generated-key scenario executes `ALTER TABLE ... AUTO_INCREMENT=9223372036854775808` on its own table, requiring corresponding DDL privileges and target-version support for the unsigned BIGINT auto-increment range. It does not change global or tenant auto-increment settings. Standard `LastInsertId` returns int64, so out-of-range values are checked for overflow errors and stored range only; the Execute summary supplies exact full-ID comparison. 31 public-driver/in-memory-protocol workflows check assertions, boundaries and cleanup after failure; they do not prove real version-specific allocation behavior.
 
-The current minimum Go version is 1.26. Before the upgrade, full-package builds, unit tests, vet and integration compilation passed on Windows amd64 with Go 1.25.0/1.26.0. See [development progress](go-driver-development-progress.md) for successive evidence covering repeated tool regressions, repository-wide golangci-lint with ordinary/integration tags, Windows/386, `-list`, configuration `-check` and documentation checks. The tool provides 44 scenarios; CI only adds the database-free `-list` check.
+The current minimum Go version is 1.26. Before the upgrade, full-package builds, unit tests, vet and integration compilation passed on Windows amd64 with Go 1.25.0/1.26.0. See [development progress](go-driver-development-progress.md) for successive evidence covering repeated tool regressions, repository-wide golangci-lint with ordinary/integration tags, Windows/386, `-list`, configuration `-check` and documentation checks. The tool provides 45 scenarios; CI only adds the database-free `-list` check.
 
 No database was connected in this run. All 44 live scenario results remain pending until the user supplies test DSNs; compilation, offline checks and unit tests must not increase the database acceptance count.

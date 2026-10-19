@@ -215,7 +215,7 @@ func TestVersionProbeFailure(t *testing.T) {
 					if !skip {
 						query = "SELECT ob_version()"
 						if status == 6 {
-							query += " FROM dual"
+							query += sessionReadDualSuffix
 						}
 					}
 					if !readQuery(ctx, t, p, query) || !sendPackets(ctx, t, p, []byte{255, 40, 4, '#', '4', '2', '0', '0', '0', 'x'}) {
@@ -264,10 +264,11 @@ func TestVersionProbeInitialization(t *testing.T) {
 					return
 				}
 				assignment := "600"
+				variableQuery := testReadSessionVariable
 				if status == 6 {
-					assignment = testQuotedTimeout
+					variableQuery += sessionReadDualSuffix
 				}
-				if status == 2 && !sessionScalarTyped(ctx, t, p, testReadSessionVariable, status, 8, "28800") {
+				if !sessionScalarTyped(ctx, t, p, variableQuery, status, 8, "28800") {
 					return
 				}
 				if !serveOK(ctx, t, p, []byte("\x03SET SESSION wait_timeout = "+assignment), status) || !serveOK(ctx, t, p, []byte("\x03"+readySQL), status) || !serveOK(ctx, t, p, []byte("\x03SET NAMES utf8mb4"), status) || !serveOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status) {

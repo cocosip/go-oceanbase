@@ -215,6 +215,10 @@ func runCancelQuery(ctx context.Context, s *scenario) (err error) {
 		}
 		outcome = <-done
 		done <- outcome
+		var canceled *oceanbase.Error
+		if errors.As(outcome, &canceled) {
+			s.observe("cancel_error_code", fmt.Sprint(canceled.Code))
+		}
 		if err = checkCancellation(outcome, s.mode, s.target.CancelCode); err != nil {
 			return err
 		}
@@ -237,6 +241,12 @@ func runCancelQuery(ctx context.Context, s *scenario) (err error) {
 }
 
 func checkCancellation(outcome error, mode oceanbase.Mode, expected uint32) error {
+	if mode == oceanbase.ModeOracle && expected == 0 {
+		// OceanBase 4.4 reports interruption using an internal Oracle error envelope.
+		if oracleInterruption(outcome) {
+			return nil
+		}
+	}
 	if expected == 0 {
 		expected = 1317
 		if mode == oceanbase.ModeOracle {
@@ -413,3 +423,23 @@ func importTransaction(ctx context.Context, s *scenario, table, command string, 
 }
 
 const localImportName = "input"
+
+func oracleInterruption(err error) bool {
+	if group, ok := err.(interface{ Unwrap() []error }); ok {
+		causes := group.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !oracleInterruption(cause) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return oracleInterruption(wrapped.Unwrap())
+	}
+	server, ok := err.(*oceanbase.Error)
+	return ok && server != nil && server.Code == 600 && server.SQLState == "70100" && server.Message == "OBE-00600: internal error code, arguments: -5065, Query execution was interrupted"
+}

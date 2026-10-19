@@ -154,6 +154,10 @@ func (c *conn) readMetadata(ctx context.Context, count int, budget *int64, valid
 		if err != nil {
 			return nil, err
 		}
+		if c.session.mode == ModeOracle && !validate && eof.Status&3 == 3 {
+			// PREPARE uses static transaction flags; it has not executed the SQL.
+			eof.Status = eof.Status&^3 | c.session.ok.Status&3
+		}
 		c.observeResourceStatus(eof.Status)
 		c.session.ok.Status, c.session.ok.Warnings = eof.Status, eof.Warnings
 	}

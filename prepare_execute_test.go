@@ -11,7 +11,7 @@ import (
 
 const optimizedSelect = "SELECT ? FROM dual"
 
-func combinedQueryPacket(id uint32, query string, value int64, reuse, checksum bool) []byte {
+func combinedQueryPacket(id uint32, query string, value int64, reuse, _ bool) []byte {
 	b := append(stmtPacket(161, id), 0, 1, 0, 0, 0, byte(len(query)))
 	b = append(b, query...)
 	b = binary.LittleEndian.AppendUint32(b, 1)
@@ -23,20 +23,18 @@ func combinedQueryPacket(id uint32, query string, value int64, reuse, checksum b
 	}
 	b = binary.LittleEndian.AppendUint64(b, uint64(value))
 	b = append(b, make([]byte, 16)...)
-	if checksum {
-		var sum uint32
-		for _, v := range []byte(query) {
-			sum ^= uint32(v)
-			for range 8 {
-				if sum&1 != 0 {
-					sum = sum>>1 ^ 0x82f63b78
-				} else {
-					sum >>= 1
-				}
+	var sum uint32
+	for _, v := range []byte(query) {
+		sum ^= uint32(v)
+		for range 8 {
+			if sum&1 != 0 {
+				sum = sum>>1 ^ 0x82f63b78
+			} else {
+				sum >>= 1
 			}
 		}
-		binary.LittleEndian.PutUint32(b[len(b)-8:], sum)
 	}
+	binary.LittleEndian.PutUint32(b[len(b)-8:], sum)
 	return b
 }
 
@@ -148,7 +146,11 @@ func TestPrepareExecuteExplicitStatement(t *testing.T) {
 			}
 			header := combinedHeader(7, 0, 1, 0)
 			header[16] = 0
-			if !sendPackets(ctx, t, p, header, textColumn("p", 8, 63, 0), []byte{254, 0, 0, 6, 0}, commandPacket(1, 0, 6)) {
+			if !sendPackets(ctx, t, p, header, textColumn("p", 8, 63, 0), []byte{254, 0, 0, 6, 0}) {
+				return
+			}
+			p.RestartResponseSequence()
+			if !sendPackets(ctx, t, p, commandPacket(1, 0, 6)) {
 				return
 			}
 		}

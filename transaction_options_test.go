@@ -192,17 +192,20 @@ func TestTransactionNativeInitialization(t *testing.T) {
 				options := SessionOptions{InitSQL: []string{query}}
 				if variable {
 					options = SessionOptions{Variables: map[string]string{"autocommit": "0"}}
-					query = "SET SESSION autocommit = '0'"
-					if mode == ModeMySQL {
-						query = "SET SESSION autocommit = 0"
-					}
+					query = "SET SESSION autocommit = 0"
 				}
 				connector, err := NewConnector(Config{User: testUser, Mode: mode, Session: options, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 					if !serveConnect(ctx, t, p, ready) || !serveBaseline(ctx, t, p, ready) {
 						return
 					}
-					if variable && mode == ModeMySQL && !sessionScalarTyped(ctx, t, p, "SELECT @@SESSION.autocommit", ready, 8, "1") {
-						return
+					if variable {
+						lookup := "SELECT @@SESSION.autocommit"
+						if mode == ModeOracle {
+							lookup += sessionReadDualSuffix
+						}
+						if !sessionScalarTyped(ctx, t, p, lookup, ready, 8, "1") {
+							return
+						}
 					}
 					if !serveTxSteps(ctx, t, p, []txStep{{query, off}, {transactionUTF8Names, off}, {transactionUTCZone, off}}) {
 						return

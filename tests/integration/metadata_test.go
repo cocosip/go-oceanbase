@@ -68,10 +68,12 @@ func testMetadataProfile(t *testing.T, p profile) {
 			failOperation(t, "drop metadata child", err)
 		}
 	}()
-	if _, err = pinned.ExecContext(ctx, "CREATE VIEW "+view+" AS SELECT id FROM "+parent); err != nil {
-		failOperation(t, "create metadata view", err)
-	}
+	viewCreated := false
+	t.Run("view-privilege", func(t *testing.T) { viewCreated = createMetadataView(t, p, pinned, view, parent) })
 	defer func() {
+		if !viewCreated {
+			return
+		}
 		if _, err := pinned.ExecContext(testContext(t), "DROP VIEW "+view); err != nil {
 			failOperation(t, "drop metadata view", err)
 		}
@@ -90,6 +92,9 @@ func testMetadataProfile(t *testing.T, p profile) {
 		{oceanbase.MetadataPrimaryKeys, parent, nil, 1},
 		{oceanbase.MetadataForeignKeys, child, nil, 1},
 	} {
+		if tt.name == view && !viewCreated {
+			continue
+		}
 		filter := base
 		filter.Kind = tt.kind
 		filter.NamePattern = metadataPattern(tt.name)
@@ -322,4 +327,15 @@ func checkMetadataCatalogCount(t *testing.T, pinned *sql.Conn, filter oceanbase.
 	if err = rows.Close(); err != nil {
 		failOperation(t, "close catalog filter", err)
 	}
+}
+
+func createMetadataView(t *testing.T, p profile, pinned *sql.Conn, view, parent string) bool {
+	t.Helper()
+	if _, err := pinned.ExecContext(testContext(t), "CREATE VIEW "+view+" AS SELECT id FROM "+parent); err != nil {
+		if p.mode == oceanbase.ModeOracle && onlyServerErrorCode(err, 1031) {
+			t.Skip("CREATE VIEW privilege unavailable; table metadata tested separately")
+		}
+		failOperation(t, "create metadata view", err)
+	}
+	return true
 }

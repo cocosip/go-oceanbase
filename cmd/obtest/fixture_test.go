@@ -138,6 +138,19 @@ func TestOwnedXACleanup(t *testing.T) {
 }
 
 func TestCancellationRejectsUnrelatedErrors(t *testing.T) {
+	interrupted := &oceanbase.Error{Code: 600, SQLState: "70100", Message: "OBE-00600: internal error code, arguments: -5065, Query execution was interrupted"}
+	if err := checkCancellation(errors.Join(interrupted, interrupted), oceanbase.ModeOracle, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, outcome := range []error{&oceanbase.Error{Code: 600}, &oceanbase.Error{Code: 600, SQLState: "70100", Message: "other internal error"}, errors.Join(interrupted, context.DeadlineExceeded), interrupted} {
+		mode := oceanbase.ModeOracle
+		if outcome == interrupted {
+			mode = oceanbase.ModeMySQL
+		}
+		if checkCancellation(outcome, mode, 0) == nil {
+			t.Fatal("unrelated internal error accepted")
+		}
+	}
 	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
 		code := uint32(1317)
 		if mode == oceanbase.ModeOracle {

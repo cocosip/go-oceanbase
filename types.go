@@ -77,7 +77,14 @@ func (r RowID) Value() (driver.Value, error) {
 	if r == "" {
 		return nil, ErrType
 	}
-	for _, c := range r {
+	text := r
+	if text[0] == '*' {
+		text = text[1:]
+		if text == "" {
+			return nil, ErrType
+		}
+	}
+	for _, c := range text {
 		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '=' {
 			continue
 		}

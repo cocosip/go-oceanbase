@@ -29,13 +29,13 @@ func oracleMetadataPlan(f MetadataFilter) (metadataQuery, error) {
 		s.order = "s.OWNER,s.SYNONYM_NAME"
 		s.expressions = []string{sqlNullLiteral, s.schema, s.name, "s.TABLE_OWNER", "s.TABLE_NAME", "s.DB_LINK"}
 	case MetadataColumns:
-		s.from = "ALL_TAB_COLS c LEFT JOIN ALL_COL_COMMENTS m ON m.OWNER=c.OWNER AND m.TABLE_NAME=c.TABLE_NAME AND m.COLUMN_NAME=c.COLUMN_NAME"
+		s.from = "(SELECT a.*,ROW_NUMBER() OVER(PARTITION BY a.OWNER,a.TABLE_NAME ORDER BY a.COLUMN_ID) AS ORDINAL_POSITION FROM ALL_TAB_COLS a WHERE a.HIDDEN_COLUMN='NO') c LEFT JOIN ALL_COL_COMMENTS m ON m.OWNER=c.OWNER AND m.TABLE_NAME=c.TABLE_NAME AND m.COLUMN_NAME=c.COLUMN_NAME"
 		s.where = "c.HIDDEN_COLUMN='NO'"
 		s.schema = "c.OWNER"
 		s.name = "c.TABLE_NAME"
 		s.column = metadataColumnName
 		s.order = "c.OWNER,c.TABLE_NAME,c.COLUMN_ID"
-		s.expressions = []string{sqlNullLiteral, s.schema, s.name, s.column, "c.COLUMN_ID", "c.DATA_TYPE", "CASE WHEN c.CHAR_USED='C' THEN c.CHAR_LENGTH ELSE c.DATA_LENGTH END", "c.DATA_PRECISION", "c.DATA_SCALE", "CASE c.NULLABLE WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END", "c.DATA_DEFAULT", "m.COMMENTS", "c.DATA_TYPE_OWNER"}
+		s.expressions = []string{sqlNullLiteral, s.schema, s.name, s.column, "c.ORDINAL_POSITION", "c.DATA_TYPE", "CASE WHEN c.CHAR_USED='C' THEN c.CHAR_LENGTH ELSE c.DATA_LENGTH END", "c.DATA_PRECISION", "c.DATA_SCALE", "CASE c.NULLABLE WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END", "c.DATA_DEFAULT", "m.COMMENTS", "c.DATA_TYPE_OWNER"}
 		s.expressions = append(s.expressions, sqlNullLiteral, "CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END")
 	case MetadataPrimaryKeys:
 		s.from = "ALL_CONSTRAINTS k JOIN ALL_CONS_COLUMNS c ON c.OWNER=k.OWNER AND c.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND c.TABLE_NAME=k.TABLE_NAME"

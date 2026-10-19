@@ -321,7 +321,7 @@ func (c *conn) scalarLiteral(value any, limit int64) (string, error) {
 		if parts.local {
 			stamp = formatTimestamp(wall, parts.scale)
 		}
-		literal = "CAST(TIMESTAMP " + oracleQuoted(stamp) + " AS TIMESTAMP WITH LOCAL TIME ZONE)"
+		literal = "CAST(TIMESTAMP " + oracleQuoted(stamp) + " AS TIMESTAMP(9) WITH LOCAL TIME ZONE)"
 	}
 	if int64(len(literal)) > limit {
 		return "", wire.ErrMessageTooLarge

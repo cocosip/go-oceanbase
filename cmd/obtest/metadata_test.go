@@ -132,6 +132,8 @@ func metadataWorkflow(t *testing.T, mode oceanbase.Mode, failPart int, change fu
 	ddl := "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V VARCHAR(100))"
 	if mode == oceanbase.ModeMySQL {
 		ddl += " ENGINE=InnoDB"
+	} else {
+		ddl = "CREATE TABLE OBT_OFFLINE_T (ID NUMBER(38,0) PRIMARY KEY,V VARCHAR(100))"
 	}
 	steps := []fixtureStep{{query: ddl}, {query: ""}} // CurrentSchema uses an empty-command extension.
 	parts := metadataFixtureParts(mode)

@@ -10,14 +10,15 @@ import (
 const maxFrame = 0xffffff
 
 type frameIO struct {
-	conn      net.Conn
-	sequence  byte
-	buffer    []byte
-	ob        *OB20Options
-	requestID uint32
-	readBytes int64
-	trace     *fullTraceState
-	outExtra  []byte
+	conn       net.Conn
+	sequence   byte
+	obSequence byte
+	buffer     []byte
+	ob         *OB20Options
+	requestID  uint32
+	readBytes  int64
+	trace      *fullTraceState
+	outExtra   []byte
 }
 
 // EnableCompression selects zlib framing after the uncompressed authentication completes.
@@ -45,6 +46,7 @@ func (f *frameIO) reset() error {
 		return ErrDesynchronized
 	}
 	f.sequence = 0
+	f.obSequence = 0
 	f.requestID = (f.requestID + 1) & maxFrame
 	return nil
 }

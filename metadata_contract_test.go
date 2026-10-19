@@ -110,6 +110,8 @@ func metadataContractFixtures(mode Mode) []metadataContractFixture {
 	if mode == ModeOracle {
 		columnQuery = strings.Replace(columnQuery, ` FROM ALL_TAB_COLUMNS c`, `,NULL AS "auto_increment",CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END AS "generated" FROM ALL_TAB_COLS c`, 1)
 		columnQuery = strings.Replace(columnQuery, "WHERE 1=1 ORDER", "WHERE 1=1 AND (c.HIDDEN_COLUMN='NO') ORDER", 1)
+		columnQuery = strings.Replace(columnQuery, "c.COLUMN_ID AS", "c.ORDINAL_POSITION AS", 1)
+		columnQuery = strings.Replace(columnQuery, "FROM ALL_TAB_COLS c", "FROM (SELECT a.*,ROW_NUMBER() OVER(PARTITION BY a.OWNER,a.TABLE_NAME ORDER BY a.COLUMN_ID) AS ORDINAL_POSITION FROM ALL_TAB_COLS a WHERE a.HIDDEN_COLUMN='NO') c", 1)
 	} else {
 		columnQuery = strings.Replace(columnQuery, `c.NUMERIC_SCALE AS "scale"`, `CASE WHEN c.DATA_TYPE IN ('time','datetime','timestamp') THEN c.DATETIME_PRECISION ELSE c.NUMERIC_SCALE END AS "scale"`, 1)
 		columnQuery = strings.Replace(columnQuery, ` FROM information_schema.COLUMNS c`, `,CASE WHEN c.EXTRA IS NULL THEN NULL WHEN LOWER(c.EXTRA) LIKE '%auto_increment%' THEN 1 ELSE 0 END AS "auto_increment",CASE WHEN c.EXTRA IS NULL THEN NULL WHEN UPPER(c.EXTRA) IN ('VIRTUAL','PERSISTENT') OR UPPER(c.EXTRA) LIKE '%VIRTUAL GENERATED%' OR UPPER(c.EXTRA) LIKE '%STORED GENERATED%' THEN 1 ELSE 0 END AS "generated" FROM information_schema.COLUMNS c`, 1)
@@ -160,7 +162,10 @@ func metadataContractBytes(text, charset string) []byte {
 }
 
 func metadataContractSQL(fixture metadataContractFixture, mode Mode, charset, catalog string) string {
-	query, order, _ := strings.Cut(fixture.query, " ORDER BY ")
+	query, order := fixture.query, ""
+	if i := strings.LastIndex(query, " ORDER BY "); i >= 0 {
+		query, order = query[:i], query[i+10:]
+	}
 	if catalog != "" {
 		predicate := "'def' =  _" + charset + " X'" + hex.EncodeToString(metadataContractBytes(catalog, charset)) + "' "
 		if mode == ModeOracle {

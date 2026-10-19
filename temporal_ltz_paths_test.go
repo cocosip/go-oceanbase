@@ -12,7 +12,7 @@ import (
 )
 
 const ltzSQLPrefix = "CAST(TIMESTAMP '"
-const ltzSQLSuffix = "' AS TIMESTAMP WITH LOCAL TIME ZONE)"
+const ltzSQLSuffix = "' AS TIMESTAMP(9) WITH LOCAL TIME ZONE)"
 const ltzSummerNewYork = "2024-07-01 12:34:56.123456789 America/New_York"
 const ltzSpringGap = "2024-03-10 02:30:00 America/New_York"
 const ltzAutumnOverlap = "2024-11-03 01:30:00 America/New_York"

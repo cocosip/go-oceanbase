@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,7 +59,8 @@ func testComplexProfile(t *testing.T, p profile) {
 		}
 		created = append(created, ddl.name)
 	}
-	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" (ID INTEGER,V "+obj+",A "+arr+",L "+lob+")"); err != nil {
+	t.Run("nested-table-storage", func(t *testing.T) { testNestedTableStorage(t, db, base, arr) })
+	if _, err = db.ExecContext(testContext(t), "CREATE TABLE "+table+" (ID INTEGER,V "+obj+",L "+lob+")"); err != nil {
 		failOperation(t, "create complex table", err)
 	}
 	defer func() {
@@ -76,19 +78,24 @@ func testComplexProfile(t *testing.T, p profile) {
 	value := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number(number)}, {Name: "B", Value: oceanbase.Raw{0, 255}}, {Name: "D", Value: date}}}
 	other := oceanbase.Object{Type: obj, Fields: []oceanbase.Attribute{{Name: "N", Value: oceanbase.Number("-42.5")}, {Name: "B", Value: oceanbase.Raw{255, 0}}, {Name: "D", Value: date}}}
 	array := oceanbase.Array{Type: arr, Elements: []any{value, nil, other}}
-	if _, err = tr.ExecContext(testContext(t), "INSERT INTO "+table+" VALUES(?,?,?,"+lob+"(7,TO_BLOB(HEXTORAW('00FF'))))", 1, value, array); err != nil {
+	if _, err = tr.ExecContext(testContext(t), "INSERT INTO "+table+" VALUES(?,?,"+lob+"(7,TO_BLOB(HEXTORAW('00FF'))))", 1, value); err != nil {
 		failOperation(t, "bind native object and collection", err)
 	}
 	var got oceanbase.Object
 	var items oceanbase.Array
 	var withLOB oceanbase.Object
-	if err = tr.QueryRowContext(testContext(t), "SELECT V,A,L FROM "+table+" WHERE ID=?", 1).Scan(&got, &items, &withLOB); err != nil {
+	if err = tr.QueryRowContext(testContext(t), "SELECT V,L FROM "+table+" WHERE ID=?", 1).Scan(&got, &withLOB); err != nil {
 		failOperation(t, "scan native complex types", err)
 	}
-	assertComplexObject(t, got, obj, number, date, []byte{0, 255})
-	if items.Type != arr || items.Schema != got.Schema || len(items.Elements) != 3 || items.Elements[1] != nil {
-		t.Fatal("collection NULL or order changed")
+	var nullElement int
+	if _, err = tr.ExecContext(testContext(t), "DECLARE a "+arr+" := ?; BEGIN ? := CASE WHEN a(2) IS NULL THEN 1 ELSE 0 END; ? := a; END;", array, sql.Out{Dest: &nullElement}, sql.Out{Dest: &items}); err != nil {
+		failOperation(t, "round-trip native collection through PL/SQL", err)
 	}
+	assertComplexObject(t, got, obj, number, date, []byte{0, 255})
+	if items.Type != arr || items.Schema != got.Schema || len(items.Elements) != 3 {
+		t.Fatal("collection identity, input NULL or order changed")
+	}
+	assertCollectionNullElement(t, items.Elements[1], nullElement, obj, got.Schema)
 	for _, index := range []int{0, 2} {
 		v, ok := items.Elements[index].(oceanbase.Object)
 		if !ok || v.Schema != got.Schema {
@@ -162,5 +169,54 @@ func TestComplexDateRepresentation(t *testing.T) {
 		if got := complexDateMatches(tc.value, date); got != tc.want {
 			t.Errorf("complex DATE %q: got %v, want %v", tc.value, got, tc.want)
 		}
+	}
+}
+
+func testNestedTableStorage(t *testing.T, db *sql.DB, base, arr string) {
+	t.Helper()
+	storage := base + "_S"
+	_, err := db.ExecContext(testContext(t), "CREATE TABLE "+storage+" (A "+arr+")")
+	var server *oceanbase.Error
+	if errors.As(err, &server) && server.Code == 600 && server.SQLState == "0A000" && strings.Contains(server.Message, "-4007, nested table type not supported") {
+		t.Skip("server rejects nested-table column storage; PL/SQL collection binding tested separately")
+	}
+	if err != nil {
+		failOperation(t, "create nested-table storage", err)
+	}
+	defer func() {
+		if _, err := db.ExecContext(testContext(t), "DROP TABLE "+storage); err != nil {
+			failOperation(t, "drop nested-table storage", err)
+		}
+	}()
+	if _, err := db.ExecContext(testContext(t), "INSERT INTO "+storage+" VALUES ("+arr+"())"); err != nil {
+		failOperation(t, "insert empty stored collection", err)
+	}
+	var got oceanbase.Array
+	if err := db.QueryRowContext(testContext(t), "SELECT A FROM "+storage+" WHERE ROWNUM=?", 1).Scan(&got); err != nil {
+		failOperation(t, "read stored collection", err)
+	}
+	if got.Type != arr || got.Null || len(got.Elements) != 0 {
+		t.Fatal("stored collection changed")
+	}
+}
+
+func assertCollectionNullElement(t *testing.T, element any, predicate int, obj, schema string) {
+	t.Helper()
+	// OceanBase 4.4 returns a NULL object element as an object with NULL attributes, as does JDBC.
+	if element != nil {
+		if predicate != 0 {
+			t.Fatal("server NULL object representation is inconsistent")
+		}
+		n, ok := element.(oceanbase.Object)
+		if !ok || n.Type != obj || n.Schema != schema || len(n.Fields) != 3 || n.Fields[0].Name != "N" || n.Fields[1].Name != "B" || n.Fields[2].Name != "D" {
+			t.Fatal("NULL object identity changed")
+		}
+		for _, f := range n.Fields {
+			if f.Value != nil {
+				t.Fatal("NULL object attribute changed")
+			}
+		}
+	} else if predicate != 1 {
+		t.Fatal("server NULL element predicate is inconsistent")
 	}
 }

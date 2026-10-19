@@ -10,6 +10,8 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
+const complexFixtureSchema = "APP"
+
 const complexFixtureObject = "OBT_OFFLINE_O"
 const complexFixtureArray = "OBT_OFFLINE_A"
 const complexFixtureWrongSchema = "OTHER"
@@ -47,6 +49,12 @@ func TestComplexCollectionAssertions(t *testing.T) {
 		wantOK bool
 	}{
 		{name: "distinct-elements", wantOK: true},
+		{name: "server-null-object", wantOK: true, change: func(a *oceanbase.Array) {
+			a.Elements[1] = oceanbase.Object{Schema: complexFixtureSchema, Type: complexFixtureObject, Fields: []oceanbase.Attribute{{Name: "N"}, {Name: "B"}}}
+		}},
+		{name: "null-object-wrong-attributes", change: func(a *oceanbase.Array) {
+			a.Elements[1] = oceanbase.Object{Schema: complexFixtureSchema, Type: complexFixtureObject, Fields: []oceanbase.Attribute{{Name: "B"}, {Name: "N"}}}
+		}},
 		{name: "equivalent-tail-number", wantOK: true, change: func(a *oceanbase.Array) { a.Elements[2] = complexFixtureValue("-42.500", oceanbase.Raw{255, 0}) }},
 		{name: "swapped-elements", change: func(a *oceanbase.Array) { a.Elements[0], a.Elements[2] = a.Elements[2], a.Elements[0] }},
 		{name: "repeated-head", change: func(a *oceanbase.Array) { a.Elements[2] = a.Elements[0] }},
@@ -93,13 +101,13 @@ func checkComplexScenario(t *testing.T, array oceanbase.Array, out oceanbase.Obj
 }
 
 func complexFixtureCollection() oceanbase.Array {
-	return oceanbase.Array{Schema: "APP", Type: complexFixtureArray, ElementType: complexFixtureObject, Elements: []any{
+	return oceanbase.Array{Schema: complexFixtureSchema, Type: complexFixtureArray, ElementType: complexFixtureObject, Elements: []any{
 		complexFixtureValue(exactNumber, oceanbase.Raw{0, 255}), nil, complexFixtureValue(complexSecondNumber, oceanbase.Raw{255, 0}),
 	}}
 }
 
 func complexFixtureValue(number string, raw oceanbase.Raw) oceanbase.Object {
-	return oceanbase.Object{Schema: "APP", Type: complexFixtureObject, Fields: []oceanbase.Attribute{
+	return oceanbase.Object{Schema: complexFixtureSchema, Type: complexFixtureObject, Fields: []oceanbase.Attribute{
 		{Name: "N", Type: "NUMBER", Value: oceanbase.Number(number)},
 		{Name: "B", Type: "RAW", Value: raw},
 	}}
@@ -112,20 +120,22 @@ func complexAssertionScenario(t *testing.T, array oceanbase.Array, out oceanbase
 	if err != nil {
 		t.Fatal(err)
 	}
-	arrayJSON, err := array.Value()
-	if err != nil {
-		t.Fatal(err)
-	}
 	return fixtureScenario(t, []fixtureStep{
 		{query: "CREATE TYPE OBT_OFFLINE_O AS OBJECT(N NUMBER(38,9),B RAW(20))"},
 		{query: "CREATE TYPE OBT_OFFLINE_A AS TABLE OF OBT_OFFLINE_O"},
-		{query: "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V OBT_OFFLINE_O,A OBT_OFFLINE_A)"},
+		{query: "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V OBT_OFFLINE_O)"},
 		{query: "BEGIN"},
-		{query: "INSERT INTO OBT_OFFLINE_T VALUES (?,?,?)", affected: 1, inspect: func(args []driver.NamedValue) {
-			if len(args) != 3 {
-				t.Fatal("missing complex input")
+		{query: "INSERT INTO OBT_OFFLINE_T VALUES (?,?)", affected: 1, inspect: func(args []driver.NamedValue) {
+			if len(args) != 2 {
+				t.Fatal("missing object input")
 			}
-			a := args[2].Value.(oceanbase.Array)
+		}},
+		{query: "SELECT V FROM OBT_OFFLINE_T WHERE ID=?", values: [][]driver.Value{{objectJSON}}},
+		{query: "DECLARE a OBT_OFFLINE_A := ?; BEGIN ? := CASE WHEN a(2) IS NULL THEN 1 ELSE 0 END; ? := a; END;", inspect: func(args []driver.NamedValue) {
+			if len(args) != 3 {
+				t.Fatal("missing collection bindings")
+			}
+			a := args[0].Value.(oceanbase.Array)
 			if len(a.Elements) != 3 || a.Elements[1] != nil {
 				t.Fatal("missing collection input elements")
 			}
@@ -139,8 +149,13 @@ func complexAssertionScenario(t *testing.T, array oceanbase.Array, out oceanbase
 					t.Error("collection seed does not distinguish ordered values")
 				}
 			}
+			nullValue := 1
+			if array.Elements[1] != nil {
+				nullValue = 0
+			}
+			*args[1].Value.(sql.Out).Dest.(*int) = nullValue
+			*args[2].Value.(sql.Out).Dest.(*oceanbase.Array) = array
 		}},
-		{query: "SELECT V,A FROM OBT_OFFLINE_T WHERE ID=1", values: [][]driver.Value{{objectJSON, arrayJSON}}},
 		{query: "BEGIN ? := OBT_OFFLINE_O(42,HEXTORAW('00FF')); END;", optional: !valid, inspect: func(args []driver.NamedValue) {
 			if len(args) != 1 {
 				t.Fatal("missing object output binding")

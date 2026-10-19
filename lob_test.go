@@ -307,8 +307,8 @@ func TestLOBTemporary(t *testing.T) {
 		if !serveLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 			return
 		}
-		params := []wire.Parameter{{Type: 210, Data: locator, LengthEncoded: true}}
-		if !serveLOBCall(ctx, t, p, "CALL DBMS_LOB.FREETEMPORARY(?)", params, [][]byte{textColumn("b", 210, 63, 0)}, []byte{0, 4}) {
+		params := []wire.Parameter{{Type: 210, Data: locator, LengthEncoded: true}, {Type: 6}}
+		if !serveLOBCall(ctx, t, p, "DECLARE l BLOB := ?; BEGIN IF DBMS_LOB.ISTEMPORARY(l) = 1 THEN DBMS_LOB.FREETEMPORARY(l); END IF; ? := l; END;", params, [][]byte{textColumn("b", 210, 63, 0)}, []byte{0, 4}) {
 			return
 		}
 		p.ResetSequence()
@@ -337,7 +337,7 @@ func TestLOBOpenCardinalityCleanup(t *testing.T) {
 			return
 		}
 		for i := 0; i < 2; i++ {
-			params := []wire.Parameter{{Type: 210, Data: locator, LengthEncoded: true}}
+			params := []wire.Parameter{{Type: 210, Data: locator, LengthEncoded: true}, {Type: 6}}
 			if !serveLOBCall(ctx, t, p, lobFreeSQL, params, [][]byte{textColumn("b", 210, 63, 0)}, []byte{0, 4}) {
 				return
 			}

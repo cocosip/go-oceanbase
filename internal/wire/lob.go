@@ -13,7 +13,12 @@ type LOBLocator struct {
 
 // DecodeLOBLocator validates locator boundaries before exposing an inline payload.
 func DecodeLOBLocator(data []byte) (LOBLocator, error) {
-	if len(data) < 8 || binary.LittleEndian.Uint32(data) != 0x4c4f4221 {
+	if len(data) < 8 {
+		return LOBLocator{}, ErrMalformed
+	}
+	// OceanBase 4.4 uses the disk LOB common header in place of the legacy magic.
+	magic := binary.LittleEndian.Uint32(data)
+	if magic != 0x4c4f4221 && magic != 0x00018401 {
 		return LOBLocator{}, ErrMalformed
 	}
 	version := binary.LittleEndian.Uint32(data[4:])

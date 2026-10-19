@@ -34,12 +34,12 @@ func DecodeColumn(data []byte) (Column, error) {
 	c.InOut = r.u8()
 	if c.Type == 160 {
 		c.ComplexSchema, c.ComplexName = string(r.lenBytes()), string(r.lenBytes())
-		c.ComplexVersion = r.lenEnc()
+		c.ComplexVersion = r.complexVersion()
 		if c.ComplexName == "" {
 			c.ElementType = r.u8()
 			if c.ElementType == 160 {
 				c.ElementSchema, c.ElementName = string(r.lenBytes()), string(r.lenBytes())
-				c.ElementVersion = r.lenEnc()
+				c.ElementVersion = r.complexVersion()
 			}
 		}
 	}
@@ -48,6 +48,15 @@ func DecodeColumn(data []byte) (Column, error) {
 		return Column{}, r.err
 	}
 	return c, nil
+}
+
+func (r *decoder) complexVersion() uint64 {
+	// A NULL version denotes an unversioned type (for example SYS.DBMS_XA_XID_ARRAY).
+	if r.remaining() > 0 && r.data[r.offset] == 251 {
+		r.offset++
+		return 0
+	}
+	return r.lenEnc()
 }
 
 // DecodeColumnCount rejects overflow and excessive metadata before allocation.

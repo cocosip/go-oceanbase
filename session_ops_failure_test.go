@@ -18,7 +18,6 @@ const (
 	sessionReadInfo        = "info"
 	sessionReadVariable    = "variable"
 	sessionReadDatabaseSQL = "SELECT DATABASE()"
-	sessionReadDualSuffix  = " FROM dual"
 	sessionReadTailError   = "error-after-row"
 	sessionReadExtraRow    = "extra-row"
 )
