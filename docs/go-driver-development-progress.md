@@ -1,1100 +1,1100 @@
-# OceanBase Go 驱动开发进度
+# OceanBase Go Driver Development Progress
 
-最后更新：2026-10-18。任务定义见 [开发计划](go-driver-development-plan.md)，行为契约见 [架构设计](go-driver-architecture-design.md)。
+Last updated: 2026-10-18. Task definitions are in the [development plan](go-driver-development-plan.md); behavior contracts are in the [architecture design](go-driver-architecture-design.md).
 
-## 1. 当前状态
+## 1. Current Status
 
-- 当前阶段：配置、标准包流、握手/认证、建连/Ping 和标准文本执行、完整 Rows 取消/连接关闭协调、词法绑定、服务端预处理/二进制执行及事务/保存点/reset、客户端预处理/escape 和 Execute 摘要、D12 标量/字符集/时间、D13 元数据、D14 标量 OUT/INOUT/RETURNING、D15 固定资源生命周期、D16 原生 LOB、D17 表内 BLOB、D18 OBJECT/ARRAY、D19 游标/滚动/更新、D20 连接相关输出、D21 一次性长参数、D22 批量策略、D23 包流/校验/新元数据、D24 合并执行/缓存优化、D25 诊断/FLT 、D26 静态选址/建连切换、D27 TNS/OCP/拓扑发现及 D29 LOCAL INFILE 已有本地实现；继续 D28/D30，D30 会话辅助、warning 数量/详情/清除、ChangeUser 和显式取消已有本地实现，具体支持边界见架构 §9.1、§11.2.2、§13.2、§13.4 与 §15。
-- 实现完成：**28 / 32 项**；验收完成：**0 / 32 项**。分母为开发计划 D01–D32，不是代码行数、工时或功能数量估算。
-- 当前执行范围：**处理本地功能与回归测试的确认缺口，继续 D32 逐项收口；D28 的目标平台运行证据待补，不作为 D30/D31 全部本地开发的前置条件**。
-- 仓库已有：设计文档、Go module、注册/配置/DSN、外部日志、标准包流/故障对端、握手/认证/TLS/实际模式、文本执行/Rows/计数、词法绑定及参数转换、服务端预处理/二进制收发、事务/保存点/reset、包依赖守卫及 CI 定义。
-- 仓库已有原生 Blob/Clob 句柄、同会话有界物化和表内 BLOB 目标/分块；OBJECT/ARRAY、单命令类型描述复用和嵌套 LOB 物化已有本地实现；显式游标、滚动及 PK 更新、REF CURSOR/LOB 输出已实现；长参数同会话分段上传、批量逐项及受限 multi-send 已实现；受限 MySQL 多语句改写和 Oracle 事务内原生 array binding 已本地实现；bulk 及不满足对应门禁的请求逐项；D23 标准/压缩/OB20、双 checksum 与新元数据已本地实现；D24 显式执行策略已本地实现；D25 诊断和客户端 FLT 已本地实现；D26 静态多地址/角色/健康/建连切换已本地实现；D27 有界发现源/刷新与关闭已本地实现；D29 受控导入已本地实现；D30 schema/catalog、客户端信息/变量、warning 数量/详情/清除、ChangeUser 和显式取消已有本地实现；D31 XA 两模式本地实现、恢复/故障测试与集成源码已补；D28 Windows Shared Memory 与 VC 独立宿主已有本地实现，VC 真实 Linux 平台验证及 D32 收口待完成，D30/D31 依赖闭环待完成。
-- 工具链：当前最低版本为 Go 1.26.0；升级前已实际使用 Go 1.25.0、1.26.0 运行 Windows amd64 测试/vet，历史证据保留原始版本。升级后的本地验证见 §5.6；Linux 与 GitHub CI 尚未执行。OceanBase/OBProxy 版本及平台认证环境未确认。
-- 当前执行约束：按用户要求，**暂不进行数据库联调**；集成条目保留未验证，不作为本阶段的开发阻塞，也不计入验收通过。
-- 当前没有可用的 Linux 主机或 CI 执行环境。Linux/macOS 原生认证、真实 Linux VC 及成功 race 的运行结果分别保留未验证；不要求先提供这些环境才能继续本地开发，也不以交叉编译或合成夹具代替目标平台运行。
+- Current stage: local implementations exist for configuration, standard packet transport, handshake/authentication, connection/Ping and standard text execution, full Rows cancellation/connection-close coordination, lexical binding, server preparation/binary execution and transactions/savepoints/reset, client preparation/escaping and Execute summaries, D12 scalars/character sets/time, D13 metadata, D14 scalar OUT/INOUT/RETURNING, D15 pinned-resource lifecycle, D16 native LOBs, D17 in-table BLOBs, D18 OBJECT/ARRAY, D19 cursors/scrolling/updates, D20 connection-bound outputs, D21 single-use long parameters, D22 batch strategies, D23 packet transport/checksums/new metadata, D24 combined execution/cache optimization, D25 diagnostics/FLT, D26 static address selection/connection failover, D27 TNS/OCP/topology discovery, and D29 LOCAL INFILE. D28/D30 continue; D30 session helpers, warning counts/details/clearing, ChangeUser and explicit cancellation have local implementations. Exact support boundaries are in architecture §§9.1, 11.2.2, 13.2, 13.4 and 15.
+- Implementation complete: **28 / 32 tasks**; acceptance complete: **0 / 32 tasks**. The denominator is development-plan tasks D01–D32, not an estimate of lines of code, effort or feature count.
+- Current execution scope: **resolve confirmed gaps in local functionality and regression tests, and continue closing D32 item by item. D28 target-platform runtime evidence remains outstanding; it is not a prerequisite for all D30/D31 local development**.
+- The repository contains design documents, a Go module, registration/configuration/DSN, external logging, standard packet transport/fault peers, handshake/authentication/TLS/actual-mode handling, text execution/Rows/counts, lexical binding and parameter conversion, server preparation/binary I/O, transactions/savepoints/reset, package-dependency guards and CI definitions.
+- Native Blob/Clob handles, bounded materialization in the same session, and in-table BLOB targeting/chunking exist. OBJECT/ARRAY, per-command type-description reuse and nested LOB materialization have local implementations; explicit cursors, scrolling, PK updates and REF CURSOR/LOB outputs are implemented. Long-parameter uploads in segments within the same session, sequential batches and restricted multi-send are implemented. Restricted MySQL multi-statement rewriting and native Oracle array binding inside transactions are locally implemented; bulk requests and requests that fail the relevant gates run sequentially. D23 standard/compressed/OB20 transport, both checksums and new metadata; D24 explicit execution strategies; D25 diagnostics and client FLT; D26 static multiple addresses/roles/health/connection failover; D27 bounded discovery sources/refresh/close; and D29 controlled import are locally implemented. D30 schema/catalog, client information/variables, warning counts/details/clearing, ChangeUser and explicit cancellation have local implementations. D31 local XA implementations for both modes, recovery/fault tests and integration source have been added. D28 Windows Shared Memory and a separate VC host have local implementations; real Linux VC validation and D32 closure remain outstanding, as does closure of D30/D31 dependencies.
+- Toolchain: the current minimum is Go 1.26.0. Before the upgrade, Go 1.25.0 and 1.26.0 were actually used for Windows amd64 tests/vet; historical evidence retains its original versions. Post-upgrade local validation is in §5.6. Linux and GitHub CI have not run. OceanBase/OBProxy versions and platform-authentication environments are unconfirmed.
+- Current constraint: at the user's request, **do not perform database integration testing for now**. Integration items remain unverified; they neither block this development phase nor count as acceptance passes.
+- No Linux host or CI execution environment is currently available. Linux/macOS native authentication, real Linux VC and successful race execution remain separately unverified. These environments are not required before local development can continue; cross-compilation and synthetic fixtures do not replace execution on the target platform.
 
-上述外部条件不阻塞可独立进行的本地开发；需要真实环境的任务先完成可独立验证的实现，再如实记录待联调条件。不得据此缩减 Oracle 兼容模式或其他高级能力范围。
+These external conditions do not block independent local development. For tasks requiring a real environment, first complete the independently verifiable implementation, then accurately record the integration prerequisites. This must not reduce Oracle compatibility-mode or other advanced-capability scope.
 
-## 2. 状态、计数和更新规则
+## 2. Status, Counting and Update Rules
 
-### 2.1 三个独立状态
+### 2.1 Three Independent Status Dimensions
 
-| 维度 | 可用状态 | 含义 |
+| Dimension | Available statuses | Meaning |
 | --- | --- | --- |
-| 开发 | 未开始 / 进行中 / 已实现 | 已实现要求代码、接口、相关本地测试及必要文档齐备；不能只有声明或空实现 |
-| 验证 | 未验证 / 本地通过 / 待联调 / 验收通过 / 失败 | 验收通过要求 §5.3 绑定的全部必需条目满足 §5.2 聚合规则；本地通过不等于真实服务端兼容 |
-| 阻塞 | 无 / 依赖 / 环境 / 契约 | 记录原因、影响项、可继续工作和解除条件；不把所有未来任务都标为阻塞 |
+| Development | Not started / In progress / Implemented | Implemented requires code, interfaces, relevant local tests and necessary documentation; declarations or empty implementations alone do not qualify |
+| Validation | Unverified / Local pass / Awaiting integration / Acceptance passed / Failed | Acceptance passed requires every mandatory item bound by §5.3 to satisfy the §5.2 aggregation rules; a local pass does not establish real-server compatibility |
+| Blocker | None / Dependency / Environment / Contract | Record the reason, affected items, work that can continue and resolution conditions; do not mark every future task as blocked |
 
-典型流转为“未开始 → 进行中 → 已实现”，验证从本地测试推进到真实环境验收。服务端暂缺时可以是“已实现 / 待联调 / 环境”，但不能计入验收完成。发现失败时保留已知事实，验证改为失败；只有实现也不满足契约时才退回进行中。
+The typical progression is “Not started → In progress → Implemented”, with validation progressing from local tests to real-environment acceptance. Without a server, “Implemented / Awaiting integration / Environment” is valid but does not count as acceptance complete. When a failure is found, retain known facts and change validation to Failed; return development to In progress only if the implementation also fails its contract.
 
-### 2.2 进度计算
+### 2.2 Progress Calculation
 
-- 实现完成数：开发列为“已实现”的任务数 / 32。
-- 验收完成数：开发列为“已实现”且验证列为“验收通过”的任务数 / 32。
-- 模式/版本组合只在验证表记录，不拿一个 MySQL 组合通过代替整项通过。
-- D32 是完整交付汇总，本地 CI 通过不足以完成 D32；不能用“总任务大多实现”替代全功能声明。
-- 文档编写不计入驱动实现进度；不使用任务平均值伪装剩余工期。
-- 拆分任务时保留旧 ID 的归属关系并调整分母；不能删除未完成项提高进度。
+- Implementation count: tasks whose Development column is Implemented / 32.
+- Acceptance count: tasks whose Development is Implemented and Validation is Acceptance passed / 32.
+- Record mode/version combinations only in validation tables; one passing MySQL combination cannot establish acceptance of the whole task.
+- D32 summarizes complete delivery. Local CI alone cannot complete D32; “most tasks implemented” cannot substitute for a full-feature claim.
+- Documentation work does not count as driver implementation progress; do not use task averages to imply remaining effort.
+- When splitting tasks, retain ownership of the original ID and adjust the denominator; do not delete unfinished items to inflate progress.
 
-### 2.3 每次开发后必须更新
+### 2.3 Required Updates After Each Development Session
 
-1. 更新任务行的开发/验证/阻塞状态和负责人；有实际开始/完成时才填写日期。
-2. 填写实际代码/测试位置、命令及通过/失败/跳过结果；不写尚未执行的成功结论。
-3. 更新相关验证组合、里程碑、总计及下一步；多个状态相冲突时先修正再结束本次开发。
-4. 环境问题记录具体缺少的能力和影响范围，不记录密码、DSN、机器绝对路径或敏感抓包。
-5. 接口、依赖、默认行为变化同步到架构/开发计划；不另建走查记录文档。
-   本地代码依赖和验收证据依赖分别判断。某个目标平台尚未运行，只限制对应平台的验收结论；只有指出当前功能缺少的具体接口、实现或本地可运行测试，才能将它列为开发阻塞。D30/D31 的原生平台组合和 D32 完整验收要求继续保留。
-6. D01 建立 Go1.26/平台 CI，D02 增加依赖守卫和 fuzz/386，D04 增加 require 集成入口，D06 增加零 cgo（`CGO_ENABLED=0`）的并发资源检查，不接入 race；相关任务的验收证据必须含对应 CI 运行，不能推迟到 D32。
+1. Update each task's development/validation/blocker status and owner; enter dates only when work actually starts or finishes.
+2. Record actual code/test locations, commands and pass/fail/skip results; never claim success for work not run.
+3. Update related validation combinations, milestones, totals and next steps; resolve contradictory statuses before ending the session.
+4. For environment issues, record the specific missing capability and affected scope; omit passwords, DSNs, absolute machine paths and sensitive packet captures.
+5. Synchronize interface, dependency and default-behavior changes to the architecture/design plan; do not create a separate walkthrough log.
+   Judge local-code dependencies separately from acceptance-evidence dependencies. An unexecuted target platform limits only its acceptance conclusion. A development blocker requires identifying a specific missing interface, implementation or locally runnable test needed by the current feature. Retain D30/D31 native-platform combinations and D32 complete-acceptance requirements.
+6. D01 establishes Go1.26/platform CI; D02 adds dependency guards and fuzz/386; D04 adds a require integration entry point; D06 adds zero-cgo (`CGO_ENABLED=0`) concurrent-resource checks without race. Acceptance evidence for these tasks must include their corresponding CI runs; it cannot be deferred to D32.
 
-## 3. 任务看板
+## 3. Task Board
 
-“—”表示尚无负责人或执行证据；依赖对应开发计划，具体状态以各行事实为准。依赖存在不等于任务已发生阻塞。
+“—” means no owner or execution evidence yet. Dependencies follow the development plan; each row's facts determine its status. A dependency does not itself mean the task is blocked.
 
-| ID | 任务 | 直接依赖 | 开发 | 验证 | 阻塞 | 负责人 / 证据 |
+| ID | Task | Direct dependencies | Development | Validation | Blocker | Owner / evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| D01 | 模块、公开配置与日志注入 | 无 | 已实现 | 本地通过 | 无 | Codex；见 §5.5 D01 |
-| D02 | 标准包流与故障对端 | D01 | 已实现 | 本地通过 | 无 | Codex；见 §5.5 D02 |
-| D03 | 握手、基础认证、TLS 与模式 | D02 | 已实现 | 本地通过 | 无 | Codex；见 §5.5 D03 |
-| D04 | 建连、初始化、Ping、集成入口 | D03 | 已实现 | 本地通过 | 无 | Codex；见 §5.5 D04 |
-| D05 | 文本执行、Rows 与标准计数 | D04 | 已实现 | 本地通过 | 无（待联调） | §5.6 D05 |
-| D06 | 取消、错误边界、连接淘汰 | D05 | 已实现 | 本地通过 | 无（待联调） | §5.6 D06 |
-| D07 | 词法绑定与参数转换 | D05 | 已实现 | 本地通过 | 无 | §5.6 D07 |
-| D08 | 服务端预处理、二进制结果 | D06、D07 | 已实现 | 本地通过 | 无（待联调） | §5.6 D08 |
-| D09 | 事务、保存点、reset 代次 | D08 | 已实现 | 本地通过 | 无（待联调） | §5.6 D09 |
-| D10 | 客户端预处理、escape | D07、D08 | 已实现 | 本地通过 | 无（待联调） | §5.6 D10 |
-| D11 | Execute、多结果、计数策略 | D08、D09 | 已实现 | 本地通过 | 无（待联调） | §5.6 D11 |
-| D12 | 全类型、字符集、时间 | D08、D10 | 已实现 | 本地通过 | 无（待联调） | §5.6 D12 |
-| D13 | 结构/结果/参数元数据 | D09、D12 | 已实现 | 本地通过 | 无（待联调） | §5.6 D13 |
-| D14 | 标量 OUT/INOUT/RETURNING | D11、D12 | 已实现 | 本地通过 | 无（待联调） | §5.6 D14 |
-| D15 | 固定会话资源、代次与租约 | D09、D11 | 已实现 | 本地通过 | 无 | §5.6 D15 |
-| D16 | 原生 BLOB/CLOB/NCLOB | D12、D13、D15 | 已实现 | 本地通过 | 无（待联调） | 本地协议、双版本/386/lint/fuzz；真实原事务/NCLOB/锁行为待联调 |
-| D17 | MySQL 表内 BLOB 模拟 locator | D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D17 |
-| D18 | OBJECT/ARRAY、类型描述 | D12、D13、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D18，支持边界见架构 §11.2.2 |
-| D19 | 游标、滚动、刷新和更新 | D13、D15、D16 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D19，支持边界见架构 §15 |
-| D20 | REF CURSOR/流式 LOB 输出 | D14、D16、D19 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D20 |
-| D21 | 长参数、分段上传 | D08、D12、D15 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D21 |
-| D22 | 批量、bulk、array binding | D11、D14、D18、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D22，改写/原生 array 及 bulk 回退边界见架构 §13.4 |
-| D23 | 压缩、OB20、新元数据、校验 | D06、D08 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D23，边界见架构 §9.1 |
-| D24 | PrepareExecute、缓存、优化 | D08、D11、D14、D21、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D24，架构 §10.1.1 |
-| D25 | 诊断、profiling、FLT | D11、D23 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D25，架构 §18.3.1 |
-| D26 | 静态多地址、负载、故障切换 | D06、D09 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D26、架构 §17.1.1 |
-| D27 | TNS/OCP/拓扑发现 | D26 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D27、架构 §17.1.2 |
-| D28 | 完整认证、平台传输 | D03、D26 | 进行中 | 本地子项通过，目标平台待验证 | 无（平台验收待补） | old/Ed25519/PAM、SSPI/Unix GSSAPI、Unix/Named Pipe/Shared Memory 和 VC 宿主已补；证据按平台分别保留 |
-| D29 | LOCAL INFILE 受控导入 | D06、D21 | 已实现 | 本地通过 | 无（待联调） | Codex；2026-10-17 开始/完成；见 §5.6 D29、架构 §17.3.1 |
-| D30 | 会话辅助、warning、切用户、取消 | D09、D11、D15、D26、D28 | 进行中 | 本地子项通过，平台及联调待验证 | 无（平台及联调待验证） | Codex；辅助函数、warning、ChangeUser 和单次显式取消已补；整项不提前计完成；见 §5.6 D30 |
-| D31 | XA 分支、状态与恢复 | D09、D14、D18、D30 | 进行中 | 本地子项通过，平台及联调待验证 | 无（平台及联调待验证） | Codex；见 §5.6 D31；集成源码仅编译 |
-| D32 | 配置逐项迁移、完整验收与交付 | D01–D31 | 进行中 | 本地子项通过，完整验收待补 | 完整交付依赖 D01–D31 验收；本地收口可继续 | Codex；连接声明、排序规则、代理登录、标准池/生命周期及 Java 初值/别名入口等已补，见 §5.6 D32 |
+| D01 | Module, public configuration and logger injection | None | Implemented | Local pass | None | Codex; see §5.5 D01 |
+| D02 | Standard packet transport and fault peers | D01 | Implemented | Local pass | None | Codex; see §5.5 D02 |
+| D03 | Handshake, basic authentication, TLS and mode | D02 | Implemented | Local pass | None | Codex; see §5.5 D03 |
+| D04 | Connection, initialization, Ping and integration entry point | D03 | Implemented | Local pass | None | Codex; see §5.5 D04 |
+| D05 | Text execution, Rows and standard counts | D04 | Implemented | Local pass | None (awaiting integration) | §5.6 D05 |
+| D06 | Cancellation, error boundaries and connection eviction | D05 | Implemented | Local pass | None (awaiting integration) | §5.6 D06 |
+| D07 | Lexical binding and parameter conversion | D05 | Implemented | Local pass | None | §5.6 D07 |
+| D08 | Server preparation and binary results | D06, D07 | Implemented | Local pass | None (awaiting integration) | §5.6 D08 |
+| D09 | Transactions, savepoints and reset generations | D08 | Implemented | Local pass | None (awaiting integration) | §5.6 D09 |
+| D10 | Client preparation and escaping | D07, D08 | Implemented | Local pass | None (awaiting integration) | §5.6 D10 |
+| D11 | Execute, multiple results and count policy | D08, D09 | Implemented | Local pass | None (awaiting integration) | §5.6 D11 |
+| D12 | All types, character sets and time | D08, D10 | Implemented | Local pass | None (awaiting integration) | §5.6 D12 |
+| D13 | Schema/result/parameter metadata | D09, D12 | Implemented | Local pass | None (awaiting integration) | §5.6 D13 |
+| D14 | Scalar OUT/INOUT/RETURNING | D11, D12 | Implemented | Local pass | None (awaiting integration) | §5.6 D14 |
+| D15 | Pinned-session resources, generations and leases | D09, D11 | Implemented | Local pass | None | §5.6 D15 |
+| D16 | Native BLOB/CLOB/NCLOB | D12, D13, D15 | Implemented | Local pass | None (awaiting integration) | Local protocol, both versions/386/lint/fuzz; real original-transaction/NCLOB/locking behavior awaits integration |
+| D17 | MySQL in-table BLOB locator emulation | D13, D16 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D17 |
+| D18 | OBJECT/ARRAY and type descriptions | D12, D13, D16 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D18; support boundaries: architecture §11.2.2 |
+| D19 | Cursors, scrolling, refresh and updates | D13, D15, D16 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D19; support boundaries: architecture §15 |
+| D20 | REF CURSOR/streaming LOB outputs | D14, D16, D19 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D20 |
+| D21 | Long parameters and segmented upload | D08, D12, D15 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D21 |
+| D22 | Batching, bulk and array binding | D11, D14, D18, D21 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D22; rewrite/native-array/bulk-fallback boundaries: architecture §13.4 |
+| D23 | Compression, OB20, new metadata and checksums | D06, D08 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D23; boundaries: architecture §9.1 |
+| D24 | PrepareExecute, caching and optimization | D08, D11, D14, D21, D23 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D24, architecture §10.1.1 |
+| D25 | Diagnostics, profiling and FLT | D11, D23 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D25, architecture §18.3.1 |
+| D26 | Static multiple addresses, load balancing and failover | D06, D09 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D26, architecture §17.1.1 |
+| D27 | TNS/OCP/topology discovery | D26 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D27, architecture §17.1.2 |
+| D28 | Full authentication and platform transports | D03, D26 | In progress | Local subitems passed; target platforms unverified | None (platform acceptance outstanding) | old/Ed25519/PAM, SSPI/Unix GSSAPI, Unix/Named Pipe/Shared Memory and VC host added; evidence retained per platform |
+| D29 | Controlled LOCAL INFILE import | D06, D21 | Implemented | Local pass | None (awaiting integration) | Codex; started/completed 2026-10-17; see §5.6 D29, architecture §17.3.1 |
+| D30 | Session helpers, warnings, user switching and cancellation | D09, D11, D15, D26, D28 | In progress | Local subitems passed; platforms/integration unverified | None (platforms/integration unverified) | Codex; helpers, warnings, ChangeUser and single explicit cancellation added; do not count the whole task complete early; see §5.6 D30 |
+| D31 | XA branches, state and recovery | D09, D14, D18, D30 | In progress | Local subitems passed; platforms/integration unverified | None (platforms/integration unverified) | Codex; see §5.6 D31; integration source only compiled |
+| D32 | Per-option migration, full acceptance and delivery | D01–D31 | In progress | Local subitems passed; full acceptance outstanding | Full delivery depends on D01–D31 acceptance; local closure can continue | Codex; connection declarations, collations, proxy login, standard pool/lifecycle and Java defaults/alias entry points added; see §5.6 D32 |
 
-## 4. 里程碑
+## 4. Milestones
 
-| ID | 目标 | 实现项 | 验收项 | 状态 |
+| ID | Goal | Implemented | Accepted | Status |
 | --- | --- | --- | --- | --- |
-| G1 | 建连与标准查询，D01–D05 | 5/5 | 0/5 | 进行中 |
-| G2 | 执行与会话正确性，D06–D12 | 7/7 | 0/7 | 待验收 |
-| G3 | 完整扩展数据能力，D13–D22 | 10/10 | 0/10 | 待验收 |
-| G4 | 协议与运行能力，D23–D30 | 6/8 | 0/8 | 进行中，D23–D27、D29 本地通过，待联调 |
-| G5 | 分布式事务，D31 | 0/1 | 0/1 | 本地子项通过；平台及联调待验证 |
-| G6 | 完整交付，D32 | 0/1 | 0/1 | 进行中，首批配置补齐 |
+| G1 | Connections and standard queries, D01–D05 | 5/5 | 0/5 | In progress |
+| G2 | Execution and session correctness, D06–D12 | 7/7 | 0/7 | Awaiting acceptance |
+| G3 | Complete extended data capabilities, D13–D22 | 10/10 | 0/10 | Awaiting acceptance |
+| G4 | Protocol and runtime capabilities, D23–D30 | 6/8 | 0/8 | In progress; D23–D27 and D29 passed locally, awaiting integration |
+| G5 | Distributed transactions, D31 | 0/1 | 0/1 | Local subitems passed; platforms/integration unverified |
+| G6 | Complete delivery, D32 | 0/1 | 0/1 | In progress; initial configuration gaps filled |
 
-里程碑仅在全部所属任务验收通过且前置契约满足后完成。G1–G5 任一完成都不能单独表述为“全功能驱动完成”。
+A milestone completes only after all its tasks pass acceptance and prerequisite contracts are satisfied. Completing any one of G1–G5 cannot establish that the “full-feature driver is complete”.
 
-## 5. 验证组合与证据
+## 5. Validation Combinations and Evidence
 
-### 5.1 目标与必需验证集
+### 5.1 Targets and Mandatory Validation Sets
 
-真实环境固定四个目标 ID：P-MD（MySQL 兼容模式直连）、P-OD（Oracle 兼容模式直连）、P-MP（MySQL 兼容模式 + OBProxy）、P-OP（Oracle 兼容模式 + OBProxy）。对应计划中的 mysql/oracle/proxy-mysql/proxy-oracle profile；当前四者均为**版本未确认、未验证**。D03 建立兼容矩阵，D04 集成验收前登记首组精确 OceanBase/OBProxy 版本及平台；后续新增能力在开始任务时登记它的正向支持目标和必需拒绝目标。不能等测试结果出来后才选择目标。
+The four fixed real-environment target IDs are P-MD (direct MySQL compatibility mode), P-OD (direct Oracle compatibility mode), P-MP (MySQL compatibility mode + OBProxy), and P-OP (Oracle compatibility mode + OBProxy). These correspond to the plan's mysql/oracle/proxy-mysql/proxy-oracle profiles; all four currently have **unconfirmed versions and are unverified**. D03 establishes the compatibility matrix; before D04 integration acceptance, register the first exact OceanBase/OBProxy versions and platforms. When later capabilities start, register their positive support targets and mandatory rejection targets. Do not select targets after seeing test results.
 
-以下验证集是最低要求。每个集展开为独立能力条目，每条包含目标 ID、精确版本、Go 补丁版、OS/架构、执行/包流/认证路径和命令。V01–V14 当前均未验证；这里的定义不是执行证据。
+The following sets are minimum requirements. Expand each into independent capability items recording target ID, exact version, Go patch version, OS/architecture, execution/packet/authentication path and command. V01–V14 are all currently unverified; their definitions here are not execution evidence.
 
-| ID | 必需验证内容 |
+| ID | Mandatory validation |
 | --- | --- |
-| V01 | 本地基线：Go 1.26.x × Linux/Windows amd64 的 test/vet、锁定版 lint；D01 起 list 检测循环，D02 起架构守卫检查含 integration/test 的允许依赖边；每项相关测试及全包测试 |
-| V02 | 该任务协议/内核失败路径：在已拥有的最低入口验证，D02 用 net.Conn + PacketIO/故障对端，D03 用握手编排 + 算法/对端；D04 起涉及标准驱动接口的场景用真实 database/sql + 故障对端，D16/D18 的 Query/Next 锁边界不得以直接 helper 单测替代。记录命令数、响应边界、错误/清理和无重放；纯配置/词法项仅测其可观察边界，不伪造网络覆盖 |
-| V03 | Linux amd64、Go1.26 的该任务资源/并发压力；若某项平台原生适配只在 Windows 工作，另在受支持 Windows 环境验证它；不能用交叉编译代替运行。CI 以 `CGO_ENABLED=0` 运行并持续验证零 cgo 构建；`-race` 强制 cgo，需另设 cgo 环境手动执行，其证据单独记录，不计入常规 CI 通过 |
-| V04 | 该任务新增解析器的 seed/边界/fuzz，单个 fuzz 目标至少 30 秒；Go1.26 的 Linux/386 长度、索引及整数边界运行，不能仅编译 |
-| V05 | P-MD、P-OD 的真实正向/错误/事务语义；只验证该任务拥有的行为，D04 是建连/初始化/Ping，D05 起增加实际 SQL |
-| V06 | P-MP、P-OP 的对应真实行为，含能力协商和直连语义一致性；不能用直连代替代理 |
-| V07 | Oracle 原生高级能力：P-OD、P-OP 的 LOB/复杂类型/游标/过程输出等该任务场景；另固定 MySQL 模式中对应公开入口的支持或拒绝行为，不能静默模拟成功 |
-| V08 | 表内 BLOB 模拟：P-MD、P-MP 的完整主键/分块/锁/事务/ChangedRows 场景；Oracle 入口原生解析由 V07 验证 |
-| V09 | 四个目标上标准包、压缩、OB20/校验/新元数据的协商、正向及拒绝；按 Java 条件登记正向支持目标；D25 同时交叉 FLT 开关和 trace 隔离 |
-| V10 | 该任务能力在文本/服务端预处理/客户端预处理/PrepareExecute 的等价性；只绑定已交付执行路径，D08 起服务端，D10 起客户端，D14 为 RETURNING 交付必要合并基础路径，D24 扩展通用合并策略；每条登记实际模式/目标，后续路径任务回归前序能力 |
-| V11 | 四目标的地址/角色/HA 故障；D26 静态策略、D27 再覆盖 TNS/OCP/复制拓扑；新建连接切换、总预算、认证拒绝、活动会话不换线及刷新关闭 |
-| V12 | D28 的逐算法、逐平台传输清单，见 §5.4；包括正向运行、安全拒绝、切换/阶段状态和清理，不能只编译或选一个插件代表全部 |
-| V13 | 四目标的 XA 1PC/2PC、flags、join/resume/suspend、断线后新连接恢复、未知结果不重放及连接回池边界；真实支持条件逐条留证 |
-| V14 | 全部已声明正向目标上的外部示例可运行、逐项 option/M01–M16 核对、正确性后的基准和资源稳定性；复核所有前序必需条目，无未验证目标 |
+| V01 | Local baseline: test/vet and pinned lint on Go 1.26.x × Linux/Windows amd64; cycle detection through list from D01; architecture guards checking allowed dependencies including integration/test from D02; each task's relevant tests and all-package tests |
+| V02 | Task-specific protocol/kernel failure paths at the lowest existing entry point: D02 uses net.Conn + PacketIO/fault peer; D03 uses handshake orchestration + algorithms/peer. From D04, standard-driver-interface scenarios use real database/sql + fault peers; D16/D18 Query/Next lock boundaries cannot be replaced by direct helper unit tests. Record command count, response boundaries, errors/cleanup and absence of replay. Pure configuration/lexical items test observable boundaries without claiming fabricated network coverage |
+| V03 | Task-specific Linux amd64/Go1.26 resource/concurrency stress; if a native adapter works only on Windows, also validate it in a supported Windows environment. Cross-compilation does not replace execution. CI runs with `CGO_ENABLED=0` to continuously verify zero-cgo builds; `-race` requires cgo and a separate manual cgo environment. Record that evidence separately; it does not count as regular CI passing |
+| V04 | Seeds/boundaries/fuzz for new task parsers, at least 30 seconds per fuzz target; run Go1.26 Linux/386 length/index/integer boundaries, not compile only |
+| V05 | Real positive/error/transaction semantics on P-MD and P-OD; validate only behavior owned by the task: D04 connection/initialization/Ping, actual SQL from D05 |
+| V06 | Corresponding real behavior on P-MP and P-OP, including capability negotiation and consistency with direct semantics; direct connections cannot substitute for proxies |
+| V07 | Native advanced Oracle capabilities: relevant LOB/complex-type/cursor/procedure-output scenarios on P-OD and P-OP. Also fix the support/rejection behavior of corresponding public entry points in MySQL mode; never silently emulate success |
+| V08 | In-table BLOB emulation: complete-PK/chunk/lock/transaction/ChangedRows scenarios on P-MD and P-MP; native Oracle entry-point resolution is validated by V07 |
+| V09 | Negotiation, positive and rejection cases for standard packets, compression, OB20/checksums/new metadata on all four targets; register positive support targets using Java's conditions. D25 also crosses FLT enablement and trace isolation |
+| V10 | Equivalence across text/server-prepared/client-prepared/PrepareExecute paths. Bind only delivered paths: server from D08, client from D10, necessary combined foundation for RETURNING in D14, general combined strategy in D24. Register actual mode/target per item; later path tasks regress earlier capabilities |
+| V11 | Address/role/HA failures on all four targets: D26 static strategies, D27 additionally TNS/OCP/replication topology; new-connection failover, total budget, authentication rejection, no active-session migration, refresh and close |
+| V12 | Per-algorithm/per-platform transport checklist for D28, see §5.4; positive execution, secure rejection, switch/stage state and cleanup. Compilation alone or one plugin cannot represent all capabilities |
+| V13 | XA 1PC/2PC, flags, join/resume/suspend, recovery on a new connection after disconnect, no replay of unknown outcomes and pool-return boundaries on all four targets; retain evidence for each real support condition |
+| V14 | Runnable external examples on every declared positive target, per-option/M01–M16 checks, benchmarks after correctness and resource stability; review all earlier mandatory items with no unverified targets |
 
-V10 不要求 D08 验证尚未实现的 D24。D24 回归当时已经落地的前序能力；D13–D22 中若有任务在 D24 后才实现，该任务必须覆盖已落地的合并路径，D32 最终核对全量，不能因此形成 D24 与后续任务的隐性循环依赖。不存在的协议能力按 §5.2 做能力拒绝验收；后续路径、版本及平台新增时扩充条目，不把既有目标移出必需集合。
+V10 does not require D08 to validate an unimplemented D24. D24 regresses earlier capabilities delivered at that time. If a D13–D22 task is implemented after D24, it must cover already-delivered combined paths; D32 performs the final complete check. This must not create an implicit circular dependency between D24 and later tasks. Protocol capabilities that do not exist receive capability-rejection acceptance under §5.2. Add items for later paths, versions and platforms without removing existing targets from the mandatory set.
 
-### 5.2 条目状态与聚合规则
+### 5.2 Item Status and Aggregation Rules
 
-| 条目状态 | 判断依据 | 对任务验收的影响 |
+| Item status | Basis | Effect on task acceptance |
 | --- | --- | --- |
-| 未验证 | 尚无对应运行证据 | 不满足 |
-| 通过 | 预登记组合的断言全部通过，证据齐全 | 满足该条目 |
-| 失败 | 有断言失败或实际行为不符合契约 | 不满足；不能被其他组合通过覆盖 |
-| 环境缺失 | 缺服务、版本、凭据、平台或必要对象 | 不满足，任务待联调；不能写不适用 |
-| 服务端已验证不支持 | 源码条件/实际协商或最小用例及能力拒绝测试证明目标不支持 | 只满足该目标的负向能力条目，不证明正向实现完成 |
-| 不适用 | 架构确定该能力不属于此组合，并已登记具体理由及替代覆盖 | 只排除该条目；不是未实现/缺环境/未知版本的别名 |
+| Unverified | No corresponding runtime evidence yet | Unsatisfied |
+| Passed | Every assertion for the preregistered combination passes, with complete evidence | Satisfies this item |
+| Failed | An assertion fails or actual behavior violates the contract | Unsatisfied; another passing combination cannot override it |
+| Environment missing | Missing service, version, credentials, platform or required objects | Unsatisfied; task awaits integration; cannot be marked not applicable |
+| Server verified unsupported | Source conditions/actual negotiation or a minimal example plus capability-rejection tests prove the target lacks support | Satisfies only this target's negative capability item, not completion of the positive implementation |
+| Not applicable | Architecture establishes that the capability does not belong to this combination, with a specific registered reason and alternative coverage | Excludes only this item; never a synonym for unimplemented/missing environment/unknown version |
 
-同一任务中正向实现、负向能力判断分别记录。一项功能至少在预先登记的支持目标完成正向运行，才能验收；如果所有目标都不支持或尚未知，不得仅靠正确拒绝把功能计为已完成。调整已有范围必须同步架构与计划、说明证据，不在 D32 临时删减目标。
+Record positive implementation and negative capability findings separately within the same task. A feature requires positive execution on a preregistered supported target before acceptance. If every target lacks support or remains unknown, correct rejection alone cannot make the feature complete. Scope changes must synchronize architecture and plan and explain evidence; do not trim targets temporarily in D32.
 
-“驱动未实现”是开发列状态，不是验证的跳过理由。一个组合只包含一种结果，混合结果拆行。任务“验收通过”要求：开发已实现，§5.3 指定验证集已展开且全部必需条目满足，没有失败/环境缺失/未验证，各功能具有正向覆盖；D01/D02/D03/D07 这类本地任务以其本地契约验收，后续集成任务不能引用它们冒充真实兼容。D32 还要补齐后续执行路径对前序功能的回归，不只读取历史任务绿灯。
+“Driver unimplemented” belongs in Development, not as a validation skip reason. One combination has one outcome; split mixed outcomes into separate rows. “Acceptance passed” requires Implemented development, expanded §5.3 validation sets with every mandatory item satisfied, no Failed/Environment missing/Unverified items, and positive coverage for each feature. Local tasks such as D01/D02/D03/D07 are accepted against their local contracts; later integration tasks cannot cite these as real compatibility. D32 must also regress earlier features through later execution paths, not merely read historical green task statuses.
 
-### 5.3 逐任务必需验证集
+### 5.3 Mandatory Validation Sets by Task
 
-任务特有场景取自开发计划 Dxx 的四步清单，本表确定哪些组合必须执行。本表定义必需条目，实际结果见下方任务证据；验收条目 ID 使用 `Dxx/Vxx/能力/目标/路径/平台`，不能只给 Vxx 一个汇总成功状态。
+Task-specific scenarios come from the development plan's four-step Dxx checklists. This table determines which combinations must run. It defines requirements; actual results are in task evidence below. Acceptance item IDs use `Dxx/Vxx/capability/target/path/platform`; a single aggregate success status for Vxx is insufficient.
 
-| 任务 | 必需验证集 | 额外约束 |
+| Task | Mandatory validation sets | Additional constraints |
 | --- | --- | --- |
-| D01 | V01 | 首次建立 CI；配置、DSN、日志隔离；本地任务 |
-| D02 | V01、V02、V04 | 包流与标准库 testutil；依赖守卫拒绝反向导入；本地任务 |
-| D03 | V01、V02、V04 | 基础认证/TLS/模式的协议与安全边界；真实认证由 D04/D28 补齐 |
-| D04 | V01、V02、V05、V06 | 基础认证正向、失败及模式；建立 require 集成 job |
-| D05 | V01、V02、V05、V06 | 文本 CRUD/Rows/计数/错误与提前关闭 |
-| D06 | V01、V02、V03、V05、V06 | 取消、发送边界、淘汰和零 cgo 并发资源检查 |
-| D07 | V01、V02、V04 | 词法/绑定及发送前拒绝；本地任务，SQL 往返由 D08/D10 覆盖 |
-| D08 | V01、V02、V04、V05、V06、V10 | 服务端预处理、二进制与缓存代次 |
-| D09 | V01、V02、V03、V05、V06 | 隔离级别/只读/保存点/reset 与旧句柄 |
-| D10 | V01、V02、V04、V05、V06、V10 | 客户端预处理/escape，与服务端路径等价 |
-| D11 | V01、V02、V03、V05、V06、V10 | 混合结果、摘要、最终化与不确定结果 |
-| D12 | V01、V02、V04、V05、V06、V10 | 全类型、字符集、精度、时区和 NULL |
-| D13 | V01、V02、V05、V06 | 真实字典/参数元数据、权限、内外字典调用边界 |
-| D14 | V01、V02、V05、V06、V10 | OUT/INOUT/RETURNING 逐能力，含必要合并基础协议；两模式支持及拒绝 |
-| D15 | V01、V02、V03、V05、V06 | 资源身份、代次、父租约及幂等清理 |
-| D16 | V01、V02、V03、V07 | LOB 正向；Query/Next 内物化无锁重入、原事务可见性 |
-| D17 | V01、V02、V03、V04、V07、V08 | 原生/模拟后端分别验收，表锁/主键/无变化 UPDATE |
-| D18 | V01、V02、V04、V07、V10 | 描述缓存未命中 Query/Next 无锁重入；复杂/嵌套 LOB 往返 |
-| D19 | V01、V02、V03、V05、V06、V07 | static/sensitive/update 分条，含刷新和行定位 |
-| D20 | V01、V02、V03、V07 | REF CURSOR/流式 LOB OUT、输出发布及父 statement 寿命 |
-| D21 | V01、V02、V03、V05、V06、V10 | LONG_DATA/PIECE_DATA、Reader 失败与无重传 |
-| D22 | V01、V02、V03、V05、V06、V07、V10 | 顺序/改写/bulk/array binding、部分成功与 OUT |
-| D23 | V01、V02、V04、V09 | 标准包/压缩/OB20、校验/包上限及组合协商 |
-| D24 | V01、V02、V03、V05、V06、V09、V10 | 合并执行及已落地前序能力的路径回归；其余由所属任务/D32 补齐 |
-| D25 | V01、V02、V03、V05、V06、V09 | slog/profiling/FLT 脱敏、nil 静默及跨请求隔离 |
-| D26 | V01、V02、V03、V05、V06、V11 | 静态选址、角色和无活动会话迁移 |
-| D27 | V01、V02、V03、V04、V11 | TNS/OCP/复制拓扑各有真实发现及关闭证据 |
-| D28 | V01、V02、V03、V12 | §5.4 每个算法和传输独立验收；原生目标实际运行 |
-| D29 | V01、V02、V05、V06 | LOCAL INFILE 授权、失败/取消及事务行为 |
-| D30 | V01、V02、V03、V05、V06 | 辅助通道 TLS、ChangeUser、warnings 和身份隔离 |
-| D31 | V01、V02、V03、V13 | 两模式、直连/代理、真实恢复及状态/flags 拒绝 |
-| D32 | V01–V14 | 完整复跑、配置逐项映射/示例/基准；不缩减必需条目 |
+| D01 | V01 | Establish initial CI; configuration, DSN, logger isolation; local task |
+| D02 | V01, V02, V04 | Packet transport and standard-library testutil; dependency guard rejects reverse imports; local task |
+| D03 | V01, V02, V04 | Protocol/security boundaries for basic authentication/TLS/mode; real authentication completed by D04/D28 |
+| D04 | V01, V02, V05, V06 | Basic-auth positive/failure/mode cases; establish require integration job |
+| D05 | V01, V02, V05, V06 | Text CRUD/Rows/counts/errors and early close |
+| D06 | V01, V02, V03, V05, V06 | Cancellation, send boundaries, eviction and zero-cgo concurrent-resource checks |
+| D07 | V01, V02, V04 | Lexing/binding and presend rejection; local task, SQL round trips covered by D08/D10 |
+| D08 | V01, V02, V04, V05, V06, V10 | Server preparation, binary protocol and cache generations |
+| D09 | V01, V02, V03, V05, V06 | Isolation/read-only/savepoints/reset and stale handles |
+| D10 | V01, V02, V04, V05, V06, V10 | Client preparation/escaping and server-path equivalence |
+| D11 | V01, V02, V03, V05, V06, V10 | Mixed results, summaries, finalization and uncertain outcomes |
+| D12 | V01, V02, V04, V05, V06, V10 | All types, character sets, precision, time zones and NULL |
+| D13 | V01, V02, V05, V06 | Real dictionary/parameter metadata, permissions and internal/external dictionary-call boundaries |
+| D14 | V01, V02, V05, V06, V10 | OUT/INOUT/RETURNING per capability, including required combined foundation protocol; support/rejection in both modes |
+| D15 | V01, V02, V03, V05, V06 | Resource identity, generations, parent leases and idempotent cleanup |
+| D16 | V01, V02, V03, V07 | Positive LOB behavior; materialization inside Query/Next without lock reentry, original-transaction visibility |
+| D17 | V01, V02, V03, V04, V07, V08 | Separate native/emulated-backend acceptance; table locks/PKs/no-change UPDATE |
+| D18 | V01, V02, V04, V07, V10 | Description-cache misses inside Query/Next without lock reentry; complex/nested LOB round trips |
+| D19 | V01, V02, V03, V05, V06, V07 | Separate static/sensitive/update items, including refresh and row targeting |
+| D20 | V01, V02, V03, V07 | REF CURSOR/streaming LOB OUT, output publication and parent-statement lifetime |
+| D21 | V01, V02, V03, V05, V06, V10 | LONG_DATA/PIECE_DATA, Reader failures and no retransmission |
+| D22 | V01, V02, V03, V05, V06, V07, V10 | Sequential/rewrite/bulk/array binding, partial success and OUT |
+| D23 | V01, V02, V04, V09 | Standard packets/compression/OB20, checksums/packet limits and combined negotiation |
+| D24 | V01, V02, V03, V05, V06, V09, V10 | Combined execution and path regression for delivered earlier capabilities; remaining coverage owned by respective tasks/D32 |
+| D25 | V01, V02, V03, V05, V06, V09 | slog/profiling/FLT redaction, nil silence and cross-request isolation |
+| D26 | V01, V02, V03, V05, V06, V11 | Static selection, roles and no active-session migration |
+| D27 | V01, V02, V03, V04, V11 | Real discovery/close evidence for each of TNS/OCP/replication topology |
+| D28 | V01, V02, V03, V12 | Independent acceptance for each algorithm/transport in §5.4; native target execution |
+| D29 | V01, V02, V05, V06 | LOCAL INFILE authorization, failure/cancellation and transaction behavior |
+| D30 | V01, V02, V03, V05, V06 | Auxiliary-channel TLS, ChangeUser, warnings and identity isolation |
+| D31 | V01, V02, V03, V13 | Both modes, direct/proxy, real recovery and state/flags rejection |
+| D32 | V01–V14 | Complete rerun, per-option mapping/examples/benchmarks; no reduction of mandatory items |
 
-### 5.4 D28 认证与传输子清单
+### 5.4 D28 Authentication and Transport Subchecklist
 
-以下每行均需独立证据，当前均未验证。开始 D28 时在兼容矩阵登记精确目标版本、每种算法支持目标及平台；真实平台需求不能从名称猜测，也不能用平台不存在解释驱动尚未实现。
+Each row below requires independent evidence; all are currently unverified. When D28 starts, register exact target versions, supported targets for each algorithm and platforms in the compatibility matrix. Do not infer real-platform requirements from names or explain an unimplemented driver feature by saying the platform is unavailable.
 
-| 子项 | 必需目标/场景 |
+| Subitem | Required targets/scenarios |
 | --- | --- |
-| native password | 四目标中预登记支持组合；初始/切换、错误密码 |
-| SHA-256 | 支持组合；TLS 与固定公钥加密、无可信公钥拒绝 |
-| caching SHA-2 | 支持组合；fast/full-auth、缓存失效、TLS 门禁 |
-| clear password | 支持组合；TLS 正向、无 TLS 零凭据字节 |
-| old password | 支持组合；显式启用、默认拒绝、错误挑战 |
-| Ed25519 | 支持组合；正向、无效挑战/密钥和会话状态隔离 |
-| GSSAPI / Windows SSPI | 各声明支持的 Linux/Windows 原生环境；身份、票据错误、多阶段/切换与清理分别记录 |
-| PAM | 支持平台/服务；对话各阶段、TLS 拒绝、取消与清理 |
-| TCP | Linux/Windows amd64；两模式直连及代理，TLS/断线/超时 |
-| Unix socket | Linux 原生运行；支持模式、身份、取消和清理 |
-| Named Pipe | Windows 原生运行；支持服务、身份、取消和清理 |
-| Shared Memory | Windows 原生运行；支持服务、边界、取消和清理 |
-| OBProxy VC | 对应实现所支持平台/代理版本；连接、认证、读写、关闭 |
+| native password | Preregistered supported combinations among all four targets; initial/switch, incorrect password |
+| SHA-256 | Supported combinations; TLS and pinned-public-key encryption; rejection without a trusted public key |
+| caching SHA-2 | Supported combinations; fast/full-auth, cache invalidation, TLS gates |
+| clear password | Supported combinations; positive TLS, zero credential bytes without TLS |
+| old password | Supported combinations; explicit opt-in, default rejection, invalid challenge |
+| Ed25519 | Supported combinations; positive behavior, invalid challenges/keys and session-state isolation |
+| GSSAPI / Windows SSPI | Each declared supported native Linux/Windows environment; separately record identity, ticket errors, multiple stages/switching and cleanup |
+| PAM | Supported platforms/services; every dialogue stage, TLS rejection, cancellation and cleanup |
+| TCP | Linux/Windows amd64; direct/proxy in both modes, TLS/disconnect/timeout |
+| Unix socket | Native Linux execution; supported modes, identity, cancellation and cleanup |
+| Named Pipe | Native Windows execution; supported services, identity, cancellation and cleanup |
+| Shared Memory | Native Windows execution; supported services, boundaries, cancellation and cleanup |
+| OBProxy VC | Platforms/proxy versions supported by the implementation; connection, authentication, I/O and close |
 
-每种算法再按初始/切换/多阶段安全要求拆条；共享门禁在 D28 覆盖重新认证阶段，公开 ChangeUser 的真实组合在 D30 验证，避免反向依赖。每种传输需完成真实收发，不只验证 Dial 返回非 nil。所有**声明支持**的算法/平台/服务组合必须正向通过；不支持的交叉组合有取证和拒绝行为，不要求无意义的全笛卡尔积。至少保留上述每种能力的一个正向支持目标，缺失目标时该能力待联调。D28 可以先完成某些子项，但整个任务不能因此验收通过。
+Split each algorithm further by initial/switch/multistage security requirements. D28 covers shared gates during reauthentication; real public ChangeUser combinations are validated by D30 to avoid a reverse dependency. Each transport must perform real I/O, not merely return a non-nil Dial result. Every **declared supported** algorithm/platform/service combination must pass positively. Unsupported cross-combinations require evidence and rejection behavior, not a meaningless full Cartesian product. Retain at least one positive supported target for every capability above; a capability without a target awaits integration. D28 may complete individual subitems first, but this does not establish acceptance of the whole task.
 
-### 5.5 单项验证条目格式
+### 5.5 Individual Validation Entry Format
 
-在所属任务开始后按下面模板填写，内容留在本文件相应任务的证据条目中；大型日志由测试系统保存，本表引用稳定的相对路径或 CI 链接，不提交敏感原始日志。
+After a task starts, use the template below within its evidence entry in this file. Test systems retain large logs; reference stable relative paths or CI links here and do not commit sensitive raw logs.
 
 ```text
-任务：Dxx
-负责人 / 开始日期 / 最近更新：
-代码与测试：仓库相对路径、测试名
-已实现范围：具体 API、模式、执行路径
-必需条目：Dxx/Vxx/能力/目标/路径/平台；正向/负向，版本基线
-条目结果：未验证/通过/失败/环境缺失/服务端已验证不支持/不适用
-不适用或能力拒绝：预登记理由、依据与该功能的正向覆盖位置
-本地检查：实际命令、Go/OS/架构、通过/失败/跳过结果
-集成检查：OceanBase/OBProxy 版本、模式、路径、命令、结果
-故障/资源：对应断言及结果；无适用项时写明理由
-未验证范围：实际缺少的环境或用例
-阻塞与解除条件：原因、影响任务、可继续内容、下一动作
-下一步：一个可以直接执行的动作
+Task: Dxx
+Owner / start date / latest update:
+Code and tests: repository-relative paths, test names
+Implemented scope: specific APIs, modes, execution paths
+Mandatory items: Dxx/Vxx/capability/target/path/platform; positive/negative, version baseline
+Item result: Unverified/Passed/Failed/Environment missing/Server verified unsupported/Not applicable
+Not applicable or capability rejection: preregistered reason, basis and positive-coverage location for this feature
+Local checks: actual commands, Go/OS/architecture, pass/fail/skip results
+Integration checks: OceanBase/OBProxy versions, mode, path, commands, results
+Faults/resources: corresponding assertions/results; state the reason if none apply
+Unverified scope: actually missing environments or cases
+Blockers and resolution: reason, affected tasks, work that can continue, next action
+Next step: one directly executable action
 ```
 
-### 5.6 已实现任务的本地证据
-
-#### D01 配置与日志
-
-- 开发：已实现；验证：本地通过。代码：`config.go`、`dsn.go`、`connector.go`、`driver.go`、`logging.go`；测试：`config_test.go`、`dsn_test.go`、`logging_test.go`。
-- RED：默认值、无效配置、严格 DSN、快照隔离和 logger 断言均在功能空实现上实际失败；GREEN：Go 1.25.0/1.26.0 Windows amd64 的 `go test ./... -count=1`、`go vet ./...` 通过；golangci-lint 2.14.0 为 0 issues。
-- 已实现：配置校验/默认值、TLS/map/slice 快照、注册、logger 注入/nil 静默与脱敏。Java option 持续记录任务/承载/状态，见 [迁移清单](go-driver-options-mapping.md)；D32 核对固定版本后将原155项提取补正为160项。D01 的 Connect 不可用路径已在 D04 替换；标准文本执行已在 D05 接通，参数与预处理由后续任务交付。
-- V01 未完成条目：Linux 实际执行、GitHub CI 运行证据；CI workflow 已建立，尚未远程执行。回调、私钥/已解析证书与 logger 的并发安全由调用方保证。
-
-#### D02 包流与依赖守卫
-
-- 开发：已实现；验证：本地通过。代码：`internal/wire/packet.go`、`internal/testutil/peer.go`；测试：对应单测、`packet_fuzz_test.go`、根外部 `architecture_test.go`。
-- RED：包边界、长度、短 I/O、截断、序号、取消及故障对端断言实际失败；依赖守卫的反向/横向/生产导入测试辅助负例先失败后通过。
-- GREEN：Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 通过；Go 1.25.0/1.26.0 Windows/386 全包运行通过；lint 0 issues。`FuzzPacket` 两版本各运行 30 秒，分别 2,277,684 / 2,606,613 次，通过。
-- V01/V04 待补：Linux/CI 实际运行。全部是合成协议/内核测试，没有数据库联调，也不能证明真实协议协商或 SQL 兼容。
-- 架构守卫实际读取 `go list -deps -json -test -tags=integration ./...` 的 Standard/Imports 信息；内部包无反向/横向依赖，testutil 只用标准库。
-
-#### D03 握手、认证与模式
-
-- 开发：已实现；验证：本地通过。代码：`authentication.go`、`errors.go`、`internal/auth`、`internal/wire/handshake.go`；测试：`authentication_test.go`、`authentication_paths_test.go` 及内部算法/包解析测试。
-- 已覆盖：native、caching SHA2、SHA256、clear；初始/切换/full-auth、固定 RSA 公钥、凭据每次刷新、认证工厂与 TLS 门禁、真实本地 TLS 握手、错误证书/主机名、自定义 Dial 伪造安全状态、模式不符和 Oracle ChangedRows 拒绝。握手不锁 ModeAuto；成功初始化后的锁定归 D04。
-- RED→GREEN：算法向量、报文/TLS 门禁和配置快照用例先失败后通过；快速认证必须最终 OK、初始旧格式服务端 ERR 分别由回归用例复现后修复。独立代码走查的问题已处理；不另存走查报告。
-- V01/V02/V04：Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 与 Windows/386 全包运行通过，golangci-lint 2.14.0 为 0 issues；`FuzzHandshake` 各 30 秒，分别 314,204 / 223,550 次，通过。CI 定义加入握手 fuzz，尚未远程执行。
-- race 未通过运行环境检查：Windows 启动 race 测试进程返回 `0xc0000139`；指定 GCC 并前置其 DLL 搜索目录后结果相同。没有得到 race 检测结果，不计为通过；Linux/CI 的 race 仍待运行。
-- 版本/能力依据见 [兼容条件矩阵](go-driver-compatibility-matrix.md)。真实服务端四目标及 OBProxy/平台插件均未验证，本阶段未连接数据库。D28 继续覆盖完整平台认证，不把上述四种算法当作全部认证能力。
-
-#### D04 建连、初始化与 Ping
-
-- 开发：已实现；验证：本地通过。代码：`connector.go`、`conn.go`、`session.go`；测试：`connector_test.go`、`tests/integration/env_test.go`、`smoke_test.go`。
-- 已实现：Dial/握手/TLS/凭据/初始化共用建连 context 总预算，成功初始化后原子锁定模式；失败会话关闭且不锁模式，并发相反模式只允许一个发布；设置字符集/autocommit、确定顺序的会话变量和 InitSQL；Ping、COM_QUIT、有界关闭及 Validator 连接淘汰。
-- RED→GREEN：预算/初始化/并发模式用例先失败后通过；非法初始化配置及 Ping 失败仍回池的用例复现后修复。独立走查发现并修正并发测试的失败清理顺序，模式并发用例连续运行 20 次通过。
-- V01/V02：Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 通过；普通构建与 integration 辅助代码 lint 通过；`TestProfiles` 只验证 profile 选择，未连接数据库。既有依赖守卫同时检查 integration/test 的导入。
-- 真实验收入口按四种 profile 建立，默认常规 test 不编译/执行 integration；手动 CI 显式启用才运行 TestSmoke，OB_TEST_REQUIRE=1 强制缺环境失败。未触发 CI，也未执行 TestSmoke。
-- D05 已接通查询式 InitSQL 排空及精确 OceanBase 版本捕获。Prepare/Begin 暂返回明确能力错误；后续所属任务替换。命令结束必须 autocommit 且无悬挂事务，不将事务状态作为池基线。
-
-#### D05 文本执行与标准结果
-
-- 开发：已实现；验证：本地通过。代码：`execute.go`、`rows.go`、`result.go`、`codec.go`、`internal/wire/text.go`；测试：`execute_test.go`、`codec_test.go` 及 wire 文本测试。外部示例在 `example_test.go`。
-- 已实现：COM_QUERY、NULL/空值/二进制所有权、EOF 与协商 OK 替换、混合多结果排空、完整 ERR 后复用、基础 ColumnTypes、计数溢出、精确 NUMBER/DECIMAL 和大无符号数、Oracle 特殊浮点；元数据累计/消息/LOB/结果项均有资源边界。未知类型拒绝；完整字符集/时间/扩展类型继续归 D12。
-- 建连查询 `ob_version()`，Oracle 加 `FROM dual`，保留 OceanBase 版本原文；查询式 InitSQL 使用相同结果执行器排空。握手声明已实现的 multi-results/session-track/deprecate-EOF；多语句位仅显式配置时声明。
-- RED→GREEN：文本执行基础断言，以及 JSON 类型、元数据累计大小、LOB 物化上限、正常 NextResultSet 不使用清理超时、Oracle NAN/INF/-INF 回归均实际观察失败后修复。独立复审无剩余可操作发现；不另存报告。
-- V01/V02/V04：Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、Windows/386 全包运行通过；普通及 integration 辅助代码 lint 0 issues。`FuzzText` 两版本各 30 秒，分别 3,631,645 / 1,457,299 次，通过；CI 已增加该 fuzz。
-- `TestProfiles` 双版本通过，仅验证选择；`TestQueryCRUD`、`TestQueryResults` 和增强的 `TestSmoke` 已编译且由显式手动集成 job 覆盖，未执行数据库测试。Linux/远程 CI/race 仍待验证；验收继续 0/32。
-
-#### D06 取消、关闭与无重放
-
-- 开发：已实现；验证：本地通过。代码：`conn.go`、`connector.go`、`execute.go`、`rows.go`；测试：`cancel_test.go`、`retry_test.go`。
-- RED→GREEN：闲置 Rows 取消不能断流、等待会话锁忽略 context、Conn.Close 被未关闭 Rows 卡住，均由回归测试复现后修复。会话锁现在可取消；关闭共享清理预算，超时直接淘汰；closed 原子状态允许并发关闭及 Validator 检查。
-- Query 的 AfterFunc 覆盖整个 Rows 生命周期；释放前 stop/等待回调，避免旧取消影响下一操作。部分写与丢响应保留 wire.IOError/字节证据，禁止发送后的 ErrBadConn 自动重放；坏连接不会回池。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 通过，integration 辅助代码 lint 0 issues；取消/关闭/无重放用例连续 20 次通过。独立复审无可操作发现；没有数据库联调。
-- Go 1.25 race 再次在 Windows 进程启动时返回 `0xc0000139`，没有检测结果；CI 增加两个 Go 版本的 Linux 全包 race，尚未远程运行。真实语义/跨平台验证保留待验收。
-
-#### D07 词法绑定与参数转换
-
-- 开发：已实现；验证：本地通过。代码：`sql_lexer.go`、`bind.go`、`execute.go`；测试：`bind_test.go`、`bind_fuzz_test.go`。
-- 覆盖引号/注释/Oracle q-quote、命名与编号占位符、重复逻辑参数到多个物理位置、缺失/多余/混合/重复参数拒绝、Valuer 单次转换、typed nil 和 uint64 保真。MySQL 原生服务端预处理在 D08 以服务端参数元数据为准；严格词法计划对引号模式歧义拒绝插值。
-- 普通零参数 SQL 原样发送，语法和未绑定占位符由服务端报错；不按分号猜测存储过程/匿名块边界。多语句开关只控制 CLIENT_MULTI_STATEMENTS 协商，不插入查询 SQL 模式的辅助 SQL，避免改变 ROW_COUNT/FOUND_ROWS/warning 等诊断。参数执行在 D08 接通，当前仍明确拒绝。
-- 原始例程/匿名块/可执行注释、ANSI_QUOTES 与无辅助查询回归均 RED→GREEN；独立复核无剩余可操作发现。Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、Windows/386 运行通过；integration 辅助代码 lint 0 issues。
-- FuzzBindPlan 两版本各 30 秒通过，Go 1.25 复跑 56,859 次、Go 1.26 14,432 次；Go 1.25 首次并发运行在退出阶段超时，单工作进程复跑成功。CI 增加该 fuzz。Linux/远程 CI/race 与数据库联调未执行；验收仍 0/32。
-
-#### D08 服务端预处理与二进制收发
-
-- 开发：已实现；验证：本地通过。代码：`stmt.go`、`codec_binary.go`、`internal/wire/stmt.go`；修改 `execute.go`、`rows.go`、连接及能力声明。测试：`stmt_test.go`、`binary_rows_test.go`、wire stmt 单测及 `FuzzStmt`。
-- 标准 ConnPrepareContext、StmtExecContext/StmtQueryContext 及旧方法委托；MySQL 原文与服务端参数数量、Oracle 命名/编号到物理参数映射；每次发送类型头，NULL bitmap、uint64、精确 decimal、固定整数 NUMBER、特殊浮点、字节/文本和基础时间。时间输入超过微秒或范围时明确拒绝，纳秒/扩展时间及其他完整类型由 D12 交付。
-- 无参数走普通文本；带参数使用临时服务端 statement，终态/提前关闭自动有界释放；显式 sql.Stmt 可重复执行，标准池在各物理会话独立 prepare，不共享 ID。尚无隐式 statement 缓存，D24 再交付有界 LRU。二进制结果复用既有 Rows 取消、EOF、多结果和故障清理；仅在服务端声明时协商 CLIENT_PS_MULTI_RESULTS。
-- RED→GREEN：预处理缺失、二进制 MySQL 非有限浮点错误接受、自动 statement 清理错误遗漏、Oracle 特殊浮点输入被误拒绝；均有针对回归。Prepare context 不保存到 statement，后续取消不影响下一执行；Stmt.Close 等待也有清理上限。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 与 Windows/386 运行通过，integration 辅助代码 lint 0 issues。FuzzStmt 各 30 秒，916,857 / 898,336 次，通过；CI 已增加该 fuzz。
-- 独立复核未发现剩余可操作问题；`TestPrepareRoundTrip` 已仅编译并加入手动集成 job，未连接数据库。Linux/远程 CI/race 与真实两模式/OBProxy 往返待验证；验收仍 0/32。
-
-#### D09 本地事务、保存点与 reset
-
-- 开发：已实现；验证：本地通过。代码：`tx.go`、`savepoint.go`、`reset.go`，标准 ConnBeginTx/Tx/SessionResetter 接线；测试：`tx_test.go`、`reset_test.go` 和仅编译的 `tests/integration/tx_test.go`。
-- MySQL 支持默认、ReadCommitted、RepeatableRead、Serializable；Oracle 支持默认、ReadCommitted、Serializable，ReadOnly 与显式 ReadCommitted 的冲突在发送前拒绝；两模式均拒绝 ReadUncommitted。不用 Java 的只读到可重复读转换改变 Go 请求语义。
-- COMMIT 丢响应返回 ErrCommitUnknown，不重放或声称回滚；确认提交后恢复失败返回 ErrTxCleanup。取消后的 Rollback 使用独立清理 context；事务始终留在原物理连接。保存点名称按模式引用，Oracle RELEASE 在发送前拒绝。
-- Managed 仅在池复用边界修复驱动管理的事务/autocommit，不承诺清除任意用户状态。Full 在未确认可靠 OceanBase 原生 reset 条件时淘汰物理连接；database/sql 在新会话重新 prepare，不迁移旧 statement ID。本任务没有声称原生 COM_RESET_CONNECTION 已取证。
-- RED→GREEN：事务接口、提交结果未知/恢复失败、脏池复用、Full 后 statement 重建及 MySQL ReadUncommitted 发送前拒绝；事务/reset 针对套件连续 10 次通过。独立复核发现的隔离级别门禁已修复，不另存报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、Windows/386 运行通过；普通和 integration 辅助代码 lint 0 issues。集成源码仅编译，未连接数据库；Linux/远程 CI/race 仍待验证，验收维持 0/32。
-
-#### D10 客户端预处理与显式 escape
-
-- 开发：已实现；验证：本地通过。代码：`client_prepare.go`、`escape.go`、`internal/charset`，Config.PrepareMode/DSN 及标准 Prepare/Exec/Query 接线；测试：`client_prepare_test.go`、`escape_test.go`、两个 fuzz 和字符集单测。
-- 默认 PrepareServer；仅显式 PrepareClient 使用客户端插值，不自动降级。执行时读取当前 NO_BACKSLASH_ESCAPES 状态，歧义的 MySQL 双引号跨度拒绝；不插入 sql_mode 查询。每个字面量保留 token 空白边界，防止负数变成注释或数字与别名合并。
-- MySQL 字符串使用明确字符集的 hex literal，二进制独立编码；Oracle 使用引用/HEXTORAW/CHR(0)。有限浮点保留 DOUBLE 身份：MySQL 指数形式、Oracle d 后缀；不让 Oracle NUMBER 范围截断 double。消息、累计编码和 LOB 参数有界，Valuer 复用 D07 的单次转换。
-- 字符集叶包提前自 D12 接入当前连接已支持的 UTF8MB4/UTF8MB3/Latin1（Windows-1252），唯一依赖 x/text v0.31.0；其他字符集及完整类型映射继续 D12。整条客户端 SQL 与参数均编码，非法/不可表示文本拒绝。
-- RewriteJDBCEscapes 显式处理日期/时间戳、函数、嵌套、call/返回调用、outer join/escape；不改写引号/注释，Auto 与会话引号歧义拒绝。Oracle 无 TIME 类型及未确定的 timestamp arithmetic 明确拒绝；普通 SQL 没有隐式 JDBC 改写。MySQL REAL/FLOAT/DOUBLE 转换保留浮点语义。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、Windows/386 运行通过，普通及 integration 辅助代码 lint 0 issues。两个 fuzz 在两版本各 30 秒通过；客户端插值 549,084 / 344,984 次，escape 371,466 / 7,673 次。CI 定义已加入；本地后续回归与全量验证覆盖走查修复。
-- 独立复审发现的负数边界、浮点类型和 REAL 转换已回归修复。TestPrepareEquivalence 源码仅编译，未执行数据库联调；Linux/远程 CI/race 待验证，验收仍为 0/32。
-
-#### D11 Execute、多结果摘要与计数策略
-
-- 开发：已实现；验证：本地通过。代码：`execution.go`、`execute.go`、`rows.go` 与参数/prepare 接线；测试：`execution_test.go`、`internal/wire/packet_test.go`。Execute 仅接受非 nil 的标准 Conn/Tx；发送前失败不返回执行对象，发送后保留错误前缀和部分结果。
-- 摘要按服务端顺序保存命令、行集与错误；行集从 0 编号，不插入假行集；零计数与未知不同，uint64 生成 ID 保留十进制文本。结果数有界，计数溢出明确失败，Snapshot 复制切片且不访问网络/标准 Rows。
-- Close 有界排空、幂等并合并标准库 Rows.Err；调用方应先停止迭代，以 Close 为最终摘要边界。原始事务上下文关联保留 DeadlineExceeded/自定义 cause；显式 Commit/Rollback 内部取消由 Close 协调。首个顶层及逐项错误均保留，包含已传输字节证据。
-- 包流每次入口刷新双向 deadline，离场只停止/等待旧取消回调；已收完整响应不被清 deadline 失败覆盖。TLS 升级清除原包流 deadline 后由同一上下文的 HandshakeContext 负责取消；后续包流重新设置 deadline。
-- 两工具链 Go 1.25.0/1.26.0 的 Windows amd64 全包 test/vet、Windows/386 运行、普通和 integration lint 均通过；相关执行/事务/TLS 目标测试重复 10 次通过。FuzzPacket 两版本各 30 秒通过，分别 2,236,794 / 2,526,965 次。
-- `TestMultiResult` 两模式源码及 MySQL 无变化 UPDATE/upsert 计数对照已编译，CI 手动入口已加入；未执行数据库联调。Linux/远程 CI/race 尚未验证；验收仍为 0/32。
-
-#### D12 标量、字符集与时间语义
-
-- 开发：已实现；验证：本地通过。新增 `types.go`、`number.go`、`temporal.go`、`codec_temporal.go`，扩充绑定、两类预处理、会话初始化、Rows 及 charset 叶包。公开值类型实现 Scanner/Valuer，识别具体类型与 sql.Null[T] 后保留协议身份；普通 Scan 不返回自定义对象。
-- 精确 Number 有界展开且不经 float64；NString、Raw、RowID 和原生 Oracle TZ/LTZ/TIMESTAMP/间隔覆盖文本/二进制/客户端三路径。连接 SQL、准备 SQL、参数、结果和列名按字符集转换；UTF16 的 NCHAR/结果支持与客户端限制分开，未知编码/collation 拒绝。
-- Session.ParseTime 默认 false；显式启用后按 Location 解析无时区日期/时间戳，TIME/YEAR 不改语义。建连设置真实会话时区，用户初始化后重新应用类型基线。纳秒、偏移和 region 保留；LTZ 墙上时间没有 fold 时不虚构瞬间，DST 缺口/重叠转换报错。
-- RED→GREEN 覆盖类型/精度、SQL 与列名编码、parseTime 及 ScanType、sql.Null 身份、初始化覆盖时区、二进制字节参数上限；独立走查发现的公元 1 年误判已回归修复。FuzzCharset 发现 Windows-1252 未定义字节静默替换，现明确拒绝并保留最小 corpus。没有另存走查报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 运行及普通/integration 两套 golangci-lint 均通过。FuzzScalars 各 30 秒，409,076 / 339,348 次；FuzzCharset 修复后各 30 秒，7,067 / 175,854 次，通过，CI 定义已加入。
-- `TestAllScalarPaths` 使用真实 database/sql + 协议对端验证八类标量的参数和结果/NULL；非法编码验证物理连接淘汰。`TestAllScalarTypes` 四目标三路径集成源码仅编译，未连接数据库；Linux、远程 CI/race、服务端时区表/SQL及字符集实际兼容仍待验证，验收仍为 0/32。
-
-#### D13 数据库、结果与参数元数据
-
-- 开发：已实现；验证：本地通过。新增 `metadata.go`、两模式 SQL 文件、`metadata_test.go`、`metadata_fuzz_test.go` 和仅编译的集成源码；补齐普通 Rows 的五个 ColumnType 接口及 prepare 参数描述保存。公开 Metadata 仅接受固定 Conn/Tx，返回普通 Rows；17 种 Kind 的字段/NULL/类型/模式边界见架构 §16.1.1。
-- 筛选值参数化，内部复用现有安全字面量编码和同一物理会话；保留大小写与 LIKE 转义。不把任意名字拼入标识符位置。公开 Rows 接管连接 gate，内部 Rows 保留外层所有权；未读响应拒绝内部命令，错误/关闭有界排空。描述缓存待 D18，当前没有任意字典行集缓存。
-- StatementParameters 无论 PrepareMode 都只做服务端 prepare/close，按物理位置描述并保留重复逻辑参数；方向未取证时 NULL，同时保存原始协议字节。Oracle catalog 为空行集，MySQL 不提供的类型/同义词字典返回 ErrUnsupported；PARAMETERS 仅按真实 ob_version >=4.1 开放，未知/旧版本现已补精确例程 SHOW CREATE 回退（见2026-10-19补充）。字典权限错误保留服务端代码。
-- RED→GREEN 覆盖统一入口、过滤/枚举/数量边界、未知长度/精度、内部响应及锁边界、参数身份和协议描述。独立走查发现的 FLOAT 二进制精度、两个字典 NUMBER_PRECISION 字段、索引 A/D 到 ASC/DESC 规范化均已用回归验证修复；未发现其他 Important/Critical，不另存报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 运行通过；普通和 integration 两套 golangci-lint 均 0 issues。Metadata/ColumnTypes 目标用例重复 10 次通过；FuzzMetadataFilters 两版本各 30 秒，117,697 / 117,036 次，通过，CI 定义已加入。
-- `TestMetadataCatalog` 在四目标创建表/外键/视图，比较 DDL、独立字典列顺序和模式字典可用性；当前仅编译，未连接真实数据库。Linux/远程 CI/race、字典字段的目标版本兼容及实际权限仍待验证，验收保持 0/32。
-
-#### D14 标量 OUT、INOUT 与 RETURNING
-
-- 开发：已实现；验证：本地通过。新增 `call.go`、`call_execution.go`、`call_mysql.go`、`prepare_execute.go` 及 OUT/协议/集成测试；标准 Query/Exec 和两种预处理共用输出校验、赋值与最终化。Out 类型与尺寸、ErrOut/OutError 的具体行为见架构 §13.1。
-- Oracle 使用真实 ob_version >=2.2.76 的 command161，接收参数/列元数据、内部输出与 mandatory tail；接受 RETURNING 1/3 和 PL OUT，支持弃用 EOF。MySQL 使用同会话随机变量初始化/执行/读取/清空；辅助命令保留 gate，且不继承父 Execution 摘要。临时 statement 或变量清理失败返回错误并淘汰连接。
-- RED→GREEN 和回归覆盖发送前拒绝、INOUT 初值及复用、Number/nullable/unsigned 身份、NULL/溢出/尺寸、重复逻辑绑定一致性、零行/多行输出、尾包错误、主/辅助命令错误、关闭失败及最终化期间取消；所有内置转换通过后才写回，自定义 Scanner 失败报告 Partial。原有未知列类型立即拒绝和绑定/标量用例同步通过。独立走查无剩余 Important/Critical，不另存报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 运行通过；普通/integration 两套 golangci-lint 均 0 issues。`TestOut*` 重复 10 次通过；FuzzPrepareExecute 两版本各 30 秒，563,547 / 612,847 次，通过，CI 定义已加入。
-- `TestScalarCall`、`TestReturning` 在真实四目标验证过程、函数、匿名块、多输出、异常抑制和 RETURNING；当前仅编译并加入显式手动集成入口，未连接数据库。Linux/远程 CI/race、目标例程/RETURNING 与 OBProxy 行为仍未验证；实现 14/32，验收保持 0/32。
-
-#### D15 固定会话资源与生命周期
-
-- 开发：已实现；验证：本地通过。新增 `resource.go`、`resource_test.go`；复用 Session 具体类型校验，接通标准 Exec 私有关闭请求、connection 内记录、物理/会话/事务身份和 statement 租约。句柄只持标准 Conn/Tx 引用及不透明标识，不持 driverConn；无公开资源管理器或全局注册表。
-- 事务开始/结束、池 reset 与服务器可观察事务状态切换使旧代次失效。完整外层响应清理未发布/过期记录，内部辅助响应保留外层资源；statement 调用方 Close 立即禁止继续执行，服务器关闭等最后一个资源租约释放。资源 Close 不提交/回滚/关闭调用方 Session。
-- RED→GREEN 覆盖无效 Session、错误物理连接、Conn/Tx/新事务/reset、并发幂等关闭、未发布记录、手动事务边界及有界清理。评审发现的事务清理无超时与标准库分派前取消已分别由 `TestResourceTransactionCleanupBounded`、`TestResourceCancellationAtDispatch` 复现并修复；保留 statement 的 OUT 执行与预取消 Close 回归也通过。不保存独立走查记录。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包运行通过；普通/integration 两套 golangci-lint 均 0 issues；`TestResource*` 各重复 20 次通过，既有集成源码仅编译。文档路径/链接/围栏、155 项 option 表与 15 项实现计数检查通过。
-- 具体 locator/游标协议及公开句柄仍由 D16/D19/D20 实现。未连接真实数据库；Linux/远程 CI/race 仍未验证，当前 Windows race 运行条件未恢复。实现 15/32，验收保持 0/32。
-
-#### D16 原生 BLOB/CLOB/NCLOB
-
-- 已实现 OpenBlob/OpenClob，Blob 字节随机读写/长度/缩短、显式 context Reader/Writer，Clob 码点读写/长度/缩短。只保存标准 Session 和不透明资源身份；原生解析留在 wire，调度/物化在根包，无新包依赖环。
-- Locator V1/V2、内联/外联、临时/持久、NULL/空值分别处理；原生 DBMS_LOB 复用 D14 合并执行内核，实际 ob_version >=2.2.76。读取数量无损接受整数/NUMBER；分块和清理有界；写失败返回已完成前缀，不重放。协商 CONNECT_ATTRS 后只声明已实现的 V2 属性位。
-- 普通 Query、多个行集及标量 OUT 有界物化内容，完成整个响应/尾部后才插入内部命令；不重入公开 sql/Metadata 或 gate，不开辅助连接。Open 基数错误清理所有已取得临时对象，成功句柄在查询/清理/最终取消检查完成后发布。
-- 字符索引采用 Unicode 码点；已知 UTF16 collation 转为服务端单位；改变已有代理对宽度的覆盖在写前 ErrUnsupported，追加/等宽覆盖及截断支持。真实 NCLOB 单位/编码和同事务可见性仍未验收。
-- RED→GREEN 覆盖 out-row 短读、QueryContext 原会话物化、临时多对象清理、标量 LOB OUT，以及走查发现的缓冲事务 context、NUMBER 数量、UTF16 覆盖和 OUT 后首个普通 LOB 行集。补充超过16MiB Reader、混合结果、部分写错误、CLOB/NCLOB 等宽覆盖/截断和发送前取消。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包运行通过；LOB/Clob 各重复10次通过；普通/integration golangci-lint 均 0 issues。Locator fuzz 各30秒通过（1.25: 2248880，1.26: 2524672 次）。TestNativeLOB 已加入手动集成入口，仅编译，未连接数据库。
-- 实现 16/32，验收仍为 0/32。Linux/远程 CI/race 未验证；当前 Windows race 运行条件未恢复。不保存独立走查报告。
-
-#### D17 表内 BLOB 与 MySQL 分块后端
-
-- 开发：已实现；验证：本地通过。负责人 Codex；开始/完成日期 2026-10-17。新增 `lob_target.go`、`lob_mysql.go`、对应普通/故障/fuzz 测试及仅编译的 `tests/integration/table_blob_test.go`；复用 Blob、标准 Session 私有分派与现有资源代次，无新增公开包或横向依赖。
-- 目标由当前模式字典确认基表、二进制非生成 BLOB 列和完整主键。Schema 在原会话解析后固定，标识符逐部分引用，Key 与字节值复制，自定义 Valuer 只求值一次。打开只读取元数据、存在性/NULL/长度或原生 locator，不整体读取内容；无行/NULL/非 NULL 空值分别处理。
-- MySQL OCTET_LENGTH/SUBSTRING 逐次重新按键访问；每块最多 32767 字节并缩小到消息/单块预算，句柄内容可超过物化上限。WriteAt/Truncate 仅允许调用方可写 Tx 和已知 InnoDB 锁语义，每次先 FOR UPDATE 确认身份及长度；不填稀疏空洞，ChangedRows=0 不误报缺行。四种 BLOB 容量在首次修改前预检；UPDATE 有 warning 时 ErrLOB，失败块可能已产生影响，回滚由调用方负责。
-- Oracle 相同目标解析原生 Blob，可写 Tx 打开时 FOR UPDATE；只读 Tx/Conn 不加该锁。公开名字使用字典精确拼写，MySQL 列名忽略大小写解析。内部命令始终保留原 gate/物理会话并消费完整响应；关闭模拟句柄只释放本地记录，事务结束/reset 使句柄失效。
-- `TestBlobTarget*`、`TestTableBlob*` 覆盖复合主键/特殊标识符、Valuer 一次及修改隔离、缺行/NULL/空、大于物化上限的跨块读取、最大偏移/追加/相同值/空写/缩短、只读和未知引擎、锁错误、断线/取消不重放及完成前缀。Oracle CHAR/DATE 主键、默认表达式与生成列区分、原生事务行锁、容量和 warning 问题均由 RED→GREEN 回归验证；独立走查未留下可操作问题，不另存报告。
-- 最终在 Go 1.25.0/1.26.0 Windows amd64 运行 `go test ./... -count=1`、`go vet ./...` 和目标用例重复 10 次通过；两版本实际 Windows/386 全包测试通过。普通与 `--build-tags=integration` 的 golangci-lint 均 0 issues；集成源码使用 `-run '^$'` 仅编译。`FuzzBlobIdentifiers` 两版本各 30 秒通过，分别 554034 / 642929 次；CI 定义已加入。
-- 实现 17/32，验收仍为 0/32。`TestTableBlob` 四目标源码覆盖大对象、ChangedRows、并发锁/回滚、截断和资源结束；未连接数据库，实际 SQL/字典/锁/Oracle locator/非严格模式仍待联调。Linux、远程 CI 和成功 race 尚无证据。
-
-#### D18 OBJECT/ARRAY 与同会话类型描述
-
-- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增 `complex.go`、`complex_codec.go`、`type_descriptor.go`、`internal/wire/complex.go`、复杂值普通/故障/fuzz 测试及仅编译的 `tests/integration/complex_test.go`；根包编排复用现有 wire/charset/metadata/LOB，不增公开包、依赖或循环引用。
-- Object/Array/Attribute 保留精确类型与字段顺序，Scanner/Valuer 使用 format=1 JSON；NUMBER 十进制、RAW/BLOB base64、墙钟时间、嵌套/NULL/空集合无损。NamedValueChecker 保留原生输入身份，参数发送真实 COMPLEX160，不把 JSON 字符串当作对象协议。
-- 字典缓存仅限单业务命令/单物理会话；模式/schema/name/协议版本为键，命令/reset 清空；0 表示服务端当前版本。复用 D13 类型/属性/集合/同义词计划，支持 private/PUBLIC synonym，拒绝远程链接和循环。未读响应禁止内部命令；先有界缓冲全部剩余响应再查字典/读嵌套 LOB，不重入公开 Metadata/Session/database/sql，不开辅助连接，不重放业务 SQL。
-- 当前支持及拒绝边界见架构 §11.2.2、兼容矩阵 §9。要求服务端预处理二进制结果；非 NULL TIMESTAMP/LOB 字段输入和未确认的内置集合元素头明确拒绝。JSON/树/描述响应有界，根复杂值的嵌套 LOB 共享剩余额度；最终表示与整响应另受 MaxMessageBytes 限制。
-- `TestComplexLossless`、`TestDescriptorNoReentry`、`TestDescriptorRefresh` 覆盖标准 database/sql 缓存未命中、完整响应、类型版本/字段变化及精确值；补齐具名/匿名对象集合、CLOB 字符集、PUBLIC 同义词、描述累计预算、复杂 OUT 尾错等路径。四处问题均先复现再修复：OUT 列数越界、树构建期共享预算、Close/Exec 后续复杂结果集排空、非法数组元素头；同时补齐最终 OUT 清理超时及缓冲描述刷新回归。独立只读复核未发现遗留 Important/Critical，不保存独立走查报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 `go test ./... -count=1` / `go vet ./...`、复杂/描述用例重复 10 次、实际 Windows/386 全包运行均通过；普通及 `--build-tags=integration` 的 golangci-lint 两版本均 0 issues。`FuzzComplex` 两版本各 30 秒通过，分别 203745 / 266653 次，CI 已加入。integration 使用 `-run '^$'` 仅编译，没有数据库连接。
-- 实现 18/32、G3 6/10，验收仍为 0/32。`TestComplexTypes` 已提供四目标对象/集合、精度/RAW/DATE、NULL、嵌套 LOB、原事务及复杂 OUT 源码；实际类型/权限/版本/OBProxy 行为仍未联调。Linux、远程 CI 和成功 race 仍无运行证据。
-
-#### D19 原生游标、滚动、刷新与可更新结果
-
-- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增根包 cursor.go/cursor_protocol.go/cursor_update.go、协议/边界/更新测试及仅编译的 integration 游标源码；未增加包、依赖或循环引用。server prepare 提取同 gate 内部入口供 Refresh/DML 复用，公开 Prepare 路径继续持有原 gate 并保持有界清理。
-- Forward 使用原生 cursor execute/fetch；Static 使用受 MaxCacheBytes 约束的真实 fetch 快照；Sensitive 通过 Oracle >=2.2.76 的命令161/scrollable mode8/绝对 offset fetch，每次定位向服务器请求，不用缓存冒充。旧/未知 Oracle offset 版本使用普通9字节向前 fetch；EOF 两路径均消费正确响应，row EOF 状态在尾 OK 前保留。
-- 标准 Conn/Tx + sql.Rows 批次，独立 Fetch context、批次未关闭即 ErrCursorBusy；所有值有界缓冲，复杂描述/LOB 在完整响应后原 gate 内处理。Close/事务/reset 释放既有 statement 租约，不开辅助会话、不重放业务 SQL。
-- 修改/Refresh 要求可写 Tx、单基表投影和完整 PK；MySQL 要求 InnoDB。修改列显式、安全引用，DML/Refresh 用原生参数；Update/Delete 先同事务 FOR UPDATE，ChangedRows=0 不误报缺行。Insert 拒绝 NULL/缺失 PK；生成列拒绝写入；Refresh 读取基表投影，static 保留原快照。具体位置/主键/模式/版本边界见架构 §15。
-- `TestCursorFetch`、`TestCursorStatic`、`TestCursorSensitive`、`TestCursorUpdateIdentity`、`TestCursorInsertRefresh`、Oracle LOB/修改、两种 EOF、旧版本、事务/reset/context 等本地通过。回归先复现再修复了空游标重复 fetch、失败 fetch 后复用、NULL 字节主键、原生参数契约差异、prepare/存在性锁后事务代次变化继续修改、Refresh 缺行误淘汰调用方事务，以及损坏错误包复用连接；相应场景通过。独立只读走查未发现遗留 Important/Critical；没有另存走查报告。
-- 最终 Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、游标重复10次、实际 Windows/386 全包测试通过；两版本普通及 integration 标签 golangci-lint 各0 issues。`FuzzCursorPosition` 两版本各30秒通过，分别295037 / 588323次；CI 已加入。integration 均以 `-run '^$'` 仅编译。
-- 当前实现19/32，G3 7/10，验收仍0/32。`TestCursorModes`、`TestCursorUpdates` 已有直连/代理两模式的原生 fetch、LOB、滚动/敏感变化、PK 增删改刷新、并发缺行及事务失效源码；真实服务器/锁/版本/权限/敏感性与隔离尚未联调。Linux、远程 CI 和成功 race 仍无运行证据。
-
-#### D20 REF CURSOR 和流式 LOB 输出
-
-- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增根包 cursor_out.go、输出/子 Rows 回归和 integration 源码；复用标准 database/sql、资源代次及父 statement 租约，无新增包或依赖。
-- CursorOut、显式 BLOB/CLOB/NCLOB Out 只由 Execute 接受；Oracle 已知 >=2.2.76 原生隐藏 OUT/完整尾响应。目的初始 nil、NULL 保持 nil；拒绝 INOUT 和句柄长度/精度提示。最后资源关闭才关闭父 statement；已发布句柄跨 Execution.Close，Fetch/LOB 读取使用新 context。
-- 普通子 REF CURSOR 在完整父响应后有界读取；返回标准子 driver.Rows 并随父 Rows 关闭。总预算包含嵌套元数据/行体，最大 16 层及循环拒绝；static 的跨批缓存计入子快照，回看创建独立子读者。事务内部 operation context 与调用方 iteration context 分离。
-- `TestCursorOutPublish`、`TestOutputLease`、LOB 混合/超物化上限、NULL、尾错/损坏响应、普通接口/模式/版本发送前拒绝、Scanner 失败及转换中取消、事务租约、嵌套/循环/深度及 fetch 取消本地通过。独立走查发现的事务子 context、static 子缓存预算/回看和父子元数据总预算均先复现再修复，不保存独立报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、输出与子游标回归重复10次、实际 Windows/386 全包测试通过；两版本普通及 integration 标签 golangci-lint 各0 issues。FuzzStmt 两版本各30秒通过，分别1259914 / 423113次。integration 均仅编译，未连接数据库；`TestProcedureResources` 四目标源码仅编译，真实过程、临时 locator、REF CURSOR/OBProxy 行为待联调。Linux、远程 CI 和成功 race 仍无运行证据；实现20/32、G3 8/10，验收0/32。
-
-#### D21 一次性长参数与分段上传
-
-- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增根包 long_data.go/long_data_test.go 和 integration 长参数源码；参数值体省略复用 wire 参数结构，保留一个公开根包，无新增依赖或循环引用。
-- *LongData 明确借用 Reader，精确源字节 Length/-1、MaxBytes 源/转换双上限和 Text UTF-8 增量编码；上传开始原子消费，同一命名参数多位置逐块分发，不能 seek/rewind 或自动重试。分块先发送再继续读取，不整流物化；任意阻塞 Reader 需要调用方取消协作。具体公开契约见架构 §13.5。
-- MySQL LONG_DATA24 无逐段响应；Oracle >=2.2.76 PIECE_DATA162 逐段确认，二进制 hex/文本会话字符集及 STRING254；execute 只保留参数位图/类型头。普通预处理、显式游标、Oracle 原生 OUT 和 MySQL OUT 的服务端流 CALL 均接入原会话/事务和 gate。
-- TestLongDataChunks/Failure/Text/OracleOutputs/MySQLOutputs/Cursor、命名 fanout、增量发送、非法 Reader/空指针/空读、长度/预算、段错误/损坏、部分写、Tx/操作取消及 consumed 拒绝均通过。Reader 的 n+err/ErrUnexpectedEOF 不吞错；ErrBadConn 特殊隔离防止 database/sql 自动重放。
-- 独立只读走查发现上传完成后取消时共享 Rows 清理可能停止待运行回调而保留长数据；TestLongDataCancelAfterPiece/CancelBeforeExecute 均先失败再通过。Rows 释放在观察到取消时直接淘汰连接，覆盖上传释放窗口和上传后 execute 前窗口；没有保存独立报告。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、长参数重复10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。FuzzLongTextBoundary 两版本各30秒通过，分别184336 / 185667次；CI 已加入。integration 两版本均仅编译，未连接数据库。
-- TestLongParameters 四目标源码包含超过普通物化上限的二进制上传、文本 UTF-8、哈希比对和提交/回滚；真实 Oracle/MySQL/OBProxy 的包限制、空流/LOB 转换、锁及事务仍待联调。Linux、远程 CI 和成功 race 仍无运行证据；实现21/32、G3 9/10，验收保持0/32。
-
-#### D22 批量执行与保守策略选择
-
-- 开发：已实现；验证：本地通过，真实目标待联调。负责人 Codex；开始/完成日期 2026-10-17。新增根包 batch.go/batch_protocol.go、internal/wire/pipeline.go 及测试、integration 批量源码；复用普通参数校验、绑定、Rows 最终化与标准库分派，无新增包、依赖或循环引用。
-- ExecBatch 保持输入顺序、已知/未知计数、Started 与四种状态；默认停止，显式继续仍在不确定/取消/损坏时停止。DB 全批次固定连接，Conn/Tx 一次标准库锁定；不改变事务边界，不重放业务。确认成功后清理失败保留成功和计数，并返回错误。
-- Auto/MultiSend 只在 server prepare、显式继续、简单 DML 和显式标量条件下提前发送独立命令；并发写/按序读、独立序号、行/物理参数位/总字节限制，失败关闭连接并等待写协程。Oracle 重复具名参数超出单块物理位限制回退逐项。OUT/流/复杂值/自定义 Valuer 回退普通逐项；句柄输出仍只接受 Execute。
-- 改写、bulk、array binding 偏好已接入；后续 D22/D32 子项已补受限 MySQL 多语句改写和 Oracle 事务内原生 array binding，具体门禁及取证见架构 §13.4。Java 明确不支持的 bulk 和不满足对应门禁的请求继续逐项，真实目标等价性仍待联调。
-- TestBatchResults/Atomicity/Strategies/TxBoundary/LongAndOutputs、断线单次拨号、取消、损坏与额外响应、typed-nil、分块及 Pipeline 提前发包/背压/续包用例通过。回归先失败再修复了确认响应后清理状态、既有 SQL 错误下最终取消丢失、迟到写错覆盖 SQL 错误、共享 prepare 失败停止继续批次及非法参数归因顺序、具名多位置分块不等价；没有独立走查报告。
-- 独立只读复核未发现遗留 Critical/Important。最终 Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、批量及流水线重复10次、实际 Windows/386 全包测试均通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。FuzzStmt 两版本各30秒通过，分别997617 / 1885852次；六份文档结构/链接/本地路径、32任务/22实现/0验收/155选项检查通过。`TestBatchExecution` 四目标源码覆盖全部策略偏好、重复键部分成功与原事务回滚，仅编译，不连接数据库；真实 SQL、版本、代理缓冲和事务仍待联调。Linux、远程 CI 和成功 race 仍无运行证据。当前实现22/32、G3 10/10，验收保持0/32。
-
-### D23 压缩、OB20、新元数据与校验
-
-- 开发：已实现；验证：本地通过，验收未完成。根包 `ProtocolOptions` 五项三态；标准/压缩/OB20 在最终认证 OK 后固定，全部命令继续复用原编解码。配置及 DSN、能力、包流、列元数据和批量调用点同步接入，无新包/依赖。
-- zlib/raw、OB20 请求 ID/双层序号/长度/标志、新 TLV 与旧 extra 跳过、CRC16 及原始 CRC32C 已实现；代理位 3/6 与 OB20 CRC 分别控制。Oracle 新元数据长度适配保留 Go 类型契约；包流内多个逻辑消息按各自预算检查，frame 的 24 位上限独立。
-- 两模式本地 `TestPacketModes` 覆盖三类包流的初始化、查询、预处理及逐项批量；framed multi-send 在业务发送前回退 Sequential，完整流水线身份扩展尚未启用。回归覆盖跨帧头/续包/空终止、独立 checksum 向量、错长度/序号/CRC/extra、部分写、取消、request ID 回绕及未读响应不能重置。
-- RED→GREEN：缺失 API；聚合合法小消息被误算超限；坏 CRC 消耗的网络读取字节证据丢失；新元数据 RAW/ROWID 长度。独立复核未发现遗留 Critical/Important，没有另存走查报告。
-- 最终 Go 1.25.0/1.26.0 Windows amd64 全包 test/vet、协议目标用例重复10次、实际 Windows/386 全包运行通过；两版本普通及 integration 标签 golangci-lint2.14.0 各0 issues。`FuzzFrames` 两版本各30秒通过，分别1466178 / 73653次；integration 两版本仅编译。六份文档的本地路径/相对链接/代码块及32任务/23实现/0验收/155选项计数检查通过。
-- `TestPacketModes` 四目标源码及 CI/fuzz 入口已补齐，仅编译，不连接数据库。正向与拒绝登记见兼容矩阵 §14；真实目标协议、版本和代理校验尚未验证。Linux、远程 CI 和成功 race 仍无运行证据；实现23/32、G4 1/8，验收保持0/32。
-
-### D24 PrepareExecute、缓存与执行优化
-
-- 开发：已实现；验证：本地通过，真实目标待联调。根包 ExecutionOptions/DSN、通用合并执行、statement LRU/type 状态，复用既有 Rows、OUT、长参数、游标和批量路径；没有新增包、依赖或循环引用。配置零值保持原行为，支持边界见架构 §10.1.1。
-- 普通 Oracle 合并门禁为显式启用和实际 ob_version >=2.2.76；标准 SQL checksum 为 Oracle >=4.1.2，合并 checksum 保持独立尾字段；缓存按物理会话有界，显式 sql.Stmt 和过程所有权不变。完整成功后才保存类型向量，变化、NULL、unsigned、复杂描述与错误有本地验证。
-- 两模式缓存复用、LRU、SQL 字节限制、错误驱逐、会话文本失效、Full reset、合并查询/DML、显式 statement、服务端错误不重放及参数黄金包测试通过。最初缺失合并 dispatch 的测试失败后补齐；取消 context 包装和 OUT 清理顺序的回归由既有测试检出并修复。
-- 独立走查发现带参数 OpenBlob/OpenClob 的合并路径丢失 locator 捕获与锁交接；两条新增测试先复现 sql.ErrNoRows，再复用共享捕获逻辑修复通过。最终独立复核未发现遗留 Critical/Important；没有保存独立走查报告。
-- 最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、PrepareExecute/Statement/长参数取消/OUT/LOB 相关用例重复10次、实际 Windows/386 全包运行通过；两版本普通及 integration 标签 golangci-lint2.14.0 各0 issues。扩展后的 FuzzPrepareExecute 各30秒通过，分别396546 / 450199次。32参数编码 benchmark 本地样本 fresh/reuse 分别352/288 B、均1 alloc，不据此推断真实数据库吞吐。
-- TestExecuteStrategies 四目标、普通及优化配置的返回值/NULL/类型变化/OUT/重复键/计数与关闭源码已接入 CI，仅编译，不连接数据库。真实版本和服务端类型头/checksum、事务、性能仍待联调；Linux、远程 CI 和成功 race 无新证据。当前实现24/32、G4 2/8，验收保持0/32。
-
-### D25 诊断、profiling 与 Full Link Trace
-
-- 开发：已实现；验证：本地通过，真实目标待联调。根包 Diagnostics/TraceInfo、注入 slog 与 wire 有界快照/FLT，复用既有锁和包流；无新包、依赖、全局 logger/exporter 或后台队列。详细契约见架构 §18.3.1。
-- 元数据诊断覆盖命令时长、真实收发字节、SQL 指纹/字节数、安全错误码和丢弃计数；认证、原始 SQL/参数/LOB/错误文本不采集。阈值升级 Warn；logger 和回调均在解锁后同步交付；建连只提供安全总耗时事件。
-- 三态 FLT 独立于 logger，支持新/旧 extra、控制和 query 时间、每请求清空 app、采样/打印/慢请求/ShowTrace、16字节 ID/父 span 桥接和有界延后 span 上传。multi-send 仍保持原策略，分别记录写/读后合并，不引入并发访问同一 recorder。
-- RED→GREEN 覆盖缺失编码/公开 API/传输协商和流水线诊断。独立走查复现完整但畸形 OK 被诊断为成功，新增 TestDiagnosticMalformedResponse 先失败，再在持锁快照阶段记录解码淘汰失败；复核无遗留 Important/Critical，没有独立报告文件。
-- Go 1.25.0/1.26.0 Windows amd64 全包 test/vet 和实际 Windows/386 全包运行通过；诊断/追踪/流水线目标用例两版本重复10次及386回归通过，普通/integration 标签 golangci-lint2.14.0 各0 issues。FuzzFullTrace 两版本各30秒通过，分别2061507 / 1355028次；TestFullLinkTrace 四目标源码及手动 CI 已加入，本阶段仅编译。直连登记 off、代理登记 required，服务端 app 清空、trace/span ID 和实际采样必须另取真实证据；客户端事件不计验收通过。Linux、远程 CI 和成功 race 仍无新运行证据。实现25/32、G4 3/8，验收0/32。
-
-### D26 静态多地址、角色与建连故障切换
-
-- 开发：已实现；验证：本地通过，真实目标待联调。新增根包 routing.go/failover.go 和 internal/routing 的自有地址/选址/健康类型；Config/DSN、connector/reset/tx、CI 和集成源码同步接入；保持唯一公开根包和 root → leaves 依赖，无新增外部依赖、池或后台 goroutine。API/默认值见架构 §17.1.1。
-- 最多1024个规范化且唯一的静态候选，组优先/组内顺序、随机、轮转、权重亲和不重复排序；共享健康和冷却按 Connector 隔离。固定 Role 严格过滤；只读服务发送前拒绝写事务，不分析 SELECT，实际主从身份/SQL 权限由调用方与服务端保证。
-- MaxAttempts/固定退避/冷却等待均共用总 ConnectTimeout；每次 AttemptTimeout 覆盖拨号、TLS、认证、初始化。认证/证书/模式/配置/初始化失败终止；初始化可能有副作用，绝不重放。TLS 使用实际选中主机；仅收到 TCP 断线而未见拒绝消息时按传输故障判断。可选 idle validation 在 ResetSession 同 Socket PING，失败交标准池淘汰；业务/事务不换线或重放。
-- TestAddressSelection/Health/Parsing、TestRoutingDSN/Snapshot/IdleValidation、TestRoleIsolation/ReadOnlyTransaction/TransactionSocket、TestFailoverBudget/AttemptTimeout/AllDown/TotalDeadline/TerminalErrors/HandshakeDisconnect/TLS/NoBusinessReplay 本地通过；覆盖退避/取消、健康过期/并发、隔离、严格参数校验和业务丢响应单次执行。
-- 独立走查确认 TLS fatal alert 被 net.OpError/wire.IOError 包装后误重试，以及初始化未共用单次预算，两项已用 TLS1.2/1.3 客户端证书拒绝和慢初始化回归先复现再修复；最终复核无遗留 Important/Critical。TLS 测试使用本地缓冲 TCP 并等待对端完成，避免丢弃 alert 或提前关闭夹具；未保存独立报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标用例各重复10次、实际 Windows/386 全包运行、普通及 integration 标签 golangci-lint2.14.0 各0 issues 均通过。FuzzAddressParsing 两版本各30秒通过，分别1450183 / 2557225次。真实数据库联调按要求不运行。TestConnectionFailover 四目标源码和手动 CI 已加入，仅编译；各 profile 需两个同租户/模式真实入口，测试只注入首个拨号失败、验证活动只读事务不重拨及关闭后新建连恢复，不代替真实宕机或数据库侧未知结果取证。Linux、远程 CI 和成功 race 仍无运行证据。实现26/32、G4 4/8，验收0/32。
-
-### D27 TNS、OCP 与拓扑发现
-
-- 开发：已实现；验证：本地通过，真实目标待联调。根包 DiscoveryOptions/TopologySource、内置 TNS 文件和 OCP HTTP 源、静态 DESCRIPTION/DSN 已接入 Connector；internal/routing 只依赖标准库，未新增公开子包、连接池或第三方依赖。默认值、来源策略映射和服务身份见架构 §17.1.2。
-- NewConnector 无 I/O；首次 Connect 才惰性启动一个串行刷新任务。显式 Service、严格 Role、唯一地址和解析预算校验后原子发布候选快照；最后成功快照在 MaxAge 内可用，过期失败关闭降级，已知失败按刷新间隔恢复，不随新调用发起请求风暴。各代共享保留成员的健康/轮转，迟到拨号结果仍可更新新代，成员移除时裁剪健康表。
-- Connector.Close/sql.DB.Close 只取消发现，已取得连接继续使用；不变更认证身份/兼容模式、不切换活动 Socket、不重放事务或业务命令。driver.Open 的私有 Connector 无论成功/失败都清理。HTTP 超时/重定向/失败响应和损坏描述明确拒绝；本地常规文件打开前后检查，跟随可信符号链接，操作系统阻塞与违规用户回调不能由 Go 强杀。
-- replication 通过显式角色快照/两个标准 sql.DB 适配；Aurora/自有控制面用 TopologySource 接入其真实服务能力，不向 OceanBase 猜测 Aurora SQL。Java OBLB 策略提示校验后不覆盖 Go RoutingOptions；OCP 包装 NET_SERVICE_NAME 为逻辑身份，CONNECT_DATA 不自动切库。真实外部适配器仍逐项待联调。
-- TestTNSParser/PolicyHints、TestOCPRefresh/HTTPEnvelope、TestTopologyChanges/RejectsInvalidSnapshots/ConcurrentAndLateResponse/FailureCached/HealthAcrossRefresh/RemovedAddressLateResult/CloseCancelsLookup/CloseBounded，以及公开 Source/DSN/连接预算/活动会话/旧 Open 清理回归本地通过。走查的四处问题均先复现再修复：文件别名绕过、误认 OCP HTTP 格式、driver.Open 刷新泄漏、旧代迟到拨号健康丢失；移除地址后的迟到成功/失败回报另有回归，验证选址不变且健康表不重新增长，并分别移除更新门禁确认测试能检出回归。最终复核无遗留 Important/Critical。不保存独立走查报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet 和实际 Windows/386 全包运行通过，发现刷新/HTTP/关闭相关回归两版本各连续20次通过；普通与 integration 标签 golangci-lint2.14.0 两版本各0 issues。FuzzTNSParser 同时覆盖 TNS 两种别名路径与 OCP，各30秒通过，分别679357 / 802846次。HTTP 清理回归经高负载发现服务端晚到请求的测试误判，改为有界等待静默；临时禁用生产清理时确认新测试仍失败，恢复后全量验证通过。符号链接正向用例因本机创建权限跳过，Linux 等可用平台仍需补取证。
-- TestDiscovery 四目标 TNS/OCP 源码和手动 CI 已加入，仅编译；部署方提供真实身份 SQL/预期租户和角色，固定会话验证来源声明，不将常量 SQL 或初次连接代替真实刷新证据。外部复制/Aurora 真实发现、Linux/远程 CI 与成功 race 无新运行证据；按要求不连接数据库。实现27/32、G4 5/8，验收保持0/32。
-
-### D28 完整认证与平台传输（进行中）
-
-- 首批代码：old password、client_ed25519、PAM dialog，Auth.PasswordCharset、DSN allowOldPassword/passwordCharset，以及实例 io.Closer 生命周期。内置算法留在 internal/auth；根包负责 TLS、模式、编码和会话，未新增包或循环依赖。Ed25519 使用纯 Go filippo.io/edwards25519 v1.1.0；不手写曲线算法、不加载本地动态库。
-- TestAuthPluginLifecycle/TypedNil、Algorithms、ExtendedHandshake/LegacySwitch/OldPasswordPolicy、PAM/Gate/Fallback/Failure/UnverifiedHandshake、PasswordCharset/OptionsDSN 覆盖实例清理、关闭错误、初始/切换、二进制末尾零、弱算法禁止、回答取消/NUL/错误提示及自定义传输统一门禁。FuzzAuthPlugins 覆盖算法及 PAM 提示。未连接数据库；真实服务插件和平台组合仍待联调。
-- Shared Memory/OBProxy VC 仍需开发；Unix GSSAPI 的系统库运行/真实票据、Windows Kerberos 的真实域票据及其余服务组合待验证；公开 ChangeUser 归 D30。D28 保持进行中，实现完成仍27/32，验收0/32；不以部分子项代替完整任务。
-- 首批本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包测试及 integration 源码编译通过；AuthPlugin 两版本各10次通过，普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。FuzzAuthPlugins 各30秒通过，1180142 / 629696次。独立走查发现 PAM 切换重复剥离终止符，回归先失败后修复通过；无其他遗留已确认问题。Linux/远程 CI/成功 race 和真实服务认证仍无新证据。
-- 后续传输子项：Config.Network 和 DSN network/socket、Unix 标准库拨号、Windows Named Pipe build tags/go-winio 已实现；IPC 单端点、显式 TLS ServerName、不回退 TCP、保留统一取消/明文门禁。TestPlatformTransport 覆盖本机原生 socket/管道的协议收发、配置/DSN 和解析配置再建 Connector、超时/关闭及默认明文拒绝；Shared Memory 的原生事件/映射和分配取消继续取证，VC 的 native ABI 仍需核对。
-- 传输子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、各10次 PlatformTransport、实际 Windows/386 全包测试及 integration 源码编译通过；普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues，go mod tidy -diff 无差异。Go1.25 Linux/amd64 全包构建和根包测试源码交叉编译通过，仅编译不代表运行。独立走查发现缺失管道未进入配置重试，原生缺失后恢复回归先失败后修复通过；最终复核无其他已确认问题。远端 UNC 的同步 CreateFile 不能由 context 严格中断，已在架构 §9.0.1 记录；真实服务、远端权限、Linux 运行和成功 race 仍待验证。
-- GSS 子项：新增可选 AuthConversation，建立上下文前完整保留原始令牌首字节与切换种子末尾零；nil 不发包、非 nil 空切片发送空包，上下文完成后仍须最终 OK。各轮保留 TLS/context 门禁及实例清理。Auth.ServicePrincipalName/DSN servicePrincipalName 已接入校验。Windows 使用当前进程身份和原生 SSPI，Kerberos 检查实际 mutual-auth 标志，NTLM/Negotiate 每轮要求驱动验证 TLS；Unix 提供方的后续实现及启用条件见下文。
-- GSS 子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、GSS/Conversation 各10次、实际 Windows/386 全包测试及 integration 源码编译通过；普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。Go1.25 Linux/amd64 全包构建和根包测试源码交叉编译通过，go mod tidy -diff 无差异。FuzzAuthPlugins 扩展种子解析，各30秒通过846952 / 841195次。受限进程因 SEC_E_NO_CREDENTIALS 跳过原生身份用例；在当前用户身份下已实际通过原生 NTLM 令牌和经验证 TLS 的完整 SSPI 握手，并完成双版本/386 检查。原始令牌/切换终止符回归先失败后修复通过，独立走查无遗留已确认重要问题。Windows 域 Kerberos/Negotiate、真实数据库、Linux 运行和成功 race 仍未验证；SSPI 同步系统调用的 context 时限边界见架构 §17.2.1。
-- Unix GSS 子项：Linux amd64/arm64/386、macOS amd64/arm64 的内置提供方已实现，通过 -tags=gssapi 显式启用；purego v0.11.1 调用固定系统库，保持无强制 cgo/头文件构建。启用后需原生加载器/C 运行库；默认构建不导入 purego，保留静态部署能力。每次从默认缓存取得 Kerberos initiator 凭据，导入固定 SPN 并校验实际 mutual 标志；不读数据库密码、不修改进程环境、不请求委派。RFC2744 缓冲区/OID/集合的 ABI 宽度、续轮上下文和内存固定/复制/释放、错误返回仍带句柄及幂等关闭均有测试；当前 Windows amd64 实际编译和运行独立 C ABI 对端，不能据此声称 Linux/macOS 的系统库已运行。公开配置和包依赖方向不变。
-- CI 已为 Linux 加入 -tags=gssapi,gssapitest 的全量测试，包括系统 GSSAPI 无凭据失败及原生 ABI 检查，OB_TEST_GSS_REQUIRE=1 禁止以缺库跳过该 CI 检查；测试专用 gssapitest 标签需要 C 编译器，普通驱动构建/测试无需。真实 Unix 票据双向交换、系统库/平台运行和远程 CI 结果继续待取证；Shared Memory/VC 继续开发，D28 保持进行中。
-- Unix GSS 子项本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Windows/386 全包测试、GSS 定向各10次、独立 C ABI 各3次及 integration 源码编译通过；普通/integration/gssapitest 的 Windows lint 与 gssapi,gssapitest 的 Linux lint 两版本均0 issues。两个工具链分别完成 Linux amd64/arm64/386、macOS amd64/arm64 的启用标签构建和 ABI 测试源码交叉编译，仅代表编译证据。默认 Linux CGO_ENABLED=0 根包测试 ELF 均无 PT_INTERP/PT_DYNAMIC，默认依赖图不含 purego，启用标签后包含。native Step 前取消的回归先失败再通过；独立走查无遗留已确认重要问题。go mod tidy -diff 无差异；未连接数据库，Unix 系统库运行、真实票据、远程 CI 和成功 race 仍未验证。实现27/32、验收0/32不变。
-
-### D29 LOCAL INFILE 受控导入
-
-- D29 依赖 D06/D21，可独立于尚未完成的 D28 推进；本次不把 Shared Memory/VC 的协议取证问题计为完成。新增根包 `Import` / `LocalInfile`，DB/Conn/Tx 同会话执行、一次性请求授权，精确名称 Reader 或授权 Open，大小/时限及来源关闭归属见架构 §17.3.1。没有新增包、依赖、全局文件状态或循环依赖。
-- 复用 longSource 的读取/取消/限额与既有 Rows 响应状态机；标准/压缩/OB20 上传使用 wire 延续写入，包序号回绕不重启 trace/诊断。正常结束后强制最终 OK/ERR；来源错误、拒绝、取消、超限和畸形响应淘汰连接；不隐式重放或提交事务。
-- TestLocalInfilePolicy/Failure/SourceFailure/Resolver/Timeout/Validation/ServerResponse/Transaction/SequenceWrap/FilenameCharset/Framing 覆盖普通查询无授权、精确名称、回调/Reader 所有权、nil/畸形来源、超限/取消/最终确认超时、重复请求、最终 ERR 后复用、同事务和分块/序号回绕；TestContinuationSequenceWrap 验证三种包流及同一诊断记录。独立走查发现最终结果集被误当导入确认，回归先失败再通过；会话 GBK 文件名匹配也已先复现再修复，内容保持原始字节。
-- TestLocalImport 四目标源码与手动 CI 已加入：入库计数/内容、提交/回滚、事务内已发送部分输入后超限、会话淘汰及新连接检查。Oracle 模式需提供实际目标的 LOCAL_IMPORT_SQL 模板，缺失时强制验收失败；普通缺失配置可跳过且不计通过。本阶段仅编译源码，不连接数据库，不声称真实 SQL 或服务端事务行为已验证。
-- 本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、导入/延续包目标各10次、实际 Windows/386 全包测试及 integration 源码编译通过；普通与 integration 标签 golangci-lint2.14.0 两版本均0 issues。两版本 Linux/amd64 CGO_ENABLED=0 全包构建和根包测试源码交叉编译通过，go mod tidy -diff 无差异；仅编译，不计 Linux 运行。走查的最终确认与字符集问题均有先失败后通过的回归，无遗留已确认重要问题；完整双向压缩/OB20及部分传输失败事务的集成源码已补。实现28/32、G4 6/8，验收0/32；数据库、Linux 运行、远程 CI 和成功 race 仍未验证。
-
-#### D30 首批：会话辅助与 warning 数量快照
-
-- 开发：进行中，尚不计入已实现项。新增根包 session_ops.go、单元测试与四目标 integration 源码，不增加包、第三方依赖或连接包装对象。普通 sql.Conn 上封闭函数承载 schema/catalog、客户端信息及系统变量；实际模式负责 SQL/名称/编码。
-- setter 在发送前拒绝活动事务/autocommit 关闭及受保护编码/时区变量，所有 setter 发送前清理自动 statement 和类型描述缓存（含 sql_mode 解析语义变更）；发送修改后关闭 pinned 连接时淘汰，避免原池状态泄漏，完整服务端错误也不恢复为可回池。校验失败保持原会话可复用。
-- Warnings 和每项 ResultInfo.Warnings 保留 OK/EOF 的数量及已知性；普通 SQL 发送后替换快照，helper/Ping/内部清理不覆盖，归还池后清空。没有把成功带 warning 改为错误，也不依赖 logger。warning 详情/清除、ChangeUser 和 CancelQuery 见本节后续子项。
-- TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings 覆盖两模式、转义、事务/池隔离、服务端错误与额外结果拒绝、数量快照及 nil logger。TestSessionOperations 集成源码验证 schema/client info/变量回读、快照与新连接无属性泄漏；仅编译，未运行。真实 warning 和身份切换用例见后续子项，取消仍需补充。
-- 独立走查发现 sql_mode helper 可能复用旧解析语义的自动 statement，TestSessionMutationStatementCache 先失败后通过；所有 setter 统一清理自动 statement/类型描述缓存。修复后 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标重复10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，集成源码只编译。六文档链接/代码块/无机器路径、32任务/28实现/0验收/155选项及 CI YAML 检查通过。未连接数据库，未验证 Linux 运行、远程 CI 或成功 race；D28/D30 保持进行中。
-
-#### D30 ChangeUser 子项
-
-- 已补根包 ChangeUser(ctx, *sql.Conn, Credentials, database)，在原物理连接及原标准/压缩/OB20 包流内重新认证，沿用已验证 TLS 和认证插件策略，不重拨、不修改原 Connector。仅允许无事务且 autocommit 开启的固定连接；参数、字符集及初始认证安全门禁先校验，失败保留原身份。
-- 切换前清理自动 statement、类型描述及 LOB/Cursor；显式 server/client statement 通过会话代次失效，旧 Close 不关闭新身份可能复用的 statement ID。发送后认证、取消、模式或初始化失败均淘汰会话；成功重新执行 Config.Session 基线，固定连接关闭后退出原池，不保留新密码。不新增包、依赖或反向引用。
-- TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing 覆盖两模式、两种预处理、旧句柄失效、ID 复用、原池隔离、认证插件及关闭、安全拒绝、同连接 TLS、取消和三种包流。TestChangeUserSessions 四目标及手动 CI 输入已补，源码仅编译，未连接真实服务。
-- D30 仍进行中，warning 详情/清除和显式取消见后续子项；实现28/32、验收0/32不变。
-- 本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、ChangeUser 各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 源码仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译通过，go mod tidy -diff 无差异。独立走查无遗留已确认问题；六文档编码/链接/代码块/无机器路径、32任务/28实现/0验收/155选项及 CI YAML 检查通过。未连接数据库，Linux 运行、远程 CI 和成功 race 仍未验证。
-
-#### D30 warning 详情与本地清除子项
-
-- 已补根包 Warning、ReadWarnings、ClearWarnings，复用封闭会话请求及持锁 Rows 内核，无新增包/依赖。MySQL 按需查询当前 SHOW WARNINGS；保留实际级别/码/字符集消息，不补造 SQLSTATE。Oracle 按 Java 实际能力保留数量并明确拒绝详情，未缩减既有协议能力。
-- 详情不是历史快照，helper/内部 SQL 可能改变服务端诊断区；本地数量及 Execution.Snapshot 独立保留。ClearWarnings 不发送 SQL，清数量并抑制 MySQL 详情至下一个普通 SQL；新建/reset/ChangeUser 不暴露旧详情。限行/累计字节有界，超限/畸形/取消不返回部分详情并淘汰连接，完整服务端错误可复用；不改变事务或原 SQL 成功语义。
-- TestWarningDetails、Clear/Modes/Response/Validation/Cancel/Framing/Transaction/RowError/PoolReset/Reenable 覆盖两模式、nil logger、计数/详情分离、清除再启用、GBK、三种包流、事务、取消、超限及服务端错误；ChangeUserIsolation 也验证新身份抑制旧详情。发现 warning 和旧 session helper 意外收到 OK 时未淘汰，两个回归先失败再修复通过。独立走查补充前置额外 OK 被跳过及旧 helper 空结果未淘汰，均先失败再修复；限制为单结果且标量恰好一行。TestWarningDetails 四目标集成源码和 WARNING_SQL 手动 CI 输入已补，只编译，不连接数据库。
-- 显式取消见下一子项；实现28/32、验收0/32不变。
-- 本地验证：修复走查问题后 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、warning/session helper/ChangeUserIsolation 目标各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。integration 源码只编译；两版本 Linux/amd64 CGO_ENABLED=0 全包构建/根包测试源码交叉编译通过，仅代表编译。go mod tidy -diff 无差异；六文档 UTF-8/代码块/相对链接/无机器路径、32任务/28实现/0验收/155选项、21矩阵章节、CI YAML 与改动 Go 格式检查通过。未连接数据库，Linux 运行、远程 CI 和成功 race 尚无新证据。
-
-
-#### D30 显式取消子项
-
-- 已补不透明 CancelTarget、预取 QueryTarget 和 CancelQuery，绑定首个普通 SQL/首个 pipeline 分块，每个目标只接受一次取消尝试。固定入口辅助连接复用调用方 Connector 策略，校验实际用户/租户、模式、Network 和已验证 TLS；不进入池，不走发现/切换，不保留 ChangeUser 的新密码。
-- 完成、reset、换身份、关闭和重新取目标使旧目标失效；内部清理及下一操作前协调在途 KILL。未发送则取消辅助拨号，发送后完整权限错误保留原查询；半发送、丢确认、畸形/额外结果淘汰原连接，不重放业务。KILL 已写出但读取前直接取消同样按未知结果处理；单次尝试禁止重复发送。
-- TestCancelQueryIdentity/Failure/CompletionBeforeSend/AckCancellation/Guards/AuxIdentity/FixedEntry/WaitsForAck/VerifiedTLS/ResetAndClose 与 ChangeUserIsolation 覆盖本地两模式、TLS、固定入口、权限、响应竞态和生命周期。TestCancelQuerySessions 及四目标 CANCEL_SQL/CANCEL_CODE 手动 CI 输入已补，集成源码只编译，不连接数据库。
-- 仅连接 ID 的 KILL 协议没有服务端代次校验，无法完全排除远端断连后 ID 重用；成功只代表 KILL 确认，原 SQL 结果及整批执行状态仍独立读取。自定义拨号/认证回调须配合 context。契约及边界见架构 §16.3.4。D28 依赖未闭环，D30 仍进行中，实现28/32、验收0/32不变。
-- 本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、CancelQuery/ChangeUserIsolation/既有取消竞态及 CloseBudget 各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。integration 仅编译；两版本 Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过，go mod tidy -diff 无差异。独立走查确认的写后读取前取消窗口、重复取消，以及调用链检查发现的私有辅助诊断回调重入均有先失败后通过的回归；辅助通道静默，不改变原连接的注入日志，未保存走查报告。未连接数据库，未验证 Linux 运行、远程 CI 或成功 race。
-
-#### D31 XA 本地实现
-
-- 根包 XID/XAFlags/XAVote、七个固定 sql.Conn 操作及 XAError/未知结果错误已补；复用原有 gate、Rows、包流和原生 OUT，不增加包或依赖。原生内部调用记录 started，保留写出后取消/尾部错误的未知状态；MySQL 恢复错误统一归 XA 分类并保留原服务器错误。
-- MySQL 精确发送 XA SQL，不暗改 JOIN；Oracle 固定 SYS.DBMS_XA PL/SQL 与 NUMBER/RAW/RAW XID，显式原生执行版本门禁，严格处理0/3及负码/回滚码。阶段、flags/扩展值、rollback-only及恢复输入有界；空 BQUAL 的 NULL 表示按合法空限定符处理，真实表示仍待联调。
-- 会话专用、池隔离、本地事务/身份/setter guard、XA 边界资源失效和 prepared Close 无本地回滚已覆盖。恢复日志/决策归调用方；Forget/RM timeout 明确不支持，context 不能代替事务超时，契约见架构 §16.2.1。
-- TestXAState/Recover/UnknownCommit、Oracle 原生及集合、非法恢复响应、部分写和三包流等本地测试已补；TestXATransactions/TestXARecoveryAfterDisconnect 四目标源码/手动 CI 与 examples/xa 已补，暂不运行数据库。
-- D31 本地实现已齐，但 D30/D28 平台依赖未闭环，整项保持进行中；实现28/32、验收0/32不变。本地验证：Go1.25.0/1.26.0 Windows amd64 全包 test/vet、XA 目标各10次和实际 Windows/386 全包测试通过；两版本 Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过，go mod tidy -diff 无差异。两版本普通/integration 标签 golangci-lint2.14.0 各0 issues；integration 源码仅编译。独立走查与调用链复核补齐恢复错误分类、NULL BQUAL 和原生额外结果确认；相关缺陷均有先失败再通过的回归，无遗留已确认重要问题，不保存独立报告。六文档 UTF-8/链接/代码块/无机器路径、32任务/28实现/0验收/155选项/22矩阵章节、CI YAML 和 Go 格式检查通过。未连接数据库，Linux 运行、远程 CI 和成功 race 尚未验证。
-
-#### D32 配置迁移首批
-
-- 根包 Config.Interactive/ConnectionAttributes 已补，前者同时提供严格 DSN interactive；属性仅显式 map，不自动采集进程/主机信息，不增加包或依赖。配置快照、保留键、严格字符集、编码后累计限额及缺失能力拒绝见架构 §6.1；不将 map 透传当作代理身份认证已完成。
-- TestConnectionAttributesSnapshot/Validation/EncodedBudget/Handshake/MissingCapability/ChangeUser、TestInteractiveCapability、TestDSNInteractive 及 TLSVerifiedAuthentication 覆盖两模式、UTF-8/GBK/GB18030、转码收缩/扩展与长度前缀、TLS、普通/压缩/OB20 的重发。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译、go mod tidy -diff 通过；六文档 UTF-8/相对链接/代码块/无机器路径、32任务/28实现/0验收、160项名称集合与固定 Java 源码一致、CI YAML/Go格式/diff 检查通过。未运行真实数据库、Linux 目标或成功 race，不另存走查报告。
-- 固定 DefaultOptions 的空格枚举核对补齐5项，清单从155更正为160项：serverAffinityOrder、connectionCollation、rewriteInsertByMultiQueries、useLocalXID、defaultConnectionAttributesBanList。其余字段、默认差异和测试仍需逐项核对；README/其他示例、完整基准、资源稳定性与 D28 依赖未完成。D32 保持进行中，实现28/32、验收0/32；暂不连接数据库，不以本地属性字节证明服务端可见性或空闲超时效果。此前各阶段的155项检查仅代表当时清单行数，不能当作完整性证据。
-
-#### D32 连接排序规则
-
-- 新增 Session.Collation / DSN collation，对应 Java connectionCollation；MySQL 使用 SET NAMES Charset COLLATE Collation，同一命令保持编码与排序规则基线，初始化自定义 SQL 后恢复、ChangeUser 与 Full reset 替换连接均保持配置。Oracle 显式拒绝；不复制 Java 的静默忽略，不新增包或依赖。具体边界见架构 §6.2 与配置清单。
-- TestCollationConfig/ModeGuard/ServerFailure/Lifecycle/FullReset、TestDSNCollation 与 ExampleSessionOptions_collation 覆盖严格标识符、DSN、两模式正/负向、服务端错误、UTF-8/GBK/utf8mb3、普通/压缩/OB20 及连接生命周期。ASCII 校验前转小写会接受 Kelvin 非 ASCII 字符的缺陷已有先失败再通过的回归。独立只读走查无遗留已确认重要问题，不保存独立报告。
-- 已通过 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试及两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）。TestSessionCollation 四目标集成源码已接入手动 CI，本次仅编译；真实排序/比较/预处理参数效果仍待联调。D32 保持进行中，实现28/32、验收0/32，D28 平台依赖及其余配置/交付项继续保留。
-- 两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；六文档 UTF-8/相对链接/代码块/无机器路径、32任务/28实现/0验收、160项名称与固定 Java 源码集合一致、CI YAML/改动 Go 格式/diff 检查通过。未连接数据库，未运行 Linux 目标或远程 CI，race 仍无成功证据。
-
-#### D32 代理用户登录
-
-- Config.ProxyUser / Credentials.ProxyUser / DSN proxyUser 已补，使用固定 Java 的专用认证属性，不通过普通 map 冒充代理身份，不解析括号用户名。目标编码/长度预算、两模式与能力拒绝、动态凭据完整替换/清除、TLS、ChangeUser 清除与原池隔离、CancelQuery 认证用户及代理目标共同校验见架构 §6.3；无新增包、依赖或循环依赖。
-- TestProxyUserConfig/Handshake/Rejection/CallbackClearsTarget/VerifiedTLS/ChangeUserPreflight/EncodedBudget/ChangeUser/CancelIdentity 和外部 ExampleNewConnector_proxyUser 已补；普通/压缩/OB20、UTF-8/GBK 与身份取消有本地证据。取消比较回归在临时移除目标比较时明确失败，恢复后通过，证明不同目标不会被当成同一身份发送 KILL。Credentials 新增字段要求旧非命名双字段字面量改为命名字段构造，仓库调用点已更新。
-- TestProxyUserSessions 四目标源码和手动 CI 已补，仅编译。Oracle 两目标需要专用代理 DSN 及两个不同的服务端预期用户名，验证实际身份、ChangeUser 重发/清除及原池重建；MySQL 两目标仅验证配置拒绝。未连接真实数据库，真实代理授权、版本与目标身份仍待联调。D32 保持进行中，实现28/32、验收0/32；Shared Memory/VC、其余选项、README/其他示例、完整基准与资源稳定性未完成。
-- 最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、代理用户及外部示例各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。独立只读走查无已确认遗留重要问题，未保存独立报告。六文档 UTF-8/链接/代码块/无机器路径、32任务/28实现/0验收、固定 Java 的160项名称集合及 CI YAML/六项代理 fixture、Go 格式/diff 检查通过。Linux 运行、远程 CI 与成功 race 仍无新证据。
-
-#### D32 使用入口与示例
-
-- 新增 README 和[使用指南](go-driver-usage.md)，说明 Go 1.25/1.26、两种 OceanBase 兼容模式、Config/DSN/TLS、外部 slog、标准池/事务、精确类型、资源关闭与错误/未知结果边界。文档增为七份；README 为项目入口。未新增公开 API、驱动内部包或依赖。
-- `examples/usage` 直接使用公开根包：覆盖查询/本地事务、服务端预处理、批量、OUT/INOUT、Execute 多结果、两模式表内 BLOB、Oracle 原生 locator/OBJECT/ARRAY 和 Forward 游标。要求显式模式、专用测试 schema 和建表/过程/类型权限；随机对象名，资源在事务/连接结束前释放，DDL 逆序有界清理并保留错误。XA 沿用独立示例。普通全包 CI 自动编译 main，不执行联网示例。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）通过；新增示例及 README 完整 Go 片段在双版本编译通过，两个 main 示例的 Windows/386 编译和 Linux/amd64 CGO_ENABLED=0 交叉构建通过。integration 仅编译，go mod tidy -diff 无差异。Go1.25 实际运行综合示例缺 DSN/Auto 模式两个预检，均在联网前拒绝；不把这些预检计作联网功能运行证据。
-- 七文档及 README 的 UTF-8、相对链接/锚点、代码围栏、无机器盘符路径检查通过，任务仍为32项、实现28项、验收0项。独立只读走查未发现已确认重要问题，不保存独立报告。数据库上的示例运行、完整基准/资源曲线、Shared Memory/VC 和其他配置仍未闭环；Linux 实际运行、远程 CI 和成功 race 证据仍缺。D32 继续进行中，不勾选完整交付。
-
-#### D32 初始数据库创建
-
-- 新增 Config.CreateDatabaseIfMissing / DSN createDatabaseIfMissing，默认 false，仅 MySQL 新物理连接显式启用；握手不选择数据库，认证及会话基线完成后 CREATE IF NOT EXISTS、COM_INIT_DB，再运行 Variables/InitSQL。名称严格编码并转义标识符，Oracle/空目标显式拒绝；复用既有命令与编码，无新增包或依赖。完整契约见架构 §6.4。
-- 创建/选库沿用总连接预算；失败保留原错误、关闭且不重拨，不删除可能已创建的库。Full reset 替换会重新执行；ChangeUser/CancelQuery 的派生配置清除创建选项，不改原 Connector。两项隔离回归均在临时移除保护时捕获错误 CREATE，恢复后通过；握手/初始化也有先失败再通过证据。
-- TestCreateDatabase* / TestDSNCreateDatabase 和外部 ExampleNewConnector_createDatabase 覆盖普通/压缩/OB20、UTF-8/GBK、转义、顺序、认证/权限/选库失败、超时、两模式门禁及生命周期。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
-- TestCreateDatabaseSessions 及手动 CI 已补：MySQL 直连/代理需专用 CREATE_DATABASE_DSN 与 CREATE/DROP DATABASE、目录读取和库内建表权限，使用随机独占库名，关闭业务会话后有界清理；验证缺失库、既有数据、InitSQL 及物理替换。Oracle 只验证配置拒绝；集成源码仅编译，未连接数据库。go mod tidy -diff 无差异；七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合、CI YAML/fixture/selector 及 Go 格式/diff 检查通过。D32 保持进行中，实现28/32、验收0/32；真实 DDL/权限、Linux 运行、远程 CI 和成功 race 仍未验证。
-
-#### D32 网络读取超时
-
-- TestReadTimeoutCommands 已分离连接初始化与业务命令停顿：初始化完成后才给同一物理连接启用 100ms 读预算，归池后仍通过 sql.DB 的 Exec/Query 入口执行；新增对端实际收到业务命令的断言，保留超时后不重放、不回池及 context 未到期的检查，避免压缩初始化超时干扰业务命令超时的验证。仅调整测试夹具，不改变驱动超时行为。Go1.25.0/1.26.0 Windows amd64 各连续20轮通过（每版本240个子场景）；两版本全包 build/test/vet、普通及 integration 标签 lint（各0 issues）通过，集成源码仅编译。
-- Config.ReadTimeout / DSN readTimeout 已补，默认0关闭、负值拒绝；对应 Java socketTimeout，Go 使用 duration，并统一关闭 Java Aurora 的特例默认值。每次底层 Read 以独立读取预算与 context 较早期限计时，不改变写方向；内置或自定义 net.Conn 在 TLS/认证前接入，复用两模式、三种包流、Rows、LOB 和会话操作路径，无新增包、依赖或后台协程。契约见架构 §12.5.1。
-- 并发流水线 writer 刷新/清除 deadline 不延长阻塞读；后续读取重新计时，不计池空闲或用户处理时间。独立超时保留 net.Error/Timeout，context 更早时保留原取消/超时错误，淘汰会话且不重放已发送的业务，批量保留未知结果。DSN 与业务超时均先失败再实现；活跃读取保护在临时移除后明确失败，恢复后通过。
-- TestReadTimeout* / TestDSNReadTimeout 和外部 ExampleNewConnector_readTimeout 覆盖握手/初始化、TLS 握手/查询、两模式及普通/压缩/OB20、响应/行停顿、context 优先、并发刷新、旧 deadline、分段消息和写预算、逐项/流水线批量。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
-- TestReadTimeoutSessions 四目标及手动 CI/只读慢 SQL fixture 已补，本阶段仅编译，未连接数据库；不能用本地超时证明真实代理缓冲效果或服务端查询已停止。七文档及 README 的 UTF-8/相对链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合、CI YAML/四项 fixture/selector、Go 格式/diff 检查通过。D32 保持进行中，实现28/32、验收0/32；Shared Memory/VC、其他配置与完整基准/资源曲线，以及真实数据库、Linux 运行、远程 CI 和成功 race 仍待完成。
-
-#### D32 TCP 原生配置
-
-- 七项 Java TCP 配置已核对，使用现有 Config.DialContext 与标准 net.Dialer/net.TCPConn 承载；新增可编译 ExampleConfig_tcpOptions 和本地 TCP 测试，不增加公开配置结构、DSN 开关、包或依赖，不改变内置默认。Go/Java 默认差异、回调并发归属、setter 失败关闭及平台边界见架构 §9.0.2；同名 Java DSN 参数继续严格拒绝。
-- TestTCPDialContext* 覆盖源接口、选中入口、工厂调用次数、握手/初始化/Ping/QUIT、明文认证门禁、已取消 context、非 TCP 拒绝与显式 abortive close。示例在拨号后显式检查 keep-alive 设置错误，避免将 Dialer 的 best effort 当作策略已生效；缓冲及探测参数仅为示范。TCP 门禁回归在临时移除保护时失败，恢复后通过；独立只读走查无已确认遗留重要问题，不保存独立报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TCP 目标与示例各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。最终复核同步修正既有 failover 测试的一处重复字符串常量引用，Failover/TCP/示例定向测试通过。
-- 七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合及 Go 格式/diff 检查通过。未连接数据库，未验证远端接口、真实 OS 缓冲/探测参数、Linux 运行、远程 CI 或成功 race；SetLinger(0) 可能丢弃待发送数据，不能保证 QUIT 送达或回滚 SQL。D32 保持进行中，实现28/32、验收0/32；D28 Shared Memory/VC、其余配置及完整基准/资源曲线仍未闭环。
-
-#### D32 TLS 原生配置
-
-- 已核对固定 Java 的12个 TLS 选项与注释列出的5个历史别名；使用现有 TLSConfig、crypto/tls 与 crypto/x509 承载，不增加配置层、公开 API、运行时包或依赖，不改变驱动默认。新增 ExampleNewConnector_mutualTLS 及文件加载示例；标准 PEM 加载、Java store 解锁转换、动态证书与验证回调、版本及 TLS1.3 套件边界见架构 §17.2.1。
-- TestTLSNativePolicy/Rejection/Snapshot/RootSnapshot/Cancellation、TestTLSExampleFiles 和 TestTLSJavaDSNRejected 已补：两模式/TLS1.2/1.3、静态/动态客户端链、额外验证、版本/套件拒绝、凭据门禁、握手取消、初始化/Ping/QUIT、配置后续变更与根池新增信任隔离。示例加载函数缺失时先编译失败，再实现通过；临时移除 CipherSuites 切片克隆时快照测试明确失败，按字节恢复后通过。独立只读走查无已确认遗留重要问题，不保存独立报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TLS/路由证书拒绝/伪造 TLS/读取超时目标各10次、实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。首次 lint 曾误用全局缓存产生权限警告，改用仓库缓存后最终检查通过。
-- 七文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、32任务/28实现/0验收、固定 Java 的160项选项集合及 Go 格式/diff 检查通过。示例通过临时 PEM 文件执行加载测试，Example 本身只编译；未读取项目外证书或连接数据库。真实数据库/代理的证书部署、双向身份映射、系统信任源和 store 转换未验收，Linux 运行、远程 CI 与成功 race 仍待验证。D32 保持进行中，实现28/32、验收0/32；D28 Shared Memory/VC、其他配置及完整基准/资源曲线未闭环。
-
-
-#### D32 本地性能基准
-
-- 新增 BenchmarkDriver，两种兼容模式各8个场景：CRUD、每次/复用预处理、缓存命中、逐项/multi-send 批量、16KiB BLOB 和32行 fetch。普通 TestDriverBenchmarkFixtures 共用同一操作与协议/结果断言，默认 CI 自动执行；复用既有测试 helper，仅将13个签名拓宽为 testing.TB。没有修改生产逻辑、公开 API、包依赖或 go.mod。
-- 预热、连接初始化和最终清理在计时外；测量包含进程内协议对端、断言及调度开销，不能作为纯驱动分配或真实数据库吞吐。Go1.25.0/1.26.0 各16场景×3个100次短样本，完整通过；各指标中位数、命令和模式/协议限制见[本地基准](go-driver-benchmarks.md)。文档增为八份，README 同步链接；修正开发计划中 Unix GSSAPI 的过时章节引用。
-- 重复检查复现并修复 TB.Context 在 Cleanup 前取消引起的缓存语句关闭竞态，改为独立2分钟预算并在 DB.Close/传输回收后取消。独立只读走查发现 fetch 内容断言失败前未关闭 Rows，已补；临时改变期望值使断言故意失败，清理在5.24秒内返回（包含编译），按字节恢复后验证，不保存独立走查报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各30次及普通/integration 标签 golangci-lint2.14.0 各0 issues 通过；实际 Windows/386 全包测试和16场景1x基准通过。两版本 integration 仅编译，Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过。文档 UTF-8/链接/锚点/围栏/无机器路径、32任务及160选项和 Go 格式/diff 检查通过。
-- 未连接数据库；真实 SQL/网络/代理性能、LOB 远端流式、全部优化及并发组合、长期资源曲线均未完成，Linux 实际运行、远程 CI 与成功 race 仍缺。D32 保持进行中，实现28/32、验收0/32不变，Shared Memory/VC 和其他配置继续按原范围推进。
-
-
-#### D32 凭据来源与固定 RSA 公钥
-
-- 核对固定 Java credentialType、serverRsaPublicKeyFile、allowPublicKeyRetrieval 及 ENV/PROPERTY 来源行为，按现有 Config.Credentials、Auth.RSAKey 和 Go 标准库承载；不增加类名、文件选项、全局注册表、生产 API、包或依赖。新增 auth_example_test.go：应用自定环境来源及单个 PKIX RSA 公钥解析，配置/轮换/错误边界见架构 §17.2.2，逐项映射和使用指南同步。
-- TestAuthExampleCredentials/RSAFile 覆盖缺来源、显式空密码、代理字段、取消、缺文件、垃圾/多块/headers/畸形/非 RSA/私钥拒绝；缺示例函数时先编译失败，再实现通过。新增“畸形前块后接有效公钥”回归先失败，补充单块检查后通过，不让 pem.Decode 跳过错误输入。
-- TestAuthNativeRSAPaths 在两模式 × SHA256/caching SHA2 × 初始/切换/ChangeUser 共12场景实际解密，核对原始密码、不同 nonce 与显式切换身份；原公钥 N/E 后续修改不影响 Connector。临时移除模数深复制时，新协议测试明确失败，按字节恢复。TestAuthNativeCredentialRotation/Failure 检查同 Connector 新物理连接刷新来源、普通 Ping 不刷新、来源错误不回退静态配置；TestAuthNativeRSARejection/JavaDSNRejected 覆盖缺钥、服务端私自供钥、OAEP 超长密码及旧参数拒绝。独立只读走查无已确认遗留问题，不保存独立报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译。两版本 Linux/amd64 CGO_ENABLED=0 全包构建与根包测试源码交叉编译、go mod tidy -diff 通过；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、Go 格式与 diff 检查通过。首次 lint 的重复字符串及测试 helper 复杂度提示已整理，无生产逻辑变动。
-- 文档仍为八份及 README；修正认证章节与 TLS 章节的重复编号，新增凭据来源/RSA 契约。固定 Java 的160项枚举与映射集合完全一致，32任务/28实现/0验收不变。本地协议及示例验证不等于真实插件/权限、外部来源服务、公钥发布轮换或 TLS 身份验收；未连接数据库，D28/D32 整项继续进行，Linux 实际运行、远程 CI 和成功 race 仍待验证。
-
-#### D32 自动提交与只读策略
-
-- 核对固定 Java autocommit、assureReadOnly、failOnReadOnly、oracleChangeReadOnlyToRepeatableRead 的默认值和调用语义，以既有 sql.TxOptions、固定 sql.Conn、Routing.Role 及池 reset 承载，不增加公开配置、生产逻辑、包或依赖。四项映射、使用指南及模式/故障策略差异见架构 §12.3.1；不是新增 Java 连接级 setter 或全局关闭自动提交。
-- 新增 TestTransactionNativeReadOnly/Autocommit/Initialization/RoleFailure 和 TestTransactionJavaDSNRejected，覆盖两模式原始只读错误/SQLSTATE、单次拨号与事务结束后读写恢复、手动 auto0 的固定会话及池复用先回滚后恢复、两种初始化来源残留 auto0 拒绝、失败重试不回退未知/相反角色与旧参数拒绝。外部 ExampleNewConnector_readOnlyTransactions 只使用公开根包/标准库，默认仅编译，不执行联网步骤。
-- 临时取消 tx.go 的只读角色门禁、将 reset.go 的 ROLLBACK 改为先开启自动提交时，新增测试均因错误命令明确失败；两份生产文件按字节恢复，最终没有生产代码差异。独立只读走查及 Go1.25 定向测试未发现遗留已确认问题，不保存独立报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10次及普通/integration 标签 golangci-lint2.14.0（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译、go mod tidy -diff 通过。初轮测试编译和 goconst 提示已整理，最终使用既有协议 helper 和文件内常量。
-- 八文档及 README 的 UTF-8、相对链接/锚点、围栏、无机器路径、160项固定 Java 选项集合与四项映射、Go 格式/diff 检查通过。未连接数据库；夹具状态与错误不证明真实权限、快照隔离、回滚效果或 HA。实现28/32、验收0/32保持，D28/D32 其余范围继续推进，Linux 实际运行、远程 CI 与成功 race 仍待验证。
-
-#### D32 结果列来源与产品身份
-
-- 公开 ResultColumn 和 ResultInfo.Columns，通过既有 Execute.Snapshot 保留完整行集的标签/原列/原表等六字段；标准 Rows 返回标签，未知来源为空。每次快照深复制嵌套切片，累计元数据沿用保守内存估算及 MaxMessageBytes；超限不发布该行集、保留已确认前缀并淘汰连接。未完整元数据、隐藏 OUT、命令和 Failure 不发布列。没有新增包、配置或依赖。
-- TestExecutionColumn* 覆盖两模式文本/二进制、GBK 解码、PrepareExecute、多结果和关闭后保留、来源/快照隔离、并发快照、精确预算及真实协议路径累计超限、畸形列和终止包拒绝；既有顺序/行错误/OUT 测试补元数据断言。先因缺少公开结构和发布方法编译失败，实现后通过。TestMetadataServerIdentity 检查两模式固定 SQL、公开列名和扫描，三个 Java 元数据 DSN 均拒绝；Java useCompatibleMetadata 仅切产品名，映射按架构 §16.1.2 适配。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次、普通及 integration 标签 golangci-lint2.14.0（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、Linux/amd64 CGO_ENABLED=0 全包构建及根包测试交叉编译、go mod tidy -diff 通过。TestMetadataCatalog 增加公开 API 来源检查，尚未连接数据库；允许服务端不提供来源，不伪造字段。
-- 架构、映射、使用指南、矩阵、计划和进度同步；160项 Java 映射集合及32任务/28实现/0验收保持。真实字段、权限、代理/版本差异、Linux 实际运行、远程 CI 和成功 race 仍待验证，D28/D32 整项未完成。
-
-#### D32 SOCKS5 应用适配
-
-- 两项 Java socksProxyHost/socksProxyPort 使用既有 Config.DialContext 与官方 x/net/proxy.ContextDialer 承载，新增可编译 ExampleConfig_socks5 及本地 TCP 对端；无新增生产 API、配置、包或拨号逻辑。显式代理地址、远端 DNS、独立代理身份、数据库 TLS 目标验证及不读取代理环境变量的边界见架构 §9.0.3。核对固定 Java 后，将 connectProxy 明确归为独立初始化策略，保持待迁移状态。
-- TestSOCKSDialContextSessions/Routing/Cancellation/TLSGate/VerifiedTLS/Failure 和 TestSOCKSJavaDSNRejected 覆盖两模式/三包流、匿名及用户名密码、候选传播/切换、代理拒绝/畸形响应、取消/预算/关闭、未验证目标零数据库凭据与旧参数拒绝。缺示例 helper 时先编译失败，实现后通过；示例本身只编译，不连接外部服务。走查复现 socket deadline 与 context 定时器竞争导致的测试误判，预算断言同时接受到期网络超时；显式取消及对端 EOF 检查保留，Go1.25 SOCKS 全目标和独立取消复核各25次通过。
-- x/net v0.58.0 为核对时最新的 Go1.25 兼容版本，仅示例/测试导入；模块选择同步提升 x/sys 至 v0.47.0、x/text 至 v0.41.0，生产包依赖图无 x/net。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、SOCKS 目标各10次、普通及 integration 标签 golangci-lint2.14.0（各0 issues）、integration 仅编译、go mod tidy -diff 和 go mod verify 通过。实际 Windows/386 全包测试通过；首次并行检查期间既有 ReadTimeoutCommands 出现一次100ms 元数据超时，单独重复10次及最终全量重跑通过，未修改该测试或生产逻辑。
-- 两版本 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过。文档保持八份及 README，链接/锚点/UTF-8/围栏/无机器路径、160项 Java 选项集合及32任务/28实现/0验收检查通过；未连接数据库。真实代理的 DNS/认证/网络策略及吞吐、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证。D28/D32 其余范围继续进行，D30/D31 平台依赖未闭环。
-
-#### D32 版本探测策略
-
-- 新增 Session.SkipVersionProbe 与严格布尔 DSN skipVersionProbe，默认 false；只跳过可选初始化 ob_version()，必要基线/Variables/InitSQL 与实际模式检测保持。每次相应初始化将版本保持未知，不使用握手或显式业务查询推断高级能力。Java connectProxy 的隐式变量和自增步长探测在 Go 中不存在，按架构 §9.0.4 映射其实际承载，旧 Java DSN 名称仍拒绝；无新增包或依赖。
-- TestVersionProbeSessions/ChangeUser/UnknownCapabilities/Failure/CancelQuery/Initialization 及 TestDSNSkipVersionProbe 覆盖两模式/三包流、配置快照、池复用、重新认证、取消辅助连接、初始化失败不发布/不重试、自定义基线保留。真实协议对端核对标准 prepare/execute 无合并命令或 SQL checksum，未知版本拒绝 Oracle OUT/敏感游标/长参数/XA；长参数来源不被读取，显式版本查询仍执行且不升级内部能力。缺少公开字段时先编译失败，实现后通过；测试对端改用独立 context，避免把建连预算取消误当作会话终止。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、定向各10次及实际 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues。初轮 lint 的重复 SQL/版本文本已改为复用既有测试常量。两版本 Linux/amd64 与 Darwin/amd64 CGO_ENABLED=0 全包构建、根包测试源码交叉编译及 go mod tidy -diff 通过。独立只读走查无已确认遗留问题，不保存独立报告。
-- 四目标 TestVersionProbeSessions 集成源码与手动 CI 选择器已补，仅编译，未连接数据库。八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项 Java 选项集合及32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。真实代理基线 SQL 支持、版本/权限组合、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证；D28 Shared Memory/VC、D32 其余收口及 D30/D31 平台依赖继续推进。
+### 5.6 Local Evidence for Implemented Tasks
+
+#### D01 Configuration and Logging
+
+- Development: Implemented; validation: Local pass. Code: `config.go`, `dsn.go`, `connector.go`, `driver.go`, `logging.go`; tests: `config_test.go`, `dsn_test.go`, `logging_test.go`.
+- RED: defaults, invalid configuration, strict DSNs, snapshot isolation and logger assertions actually failed against empty implementations. GREEN: `go test ./... -count=1` and `go vet ./...` passed on Go 1.25.0/1.26.0 Windows amd64; golangci-lint 2.14.0 reported 0 issues.
+- Implemented: configuration validation/defaults, TLS/map/slice snapshots, registration, logger injection/nil silence/redaction. Java options continuously record task/representation/status in the [migration checklist](go-driver-options-mapping.md). After checking the pinned version, D32 corrected the original 155 extracted options to 160. D01's unavailable Connect path was replaced in D04; standard text execution was connected in D05; parameters/preparation belong to later tasks.
+- V01 outstanding: actual Linux execution and GitHub CI evidence; the CI workflow exists but has not run remotely. Callers guarantee concurrency safety for callbacks, private keys/parsed certificates and loggers.
+
+#### D02 Packet Transport and Dependency Guards
+
+- Development: Implemented; validation: Local pass. Code: `internal/wire/packet.go`, `internal/testutil/peer.go`; tests: corresponding unit tests, `packet_fuzz_test.go`, root external `architecture_test.go`.
+- RED: packet boundaries, lengths, short I/O, truncation, sequence numbers, cancellation and fault-peer assertions actually failed; dependency-guard negative cases for reverse/lateral/production imports of test helpers failed before passing.
+- GREEN: all-package test/vet passed on Go 1.25.0/1.26.0 Windows amd64; all-package execution passed on Go 1.25.0/1.26.0 Windows/386; lint reported 0 issues. `FuzzPacket` ran for 30 seconds per version, passing 2,277,684 / 2,606,613 executions respectively.
+- V01/V04 outstanding: actual Linux/CI execution. All tests use synthetic protocol/kernel scenarios; no database integration ran, and they cannot establish real protocol negotiation or SQL compatibility.
+- The architecture guard actually reads Standard/Imports from `go list -deps -json -test -tags=integration ./...`; internal packages have no reverse/lateral dependencies and testutil uses only the standard library.
+
+#### D03 Handshake, Authentication and Mode
+
+- Development: Implemented; validation: Local pass. Code: `authentication.go`, `errors.go`, `internal/auth`, `internal/wire/handshake.go`; tests: `authentication_test.go`, `authentication_paths_test.go` and internal algorithm/packet-parser tests.
+- Covered: native, caching SHA2, SHA256, clear; initial/switch/full-auth, pinned RSA public keys, refreshed credentials each time, authentication factories and TLS gates, real local TLS handshake, invalid certificates/hostnames, custom Dial spoofing secure state, mode mismatches and Oracle ChangedRows rejection. Handshake does not lock ModeAuto; D04 owns locking after successful initialization.
+- RED→GREEN: algorithm vectors, packet/TLS gates and configuration-snapshot cases failed before passing; regressions reproduced and fixed the requirement for final OK after fast authentication and initial legacy-format server ERR. Independent walkthrough findings were addressed; no separate walkthrough report is retained.
+- V01/V02/V04: all-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and all-package Windows/386 execution passed; golangci-lint 2.14.0 reported 0 issues. `FuzzHandshake` ran 30 seconds per version, passing 314,204 / 223,550 executions. CI definitions include handshake fuzz but have not run remotely.
+- race failed its runtime-environment check: starting the Windows race-test process returned `0xc0000139`; selecting GCC and prepending its DLL search directory produced the same result. No race-detector result was obtained, so this is not a pass; Linux/CI race execution remains outstanding.
+- Version/capability bases are in the [compatibility conditions matrix](go-driver-compatibility-matrix.md). All four real-server targets, OBProxy and platform plugins are unverified; no database was connected in this phase. D28 continues full platform authentication; these four algorithms are not treated as the complete authentication scope.
+
+#### D04 Connection, Initialization and Ping
+
+- Development: Implemented; validation: Local pass. Code: `connector.go`, `conn.go`, `session.go`; tests: `connector_test.go`, `tests/integration/env_test.go`, `smoke_test.go`.
+- Implemented: Dial/handshake/TLS/credentials/initialization share one connection-context total budget; mode locks atomically after successful initialization. Failed sessions close without locking mode; only one of concurrent opposing modes can publish. Sets character set/autocommit, deterministically ordered session variables and InitSQL; Ping, COM_QUIT, bounded close and Validator eviction.
+- RED→GREEN: budget/initialization/concurrent-mode cases failed before passing; invalid initialization settings and returning a Ping-failed connection to the pool were reproduced and fixed. Independent review corrected failure-cleanup order in concurrent tests; concurrent-mode tests passed 20 consecutive runs.
+- V01/V02: all-package test/vet passed on Go 1.25.0/1.26.0 Windows amd64; ordinary builds and integration-helper lint passed. `TestProfiles` validates profile selection only and did not connect to a database. Existing dependency guards also check integration/test imports.
+- Real acceptance entry points exist for all four profiles. Regular tests neither compile nor execute integration by default; manually enabled CI runs TestSmoke, and OB_TEST_REQUIRE=1 makes missing environments fail. CI was not triggered and TestSmoke did not run.
+- D05 connected query-style InitSQL draining and exact OceanBase-version capture. Prepare/Begin temporarily return explicit capability errors, replaced by their later owner tasks. Commands must finish in autocommit without suspended transactions; transaction state is not a pool baseline.
+
+#### D05 Text Execution and Standard Results
+
+- Development: Implemented; validation: Local pass. Code: `execute.go`, `rows.go`, `result.go`, `codec.go`, `internal/wire/text.go`; tests: `execute_test.go`, `codec_test.go` and wire text tests. External examples are in `example_test.go`.
+- Implemented: COM_QUERY, NULL/empty/binary ownership, EOF and negotiated OK replacement, draining mixed multiple results, reuse after complete ERR, basic ColumnTypes, count overflow, exact NUMBER/DECIMAL and large unsigned values, Oracle special floating-point values. Cumulative metadata/messages/LOBs/result items all have resource bounds. Unknown types are rejected; full character sets/time/extended types remain D12's responsibility.
+- Connection queries `ob_version()`, with `FROM dual` in Oracle, preserving the original OceanBase version text; query-style InitSQL drains through the same result executor. Handshake declares implemented multi-results/session-track/deprecate-EOF capabilities; the multi-statement bit is declared only when explicitly configured.
+- RED→GREEN: basic text-execution assertions and regressions for JSON types, cumulative metadata size, LOB materialization limits, normal NextResultSet not using cleanup timeout, and Oracle NAN/INF/-INF actually failed before fixes. Independent rereview found no remaining actionable findings; no separate report is retained.
+- V01/V02/V04: all-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and all-package Windows/386 execution passed; ordinary/integration-helper lint reported 0 issues. `FuzzText` ran 30 seconds per version, passing 3,631,645 / 1,457,299 executions; CI includes this fuzz target.
+- `TestProfiles` passed on both versions and validates selection only. `TestQueryCRUD`, `TestQueryResults` and enhanced `TestSmoke` compiled and are covered by the explicit manual integration job; no database tests ran. Linux/remote CI/race remain unverified; acceptance remains 0/32.
+
+#### D06 Cancellation, Close and No Replay
+
+- Development: Implemented; validation: Local pass. Code: `conn.go`, `connector.go`, `execute.go`, `rows.go`; tests: `cancel_test.go`, `retry_test.go`.
+- RED→GREEN: regressions reproduced and fixed idle Rows cancellation failing to interrupt the stream, session-lock waits ignoring context, and Conn.Close hanging behind unclosed Rows. The session lock is now cancellable; close shares a cleanup budget and evicts immediately on timeout; atomic closed state supports concurrent close and Validator checks.
+- Query's AfterFunc covers the complete Rows lifecycle; stop/wait for its callback before release prevents stale cancellation affecting the next operation. Partial writes and lost responses retain wire.IOError/byte evidence; ErrBadConn automatic replay after sending is prohibited, and bad connections do not return to the pool.
+- All-package test/vet passed on Go 1.25.0/1.26.0 Windows amd64, and integration-helper lint reported 0 issues; cancellation/close/no-replay cases passed 20 consecutive runs. Independent rereview found no actionable findings; no database integration ran.
+- Go 1.25 race again returned `0xc0000139` during Windows process startup, with no detector result. CI adds Linux all-package race for both Go versions but has not run remotely. Real semantics/cross-platform validation remain awaiting acceptance.
+
+#### D07 Lexical Binding and Parameter Conversion
+
+- Development: Implemented; validation: Local pass. Code: `sql_lexer.go`, `bind.go`, `execute.go`; tests: `bind_test.go`, `bind_fuzz_test.go`.
+- Covers quotes/comments/Oracle q-quotes, named/numbered placeholders, repeated logical parameters at multiple physical positions, rejection of missing/extra/mixed/duplicate arguments, single Valuer conversion, typed nil and lossless uint64. MySQL native server preparation uses server parameter metadata in D08; strict lexical plans reject interpolation when quote mode is ambiguous.
+- Ordinary zero-argument SQL is sent unchanged; the server reports syntax/unbound-placeholder errors. Semicolons do not determine stored-procedure/anonymous-block boundaries. The multi-statement setting controls CLIENT_MULTI_STATEMENTS negotiation only; no auxiliary SQL-mode query is inserted, preserving ROW_COUNT/FOUND_ROWS/warning diagnostics. Parameter execution connects in D08 and remains explicitly rejected here.
+- Raw routines/anonymous blocks/executable comments, ANSI_QUOTES and no-auxiliary-query regressions went RED→GREEN; independent review found no remaining actionable findings. All-package test/vet passed on Go 1.25.0/1.26.0 Windows amd64 and Windows/386 execution passed; integration-helper lint reported 0 issues.
+- FuzzBindPlan passed 30 seconds on each version: Go 1.25 rerun 56,859 executions, Go 1.26 14,432. The first concurrent Go 1.25 run timed out while exiting; a single-worker rerun passed. CI includes this fuzz target. Linux/remote CI/race and database integration did not run; acceptance remains 0/32.
+
+#### D08 Server Preparation and Binary I/O
+
+- Development: Implemented; validation: Local pass. Code: `stmt.go`, `codec_binary.go`, `internal/wire/stmt.go`; changes to `execute.go`, `rows.go`, connections and capability declarations. Tests: `stmt_test.go`, `binary_rows_test.go`, wire statement unit tests and `FuzzStmt`.
+- Standard ConnPrepareContext, StmtExecContext/StmtQueryContext and delegation from legacy methods; unchanged MySQL SQL with server parameter counts, Oracle named/numbered-to-physical mapping; type headers sent every execution, NULL bitmap, uint64, exact decimals, fixed-integer NUMBER, special floats, bytes/text and basic time. Time inputs beyond microsecond precision or range are explicitly rejected; nanoseconds/extended time and other complete types are delivered by D12.
+- No arguments use ordinary text; arguments use a temporary server statement with automatic bounded release on terminal state/early close. Explicit sql.Stmt supports repeated execution; the standard pool prepares independently per physical session and never shares IDs. No implicit statement cache exists yet; D24 delivers bounded LRU. Binary results reuse Rows cancellation/EOF/multiple results/fault cleanup; CLIENT_PS_MULTI_RESULTS is negotiated only if declared by the server.
+- RED→GREEN: missing preparation, incorrectly accepted nonfinite MySQL binary floats, omitted automatic-statement cleanup errors and incorrectly rejected Oracle special-float inputs each have targeted regressions. Prepare context is not retained in the statement, so later cancellation cannot affect the next execution; Stmt.Close waits also have cleanup bounds.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and Windows/386 execution passed; integration-helper lint reported 0 issues. FuzzStmt passed 30 seconds per version, 916,857 / 898,336 executions; CI includes this fuzz target.
+- Independent review found no remaining actionable issues. `TestPrepareRoundTrip` only compiled and joined the manual integration job; no database was connected. Linux/remote CI/race and real round trips in both modes/OBProxy remain unverified; acceptance remains 0/32.
+
+#### D09 Local Transactions, Savepoints and Reset
+
+- Development: Implemented; validation: Local pass. Code: `tx.go`, `savepoint.go`, `reset.go`, standard ConnBeginTx/Tx/SessionResetter wiring; tests: `tx_test.go`, `reset_test.go` and compile-only `tests/integration/tx_test.go`.
+- MySQL supports default, ReadCommitted, RepeatableRead and Serializable. Oracle supports default, ReadCommitted and Serializable, rejecting ReadOnly combined with explicit ReadCommitted before sending. Both reject ReadUncommitted. Java's read-only-to-repeatable-read conversion does not alter Go request semantics.
+- Lost COMMIT responses return ErrCommitUnknown without replay or claims of rollback; restoration failure after confirmed commit returns ErrTxCleanup. Rollback after cancellation uses an independent cleanup context; transactions always stay on their original physical connection. Savepoint names are quoted by mode; Oracle RELEASE is rejected before sending.
+- Managed repairs only driver-managed transaction/autocommit state at pool reuse boundaries and does not promise to clear arbitrary user state. Full evicts the physical connection when reliable native OceanBase reset conditions are unconfirmed; database/sql prepares again in the new session without migrating old statement IDs. This task does not claim evidence for native COM_RESET_CONNECTION.
+- RED→GREEN: transaction interfaces, unknown commit results/restoration failures, dirty-pool reuse, statement reconstruction after Full and presend MySQL ReadUncommitted rejection. Targeted transaction/reset suites passed 10 consecutive runs. The isolation-level gate found in independent review was fixed; no separate report is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and Windows/386 execution passed; ordinary/integration-helper lint reported 0 issues. Integration source only compiled; no database was connected. Linux/remote CI/race remain unverified; acceptance remains 0/32.
+
+#### D10 Client Preparation and Explicit Escaping
+
+- Development: Implemented; validation: Local pass. Code: `client_prepare.go`, `escape.go`, `internal/charset`, Config.PrepareMode/DSN and standard Prepare/Exec/Query wiring; tests: `client_prepare_test.go`, `escape_test.go`, two fuzz targets and character-set unit tests.
+- PrepareServer is the default; only explicit PrepareClient uses client interpolation, with no automatic fallback. Execution reads current NO_BACKSLASH_ESCAPES state and rejects ambiguous MySQL double-quoted spans; no sql_mode query is inserted. Each literal preserves token whitespace boundaries so negatives cannot become comments and numbers cannot merge with aliases.
+- MySQL strings use hex literals with explicit character sets and separate binary encoding; Oracle uses quoting/HEXTORAW/CHR(0). Finite floats retain DOUBLE identity: exponent form in MySQL, d suffix in Oracle, avoiding truncation to Oracle NUMBER range. Messages, cumulative encoding and LOB parameters are bounded; Valuer reuses D07's single conversion.
+- The character-set leaf package brings forward current-connection UTF8MB4/UTF8MB3/Latin1 (Windows-1252) support from D12, with x/text v0.31.0 as its only dependency; other sets/full type mapping remain D12. Both complete client SQL and parameters are encoded; invalid/unrepresentable text is rejected.
+- RewriteJDBCEscapes explicitly handles date/timestamp, functions, nesting, call/return calls, outer joins/escape; quotes/comments remain unchanged, and Auto/session-quote ambiguity is rejected. Oracle's absence of TIME and undetermined timestamp arithmetic are explicitly rejected; ordinary SQL has no implicit JDBC rewrite. MySQL REAL/FLOAT/DOUBLE conversions retain floating-point semantics.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and Windows/386 execution passed; ordinary/integration-helper lint reported 0 issues. Both fuzz targets passed 30 seconds per version: client interpolation 549,084 / 344,984 executions, escape 371,466 / 7,673. CI definitions include them; later local regression/full validation covers review fixes.
+- Negative-number boundaries, floating-point types and REAL conversions found in independent rereview were fixed with regressions. TestPrepareEquivalence source only compiled; no database integration ran. Linux/remote CI/race remain unverified; acceptance remains 0/32.
+
+#### D11 Execute, Multiple-Result Summaries and Count Policy
+
+- Development: Implemented; validation: Local pass. Code: `execution.go`, `execute.go`, `rows.go` and argument/prepare wiring; tests: `execution_test.go`, `internal/wire/packet_test.go`. Execute accepts only non-nil standard Conn/Tx; presend failure returns no execution object; after sending, error prefixes and partial results are retained.
+- Summaries retain commands, rowsets and errors in server order; rowsets are numbered from 0 without fabricated sets. Zero counts differ from unknown; uint64 generated IDs retain decimal text. Result counts are bounded, count overflow explicitly fails, and Snapshot copies slices without network/standard Rows access.
+- Close drains within bounds, is idempotent and joins standard-library Rows.Err. Callers should stop iteration first and use Close as the final summary boundary. Original transaction-context associations retain DeadlineExceeded/custom causes; Close coordinates internal cancellation during explicit Commit/Rollback. First top-level and per-item errors are retained, including transmitted-byte evidence.
+- Packet transport refreshes bidirectional deadlines on each entry; exit only stops/waits for the previous cancellation callback. A complete received response is not overwritten by failure to clear a deadline. TLS upgrade clears the old packet deadline, then HandshakeContext owns cancellation under the same context; later packet I/O resets deadlines.
+- All-package test/vet on both Go 1.25.0/1.26.0 Windows amd64 toolchains, Windows/386 execution and ordinary/integration lint passed; targeted execution/transaction/TLS tests passed 10 repeated runs. FuzzPacket passed 30 seconds per version, 2,236,794 / 2,526,965 executions.
+- Both-mode `TestMultiResult` source and MySQL no-change UPDATE/upsert count comparisons compiled and joined the manual CI entry point; no database integration ran. Linux/remote CI/race remain unverified; acceptance remains 0/32.
+
+#### D12 Scalar, Character-Set and Time Semantics
+
+- Development: Implemented; validation: Local pass. Added `types.go`, `number.go`, `temporal.go`, `codec_temporal.go`; expanded binding, both preparation modes, session initialization, Rows and the charset leaf package. Public value types implement Scanner/Valuer and preserve protocol identity after identifying concrete types and sql.Null[T]; ordinary Scan does not return custom objects.
+- Exact Number expansion is bounded and never passes through float64. NString, Raw, RowID and native Oracle TZ/LTZ/TIMESTAMP/intervals cover text/binary/client paths. Connection SQL, prepared SQL, parameters, results and column names convert by character set; UTF16 NCHAR/result support is separate from client restrictions, and unknown encodings/collations are rejected.
+- Session.ParseTime defaults false. When enabled, timezone-free dates/timestamps use Location; TIME/YEAR semantics remain unchanged. Connection sets the real session time zone and reapplies the type baseline after user initialization. Nanoseconds, offsets and regions are retained; LTZ wall time without fold does not invent an instant, and DST gaps/overlaps fail conversion.
+- RED→GREEN covers types/precision, SQL/column-name encoding, parseTime/ScanType, sql.Null identity, initialization overriding time zone, and binary byte-parameter limits. Independent review's erroneous rejection of year 1 CE was fixed with a regression. FuzzCharset found silent replacement of undefined Windows-1252 bytes; these are now explicitly rejected with a retained minimal corpus. No separate walkthrough report is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64, actual Windows/386 execution and both ordinary/integration golangci-lint suites passed. FuzzScalars ran 30 seconds per version, 409,076 / 339,348 executions; post-fix FuzzCharset ran 30 seconds per version, 7,067 / 175,854 executions, passing. CI definitions include them.
+- `TestAllScalarPaths` uses real database/sql + a protocol peer for parameters/results/NULL of eight scalar families; invalid encoding verifies physical-connection eviction. `TestAllScalarTypes` integration source for four targets/three paths only compiled; no database was connected. Linux, remote CI/race, server timezone tables/SQL and actual character-set compatibility remain unverified; acceptance remains 0/32.
+
+#### D13 Database, Result and Parameter Metadata
+
+- Development: Implemented; validation: Local pass. Added `metadata.go`, both-mode SQL files, `metadata_test.go`, `metadata_fuzz_test.go` and compile-only integration source; completed ordinary Rows' five ColumnType interfaces and retained prepare parameter descriptions. Public Metadata accepts pinned Conn/Tx only and returns ordinary Rows; fields/NULL/types/mode boundaries of 17 Kinds are in architecture §16.1.1.
+- Filter values are parameterized, internally reusing safe literal encoding and the same physical session; case and LIKE escaping are retained. Arbitrary names are never inserted into identifier positions. Public Rows assumes the connection gate; internal Rows preserves outer ownership. Unread responses reject internal commands; errors/close drain within bounds. Description caching waits for D18; no arbitrary dictionary-rowset cache exists here.
+- StatementParameters performs server prepare/close regardless of PrepareMode, describes physical positions and retains repeated logical arguments. Direction is NULL without evidence, while raw protocol bytes remain available. Oracle catalog returns an empty rowset; MySQL unavailable type/synonym dictionaries return ErrUnsupported. PARAMETERS opens only for real ob_version >=4.1; exact-routine SHOW CREATE fallback for unknown/older versions has now been added (see 2026-10-19 supplement). Dictionary permission failures retain server codes.
+- RED→GREEN covers unified entry points, filter/enumeration/count boundaries, unknown lengths/precision, internal responses/lock boundaries, parameter identity and protocol descriptions. Independent review findings on FLOAT binary precision, two dictionary NUMBER_PRECISION fields and index A/D normalization to ASC/DESC were fixed with regression verification. No other Important/Critical findings remained; no separate report is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and actual Windows/386 execution passed; both ordinary/integration golangci-lint suites reported 0 issues. Metadata/ColumnTypes targeted cases passed 10 repeated runs; FuzzMetadataFilters passed 30 seconds per version, 117,697 / 117,036 executions, and joined CI definitions.
+- `TestMetadataCatalog` creates tables/foreign keys/views on four targets and compares DDL, independent dictionary column order and mode dictionary availability; currently only compiled without a real database connection. Linux/remote CI/race, target-version dictionary-field compatibility and actual permissions remain unverified; acceptance remains 0/32.
+
+#### D14 Scalar OUT, INOUT and RETURNING
+
+- Development: Implemented; validation: Local pass. Added `call.go`, `call_execution.go`, `call_mysql.go`, `prepare_execute.go` and OUT/protocol/integration tests. Standard Query/Exec and both preparation modes share output validation, assignment and finalization. Out types/sizes and ErrOut/OutError behavior are in architecture §13.1.
+- Oracle uses command161 with real ob_version >=2.2.76, receiving parameter/column metadata, internal outputs and mandatory tails; accepts RETURNING 1/3 and PL OUT, and supports deprecated EOF. MySQL initializes/executes/reads/clears random variables in the same session; auxiliary commands retain the gate without inheriting parent Execution summaries. Temporary-statement or variable-cleanup failure returns an error and evicts the connection.
+- RED→GREEN/regressions cover presend rejection, INOUT initial values/reuse, Number/nullable/unsigned identity, NULL/overflow/sizes, consistent repeated logical binding, zero/multiple output rows, tail errors, main/auxiliary-command errors, close failure and cancellation during finalization. Writeback occurs only after all built-in conversions pass; custom Scanner failure reports Partial. Existing immediate unknown-column-type rejection and binding/scalar cases also passed. Independent review found no remaining Important/Critical findings; no separate report is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and actual Windows/386 execution passed; ordinary/integration golangci-lint suites reported 0 issues. `TestOut*` passed 10 repeated runs; FuzzPrepareExecute passed 30 seconds per version, 563,547 / 612,847 executions, and joined CI definitions.
+- `TestScalarCall` and `TestReturning` validate procedures, functions, anonymous blocks, multiple outputs, exception suppression and RETURNING on all four real targets; currently only compiled and added to explicit manual integration entry points, without database connections. Linux/remote CI/race, target routines/RETURNING and OBProxy behavior remain unverified; implementation 14/32, acceptance remains 0/32.
+
+#### D15 Pinned-Session Resources and Lifecycle
+
+- Development: Implemented; validation: Local pass. Added `resource.go`, `resource_test.go`; reused concrete Session-type checks and connected standard Exec private close requests, connection-local records, physical/session/transaction identities and statement leases. Handles retain only standard Conn/Tx references and opaque identities, never driverConn; there is no public resource manager or global registry.
+- Transaction start/end, pool reset and server-observable transaction-state changes invalidate old generations. Complete outer responses clean unpublished/expired records; internal auxiliary responses preserve outer resources. A caller's statement Close immediately prohibits further execution; server close waits for the final resource lease. Resource Close never commits/rolls back/closes the caller's Session.
+- RED→GREEN covers invalid Sessions, wrong physical connections, Conn/Tx/new transaction/reset, concurrent idempotent close, unpublished records, manual transaction boundaries and bounded cleanup. Review findings on unbounded transaction cleanup and cancellation before standard-library dispatch were reproduced/fixed by `TestResourceTransactionCleanupBounded` and `TestResourceCancellationAtDispatch`; retained-statement OUT execution and precancelled Close regressions passed. No independent walkthrough log is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and actual all-package Windows/386 execution passed; ordinary/integration golangci-lint suites reported 0 issues. `TestResource*` passed 20 repetitions each; existing integration source only compiled. Document paths/links/fences, the 155-option table and 15 implemented-task count passed checks.
+- Specific locator/cursor protocols and public handles remain D16/D19/D20 work. No real database was connected; Linux/remote CI/race remain unverified, and Windows race runtime conditions remain unavailable. Implementation 15/32, acceptance remains 0/32.
+
+#### D16 Native BLOB/CLOB/NCLOB
+
+- Implemented OpenBlob/OpenClob, Blob byte-based random read/write/length/truncation and explicit-context Reader/Writer, and Clob code-point read/write/length/truncation. Only standard Session and opaque resource identities are retained; native parsing stays in wire, orchestration/materialization in the root package, without new dependency cycles.
+- Locator V1/V2, inline/out-of-row, temporary/persistent and NULL/empty cases are handled separately. Native DBMS_LOB reuses D14's combined-execution kernel with actual ob_version >=2.2.76. Read counts losslessly accept integer/NUMBER; chunks and cleanup are bounded; write failure returns the completed prefix without replay. Only implemented V2 attribute bits are declared after CONNECT_ATTRS negotiation.
+- Ordinary Query, multiple rowsets and scalar OUT materialize contents within bounds; internal commands are inserted only after the entire response/tail completes. No public sql/Metadata/gate reentry or auxiliary connection is used. Open cardinality errors clean every acquired temporary object; successful handles publish after query/cleanup/final-cancellation checks.
+- Character indices use Unicode code points; known UTF16 collations convert to server units. Overwrites changing an existing surrogate pair's width return ErrUnsupported before writing; append/equal-width overwrite/truncation are supported. Real NCLOB units/encoding and same-transaction visibility remain unaccepted.
+- RED→GREEN covers out-of-row short reads, QueryContext materialization in the original session, cleanup of multiple temporary objects, scalar LOB OUT, and review findings on buffered transaction context, NUMBER counts, UTF16 overwrite and the first ordinary LOB rowset after OUT. Added Reader input beyond 16MiB, mixed results, partial-write errors, CLOB/NCLOB equal-width overwrite/truncation and presend cancellation.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and actual all-package Windows/386 execution passed; LOB/Clob passed 10 repetitions each; ordinary/integration golangci-lint reported 0 issues. Locator fuzz passed 30 seconds each (1.25: 2248880, 1.26: 2524672 executions). TestNativeLOB joined manual integration, only compiled, without database connections.
+- Implementation 16/32; acceptance remains 0/32. Linux/remote CI/race are unverified; Windows race runtime conditions remain unavailable. No independent walkthrough report is retained.
+
+#### D17 In-Table BLOB and MySQL Chunk Backend
+
+- Development: Implemented; validation: Local pass. Owner Codex; started/completed 2026-10-17. Added `lob_target.go`, `lob_mysql.go`, ordinary/fault/fuzz tests and compile-only `tests/integration/table_blob_test.go`; reused Blob, standard Session private dispatch and existing resource generations, without new public packages or lateral dependencies.
+- Current-mode dictionaries confirm a base table, nongenerated binary BLOB column and complete primary key. Schema resolves and pins in the original session; identifiers are quoted component by component, Key/byte values copied, custom Valuer evaluated once. Open reads only metadata, existence/NULL/length or native locators, never complete contents; missing rows/NULL/non-NULL empty values remain distinct.
+- MySQL OCTET_LENGTH/SUBSTRING reaccess the key on every operation; chunks are at most 32767 bytes and shrink to message/per-chunk budgets, allowing contents beyond materialization limits. WriteAt/Truncate require a caller-owned writable Tx and known InnoDB locking semantics, first confirming identity/length with FOR UPDATE each time. No sparse holes are filled; ChangedRows=0 does not falsely mean missing rows. All four BLOB capacities are checked before first mutation. UPDATE warnings return ErrLOB; failed chunks may already have effects and callers own rollback.
+- Oracle resolves the same target to native Blob and uses FOR UPDATE when opened in a writable Tx; read-only Tx/Conn do not take that lock. Public names use exact dictionary spelling; MySQL column lookup is case-insensitive. Internal commands retain the original gate/physical session and consume complete responses. Closing an emulated handle releases only local records; transaction end/reset invalidates it.
+- `TestBlobTarget*` and `TestTableBlob*` cover composite keys/special identifiers, one-time Valuer evaluation/mutation isolation, missing/NULL/empty values, cross-chunk reads beyond materialization limits, maximum offsets/append/same values/empty writes/truncation, read-only/unknown engines, lock errors, no replay after disconnect/cancellation and completed prefixes. Oracle CHAR/DATE PKs, default-expression/generated-column distinction, native transaction row locks, capacity and warnings were verified by RED→GREEN regressions. Independent review left no actionable findings; no separate report is retained.
+- Final `go test ./... -count=1`, `go vet ./...` and 10 targeted repetitions passed on Go 1.25.0/1.26.0 Windows amd64; actual all-package Windows/386 tests passed on both versions. Ordinary and `--build-tags=integration` golangci-lint reported 0 issues; integration source only compiled using `-run '^$'`. `FuzzBlobIdentifiers` passed 30 seconds per version, 554034 / 642929 executions; CI definitions include it.
+- Implementation 17/32; acceptance remains 0/32. Four-target `TestTableBlob` source covers large objects, ChangedRows, concurrent locks/rollback, truncation and resource end. No database was connected; real SQL/dictionaries/locks/Oracle locators/nonstrict mode await integration. Linux, remote CI and successful race have no evidence.
+
+#### D18 OBJECT/ARRAY and Same-Session Type Descriptions
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Owner Codex; started/completed 2026-10-17. Added `complex.go`, `complex_codec.go`, `type_descriptor.go`, `internal/wire/complex.go`, complex-value ordinary/fault/fuzz tests and compile-only `tests/integration/complex_test.go`. Root orchestration reuses existing wire/charset/metadata/LOB without new public packages, dependencies or cycles.
+- Object/Array/Attribute retain exact types/field order; Scanner/Valuer uses format=1 JSON. Decimal NUMBER, RAW/BLOB base64, wall time, nesting/NULL/empty collections are lossless. NamedValueChecker retains native input identity; parameters send real COMPLEX160, never JSON strings masquerading as object protocol.
+- Dictionary caches are scoped to one business command/physical session, keyed by mode/schema/name/protocol version and cleared on command/reset; 0 means current server version. Reuses D13 type/attribute/collection/synonym plans, supporting private/PUBLIC synonyms and rejecting remote links/cycles. Unread responses prohibit internal commands; all remaining responses buffer within bounds before dictionary queries/nested LOB reads. No public Metadata/Session/database/sql reentry, auxiliary connections or business-SQL replay.
+- Current support/rejection boundaries are in architecture §11.2.2 and compatibility matrix §9. Server-prepared binary results are required; non-NULL TIMESTAMP/LOB field inputs and unconfirmed built-in collection-element headers are explicitly rejected. JSON/tree/description responses are bounded; nested LOBs of a root complex value share remaining budget, and final representation/whole response also obey MaxMessageBytes.
+- `TestComplexLossless`, `TestDescriptorNoReentry`, `TestDescriptorRefresh` cover real database/sql cache misses, complete responses, type-version/field changes and exact values. Added named/anonymous object collections, CLOB character sets, PUBLIC synonyms, cumulative-description budgets and complex-OUT tail errors. Four issues were reproduced before fixes: OUT column-count overflow, shared budget during tree construction, draining later complex rowsets after Close/Exec, invalid array-element headers. Added final OUT cleanup timeout and buffered-description-refresh regressions. Independent read-only review found no remaining Important/Critical findings; no separate walkthrough report is retained.
+- All-package `go test ./... -count=1` / `go vet ./...`, 10 complex/description repetitions and actual all-package Windows/386 execution passed on Go 1.25.0/1.26.0 Windows amd64; ordinary and `--build-tags=integration` golangci-lint reported 0 issues on both versions. `FuzzComplex` passed 30 seconds per version, 203745 / 266653 executions, and joined CI. Integration only compiled using `-run '^$'`, without database connections.
+- Implementation 18/32, G3 6/10; acceptance remains 0/32. Four-target `TestComplexTypes` source provides objects/collections, precision/RAW/DATE, NULL, nested LOBs, original transactions and complex OUT. Actual types/permissions/versions/OBProxy behavior await integration. Linux, remote CI and successful race have no runtime evidence.
+
+#### D19 Native Cursors, Scrolling, Refresh and Updatable Results
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Owner Codex; started/completed 2026-10-17. Added root cursor.go/cursor_protocol.go/cursor_update.go, protocol/boundary/update tests and compile-only integration cursor source, without packages/dependencies/cycles. Server prepare exposes an internal same-gate entry point for Refresh/DML; public Prepare retains its original gate and bounded cleanup.
+- Forward uses native cursor execute/fetch; Static uses real fetch snapshots bounded by MaxCacheBytes; Sensitive uses Oracle >=2.2.76 command161/scrollable mode8/absolute-offset fetch, requesting every position from the server rather than substituting cached results. Older/unknown Oracle offset versions use ordinary 9-byte forward fetch. Both EOF paths consume correct responses; row EOF status survives until tail OK.
+- Standard Conn/Tx + sql.Rows batches, independent Fetch contexts and ErrCursorBusy for unclosed batches; values buffer within bounds and complex descriptions/LOBs are processed inside the original gate after complete responses. Close/transaction/reset releases existing statement leases without auxiliary sessions or business-SQL replay.
+- Mutation/Refresh requires writable Tx, a single-base-table projection and complete PK; MySQL requires InnoDB. Mutation columns are explicit/safely quoted, DML/Refresh uses native arguments, Update/Delete first lock with FOR UPDATE in the same transaction, and ChangedRows=0 does not falsely indicate a missing row. Insert rejects NULL/missing PKs; generated columns reject writes. Refresh reads base-table projections; static retains its original snapshot. Position/PK/mode/version boundaries are in architecture §15.
+- `TestCursorFetch`, `TestCursorStatic`, `TestCursorSensitive`, `TestCursorUpdateIdentity`, `TestCursorInsertRefresh`, Oracle LOB/mutations, both EOF forms, older versions and transaction/reset/context cases passed locally. Regressions reproduced/fixed repeated fetch of empty cursors, reuse after failed fetch, NULL byte PKs, native-parameter contract differences, mutation continuing after transaction-generation changes during prepare/existence locking, Refresh missing rows wrongly evicting the caller's transaction, and connection reuse after malformed error packets. Corresponding scenarios passed. Independent read-only review found no remaining Important/Critical findings; no separate report is retained.
+- Final all-package test/vet on Go 1.25.0/1.26.0 Windows amd64, 10 cursor repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint reported 0 issues on both versions. `FuzzCursorPosition` passed 30 seconds each, 295037 / 588323 executions; CI includes it. Integration only compiled using `-run '^$'`.
+- Current implementation 19/32, G3 7/10; acceptance remains 0/32. `TestCursorModes`/`TestCursorUpdates` source covers direct/proxy in both modes: native fetch, LOBs, scrolling/sensitive changes, PK insert/delete/update/refresh, concurrent missing rows and transaction invalidation. Real server/locks/versions/permissions/sensitivity/isolation await integration. Linux, remote CI and successful race have no runtime evidence.
+
+#### D20 REF CURSOR and Streaming LOB Outputs
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Owner Codex; started/completed 2026-10-17. Added root cursor_out.go, output/child-Rows regressions and integration source; reused standard database/sql, resource generations and parent-statement leases without new packages/dependencies.
+- CursorOut and explicit BLOB/CLOB/NCLOB Out are accepted only by Execute, using known Oracle >=2.2.76 native hidden OUT/full tails. Destinations must initially be nil; NULL stays nil. INOUT and handle length/precision hints are rejected. Parent statements close only after their last resource; published handles outlive Execution.Close and Fetch/LOB reads use new contexts.
+- Ordinary child REF CURSOR values are read within bounds after complete parent responses, return standard child driver.Rows and close with parent Rows. Total budget includes nested metadata/row bodies, with at most 16 levels and cycle rejection. Static cross-batch caches count toward child snapshots; revisits create independent child readers. Internal transaction-operation contexts are separate from caller iteration contexts.
+- `TestCursorOutPublish`, `TestOutputLease`, mixed LOB/beyond-materialization limits, NULL, tail errors/malformed responses, presend ordinary-interface/mode/version rejection, Scanner failure/cancellation during conversion, transaction leases, nesting/cycles/depth and fetch cancellation passed locally. Independent review's transaction child contexts, static child-cache budgets/revisits and combined parent/child metadata budgets were reproduced/fixed before success; no separate report is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64, 10 output/child-cursor repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint reported 0 issues on both versions. FuzzStmt passed 30 seconds each, 1259914 / 423113 executions. Integration only compiled without database connections; four-target `TestProcedureResources` source only compiled. Real procedures, temporary locators, REF CURSOR/OBProxy behavior await integration. Linux, remote CI and successful race have no runtime evidence; implementation 20/32, G3 8/10, acceptance 0/32.
+
+#### D21 Single-Use Long Parameters and Segmented Upload
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Owner Codex; started/completed 2026-10-17. Added root long_data.go/long_data_test.go and integration long-parameter source. Omitted parameter bodies reuse wire parameter structures; the single public root package remains, without new dependencies/cycles.
+- *LongData explicitly borrows Reader, with exact source-byte Length/-1, dual MaxBytes source/conversion limits and incremental Text UTF-8 encoding. Upload atomically consumes it on start; repeated named positions receive each chunk without seek/rewind/automatic retries. Each chunk sends before further reading, without whole-stream materialization; arbitrary blocking Readers require caller cooperation for cancellation. Public contracts are in architecture §13.5.
+- MySQL LONG_DATA24 has no per-piece responses; Oracle >=2.2.76 PIECE_DATA162 acknowledges each piece, using binary hex/text session charset and STRING254; execute retains only parameter bitmaps/type headers. Ordinary preparation, explicit cursors, native Oracle OUT and server-stream CALL for MySQL OUT all use the original session/transaction/gate.
+- TestLongDataChunks/Failure/Text/OracleOutputs/MySQLOutputs/Cursor, named fanout, incremental sending, invalid Readers/nil pointers/empty reads, lengths/budgets, piece errors/corruption, partial writes, Tx/operation cancellation and consumed rejection passed. Reader n+err/ErrUnexpectedEOF errors are not swallowed; ErrBadConn is specially isolated to prevent database/sql replay.
+- Independent read-only review found shared Rows cleanup could stop a pending cancellation callback after upload and leave long data behind; TestLongDataCancelAfterPiece/CancelBeforeExecute failed before passing. Rows release now directly evicts on observed cancellation, covering release during upload and after upload/before execute. No separate report is retained.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64, 10 long-parameter repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both versions. FuzzLongTextBoundary passed 30 seconds each, 184336 / 185667 executions; CI includes it. Integration only compiled on both versions, without database connections.
+- Four-target TestLongParameters source includes binary uploads beyond ordinary materialization limits, UTF-8 text, hash comparisons and commit/rollback. Real Oracle/MySQL/OBProxy packet limits, empty-stream/LOB conversions, locks and transactions await integration. Linux, remote CI and successful race have no runtime evidence; implementation 21/32, G3 9/10, acceptance remains 0/32.
+
+#### D22 Batch Execution and Conservative Strategy Selection
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Owner Codex; started/completed 2026-10-17. Added root batch.go/batch_protocol.go, internal/wire/pipeline.go/tests and integration batch source; reused ordinary parameter validation, binding, Rows finalization and standard-library dispatch without new packages/dependencies/cycles.
+- ExecBatch retains input order, known/unknown counts, Started and four statuses. It stops by default; explicit continuation still stops on uncertainty/cancellation/corruption. DB pins one connection for the whole batch, Conn/Tx locks once through the standard library; transaction boundaries do not change and business operations never replay. Cleanup failure after confirmed success retains success/counts while returning an error.
+- Auto/MultiSend sends independent commands ahead only with server preparation, explicit continuation, simple DML and explicit scalars. Concurrent writes/ordered reads, independent sequences and row/physical-parameter-slot/total-byte limits apply; failure closes the connection and waits for the writer goroutine. Repeated Oracle named parameters beyond a chunk's physical-slot limit fall back to sequential. OUT/streams/complex values/custom Valuer fall back to ordinary sequential execution; handle outputs remain Execute-only.
+- Rewrite, bulk and array-binding preferences are connected. Later D22/D32 subitems added restricted MySQL multi-statement rewriting and native Oracle array binding within transactions; exact gates/evidence are in architecture §13.4. Bulk explicitly unsupported by Java and requests failing relevant gates remain sequential; equivalence on real targets awaits integration.
+- TestBatchResults/Atomicity/Strategies/TxBoundary/LongAndOutputs, single dial after disconnect, cancellation, corrupt/extra responses, typed nil, chunking and Pipeline early-send/backpressure/continuation cases passed. Regressions failed before fixes for cleanup status after confirmed response, lost final cancellation alongside existing SQL errors, late write errors replacing SQL errors, shared-prepare failure stopping continued batches/invalid-argument attribution order, and nonequivalent repeated-named-position chunking. No independent walkthrough report is retained.
+- Independent read-only review found no remaining Critical/Important findings. Final all-package test/vet on Go 1.25.0/1.26.0 Windows amd64, 10 batch/pipeline repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both versions. FuzzStmt passed 30 seconds each, 997617 / 1885852 executions. Six-document structure/links/local paths and 32-task/22-implemented/0-accepted/155-option checks passed. Four-target `TestBatchExecution` source covers all strategy preferences, duplicate-key partial success and original-transaction rollback; it only compiled without database connections. Real SQL/versions/proxy buffering/transactions await integration. Linux, remote CI and successful race have no runtime evidence. Current implementation 22/32, G3 10/10, acceptance remains 0/32.
+
+### D23 Compression, OB20, New Metadata and Checksums
+
+- Development: Implemented; validation: Local pass, acceptance incomplete. Root `ProtocolOptions` has five tristates; standard/compressed/OB20 transport locks after final authentication OK and all commands reuse the existing codecs. Configuration/DSN, capabilities, packet transport, column metadata and batch call sites are connected without new packages/dependencies.
+- Implemented zlib/raw, OB20 request IDs/dual sequence layers/lengths/flags, new TLV/old-extra skipping, CRC16 and raw CRC32C; proxy bits 3/6 and OB20 CRC are separately controlled. Oracle new-metadata length adaptation retains Go type contracts; multiple logical messages in packet transport each obey their own budgets, independently of the frame's 24-bit limit.
+- Local both-mode `TestPacketModes` covers initialization, queries, preparation and sequential batches over all three packet transports. Framed multi-send falls back to Sequential before business sending; full pipeline-identity extension is not enabled yet. Regressions cover cross-frame headers/continuations/empty terminators, independent checksum vectors, invalid lengths/sequences/CRC/extra, partial writes, cancellation, request-ID wrap and no reset with unread responses.
+- RED→GREEN: missing API; legal aggregated small messages incorrectly exceeding limits; lost network-read-byte evidence for bad CRC; new-metadata RAW/ROWID lengths. Independent review found no remaining Critical/Important findings; no separate walkthrough report is retained.
+- Final all-package test/vet on Go 1.25.0/1.26.0 Windows amd64, 10 protocol-target repetitions and actual all-package Windows/386 execution passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both versions. `FuzzFrames` passed 30 seconds each, 1466178 / 73653 executions; integration only compiled on both versions. Six-document local-path/relative-link/code-fence and 32-task/23-implemented/0-accepted/155-option checks passed.
+- Four-target `TestPacketModes` source and CI/fuzz entry points are complete; only compiled, without database connections. Positive/rejection registration is in compatibility matrix §14; real-target protocols, versions and proxy checksums are unverified. Linux, remote CI and successful race have no runtime evidence; implementation 23/32, G4 1/8, acceptance remains 0/32.
+
+### D24 PrepareExecute, Caching and Execution Optimization
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Root ExecutionOptions/DSN, general combined execution and statement LRU/type state reuse existing Rows, OUT, long-parameter, cursor and batch paths, without new packages/dependencies/cycles. Zero configuration retains previous behavior; support boundaries are in architecture §10.1.1.
+- Ordinary Oracle combined execution requires explicit enablement and actual ob_version >=2.2.76; standard SQL checksum requires Oracle >=4.1.2, while combined checksum remains a separate tail field. Caches are bounded per physical session; explicit sql.Stmt/procedure ownership remains unchanged. Type vectors save only after complete success; changes, NULL, unsigned, complex descriptions and errors have local validation.
+- Both-mode cache reuse, LRU, SQL-byte limits, error eviction, session-text invalidation, Full reset, combined queries/DML, explicit statements, no replay after server errors and parameter golden-packet tests passed. Initially missing combined dispatch failed tests before completion; existing tests detected/fixed cancellation-context wrapping and OUT-cleanup-order regressions.
+- Independent review found parameterized OpenBlob/OpenClob combined paths lost locator capture and lock handoff. Two new tests first reproduced sql.ErrNoRows, then passed after reusing shared capture logic. Final independent review found no remaining Critical/Important findings; no separate walkthrough report is retained.
+- Final all-package test/vet on Go1.25.0/1.26.0 Windows amd64, 10 PrepareExecute/Statement/long-parameter-cancellation/OUT/LOB repetitions and actual all-package Windows/386 execution passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both versions. Extended FuzzPrepareExecute passed 30 seconds each, 396546 / 450199 executions. Local 32-parameter encoding benchmark samples fresh/reuse were 352/288 B, each 1 alloc; these do not establish real database throughput.
+- Four-target TestExecuteStrategies source for ordinary/optimized configurations covers return values/NULL/type changes/OUT/duplicate keys/counts/close and is connected to CI; it only compiled without database connections. Real versions/server type headers/checksums, transactions and performance await integration; Linux, remote CI and successful race have no new evidence. Current implementation 24/32, G4 2/8, acceptance remains 0/32.
+
+### D25 Diagnostics, Profiling and Full Link Trace
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Root Diagnostics/TraceInfo, injected slog and bounded wire snapshots/FLT reuse existing locks and transport; no new packages/dependencies/global logger/exporter/background queue. Detailed contracts are in architecture §18.3.1.
+- Metadata diagnostics cover command duration, real bytes sent/received, SQL fingerprint/byte count, safe error codes and drop counts; authentication/raw SQL/parameters/LOB/error text are not collected. Thresholds raise severity to Warn; loggers/callbacks receive synchronous delivery after unlock. Connection establishment supplies only a safe total-duration event.
+- Tristate FLT is independent of the logger and supports new/old extra, control/query timing, clearing app per request, sampling/printing/slow requests/ShowTrace, 16-byte ID/parent-span bridging and bounded deferred span upload. Multi-send retains its strategy, recording writes/reads separately before merging without concurrent access to one recorder.
+- RED→GREEN covers missing encoding/public APIs/transport negotiation and pipeline diagnostics. Independent review reproduced a complete but malformed OK diagnosed as success. New TestDiagnosticMalformedResponse failed first; decoding/eviction failure is now recorded during the locked snapshot. Rereview found no remaining Important/Critical findings; no separate report file exists.
+- All-package test/vet on Go 1.25.0/1.26.0 Windows amd64 and actual all-package Windows/386 execution passed; diagnostics/tracing/pipeline targets passed 10 repetitions per version and 386 regressions; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues. FuzzFullTrace passed 30 seconds each, 2061507 / 1355028 executions; four-target TestFullLinkTrace source/manual CI were added and only compiled in this phase. Direct targets register off, proxies required; server app clearing, trace/span IDs and actual sampling require separate real evidence. Client events do not count as acceptance. Linux, remote CI and successful race have no new runtime evidence. Implementation 25/32, G4 3/8, acceptance 0/32.
+
+### D26 Static Multiple Addresses, Roles and Connection Failover
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Added root routing.go/failover.go and owned address/selection/health types in internal/routing; connected Config/DSN, connector/reset/tx, CI and integration source. Retains a single public root package and root → leaves dependencies, without new external dependencies, pools or background goroutines. APIs/defaults are in architecture §17.1.1.
+- At most 1024 normalized unique static candidates, group priority and nonrepeating within-group ordering by sequence/random/round-robin/weighted affinity; shared health/cooldowns are Connector-local. Fixed Role strictly filters; read-only services reject write transactions before sending without parsing SELECT. Callers/servers guarantee actual primary/replica identity and SQL permissions.
+- MaxAttempts/fixed backoff/cooldown waits share total ConnectTimeout; each AttemptTimeout covers Dial/TLS/authentication/initialization. Authentication/certificate/mode/configuration/initialization failures terminate; initialization may have side effects and never replays. TLS uses the actually selected host. TCP disconnect without a rejection message is classified as transport failure. Optional idle validation uses same-Socket PING in ResetSession, handing failures to standard-pool eviction; business operations/transactions never migrate or replay.
+- TestAddressSelection/Health/Parsing, TestRoutingDSN/Snapshot/IdleValidation, TestRoleIsolation/ReadOnlyTransaction/TransactionSocket, TestFailoverBudget/AttemptTimeout/AllDown/TotalDeadline/TerminalErrors/HandshakeDisconnect/TLS/NoBusinessReplay passed locally, covering backoff/cancellation, health expiry/concurrency, isolation, strict parameter validation and single business execution after lost responses.
+- Independent review confirmed erroneous retry of TLS fatal alerts wrapped by net.OpError/wire.IOError and initialization not sharing the per-attempt budget. TLS1.2/1.3 client-certificate rejection and slow-initialization regressions reproduced both before fixes; final review found no remaining Important/Critical findings. TLS tests use local buffered TCP and await peer completion to avoid dropped alerts/premature fixture close; no separate report is retained.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions, actual all-package Windows/386 execution and ordinary/integration-tag golangci-lint 2.14.0 with 0 issues passed. FuzzAddressParsing passed 30 seconds each, 1450183 / 2557225 executions. Real database integration did not run as requested. Four-target TestConnectionFailover source/manual CI were added and only compiled; each profile needs two real endpoints for the same tenant/mode. Tests inject only first-dial failure, verify no redial during an active read-only transaction and recovery on a new connection after close; they do not replace real outages or database-side unknown-outcome evidence. Linux, remote CI and successful race have no runtime evidence. Implementation 26/32, G4 4/8, acceptance 0/32.
+
+### D27 TNS, OCP and Topology Discovery
+
+- Development: Implemented; validation: Local pass, real targets awaiting integration. Root DiscoveryOptions/TopologySource, built-in TNS-file/OCP-HTTP sources and static DESCRIPTION/DSN are connected to Connector; internal/routing uses only the standard library, without new public subpackages, pools or third-party dependencies. Defaults/source-policy mapping/service identity are in architecture §17.1.2.
+- NewConnector does no I/O; the first Connect lazily starts one serial refresh task. Candidate snapshots publish atomically after validating explicit Service, strict Role, unique addresses and parsing budgets. Last successful snapshots remain usable within MaxAge; expiry fails closed and known failures recover on refresh intervals without new calls causing request storms. Generations share retained-member health/round-robin state; late dial results can update new generations, and removals prune health records.
+- Connector.Close/sql.DB.Close cancels discovery only; acquired connections remain usable. Authentication identity/compatibility mode never changes, active Sockets never switch and transactions/business commands never replay. driver.Open's private Connector cleans up on both success/failure. HTTP timeout/redirect/failure responses and malformed descriptions are explicitly rejected. Local ordinary files are checked before/after open; trusted symlinks are followed. Go cannot forcibly stop blocked OS calls or noncompliant user callbacks.
+- Replication adapts through explicit role snapshots/two standard sql.DB instances; Aurora/custom control planes use TopologySource for their real service capabilities instead of guessing Aurora SQL against OceanBase. Validated Java OBLB policy hints do not override Go RoutingOptions. OCP wraps NET_SERVICE_NAME as logical identity; CONNECT_DATA does not automatically switch databases. Real external adapters remain individually awaiting integration.
+- TestTNSParser/PolicyHints, TestOCPRefresh/HTTPEnvelope, TestTopologyChanges/RejectsInvalidSnapshots/ConcurrentAndLateResponse/FailureCached/HealthAcrossRefresh/RemovedAddressLateResult/CloseCancelsLookup/CloseBounded and public Source/DSN/connection-budget/active-session/legacy-Open-cleanup regressions passed locally. Four review issues were reproduced/fixed: file-alias bypass, misidentified OCP HTTP format, driver.Open refresh leaks and lost health from late old-generation dials. Separate late-success/failure regressions after address removal verify unchanged selection and no health-table regrowth; removing each update gate confirmed detection. Final review found no remaining Important/Critical findings; no separate walkthrough report is retained.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet and actual all-package Windows/386 execution passed; discovery-refresh/HTTP/close regressions passed 20 consecutive repetitions per version; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. FuzzTNSParser covers both TNS alias paths and OCP, passing 30 seconds each, 679357 / 802846 executions. High-load HTTP-cleanup regression exposed a false failure caused by late server requests, corrected by bounded quiescence waiting; temporarily disabling production cleanup still made the new test fail, and full validation passed after restoration. Positive symlink cases skipped for missing local creation privileges; Linux/other available platforms still need evidence.
+- Four-target TestDiscovery TNS/OCP source/manual CI were added and only compiled. Deployment supplies real identity SQL/expected tenant/role; pinned sessions validate source claims, and constant SQL/initial connection do not replace real refresh evidence. Real external replication/Aurora discovery, Linux/remote CI and successful race have no new runtime evidence; no database connections as requested. Implementation 27/32, G4 5/8, acceptance remains 0/32.
+
+### D28 Full Authentication and Platform Transports (In Progress)
+
+- Initial code: old password, client_ed25519, PAM dialog, Auth.PasswordCharset, DSN allowOldPassword/passwordCharset and instance io.Closer lifecycle. Built-in algorithms stay in internal/auth; root owns TLS/mode/encoding/sessions without new packages/cycles. Ed25519 uses pure-Go filippo.io/edwards25519 v1.1.0, without handwritten curve algorithms or native dynamic libraries.
+- TestAuthPluginLifecycle/TypedNil, Algorithms, ExtendedHandshake/LegacySwitch/OldPasswordPolicy, PAM/Gate/Fallback/Failure/UnverifiedHandshake, PasswordCharset/OptionsDSN cover instance cleanup/close errors, initial/switch, trailing binary zero, weak-algorithm prohibition, answer cancellation/NUL/error prompts and unified custom-transport gates. FuzzAuthPlugins covers algorithms/PAM prompts. No database was connected; real service plugins/platform combinations await integration.
+- Shared Memory/OBProxy VC still need development; Unix GSSAPI system-library execution/real tickets, real Windows Kerberos domain tickets and remaining service combinations need validation. Public ChangeUser belongs to D30. D28 remains In progress, implementation remains 27/32 and acceptance 0/32; partial subitems do not replace whole-task completion.
+- Initial local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, actual all-package Windows/386 tests and integration-source compilation passed; AuthPlugin passed 10 repetitions per version, ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. FuzzAuthPlugins passed 30 seconds each, 1180142 / 629696 executions. Independent review found PAM switch stripping terminators twice; regression failed before the fix then passed. No other confirmed issues remain. Linux/remote CI/successful race and real service authentication have no new evidence.
+- Subsequent transport subitem: Config.Network and DSN network/socket, Unix standard-library Dial and Windows Named Pipe build tags/go-winio are implemented; IPC uses one endpoint, explicit TLS ServerName, no TCP fallback and common cancellation/cleartext gates. TestPlatformTransport covers protocol I/O over local native sockets/pipes, configuration/DSN/rebuilding Connector from parsed configuration, timeout/close and default cleartext rejection. Shared Memory native events/mapping/allocation cancellation evidence continues; VC native ABI still needs checking.
+- Transport local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 PlatformTransport repetitions, actual all-package Windows/386 tests and integration-source compilation passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both, go mod tidy -diff found no differences. Go1.25 Linux/amd64 all-package builds/root-test-source cross-compilation passed; compilation is not execution. Review found missing pipes did not enter configured retries; native missing-then-recovered regression failed before fixing/passing. Final review found no other confirmed issues. Remote UNC synchronous CreateFile cannot be strictly interrupted by context, documented in architecture §9.0.1; real services/remote permissions/Linux execution/successful race remain unverified.
+- GSS subitem: added optional AuthConversation, preserving the original token's first byte and switch-seed trailing zero before context creation. nil sends nothing, non-nil empty slices send empty packets, and context completion still requires final OK. Every round retains TLS/context gates and instance cleanup. Auth.ServicePrincipalName/DSN servicePrincipalName validation is connected. Windows uses current-process identity/native SSPI; Kerberos checks actual mutual-auth flags, NTLM/Negotiate requires driver-verified TLS each round. Later Unix-provider implementation/enablement follows below.
+- GSS local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 GSS/Conversation repetitions, actual all-package Windows/386 tests and integration-source compilation passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Go1.25 Linux/amd64 all-package builds/root-test-source cross-compilation passed; go mod tidy -diff found no differences. Extended FuzzAuthPlugins seed parsing passed 30 seconds each, 846952 / 841195 executions. Restricted processes skipped native-identity tests for SEC_E_NO_CREDENTIALS; under the current user's identity, native NTLM tokens/full SSPI handshake with verified TLS actually passed, plus both-version/386 checks. Raw-token/switch-terminator regression failed before fixing/passing; independent review found no confirmed important issues remaining. Windows-domain Kerberos/Negotiate, real databases, Linux execution and successful race remain unverified; SSPI synchronous-call context limits are in architecture §17.2.1.
+- Unix GSS subitem: built-in providers for Linux amd64/arm64/386 and macOS amd64/arm64 are implemented, explicitly enabled by -tags=gssapi. purego v0.11.1 calls fixed system libraries without mandatory cgo/headers. Enabled builds require the native loader/C runtime; default builds do not import purego and retain static deployment. Each authentication acquires Kerberos initiator credentials from the default cache, imports a fixed SPN and checks actual mutual flags, without reading database passwords, mutating process environment or requesting delegation. RFC2744 buffer/OID/set ABI widths, continuation contexts, memory pin/copy/free, handles returned alongside errors and idempotent close have tests. Windows amd64 actually compiled/ran a standalone C ABI peer, which does not establish Linux/macOS system-library execution. Public configuration/dependency direction remain unchanged.
+- Linux CI adds full -tags=gssapi,gssapitest tests, including system GSSAPI failure without credentials/native ABI checks; OB_TEST_GSS_REQUIRE=1 forbids skipping this CI check for missing libraries. Test-only gssapitest needs a C compiler; ordinary driver builds/tests do not. Real Unix ticket exchanges, system-library/platform execution and remote CI results still need evidence; Shared Memory/VC development continues and D28 remains In progress.
+- Unix GSS local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, actual all-package Windows/386 tests, 10 targeted GSS repetitions, 3 standalone C ABI repetitions and integration-source compilation passed. Ordinary/integration/gssapitest Windows lint and gssapi,gssapitest Linux lint reported 0 issues on both versions. Both toolchains completed tagged builds/ABI-test-source cross-compilation for Linux amd64/arm64/386 and macOS amd64/arm64; this is compilation evidence only. Default Linux CGO_ENABLED=0 root-test ELFs have no PT_INTERP/PT_DYNAMIC; default dependency graphs exclude purego, tagged ones include it. Cancellation before native Step failed regression before passing; review found no confirmed important issues remaining. go mod tidy -diff found no differences; no database connections. Unix system libraries, real tickets, remote CI and successful race remain unverified. Implementation 27/32 and acceptance 0/32 remain unchanged.
+
+### D29 Controlled LOCAL INFILE Import
+
+- D29 depends on D06/D21 and can proceed independently of unfinished D28; Shared Memory/VC protocol-evidence issues are not counted complete here. Added root `Import` / `LocalInfile`, same-session DB/Conn/Tx execution and one-shot request authorization, with exact-name Reader or authorized Open; size/time limits/source-close ownership are in architecture §17.3.1. No new packages/dependencies/global file state/cycles.
+- Reuses longSource reading/cancellation/limits and existing Rows response state machine. Standard/compressed/OB20 uploads use wire continuation writes; sequence wrap does not restart tracing/diagnostics. Normal completion requires final OK/ERR; source failures/rejection/cancellation/limits/malformed responses evict connections. No implicit replay or transaction commit.
+- TestLocalInfilePolicy/Failure/SourceFailure/Resolver/Timeout/Validation/ServerResponse/Transaction/SequenceWrap/FilenameCharset/Framing cover unauthorized ordinary queries, exact names, callback/Reader ownership, nil/malformed sources, limits/cancellation/final-ack timeouts, duplicate requests, reuse after final ERR, same transactions and chunking/sequence wrap. TestContinuationSequenceWrap validates all three transports and one diagnostic record. Review found final rowsets incorrectly accepted as import acknowledgements; regression failed before passing. Session-GBK filename matching was also reproduced/fixed; content remains raw bytes.
+- Four-target TestLocalImport source/manual CI were added: imported counts/content, commit/rollback, over-limit after partial transaction input, eviction/new-connection checks. Oracle mode requires a real-target LOCAL_IMPORT_SQL template and missing templates force acceptance failure; ordinary missing configuration may skip without counting as passed. This phase only compiled source without database connections and does not claim validated real SQL/server transaction behavior.
+- Local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 import/continuation-target repetitions, actual all-package Windows/386 tests and integration-source compilation passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both versions. Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed; go mod tidy -diff found no differences. Compilation does not count as Linux execution. Final-ack/charset review issues have regressions failing before passing; no confirmed important issues remain. Full bidirectional compressed/OB20 and partial-transmission-failure transaction integration source is added. Implementation 28/32, G4 6/8, acceptance 0/32; databases/Linux execution/remote CI/successful race remain unverified.
+
+#### D30 Initial Work: Session Helpers and Warning-Count Snapshots
+
+- Development: In progress, not yet counted Implemented. Added root session_ops.go, unit tests and four-target integration source without new packages/third-party dependencies/connection wrappers. Closed-set functions on ordinary sql.Conn provide schema/catalog, client information and system variables; actual mode owns SQL/names/encoding.
+- Setters reject active transactions/autocommit off and protected encoding/timezone variables before sending; all setters clear automatic statements/type descriptions before sending, including sql_mode parse-semantic changes. After mutations send, pinned-connection close evicts it to avoid original-pool state leakage; even complete server errors do not restore pool eligibility. Validation failure leaves the original session reusable.
+- Warnings and per-item ResultInfo.Warnings retain OK/EOF counts/known status. Ordinary SQL sends replace snapshots; helpers/Ping/internal cleanup do not overwrite them; pool return clears them. Success with warnings is not turned into failure and does not depend on logging. Warning details/clearing, ChangeUser and CancelQuery are in subsequent subitems.
+- TestSessionOperations/MutationIsolation/MutationTransaction/OperationValidation/OperationResponse/OperationQuoting/Warnings cover both modes, escaping, transaction/pool isolation, server-error/extra-result rejection, count snapshots and nil loggers. TestSessionOperations integration source checks schema/client-info/variable readback, snapshots and no attribute leaks to new connections; only compiled, not run. Real warnings/identity-switch cases follow; cancellation still needs additions.
+- Review found the sql_mode helper might reuse an automatic statement with old parsing semantics. TestSessionMutationStatementCache failed before passing; every setter now clears automatic statements/type descriptions. Post-fix Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration source only compiled. Six-document links/fences/no-machine-paths, 32-task/28-implemented/0-accepted/155-option and CI YAML checks passed. No database connections; Linux execution/remote CI/successful race unverified. D28/D30 remain In progress.
+
+#### D30 ChangeUser Subitem
+
+- Added root ChangeUser(ctx, *sql.Conn, Credentials, database), reauthenticating on the original physical connection/standard/compressed/OB20 transport with verified TLS/auth-plugin policy, without redial or modifying the original Connector. Only pinned connections without transactions and with autocommit enabled are allowed. Arguments/character sets/initial-auth security gates validate first; validation failure retains the original identity.
+- Before switching, automatic statements/type descriptions/LOBs/Cursors are cleaned. Session generations invalidate explicit server/client statements; stale Close cannot close statement IDs reused by the new identity. Authentication/cancellation/mode/initialization failures after sending evict the session. Success reapplies Config.Session baseline; pinned-connection close leaves the original pool, and the new password is not retained. No new packages/dependencies/reverse references.
+- TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing cover both modes/preparation modes, stale-handle invalidation, ID reuse, original-pool isolation, auth plugins/close, secure rejection, same-connection TLS, cancellation and three transports. Four-target TestChangeUserSessions/manual CI inputs were added; source only compiled without real-service connections.
+- D30 remains In progress; warning details/clearing and explicit cancellation follow. Implementation 28/32 and acceptance 0/32 remain unchanged.
+- Local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 ChangeUser repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration source only compiled. Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed; go mod tidy -diff found no differences. Review found no confirmed issues remaining; six-document encoding/links/fences/no-machine-paths, 32-task/28-implemented/0-accepted/155-option and CI YAML checks passed. No database connections; Linux execution/remote CI/successful race remain unverified.
+
+#### D30 Warning Details and Local Clearing Subitem
+
+- Added root Warning, ReadWarnings, ClearWarnings using closed-set session requests and locked Rows kernel without packages/dependencies. MySQL queries current SHOW WARNINGS on demand, retaining actual level/code/charset messages without fabricated SQLSTATE. Oracle retains counts and explicitly rejects details according to Java's actual capability; existing protocol capabilities are not reduced.
+- Details are not historical snapshots: helper/internal SQL can change the server diagnostic area, while local counts/Execution.Snapshot remain independent. ClearWarnings sends no SQL, clears counts and suppresses MySQL details until the next ordinary SQL; new/reset/ChangeUser sessions do not expose old details. Rows/cumulative bytes are bounded. Limit/malformed/cancellation failures return no partial details and evict; complete server errors allow reuse. Transaction and original-SQL success semantics do not change.
+- TestWarningDetails, Clear/Modes/Response/Validation/Cancel/Framing/Transaction/RowError/PoolReset/Reenable cover both modes, nil loggers, count/detail separation, clearing/reenabling, GBK, all transports, transactions, cancellation, limits and server errors; ChangeUserIsolation also checks suppression of old details for new identities. Warning/legacy-session helpers unexpectedly receiving OK without eviction were reproduced by two failing regressions before fixes. Review added skipped leading extra OK and legacy-helper empty-result eviction cases, both failing before fixes. Results are restricted to one set and scalars to exactly one row. Four-target TestWarningDetails integration source/WARNING_SQL manual CI inputs were added, only compiled without database connections.
+- Explicit cancellation follows; implementation 28/32 and acceptance 0/32 remain unchanged.
+- Local validation after review fixes: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 warning/session-helper/ChangeUserIsolation repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Integration source only compiled; both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed, as compilation evidence only. go mod tidy -diff found no differences. Six-document UTF-8/fences/relative-links/no-machine-paths, 32-task/28-implemented/0-accepted/155-option, 21-matrix-section, CI YAML and changed-Go-format checks passed. No database connections; Linux execution/remote CI/successful race have no new evidence.
+
+
+#### D30 Explicit Cancellation Subitem
+
+- Added opaque CancelTarget, prefetched QueryTarget and CancelQuery, binding the first ordinary SQL/first pipeline chunk and accepting only one cancellation attempt per target. Fixed-entry auxiliary connections reuse caller Connector policy and check actual user/tenant, mode, Network and verified TLS; they never enter pools/discovery/failover or retain a ChangeUser password.
+- Completion/reset/identity switch/close/new target invalidates old targets; internal cleanup and next-operation entry coordinate in-flight KILL. Before sending, cancellation stops auxiliary dialing; complete permission errors after sending preserve the original query. Partial send/lost acknowledgement/malformed or extra results evict the original connection without replay. Cancellation after KILL write but before reading is also unknown outcome; one attempt prohibits duplicate sends.
+- TestCancelQueryIdentity/Failure/CompletionBeforeSend/AckCancellation/Guards/AuxIdentity/FixedEntry/WaitsForAck/VerifiedTLS/ResetAndClose and ChangeUserIsolation cover both local modes, TLS, fixed entry, permissions, response races and lifecycle. TestCancelQuerySessions/four-target CANCEL_SQL/CANCEL_CODE manual CI inputs were added; integration source only compiled without database connections.
+- Connection-ID-only KILL has no server generation check and cannot fully exclude ID reuse after remote disconnect; success means KILL acknowledgement only, with original SQL results/whole-batch status read independently. Custom Dial/auth callbacks must cooperate with context. Contracts/boundaries are in architecture §16.3.4. D28 dependencies remain open; D30 remains In progress, implementation 28/32 and acceptance 0/32 unchanged.
+- Local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 CancelQuery/ChangeUserIsolation/existing-cancellation-race/CloseBudget repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Integration only compiled; both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed; go mod tidy -diff found no differences. Review-confirmed cancellation between write/read, duplicate cancellation and call-chain-discovered private auxiliary diagnostic callback reentry each have failing-then-passing regressions. Auxiliary channels are silent without changing injected logging on the original connection; no walkthrough report is retained. No database connections; Linux execution/remote CI/successful race unverified.
+
+#### D31 Local XA Implementation
+
+- Added root XID/XAFlags/XAVote, seven pinned-sql.Conn operations and XAError/unknown-outcome errors, reusing gates/Rows/transport/native OUT without packages/dependencies. Native internal calls record started and retain unknown state after postwrite cancellation/tail errors; MySQL recovery errors are consistently XA-classified while preserving original server errors.
+- MySQL sends exact XA SQL without silently changing JOIN; Oracle uses fixed SYS.DBMS_XA PL/SQL and NUMBER/RAW/RAW XIDs, explicit native-execution version gates and strict handling of 0/3, negative/rollback codes. Stages/flags/extension values/rollback-only/recovery input are bounded. NULL representation of empty BQUAL is treated as a valid empty qualifier; real representation awaits integration.
+- Session dedication, pool isolation, local-transaction/identity/setter guards, resource invalidation at XA boundaries and no local rollback on prepared Close are covered. Callers own recovery logs/decisions; Forget/RM timeout are explicitly unsupported and context is not a transaction timeout. Contracts are in architecture §16.2.1.
+- Added TestXAState/Recover/UnknownCommit, native Oracle/collections, malformed recovery responses, partial writes and three-transport local tests; four-target TestXATransactions/TestXARecoveryAfterDisconnect source/manual CI and examples/xa are added, without database execution for now.
+- Local D31 implementation is complete, but D30/D28 platform dependencies remain open, so the task remains In progress; implementation 28/32 and acceptance 0/32 unchanged. Local validation: Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 XA-target repetitions and actual all-package Windows/386 tests passed; both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed; go mod tidy -diff found no differences. Ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration source only compiled. Independent review/call-chain checks added recovery-error classification, NULL BQUAL and native-extra-result acknowledgement; each defect has failing-then-passing regressions, with no confirmed important findings remaining and no separate report. Six-document UTF-8/links/fences/no-machine-paths, 32-task/28-implemented/0-accepted/155-option/22-matrix-section, CI YAML and Go-format checks passed. No database connections; Linux execution/remote CI/successful race unverified.
+
+#### D32 Initial Configuration Migration
+
+- Added root Config.Interactive/ConnectionAttributes, with strict DSN interactive for the former. Attributes are explicit maps only, with no automatic process/host collection or packages/dependencies. Configuration snapshots/reserved keys/strict charsets/cumulative encoded limits/missing-capability rejection are in architecture §6.1; passing through a map does not establish completed proxy authentication.
+- TestConnectionAttributesSnapshot/Validation/EncodedBudget/Handshake/MissingCapability/ChangeUser, TestInteractiveCapability, TestDSNInteractive and TLSVerifiedAuthentication cover both modes, UTF-8/GBK/GB18030, encoding contraction/expansion/length prefixes, TLS and resending over standard/compressed/OB20. Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration only compiled. Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Six-document UTF-8/relative-links/fences/no-machine-paths, 32-task/28-implemented/0-accepted, equality of the 160-option name set with pinned Java source, CI YAML/Go-format/diff checks passed. No real database/Linux target/successful race execution; no separate walkthrough report.
+- Checking whitespace-separated enum entries in pinned DefaultOptions added 5 options and corrected 155 to 160: serverAffinityOrder, connectionCollation, rewriteInsertByMultiQueries, useLocalXID, defaultConnectionAttributesBanList. Other fields/default differences/tests still need per-item checks; README/other examples, full benchmarks, resource stability and D28 dependencies are unfinished. D32 remains In progress, implementation 28/32, acceptance 0/32; no database connections for now, and local attribute bytes do not prove server visibility/idle-timeout effects. Earlier 155-option checks reflect only the then-current row count and cannot establish completeness.
+
+#### D32 Connection Collation
+
+- Added Session.Collation / DSN collation for Java connectionCollation. MySQL uses SET NAMES Charset COLLATE Collation to retain encoding/collation baseline in one command; restoration after custom InitSQL, ChangeUser and Full-reset replacement all retain configuration. Oracle explicitly rejects it instead of copying Java's silent ignore; no new packages/dependencies. Boundaries are in architecture §6.2/configuration checklist.
+- TestCollationConfig/ModeGuard/ServerFailure/Lifecycle/FullReset, TestDSNCollation and ExampleSessionOptions_collation cover strict identifiers, DSN, positive/negative modes, server errors, UTF-8/GBK/utf8mb3, all transports and connection lifecycle. A failing-then-passing regression covers lowercasing before ASCII validation wrongly accepting the non-ASCII Kelvin character. Read-only review found no confirmed important findings remaining; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions, actual all-package Windows/386 tests and both-version ordinary/integration-tag golangci-lint 2.14.0 (0 issues each) passed. Four-target TestSessionCollation integration source is in manual CI and only compiled here; real sorting/comparison/prepared-argument effects await integration. D32 remains In progress, implementation 28/32, acceptance 0/32; D28 platform dependencies/other configuration/delivery items remain.
+- Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed; six-document UTF-8/relative-links/fences/no-machine-paths, 32-task/28-implemented/0-accepted, 160-name equality with pinned Java source and CI YAML/changed-Go-format/diff checks passed. No database connections/Linux target/remote CI; race still lacks successful evidence.
+
+#### D32 Proxy-User Login
+
+- Added Config.ProxyUser / Credentials.ProxyUser / DSN proxyUser, using pinned Java's dedicated authentication attribute instead of impersonating proxy identity through ordinary maps or parsing bracketed usernames. Target encoding/length budgets, both-mode/capability rejection, full dynamic-credential replacement/clearing, TLS, ChangeUser clearing/original-pool isolation and combined CancelQuery authentication-user/proxy-target checks are in architecture §6.3; no new packages/dependencies/cycles.
+- Added TestProxyUserConfig/Handshake/Rejection/CallbackClearsTarget/VerifiedTLS/ChangeUserPreflight/EncodedBudget/ChangeUser/CancelIdentity and external ExampleNewConnector_proxyUser; local evidence covers all transports, UTF-8/GBK and identity-bound cancellation. Temporarily removing target comparison made the cancellation regression fail; restoration passed, proving different targets cannot receive KILL as the same identity. The new Credentials field requires old unkeyed two-field literals to use named fields; repository callers were updated.
+- Four-target TestProxyUserSessions source/manual CI were added, only compiled. Both Oracle targets need dedicated proxy DSNs and two distinct server-expected usernames to verify real identity, ChangeUser resend/clear and original-pool reconstruction; both MySQL targets validate configuration rejection only. No real database connections; proxy authorization/versions/target identity await integration. D32 remains In progress, implementation 28/32, acceptance 0/32; Shared Memory/VC, other options, README/other examples/full benchmarks/resource stability remain unfinished.
+- Final Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 proxy-user/external-example repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Both-version integration only compiled; Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Read-only review found no confirmed important findings remaining; no separate report. Six-document UTF-8/links/fences/no-machine-paths, 32-task/28-implemented/0-accepted, pinned-Java 160-name set and CI YAML/six proxy fixtures/Go-format/diff checks passed. Linux execution/remote CI/successful race have no new evidence.
+
+#### D32 Usage Entry Points and Examples
+
+- Added README and [usage guide](go-driver-usage.md) covering Go 1.25/1.26, both OceanBase compatibility modes, Config/DSN/TLS, external slog, standard pools/transactions, exact types, resource closing and error/unknown-outcome boundaries. Documentation now has seven files; README is the entry point. No new public APIs/internal packages/dependencies.
+- `examples/usage` uses the public root package directly for queries/local transactions, server preparation, batches, OUT/INOUT, Execute multiple results, both-mode in-table BLOBs, native Oracle locators/OBJECT/ARRAY and Forward cursors. Requires explicit mode, dedicated test schema and table/procedure/type creation privileges. Random object names, release before transaction/connection end and bounded reverse-order DDL cleanup retain errors. XA keeps its separate example. Regular all-package CI compiles main without running network examples.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet and both-version ordinary/integration-tag golangci-lint 2.14.0 (0 issues each) passed. New examples/complete README Go snippets compiled on both versions; both main examples compiled for Windows/386 and cross-built for Linux/amd64 CGO_ENABLED=0. Integration only compiled; go mod tidy -diff found no differences. Go1.25 actually ran the comprehensive example's missing-DSN/Auto-mode prechecks, both rejecting before networking; these do not count as network-function evidence.
+- Seven documents/README passed UTF-8, relative-link/anchor, code-fence/no-machine-drive-path checks. Tasks remain 32, implemented 28, accepted 0. Read-only review found no confirmed important findings; no separate report. Database example execution, full benchmarks/resource curves, Shared Memory/VC and other configuration remain open; actual Linux execution/remote CI/successful race evidence is missing. D32 continues In progress without checking complete delivery.
+
+#### D32 Initial Database Creation
+
+- Added Config.CreateDatabaseIfMissing / DSN createDatabaseIfMissing, default false, opt-in for new MySQL physical connections only. Handshake does not select a database; after authentication/session baseline, CREATE IF NOT EXISTS and COM_INIT_DB precede Variables/InitSQL. Names are strictly encoded/identifier-escaped; Oracle/empty targets explicitly reject. Reuses commands/encoding without packages/dependencies. Full contract: architecture §6.4.
+- Creation/selection shares total connection budget; failure retains the original error, closes without redial and never drops a possibly created database. Full-reset replacement repeats it; ChangeUser/CancelQuery derived configuration clears the creation option without mutating the original Connector. Temporarily removing either isolation guard made regressions detect incorrect CREATE; restoration passed. Handshake/initialization also have failing-then-passing evidence.
+- TestCreateDatabase* / TestDSNCreateDatabase and external ExampleNewConnector_createDatabase cover all transports, UTF-8/GBK, escaping/order, authentication/permission/selection failures, timeout, both-mode gates and lifecycle. Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed. Read-only review found no confirmed important findings remaining; no separate report.
+- TestCreateDatabaseSessions/manual CI were added. Direct/proxy MySQL requires dedicated CREATE_DATABASE_DSN, CREATE/DROP DATABASE, catalog-reading and in-database table-creation privileges, random exclusive database names and bounded cleanup after business-session close; validates missing databases, existing data, InitSQL and physical replacement. Oracle validates configuration rejection only; integration source only compiled without database connections. go mod tidy -diff found no differences; seven documents/README passed UTF-8/links/anchors/fences/no-machine-paths, 32-task/28-implemented/0-accepted, pinned-Java 160-option set, CI YAML/fixture/selector and Go-format/diff checks. D32 remains In progress, implementation 28/32, acceptance 0/32; real DDL/permissions/Linux execution/remote CI/successful race unverified.
+
+#### D32 Network Read Timeout
+
+- TestReadTimeoutCommands now separates connection initialization from business-command stalls: the 100ms read budget enables on the same physical connection only after initialization, and Exec/Query still enters via sql.DB after pool return. Added peer assertions that business commands actually arrived; retained no-replay/no-pool-return/unexpired-context checks so compressed-initialization timeouts cannot interfere with business-command timeout validation. Fixtures only changed, not driver behavior. Go1.25.0/1.26.0 Windows amd64 passed 20 consecutive rounds each (240 subscenarios per version); both-version all-package build/test/vet, ordinary/integration lint (0 issues each) passed; integration source only compiled.
+- Added Config.ReadTimeout / DSN readTimeout, default 0 disabled, negatives rejected; maps Java socketTimeout to Go duration and uniformly disables Java Aurora's exceptional default. Each underlying Read uses the earlier independent read budget/context deadline without changing writes. Built-in/custom net.Conn is wrapped before TLS/authentication, reusing both modes/three transports/Rows/LOB/session operations without packages/dependencies/background goroutines. Contract: architecture §12.5.1.
+- Concurrent pipeline-writer deadline refresh/clear cannot extend blocked reads; subsequent reads restart timing without pool-idle/user-processing time. Independent timeout retains net.Error/Timeout; earlier context retains cancellation/deadline errors. Sessions evict without replaying sent business operations; batches retain unknown results. DSN/business-timeout tests failed before implementation; temporarily removing active-read protection made the regression fail, then pass after restoration.
+- TestReadTimeout* / TestDSNReadTimeout and external ExampleNewConnector_readTimeout cover handshake/initialization, TLS handshake/queries, both modes/all transports, response/row stalls, context priority, concurrent refresh, stale deadlines, segmented messages/write budgets and sequential/pipeline batches. Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Both-version integration only compiled; Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Read-only review found no confirmed important findings remaining; no separate report.
+- Four-target TestReadTimeoutSessions/manual CI/read-only-slow-SQL fixtures were added, only compiled in this phase without database connections. Local timeouts cannot establish real proxy buffering or server-query termination. Seven documents/README passed UTF-8/relative-links/anchors/fences/no-machine-paths, 32-task/28-implemented/0-accepted, pinned-Java 160-option set, CI YAML/four fixtures/selector and Go-format/diff checks. D32 remains In progress, implementation 28/32, acceptance 0/32; Shared Memory/VC, other options/full benchmarks/resource curves and real databases/Linux execution/remote CI/successful race remain outstanding.
+
+#### D32 Native TCP Configuration
+
+- Checked seven Java TCP options, represented by existing Config.DialContext and standard net.Dialer/net.TCPConn. Added compilable ExampleConfig_tcpOptions/local TCP tests without public configuration structures, DSN switches, packages/dependencies or built-in-default changes. Go/Java default differences, callback concurrency ownership, close on setter failure and platform limits are in architecture §9.0.2; same-named Java DSN parameters remain strictly rejected.
+- TestTCPDialContext* covers source interface, selected entry, factory count, handshake/initialization/Ping/QUIT, cleartext-auth gates, cancelled contexts, non-TCP rejection and explicit abortive close. The example checks keep-alive errors after dialing, avoiding treating Dialer's best effort as an applied policy; buffer/probe parameters are illustrative only. Removing the TCP gate made its regression fail; restoration passed. Read-only review found no confirmed important findings remaining; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 TCP-target/example repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration only compiled. Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Final review also corrected one repeated-string-constant reference in existing failover tests; targeted Failover/TCP/example tests passed.
+- Seven documents/README passed UTF-8/links/anchors/fences/no-machine-paths, 32-task/28-implemented/0-accepted, pinned-Java 160-option set and Go-format/diff checks. No database connections; remote interfaces, real OS buffer/probe settings, Linux execution/remote CI/successful race unverified. SetLinger(0) may discard pending data and cannot guarantee QUIT delivery or SQL rollback. D32 remains In progress, implementation 28/32, acceptance 0/32; D28 Shared Memory/VC, remaining options/full benchmarks/resource curves remain open.
+
+#### D32 Native TLS Configuration
+
+- Checked 12 pinned-Java TLS options/five historical aliases listed in comments, represented by existing TLSConfig, crypto/tls and crypto/x509 without new configuration layers/public APIs/runtime packages/dependencies/default changes. Added ExampleNewConnector_mutualTLS/file-loading examples; standard PEM loading, Java-store unlocking/conversion, dynamic certificates/verification callbacks, versions and TLS1.3 suite boundaries are in architecture §17.2.1.
+- Added TestTLSNativePolicy/Rejection/Snapshot/RootSnapshot/Cancellation, TestTLSExampleFiles and TestTLSJavaDSNRejected: both modes/TLS1.2/1.3, static/dynamic client chains, extra verification, version/suite rejection, credential gates, handshake cancellation, initialization/Ping/QUIT, later configuration mutation and isolation from newly added roots. Missing example loader functions first caused compile failures, then passed after implementation; removing CipherSuites slice cloning made snapshot tests fail, then pass after byte-for-byte restoration. Read-only review found no confirmed important findings remaining; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 TLS/routing-certificate-rejection/spoofed-TLS/read-timeout repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Both-version integration only compiled; Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Initial lint incorrectly used the global cache and produced permission warnings; final checks passed using repository-local caches.
+- Seven documents/README passed UTF-8/links/anchors/fences/no-machine-paths, 32-task/28-implemented/0-accepted, pinned-Java 160-option set and Go-format/diff checks. Temporary PEM files exercised example loading tests; Example itself only compiled. No certificates outside the project were read and no database was connected. Real database/proxy certificate deployment, mutual identity mapping, system trust sources/store conversion remain unaccepted; Linux execution/remote CI/successful race unverified. D32 remains In progress, implementation 28/32, acceptance 0/32; D28 Shared Memory/VC, other options/full benchmarks/resource curves remain open.
+
+
+#### D32 Local Performance Benchmarks
+
+- Added BenchmarkDriver, eight scenarios per compatibility mode: CRUD, per-call/reused preparation, cache hits, sequential/multi-send batches, 16KiB BLOB and 32-row fetch. Ordinary TestDriverBenchmarkFixtures shares operations/protocol/result assertions and runs in default CI; existing helpers are reused, widening only 13 signatures to testing.TB. No production logic/public APIs/package dependencies/go.mod changed.
+- Warmup/connection initialization/final cleanup are outside timing; measurements include in-process protocol peers, assertions and scheduling, so they are neither pure driver allocations nor real database throughput. Go1.25.0/1.26.0 each passed 16 scenarios × three short 100-iteration samples. Median metrics/commands/mode/protocol limits are in [local benchmarks](go-driver-benchmarks.md). Documentation increased to eight files, README links updated; the plan's stale Unix GSSAPI section reference was corrected.
+- Repeated checks reproduced/fixed a cached-statement-close race from TB.Context cancelling before Cleanup, using an independent 2-minute budget cancelled after DB.Close/transport recovery. Read-only review found fetch assertions did not close Rows before failure; this was added. Temporarily changing expected values deliberately failed assertions; cleanup returned within 5.24 seconds including compilation, followed by byte-for-byte restoration/verification. No separate walkthrough report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 30 targeted repetitions and ordinary/integration-tag golangci-lint 2.14.0 with 0 issues each passed; actual all-package Windows/386 tests and 16-scenario 1x benchmarks passed. Both-version integration only compiled; Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Document UTF-8/links/anchors/fences/no-machine-paths, 32-task/160-option and Go-format/diff checks passed.
+- No database connections. Real SQL/network/proxy performance, remote streaming LOBs, all optimization/concurrency combinations and long-term resource curves are incomplete; actual Linux execution/remote CI/successful race remain missing. D32 stays In progress, implementation 28/32 and acceptance 0/32 unchanged; Shared Memory/VC/other options continue within original scope.
+
+
+#### D32 Credential Sources and Pinned RSA Public Keys
+
+- Checked pinned Java credentialType, serverRsaPublicKeyFile, allowPublicKeyRetrieval and ENV/PROPERTY source behavior, represented through existing Config.Credentials, Auth.RSAKey and Go standard library; no class names/file options/global registries/production APIs/packages/dependencies added. Added auth_example_test.go for application-defined environment sources/single PKIX RSA public-key parsing. Configuration/rotation/error limits are in architecture §17.2.2; per-option mapping/usage guide updated.
+- TestAuthExampleCredentials/RSAFile covers missing sources, explicit empty passwords, proxy fields, cancellation, missing files and rejection of garbage/multiple blocks/headers/malformed/non-RSA/private keys. Missing example functions first failed compilation, then passed implementation. A malformed leading block followed by a valid public key first failed regression; strict single-block checking now prevents pem.Decode skipping bad input.
+- TestAuthNativeRSAPaths actually decrypts 12 scenarios across both modes × SHA256/caching SHA2 × initial/switch/ChangeUser, checking original passwords, different nonces and explicit identity switches; later mutation of original public-key N/E does not affect Connector. Removing deep modulus copies made new protocol tests fail, followed by byte-for-byte restoration. TestAuthNativeCredentialRotation/Failure checks source refresh on new physical connections from the same Connector, no refresh on ordinary Ping and no static fallback on source errors. TestAuthNativeRSARejection/JavaDSNRejected covers missing keys, unsolicited server keys, OAEP-overlong passwords and rejection of legacy parameters. Read-only review found no confirmed issues remaining; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration only compiled. Both-version Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed; eight documents/README passed UTF-8/links/anchors/fences/no-machine-paths/Go-format/diff checks. Initial lint repeated-string/helper-complexity findings were tidied without production-logic changes.
+- Documentation remains eight files plus README. Duplicate authentication/TLS section numbering was corrected and credential-source/RSA contracts added. Pinned-Java 160-enum/mapping sets match exactly; 32 tasks/28 implemented/0 accepted remain. Local protocol/example validation does not establish real plugin/permission, external-source-service, public-key publication/rotation or TLS-identity acceptance. No database connections; D28/D32 continue In progress, with actual Linux execution/remote CI/successful race unverified.
+
+#### D32 Autocommit and Read-Only Policy
+
+- Checked pinned-Java autocommit, assureReadOnly, failOnReadOnly and oracleChangeReadOnlyToRepeatableRead defaults/call semantics, represented by existing sql.TxOptions, pinned sql.Conn, Routing.Role and pool reset without public configuration/production logic/packages/dependencies. Four mappings/usage/mode/failure-policy differences are in architecture §12.3.1; this does not add Java connection setters or globally disable autocommit.
+- Added TestTransactionNativeReadOnly/Autocommit/Initialization/RoleFailure and TestTransactionJavaDSNRejected for both-mode original read-only errors/SQLSTATE, single dial/read-write restoration after transactions, manually set auto0 on pinned sessions and rollback-before-restoration on pool reuse, rejection of residual auto0 from both initialization sources, no fallback to unknown/opposite roles after retry and legacy-parameter rejection. External ExampleNewConnector_readOnlyTransactions uses public root/standard library only, compiling by default without networking.
+- Temporarily removing tx.go's read-only role gate and changing reset.go from ROLLBACK-first to autocommit-first made new tests fail on wrong commands; both production files were restored byte-for-byte, leaving no production diff. Independent read-only review/Go1.25 targeted tests found no confirmed issues remaining; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 new-target repetitions and ordinary/integration-tag golangci-lint 2.14.0 (0 issues each) passed; Go1.25 actual all-package Windows/386 tests passed. Both-version integration only compiled; Linux/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Initial test compilation/goconst findings were tidied by reusing protocol helpers/file-local constants.
+- Eight documents/README passed UTF-8/relative-links/anchors/fences/no-machine-paths, pinned-Java 160-option set/four mappings and Go-format/diff checks. No database connections; fixture states/errors do not prove real permissions/snapshot isolation/rollback/HA. Implementation 28/32 and acceptance 0/32 remain; other D28/D32 scope continues, with actual Linux execution/remote CI/successful race unverified.
+
+#### D32 Result-Column Origins and Product Identity
+
+- Public ResultColumn and ResultInfo.Columns retain six fields including label/original column/original table for complete rowsets through existing Execute.Snapshot; standard Rows returns labels and unknown origins stay empty. Snapshots deep-copy nested slices; cumulative metadata uses conservative memory estimates/MaxMessageBytes. Over-limit rowsets do not publish; confirmed prefixes remain and connections evict. Incomplete metadata, hidden OUT, commands and Failure publish no columns. No packages/configuration/dependencies added.
+- TestExecutionColumn* covers both-mode text/binary, GBK decoding, PrepareExecute, multiple results/post-close retention, origin/snapshot isolation, concurrent snapshots, exact budgets/real-protocol cumulative overflow, malformed columns/terminator rejection. Existing ordering/row-error/OUT tests add metadata assertions. Missing public structures/publication first caused compile failure, then passed implementation. TestMetadataServerIdentity checks both-mode fixed SQL/public column names/scanning and rejection of three Java metadata DSNs. Java useCompatibleMetadata changes product name only; mappings adapt under architecture §16.1.2.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and ordinary/integration-tag golangci-lint 2.14.0 (0 issues each) passed; Go1.25 actual all-package Windows/386 tests passed. Both-version integration only compiled; Linux/amd64 CGO_ENABLED=0 all-package builds/root-test cross-compilation and go mod tidy -diff passed. TestMetadataCatalog adds public-API origin checks without database connections; absent server origins are allowed, never fabricated.
+- Architecture/mapping/usage/matrix/plan/progress are synchronized; the 160-option mapping set and 32-task/28-implemented/0-accepted counts remain. Real fields/permissions/proxy/version differences, actual Linux execution/remote CI/successful race remain unverified; D28/D32 are incomplete.
+
+#### D32 Application SOCKS5 Adapter
+
+- Java socksProxyHost/socksProxyPort use existing Config.DialContext and official x/net/proxy.ContextDialer, with compilable ExampleConfig_socks5/local TCP peers. No production APIs/configuration/packages/Dial logic added. Explicit proxy addresses, remote DNS, separate proxy identity, database TLS-target verification and no proxy-environment lookup are defined in architecture §9.0.3. Pinned-Java checks clarified connectProxy as a separate initialization policy, still pending migration.
+- TestSOCKSDialContextSessions/Routing/Cancellation/TLSGate/VerifiedTLS/Failure and TestSOCKSJavaDSNRejected cover both modes/three transports, anonymous/user-password auth, candidate propagation/failover, proxy rejection/malformed replies, cancellation/budgets/close, zero database credentials to unverified targets and legacy-parameter rejection. Missing example helper first failed compilation, then passed; Example only compiled without external connections. Review reproduced a test false failure from socket-deadline/context-timer races; budget assertions now also accept expired network timeouts while explicit-cancellation/peer-EOF checks remain. Go1.25 full SOCKS targets/independent cancellation review passed 25 repetitions each.
+- x/net v0.58.0 was the latest Go1.25-compatible release when checked and is imported by examples/tests only; module selection also raised x/sys to v0.47.0 and x/text to v0.41.0. Production dependency graphs exclude x/net. Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 SOCKS-target repetitions, ordinary/integration-tag golangci-lint 2.14.0 (0 issues each), compile-only integration, go mod tidy -diff and go mod verify passed. Actual all-package Windows/386 tests passed. During initial parallel checks, existing ReadTimeoutCommands hit one 100ms metadata timeout; 10 independent repetitions/final full rerun passed without changing its test or production logic.
+- Both-version Linux/amd64 and Darwin/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed. Documentation remains eight files plus README; links/anchors/UTF-8/fences/no-machine-paths, 160-option set and 32-task/28-implemented/0-accepted checks passed. No database connections. Real proxy DNS/authentication/network policies/throughput, actual Linux/Darwin execution/remote CI/successful race remain unverified. Other D28/D32 scope continues; D30/D31 platform dependencies remain open.
+
+#### D32 Version-Probe Policy
+
+- Added Session.SkipVersionProbe and strict boolean DSN skipVersionProbe, default false, skipping only optional initialization ob_version() while retaining required baseline/Variables/InitSQL/actual-mode detection. Relevant initialization leaves version unknown without inferring advanced capabilities from handshake/explicit business queries. Java connectProxy's implicit-variable/auto-increment probes do not exist in Go; actual representation maps under architecture §9.0.4 and legacy Java DSN names remain rejected. No packages/dependencies added.
+- TestVersionProbeSessions/ChangeUser/UnknownCapabilities/Failure/CancelQuery/Initialization and TestDSNSkipVersionProbe cover both modes/three transports, snapshots, pool reuse, reauthentication, auxiliary cancellation connections, initialization failure without publication/retry and retained custom baselines. Real protocol peers check standard prepare/execute without combined commands/SQL checksum and unknown-version rejection for Oracle OUT/sensitive cursors/long parameters/XA; long sources are unread, explicit version queries still run without upgrading internal capabilities. Missing public fields first caused compile failure, then passed. Peer tests use independent contexts to avoid mistaking connection-budget cancellation for session termination.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted repetitions and actual all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both. Initial duplicate-SQL/version-text lint findings now reuse existing test constants. Both-version Linux/amd64/Darwin/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation and go mod tidy -diff passed. Read-only review found no confirmed issues remaining; no separate report.
+- Four-target TestVersionProbeSessions integration source/manual CI selectors were added, only compiled without database connections. Eight documents/README passed UTF-8/links/anchors/fences/no-machine-paths, 160-option set/32-task/28-implemented/0-accepted, CI YAML and Go-format/diff checks. Real proxy baseline SQL support, version/permission combinations, actual Linux/Darwin execution/remote CI/successful race remain unverified. D28 Shared Memory/VC, D32 remaining closure and D30/D31 platform dependencies continue.
 
 #### D28 Windows Shared Memory
 
-- 新增根包 Windows 平台传输，Config.Network=sharedmemory / Addr 对象基名及 DSN network/socket 复用现有配置；不新增公开包、接口、依赖或全局配置。原生事件/映射遵循固定 Java 的有符号连接 ID、分配 mutex 和16000字节内容上限；mutex/映射只申请协议所需权限，兼容 Java 的最小 ACL。非 Windows 内置拨号明确不支持，外部 DialContext 仍可接管；固定端点、TLS ServerName 与认证门禁保持。
-- TestPlatformTransportSharedMemory* 覆盖两模式/三包流初始化/Ping/QUIT、真实 TLS 的目标校验及零明文凭据、原生分块/部分读写/非法长度、动态 deadline/关闭、分配前取消、延迟答案后的会话关闭、并发分配/负数 ID、部分打开失败和最小 ACL。缺配置/传输时先失败，缓存读取 deadline、multi-send 回退、mutex 和映射最小权限回归均先失败后修复通过；ACL 用例还验证实际收发与 mutex 释放，权限错误不改走 Global 命名空间。夹具独立使用本机 Win32 对象，分配 goroutine 在启动前捕获 handle，避免故障注入改写 map 时并发读取。
-- 分配发请求后的取消为软预算：必须持锁等无关联 ID 的答案，取消后关闭分配的会话，不发送数据库凭据；永久不答会占用本次拨号及一个 OS 线程。单区不能承载 pipeline，Auto/MultiSend 回退 Sequential；最终通知块不保证 Close 前已被对端消费。以上原生协议限制及混合客户端互操作要求已写入架构 §9.0.5、配置注释、使用指南、映射及矩阵，不隐藏为严格超时或完整平台验收。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、原生目标各10次、两版本普通/integration 标签 golangci-lint2.14.0（各0 issues）、integration 仅编译、go mod tidy -diff 通过；Go1.25 实际 Windows/386 全包测试通过。两版本 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建及根包测试源码交叉编译通过。文档 UTF-8/链接/锚点/围栏/无机器路径、160项选项与32任务/28实现/0验收、Go 格式和 diff 检查通过。
-- 未连接数据库；本机对端不等于真实服务/对象 ACL/多用户/混合客户端验收，Linux/Darwin 实际运行、远程 CI、成功 race 及长期资源曲线仍缺。OBProxy VC 尚需原生 ABI 取证，D28 整项及 D30/D31 平台依赖不提前勾选，实现28/32、验收0/32保持。
-
-#### D32 标准连接池与生命周期
-
-- 八项 Java 池配置已按固定源码核对：使用 sql.DB 原生 setter/context/Stats、应用名称和外部 slog，不新增生产 API、包、依赖或驱动池。minPoolSize 无标准库等价保底；SetMaxIdleConns 是上限，示例只做一次性多会话就绪检查。staticGlobal 实际是服务端全局变量缓存假设，Go 每条新物理会话保留必要基线；默认值、零值校验差异及共享 Connector 的关闭边界见架构 §5.1。
-- pool_example_test.go 提供 ExampleNewConnector_pool 和应用侧 helper；TestPool* 覆盖两模式延迟建连、多会话预热/复用、拨号及 PING 拒绝清理、取消释放、池限额等待与零额外发送、初始化基线、QUIT/寿命/空闲回收、ValidationInterval 启用/关闭、独立 Auto 模式池及 Java DSN 拒绝。缺 helper 时先编译失败，实现后通过；Windows 时间等待与夹具清理顺序已校正。关闭对端观测/池统计间的合法调度交错先在全量及重复运行中复现，改为同时等待观测完成后通过；独立只读走查无其他已确认遗留问题，不另存报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TestPool 各10次、普通及 integration 标签 golangci-lint（各0 issues）通过；Go1.25 实际 Windows/386 全包测试通过。两版本 integration 仅编译、go mod tidy -diff，以及 Linux/amd64、Darwin/amd64 CGO_ENABLED=0 全包构建和根包测试交叉编译通过。lint 共用锁使一次并发启动被拒，随后顺序运行通过。
-- 六份相关文档同步；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项 Java 选项集合和32任务/28实现/0验收、Go 格式及 diff 检查通过。未连接数据库；真实空闲超时、容量/长期资源、监控部署、Linux/Darwin 实际运行、远程 CI 与成功 race 仍未验证，D28/D32 及 D30/D31 平台依赖保持未完成。
+- Added root Windows-platform transport, using Config.Network=sharedmemory / Addr object base name and existing DSN network/socket without public packages/interfaces/dependencies/global configuration. Native events/mappings follow pinned Java signed connection IDs/allocation mutex/16000-byte content limits; mutex/maps request only protocol-required permissions, compatible with Java minimal ACLs. Built-in Dial explicitly rejects non-Windows; external DialContext may override. Fixed endpoint/TLS ServerName/authentication gates remain.
+- TestPlatformTransportSharedMemory* covers both modes/three transports initialization/Ping/QUIT, real TLS target checks/zero cleartext credentials, native chunking/partial I/O/invalid lengths, dynamic deadlines/close, preallocation cancellation, session close after delayed answers, concurrent allocation/negative IDs, partial-open failure/minimal ACLs. Missing configuration/transport failed first; cached-read-deadline/multi-send-fallback/minimal mutex/map-permission regressions failed before fixes. ACL cases also verify real I/O/mutex release; permission errors do not fall back to Global namespace. Fixtures use local Win32 objects independently; allocation goroutines capture handles before start to avoid concurrent map access during fault injection.
+- Cancellation after allocation requests uses a soft budget: it must hold the lock awaiting an answer without a correlation ID, then close the allocated session without database credentials. A permanent nonresponse occupies that Dial and one OS thread. A single region cannot support pipelines; Auto/MultiSend falls back to Sequential. Final notification blocks may not be consumed before Close. These native-protocol limits/mixed-client interoperability requirements are recorded in architecture §9.0.5, configuration comments, usage, mapping and matrix, without claiming strict timeouts/full platform acceptance.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 native-target repetitions, both-version ordinary/integration-tag golangci-lint 2.14.0 (0 issues each), compile-only integration and go mod tidy -diff passed; Go1.25 actual all-package Windows/386 tests passed. Both-version Linux/amd64/Darwin/amd64 CGO_ENABLED=0 all-package builds/root-test-source cross-compilation passed. Document UTF-8/links/anchors/fences/no-machine-paths, 160 options/32 tasks/28 implemented/0 accepted, Go-format/diff checks passed.
+- No database connections; local peers do not establish real-service/object-ACL/multi-user/mixed-client acceptance. Actual Linux/Darwin execution/remote CI/successful race/long-term resource curves remain missing. OBProxy VC still needs native-ABI evidence; D28/D30/D31 platform dependencies are not prematurely checked complete. Implementation 28/32 and acceptance 0/32 remain.
+
+#### D32 Standard Connection Pool and Lifecycle
+
+- Checked eight Java pool options against pinned source, represented by native sql.DB setters/context/Stats, application names and external slog, without production APIs/packages/dependencies/driver pools. minPoolSize has no standard-library minimum guarantee; SetMaxIdleConns is a maximum, and examples perform one-time multiple-session readiness checks only. staticGlobal actually assumes a server-global-variable cache; Go retains required baseline on every new physical session. Defaults/zero-validation differences/shared-Connector close boundaries are in architecture §5.1.
+- pool_example_test.go provides ExampleNewConnector_pool/application helpers. TestPool* covers both-mode lazy connections, multisession warmup/reuse, Dial/PING-rejection cleanup, cancellation release, pool-limit waits/zero extra sends, initialization baseline, QUIT/lifetime/idle reclamation, enabled/disabled ValidationInterval, separate Auto-mode pools and Java-DSN rejection. Missing helper first failed compilation, then passed implementation; Windows waits/fixture-cleanup order were corrected. Legal scheduling interleavings between close-peer observation/pool statistics were reproduced by full/repeated runs, then fixed by awaiting both observations. Read-only review found no other confirmed issues remaining; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 TestPool repetitions and ordinary/integration-tag golangci-lint (0 issues each) passed; Go1.25 actual all-package Windows/386 tests passed. Both-version compile-only integration, go mod tidy -diff and Linux/amd64/Darwin/amd64 CGO_ENABLED=0 all-package builds/root-test cross-compilation passed. Lint's shared lock rejected one concurrent start; sequential runs then passed.
+- Six related documents synchronized; eight documents/README passed UTF-8/links/anchors/fences/no-machine-paths, 160-option set/32-task/28-implemented/0-accepted and Go-format/diff checks. No database connections; real idle timeouts/capacity/long-term resources/monitoring deployment, actual Linux/Darwin execution/remote CI/successful race remain unverified. D28/D32 and D30/D31 platform dependencies remain incomplete.
 
-#### D28 OBProxy VC 独立原生宿主
-
-- 根包增加 NewOBProxyDialer(hostPath, libraryPath, proxyConfig)，复用 Config.DialContext、Unix net.Conn 和原有 TLS/认证/模式/三包流，不增加公开包、内部包或依赖。宿主/库均需可信绝对路径，配置合法 UTF-8、无 NUL、最多4095字节，固定目录 socket 最多107字节。Java 两项 VC DSN 配置继续明确拒绝，迁移见映射和示例。
-- 已按固定 OBProxy 提交核对官方 init/close、未连接句柄、argv、Unix endpoint 及客户端运行模式。原生启动安装信号处理器且改动 locale/allocator，故由 tools/obproxy-host/main.c 独立进程加载，保护 Go 运行时；Go 首次拨号只启动一次，相同身份共享、冲突拒绝、失败缓存。取消等待不终止共享 init；DB.Close 仅关业务连接，父进程控制管道 EOF 使宿主退出，init 卡住也能终止。
-- C 宿主将长度帧中的原始配置编码为单个 JSON 字段，隔离原生输出后发送 OBV1/状态握手；临时句柄成功/失败均释放，缺符号不调用 init，初始化过的库不卸载。Go 独立持有就绪读取端，失败关闭管道、kill 并通过唯一 Wait 回收宿主。宿主不重启、不自动重放业务；工作目录独占和原生日志管理见架构 §9.0.6。
-- TestOBProxy* 覆盖配置/路径/入口拒绝、并发单次启动/冲突/取消/失败缓存、两模式三包流、会话复用/QUIT/实际 Close、TLS 明文门禁及取消后不进入凭据阶段。obproxytest 用 gcc -Wall -Wextra -Werror 构建独立 C 宿主/共享库，验证 JSON 控制字符/中文/4095字节上限、void**/负返回码、成功/失败临时句柄、缺库/缺符号、坏/短就绪帧、快速退出，以及正常与 init 卡住时的 EOF 退出。Windows 标签只用于夹具，不声明 Windows 原生 OBProxy 支持。
-- 重复运行发现夹具的后台 QUIT/EOF 读取会清除最初 deadline 并无限等待，已改为总时限兜底，分别验证 QUIT 和真实 Unix Close 恰好一次；取消和 deadline 的原生 Unix 测试保留。EOF 用例还改为等待完整落盘标记，避免文件刚创建即终止宿主的同步竞争。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、带 obproxytest 的全包 test/vet 通过；协议会话/TLS 目标各100次、宿主 EOF 目标各10次通过。两版本普通/integration/obproxytest 标签 golangci-lint2.14.0 各0 issues；实际 Go1.25 Windows/386 全包测试通过。并行校验期间 TestConnectBudget/init 和 native ABI 启动预算曾超时，全部并行作业结束后 Go1.26 全包及 EOF 顺序重跑通过。
-- 两版本 Linux/amd64、arm64 的 obproxy 与 obproxy,obproxytest 构建及根包测试交叉编译、Darwin/amd64 默认构建/测试交叉编译通过，均 CGO_ENABLED=0；只代表编译。两版本 integration 仅编译、go mod tidy -diff 无差异；八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项固定 Java 选项、32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。Linux CI 增加宿主/ABI 夹具测试与标签 lint，远程结果尚未取得。
-- 未连接数据库；真实 Linux 库/信号/生命周期、数据库互操作、远程 CI、成功 race 仍未运行，D28 整项和 D30/D31 平台依赖保持未闭环；实现28/32、验收0/32不变。
+#### D28 Separate Native OBProxy VC Host
+
+- Added root NewOBProxyDialer(hostPath, libraryPath, proxyConfig), reusing Config.DialContext, Unix net.Conn and existing TLS/authentication/modes/three transports without public/internal packages/dependencies. Host/library need trusted absolute paths; configuration must be valid UTF-8, NUL-free and at most 4095 bytes; fixed-directory socket paths at most 107 bytes. Both Java VC DSNs remain explicitly rejected; migration is in mapping/examples.
+- Checked official init/close, unconnected handles, argv, Unix endpoints/client runtime mode against pinned OBProxy commit. Native startup installs signal handlers and changes locale/allocator, so tools/obproxy-host/main.c loads it in a separate process to protect Go runtime. Go starts once on first Dial, shares matching identity, rejects conflicts and caches failures. Cancelling a wait does not stop shared init; DB.Close closes business connections only. Parent-control-pipe EOF exits the host, including stuck init.
+- The C host encodes raw length-framed configuration into a single JSON field, isolates native output then sends OBV1/status handshake. Temporary handles release on success/failure; missing symbols never invoke init; initialized libraries never unload. Go separately owns readiness reads; failures close pipes/kill/reap through exactly one Wait. Host never restarts or replays business commands. Exclusive working directory/native-log management are in architecture §9.0.6.
+- TestOBProxy* covers configuration/path/entry rejection, concurrent single startup/conflicts/cancellation/cached failure, both modes/three transports, session reuse/QUIT/actual Close, TLS cleartext gates/no credential phase after cancellation. obproxytest builds standalone C host/shared libraries with gcc -Wall -Wextra -Werror, validating JSON control characters/Chinese/4095-byte limits, void**/negative returns, successful/failed temporary handles, missing libraries/symbols, malformed/short readiness, fast exit and EOF exit normally/with init stuck. Windows tags are fixtures only, not native Windows OBProxy support.
+- Repetition found fixture background QUIT/EOF reads cleared initial deadlines and waited indefinitely; an overall deadline now guards them, independently checking QUIT/real Unix Close exactly once. Native Unix cancellation/deadline tests remain. EOF cases wait for complete persisted markers to avoid terminating the host immediately after file creation.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet and obproxytest-tagged all-package test/vet passed; protocol-session/TLS targets passed 100 repetitions each, host-EOF targets 10 each. Both-version ordinary/integration/obproxytest golangci-lint 2.14.0 reported 0 issues; actual Go1.25 all-package Windows/386 tests passed. Parallel checks once timed out TestConnectBudget/init/native-ABI startup budgets; Go1.26 full-package/EOF sequential reruns passed after all parallel jobs ended.
+- Both-version Linux/amd64/arm64 obproxy and obproxy,obproxytest builds/root-test cross-compilation and default Darwin/amd64 builds/test cross-compilation passed, all CGO_ENABLED=0; compilation evidence only. Both-version integration only compiled; go mod tidy -diff found no differences. Eight documents/README passed UTF-8/links/anchors/fences/no-machine-paths, pinned-Java 160 options/32 tasks/28 implemented/0 accepted, CI YAML and Go-format/diff checks. Linux CI adds host/ABI fixture tests/tagged lint; remote results remain unavailable.
+- No database connections; real Linux libraries/signals/lifecycle, database interoperability/remote CI/successful race have not run. D28 and D30/D31 platform dependencies remain open; implementation 28/32 and acceptance 0/32 unchanged.
 
-#### D22/D32 受限批量多语句改写
+#### D22/D32 Restricted Batch Multi-Statement Rewrite
 
-- 显式 BatchRewrite 在 MySQL 兼容模式、遇错停止、允许且实际协商多语句时，以独立 INSERT/UPDATE/DELETE/REPLACE 合并请求；复用现有标量和客户端字面量编码。每个合并块前读取同会话 ob_enable_batched_multi_statement，仅明确关闭才合并；不修改服务端开关。Oracle、继续执行策略和其他不满足条件的请求仍逐项；多 VALUES 现由显式 BatchMultiValues 补齐（见2026-10-19补充），bulk 未启用；array binding 由下述独立子项推进，契约见架构 §13.4。
-- 按行数、参数位、结果项和编码后消息字节分块，换行分隔语句以结束尾部注释；探测后重新验证 SQL mode 和绑定边界。本地非法后项先等待有效前缀执行，不能遮蔽更早的服务器错误。严格匹配逐项 OK/ERR 和 MORE_RESULTS；保留确认成功，已提交但未确认项标 Unknown 并淘汰连接，不重放、不引入事务边界；完整 ERR 确认跳过的同命令尾项为 NotExecuted/Started=true。
-- 固定 Connector/J 分号拼接实现和固定 OceanBase ObMPQuery 的遇错停止/服务端聚合开关已取证并链接到架构；不将该源码证据推广为任意历史服务器或代理的验收。增加外部 slog 示例、TestBatchRewriteExecution 四目标源码及手动 CI 选择器，集成仅编译，未连接数据库。
-- TestBatchRewrite* 覆盖标准/压缩/OB20、分块/字节限制、计数溢出、有效前缀与本地错误顺序、门禁回退、断线/损坏/额外或缺失响应、尾部注释/字面量、GBK、事务及取消。首次执行路径、探测后的 SQL mode 边界变化、完整服务器 ERR 与取消错误链均已验证失败后修复通过；两版本目标测试各20次通过。独立只读走查未发现已确认的严重问题，不保存独立报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、实际 Go1.25 Windows/386 全包测试通过；两版本普通/integration 标签 golangci-lint2.14.0 各0 issues，integration 仅编译、go mod tidy -diff 无差异。两版本 Linux/amd64、Darwin/amd64 的 CGO_ENABLED=0 全包构建及根包测试交叉编译通过，仅代表编译。八文档及 README 的链接/锚点/UTF-8/围栏/无机器路径、160项选项集合、32任务/28实现/0验收、CI YAML 和 Go 格式/diff 检查通过。真实服务器/OBProxy 的逐项等价性、开关权限及吞吐，Linux/Darwin 实际运行、远程 CI 和成功 race 尚未验证；实现28/32、验收0/32不变，D28/D32 其余范围及 D30/D31 平台依赖继续保留。
+- Explicit BatchRewrite combines independent INSERT/UPDATE/DELETE/REPLACE requests in MySQL mode with stop-on-error and allowed/actually negotiated multi-statements, reusing scalars/client literal encoding. Each block first reads same-session ob_enable_batched_multi_statement and combines only when explicitly off, never mutating the server option. Oracle/continue-on-error/other ineligible requests stay sequential. Multi-VALUES is now provided by explicit BatchMultiValues (see 2026-10-19 supplement), bulk remains disabled; array binding proceeds separately below. Contract: architecture §13.4.
+- Chunks obey rows/parameter slots/result items/encoded-message bytes; newline statement separators terminate trailing comments. SQL mode/binding boundaries revalidate after probing. Invalid later local input waits for valid prefixes to execute and cannot hide earlier server errors. Per-item OK/ERR/MORE_RESULTS match strictly; confirmed successes remain, sent-unconfirmed items become Unknown and connections evict without replay/new transaction boundaries. Tail items skipped by a complete same-command ERR are NotExecuted/Started=true.
+- Pinned Connector/J semicolon concatenation and pinned OceanBase ObMPQuery stop-on-error/server-aggregation options have source evidence linked from architecture; this is not acceptance for arbitrary historical servers/proxies. Added external slog example, four-target TestBatchRewriteExecution source/manual CI selector; integration only compiled without database connections.
+- TestBatchRewrite* covers all transports, chunking/byte limits, count overflow, valid-prefix/local-error ordering, gate fallback, disconnect/corruption/extra/missing responses, trailing comments/literals, GBK, transactions/cancellation. Initial execution path, SQL-mode boundary changes after probe and complete server-ERR/cancellation error chains failed before fixes; both-version targets passed 20 repetitions each. Read-only review found no confirmed serious issues; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet and actual Go1.25 all-package Windows/386 tests passed; ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues on both; integration only compiled and go mod tidy -diff found no differences. Both-version Linux/amd64/Darwin/amd64 CGO_ENABLED=0 all-package builds/root-test cross-compilation passed, compilation evidence only. Eight documents/README passed links/anchors/UTF-8/fences/no-machine-paths, 160-option set/32 tasks/28 implemented/0 accepted, CI YAML and Go-format/diff checks. Real server/OBProxy item equivalence/option permissions/throughput, actual Linux/Darwin execution/remote CI/successful race remain unverified; implementation 28/32 and acceptance 0/32 unchanged. Other D28/D32 scope/D30/D31 platform dependencies remain.
 
-#### D32 离线资源稳定性
+#### D32 Offline Resource Stability
 
-- 新增 TestDriverResourceStability，复用两模式 CRUD、每次/复用预处理、缓存、逐项/multi-send 批量、LOB 和 fetch 共16场景；固定8轮，每场景预热一次并执行 N 次，N 默认2、可显式设为1–10000。普通单测运行小负载，独立手动 stability CI 支持两工具链和 Linux/Windows，不读取数据库配置。
-- 基准/稳定性夹具在预热时保存原物理连接，清理前直接持锁检查池租约、事务、未读响应、资源登记、缓存容量/索引/statement 租约和类型描述预算，不通过重新借用触发 reset 掩盖残留。DB.Close 后确认池归零、物理关闭及资源/缓存清空，再由既有清理等待对端退出；无新增生产 API、包或依赖。
-- TestDriverResourceGuard 注入借用、事务、未读响应、资源、缓存不一致/未释放租约、关闭及描述超限，验证检查器确实报错。独立只读走查未发现已确认重要问题，不保存独立报告。
-- 两工具链 Windows amd64 扩展运行各4096次×8轮×16场景（另含各场景预热，共524416次场景操作），分别111.101/114.024秒通过；GC 后9个采样点 goroutine 均为2，原始堆字节/对象数见[本地基准 §6](go-driver-benchmarks.md#6-离线资源稳定性检查)。堆和对象仍有增长，不宣称零增长或生产无泄漏；未覆盖真实 OS 句柄、长寿命会话、全部并发/故障及数据库组合，D32 保持进行中，实现28/32、验收0/32不变。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、两版本普通/integration 标签 golangci-lint2.14.0 各0 issues 通过；实际 Go1.25 Windows/386 的资源/基准夹具目标通过。八文档及 README 的 UTF-8/链接/锚点/围栏/无机器路径、160项选项集合、32任务/28实现/0验收、CI YAML/独立资源矩阵和 Go 格式/diff 检查通过。未连接数据库；Linux 实际运行、远程 CI 和成功 race 仍未验证。
+- Added TestDriverResourceStability reusing 16 scenarios across both modes: CRUD, per-call/reused preparation, caches, sequential/multi-send batches, LOBs/fetch. Fixed eight rounds, warming each scenario once before N executions, N default 2 and explicitly configurable 1–10000. Ordinary unit tests use small loads; separate manual stability CI supports both toolchains/Linux/Windows without database configuration.
+- Benchmark/stability fixtures retain the original physical connection during warmup. Before cleanup, directly locked checks inspect pool leases, transactions, unread responses, resource records, cache capacity/index/statement leases and description budgets, without reborrowing/reset hiding residue. DB.Close checks zero pool counts/physical close/resource/cache clearing, then existing cleanup awaits peers. No production APIs/packages/dependencies added.
+- TestDriverResourceGuard injects borrowing, transactions, unread responses, resources, cache inconsistency/unreleased leases, close and description overflow, proving inspectors report errors. Read-only review found no confirmed important issues; no separate report.
+- Extended Windows amd64 runs on both toolchains passed 4096 iterations × eight rounds × 16 scenarios each (plus warmups, 524416 scenario operations), in 111.101/114.024 seconds. All nine post-GC samples had 2 goroutines; raw heap bytes/object counts are in [local benchmarks §6](go-driver-benchmarks.md#6-offline-resource-stability-checks). Heap/objects still grow; no zero-growth/production-leak-free claim. Real OS handles, long-lived sessions and all concurrent/fault/database combinations are uncovered. D32 remains In progress, implementation 28/32, acceptance 0/32 unchanged.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet and both-version ordinary/integration-tag golangci-lint 2.14.0 with 0 issues each passed; actual Go1.25 Windows/386 resource/benchmark-fixture targets passed. Eight documents/README passed UTF-8/links/anchors/fences/no-machine-paths, 160-option set/32 tasks/28 implemented/0 accepted, CI YAML/separate resource matrix and Go-format/diff checks. No database connections; actual Linux execution/remote CI/successful race remain unverified.
 
-#### D22/D32 Oracle 原生 array binding
+#### D22/D32 Native Oracle Array Binding
 
-- 显式 BatchArrayBinding 在 Oracle、已知 OceanBase >=4.2.1、PrepareServer、已有可写 sql.Tx/自动提交关闭、ContinueOnError=true 及标量 DML 门禁下，使用标准 COM_STMT_EXECUTE flag24。默认策略、遇错停止及其他不满足条件的请求继续既有路径；不隐式启用事务、提交、多语句权限或服务端批量开关。具体参数/版本和错误契约见架构 §13.4。
-- 复用既有绑定、字符集/时间/精确数值、SQL checksum 和包流；匿名数组元数据不携带 unsigned 标志，uint/uint64 继续逐项。物理参数展开、类型变化、NULL、行数、结果项及完整编码大小控制分块；线性累计大小，每块编码一次，statement 独立关闭，不污染标量类型缓存。
-- 三列二进制错误明细的零起点位置/唯一性、错误码、字符集、非 NULL、OUT 拒绝、legacy EOF 和最终 OK 严格解析；统一读包入口累计完整响应预算，保留元数据、EOF、明细及最终阶段的服务端 ERR 错误链。没有最终 OK 不发布逐项成功；ERR/损坏/断线/取消对已提交整块记 Unknown 并停止，不重放。多项汇总计数不分摊，错误明细不编造 SQLSTATE。
-- TestStmtArray 黄金包、NULL bitmap/长度编码/大小边界和 FuzzStmtArray，以及 TestBatchArray* 的三包流、checksum、成功/错误与后块、类型/字节/行数/物理参数位限制、本地非法输入、回退、Valuer 一次消费、预算、取消和原事务回滚已加入。错误明细伪装 OUT 的测试先失败后补齐拒绝；EOF deprecation 下仍核对原生 legacy EOF。外部 slog 示例、TestBatchArrayBindingExecution 四目标源码及手动 CI 选择器已加入，集成仅编译，不连接数据库；Oracle 原生集成要求目标版本>=4.2.1。
-- 固定 Connector/J 与 OceanBase v4.2.1 服务端源码已取证并链接到架构。真实服务器/OBProxy 的逐项语义、类型支持及吞吐未验收；D32 继续进行，实现28/32、验收0/32保持，不保存独立走查报告。
-- 最终只读走查未发现可确认问题；中途 ERR 丢失服务端错误的回归先失败后修复。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、TestBatchArray 各20轮、集成源码仅编译，以及两版本普通/integration 标签 golangci-lint 各0 issues 通过。TestStmtArray 两版本各20轮及 FuzzStmtArray 各15秒通过，分别746362/285088次执行；Go1.25 Windows/386 的 BatchArray/StmtArray 目标测试通过。九文件文档/链接/160项选项/32任务计数、CI YAML、Go 格式与 diff 检查通过。未连接数据库，Linux、远程 CI 和成功 race 仍无验证证据。
+- Explicit BatchArrayBinding uses standard COM_STMT_EXECUTE flag24 under Oracle, known OceanBase >=4.2.1, PrepareServer, an existing writable sql.Tx/autocommit off, ContinueOnError=true and scalar-DML gates. Default strategies/stop-on-error/ineligible requests retain existing paths; no implicit transactions/commits/multi-statement permissions/server-batch options. Parameters/versions/error contracts are in architecture §13.4.
+- Reuses binding/charset/time/exact numbers/SQL checksum/transport; anonymous-array metadata lacks unsigned flags, so uint/uint64 stay sequential. Physical parameter expansion/type changes/NULL/rows/result items/full encoded size determine chunks; size accumulation is linear, each chunk encodes once and statements close independently without polluting scalar type caches.
+- Three-column binary error details strictly check zero-based/unique positions, error codes, charset, non-NULL, OUT rejection, legacy EOF/final OK. Unified packet reads accumulate whole-response budgets and retain server-ERR chains from metadata/EOF/details/final stages. No per-item success publishes without final OK; ERR/corruption/disconnect/cancellation marks the entire sent block Unknown/stops without replay. Multi-item aggregate counts are not distributed; error details do not invent SQLSTATE.
+- Added TestStmtArray golden packets, NULL bitmap/length encoding/size boundaries/FuzzStmtArray, plus TestBatchArray* for all transports/checksum/success/errors/later chunks/type/byte/row/physical-slot limits/invalid local input/fallback/once-only Valuer/budgets/cancellation/original-transaction rollback. Error details disguised as OUT first failed tests, then received rejection. Native legacy EOF remains checked under EOF deprecation. Added external slog example, four-target TestBatchArrayBindingExecution source/manual CI selector; compile-only integration without databases. Native Oracle integration requires target >=4.2.1.
+- Pinned Connector/J/OceanBase v4.2.1 server source evidence is linked from architecture. Real server/OBProxy item semantics/type support/throughput are unaccepted; D32 continues, implementation 28/32 and acceptance 0/32 remain. No separate walkthrough report.
+- Final read-only review found no confirmed issues; intermediate ERR losing server errors failed regression before fixing. Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 20 TestBatchArray rounds, compile-only integration and both-version ordinary/integration-tag lint with 0 issues passed. TestStmtArray passed 20 rounds each; FuzzStmtArray passed 15 seconds each, 746362/285088 executions. Go1.25 Windows/386 BatchArray/StmtArray targets passed. Nine-file documentation/links/160-option/32-task counts, CI YAML and Go-format/diff checks passed. No database connections; Linux/remote CI/successful race have no validation evidence.
 
-#### D32 初始化/执行选项核对及数组 fuzz CI
+#### D32 Initialization/Execution Option Checks and Array Fuzz CI
 
-- 对固定 Java 的 usePipelineAuth、enableQueryTimeouts、encloseParamInParentheses 和 serverAffinityOrder 补齐实际调用路径、默认差异及 Go 承载说明，修正原先将认证后初始化分支映射到 TLS、将亲和地址表仅映射到 Ordered 的不准确描述；参数括号选项在当前 Java 实际只加空格。沿用已有 Go API，不新增生产开关、包或依赖，也不宣称初始化流水线或建连性能收益。
-- option_semantics_test.go 经真实 database/sql 与故障对端，覆盖两模式/三包流的初始化各阶段拒绝后停止、不重试/不入池，客户端 ExecContext/sql.Stmt 参数边界、重复命名和引号/分号字符串，以及两种预处理的预先过期不污染会话、执行期限早于 ReadTimeout、发送后关闭/不重放；四项 Java 同名 DSN 严格拒绝。既有 Rows/事务期限、路由/权重/快照测试继续作为对应证据。
-- 复现原 CI 的 -fuzz FuzzStmt 同时匹配 FuzzStmtArray/FuzzStmt 而失败；将两个选择器改为完整名称匹配，并在两工具链 protocol-boundaries 中加入数组30秒 fuzz。Go1.25.0/1.26.0 的 FuzzStmtArray 各30秒通过，分别479334/297357次执行；远程 CI 尚未运行。验证本地编码不等于真实服务端数组语义验收，实现28/32、验收0/32不变。
-- 补 TestAddressAffinityWeights：两个输入顺序各4096次采样，确认9:1权重产生明确偏好、仍有低权重候选且每次无重复；此宽阈值健全性测试不是服务吞吐或严格概率验收。用 Go overlay 临时模拟初始化错误可重试和选择器忽略权重，两个新回归分别按预期失败；实际生产代码未改变，恢复原源码的目标与全包测试通过。
-- 只读走查指出的候选次数、归还后池状态与四项固定源码链接证据缺口已修复：初始化允许两候选，超时先关闭 statement/固定连接后检查 Idle/OpenConnections，160项固定链接均完整。最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮、普通/integration 标签 lint 各0 issues，以及集成仅编译通过；实际 Go1.25 Windows/386 新目标通过。精确 FuzzStmt 选择器两版本各30秒通过，分别584170/904984次执行；文档/链接/选项/计数、CI YAML/目标及格式/diff 检查通过。未连接数据库，Linux/远程 CI/成功 race 尚未验证。
+- Added actual call paths/default differences/Go representation for pinned-Java usePipelineAuth, enableQueryTimeouts, encloseParamInParentheses and serverAffinityOrder. Corrected inaccurate mappings of postauth initialization to TLS and affinity-address lists to Ordered alone; parameter parentheses currently only add spaces in Java. Reuses existing Go APIs without production switches/packages/dependencies or claims of initialization pipelining/connection-performance benefits.
+- option_semantics_test.go uses real database/sql/fault peers for both-mode/three-transport rejection at each initialization stage with no retry/pool return, client ExecContext/sql.Stmt argument boundaries/repeated names/quoted semicolon strings, and precancelled requests preserving both preparation modes' sessions, execution deadlines before ReadTimeout and post-send close/no replay. Four same-named Java DSNs reject strictly. Existing Rows/transaction-deadline/routing/weight/snapshot tests remain corresponding evidence.
+- Reproduced CI failure because -fuzz FuzzStmt matched both FuzzStmtArray/FuzzStmt; changed both selectors to exact full names and added 30-second array fuzz to both-toolchain protocol-boundaries. Go1.25.0/1.26.0 FuzzStmtArray passed 30 seconds each, 479334/297357 executions; remote CI has not run. Local encoding is not real-server array-semantic acceptance; implementation 28/32 and acceptance 0/32 unchanged.
+- Added TestAddressAffinityWeights: 4096 samples for each of two input orders confirm clear 9:1 weight preference, low-weight candidates still appear and no duplicates occur. This broad-threshold sanity check is not service-throughput/strict-probability acceptance. Go overlays temporarily simulated retryable initialization failures/ignored weights; each new regression failed as expected. Actual production code did not change; restored-source targets/full tests passed.
+- Review gaps in candidate attempts, pool state after return and four fixed-source links were fixed: initialization permits two candidates, timeout closes statements/pinned connections before checking Idle/OpenConnections, and all 160 fixed links are complete. Final Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 new-target rounds, ordinary/integration lint with 0 issues and compile-only integration passed; actual Go1.25 Windows/386 new targets passed. Exact FuzzStmt selectors passed 30 seconds each, 584170/904984 executions. Documentation/links/options/counts, CI YAML/targets/format/diff checks passed. No database connections; Linux/remote CI/successful race unverified.
 
-#### D01/D32 GitHub Actions 优化
+#### D01/D32 GitHub Actions Optimization
 
-- 参考 go-dicom 的三平台测试、独立 lint、安全扫描和依赖更新结构，保留本项目 Go1.25/1.26 下限与完整协议门禁。test 矩阵扩展 Linux/Windows/macOS，构建示例、vet、只编译 integration 源码，并以 `CGO_ENABLED=0` 执行 atomic coverage（不启用 race，理由见开发计划 §5.3）；双版本 Linux/Windows lint 独立运行，包含 integration 标签。Linux 另查 gofmt、go mod tidy -diff 与 actionlint。
-- 22个 fuzz 目标与源码枚举核对，每个版本分4组并行，每个目标完整名称匹配且运行30秒；保留双版本 Linux/386 实际测试，以及独立的 GSSAPI 系统拒绝/ABI、OBProxy 宿主/Unix 夹具及组合标签 lint。开启 Go 缓存，添加作业超时、自动运行并发取消，手动 CI 不自动取消；覆盖率、fuzz 日志/语料和本地对端基准分别保存 artifact。基准只在 PR/手动运行，不以共享 runner 时延设置硬阈值。
-- integration/stability 仍仅手动显式开启，数据库 secrets、四类 profile、OB_TEST_REQUIRE=1 和原有集成用例选择器保持；自动检查不读取数据库凭据。新增 CodeQL 的 push/PR/每周/手动入口，扫描权限限于该作业；Dependabot 每周检查 Actions 和 Go modules，更新仍受双版本检查约束。工作流详情见 README 的 GitHub Actions 段落。
-- 本地 Go1.25.0/1.26.0 Windows amd64 构建、全包 atomic coverage 测试、vet、integration 仅编译、go mod verify 与 go mod tidy -diff 通过；根包覆盖率84.5%，wire90.1%，其余内部包81.4%–88.5%，不设置未经约定的覆盖率阈值。两版本普通及 integration 标签 golangci-lint2.14.0 各0 issues；actionlint1.7.12、YAML/矩阵与22目标完整性、原集成凭据/选择器保持和文档结构检查通过。直接取工作流 Bash 脚本执行12种成功/首项失败/末项失败自检，确认参数精确且 tee 不吞错误、失败不继续后续目标；此处使用命令桩，只验证调度与失败传播，不替代30秒 fuzz。两版本实际执行 CI 同款 `go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m` 通过，仅为 Windows 本地协议对端结果。独立只读走查无确认问题，不保存独立报告。远程 Actions、Linux/macOS 运行、成功 race、CodeQL 结果及数据库联调仍未取证，不能据此关闭 D28/D32 或提高验收计数。
+- Following go-dicom's three-platform tests, separate lint/security scanning/dependency-update structure, retained this project's Go1.25/1.26 minimums/full protocol gates. Test matrix expands to Linux/Windows/macOS, builds examples, vets and only compiles integration source, running atomic coverage with `CGO_ENABLED=0` (no race; reason: plan §5.3). Both-version Linux/Windows lint runs independently with integration tags. Linux also checks gofmt/go mod tidy -diff/actionlint.
+- Source enumeration confirms 22 fuzz targets; four parallel groups per version, exact full-name selectors and 30 seconds per target. Retains both-version actual Linux/386 tests, separate GSSAPI system-rejection/ABI checks, OBProxy host/Unix fixtures and combined-tag lint. Enables Go cache/job timeouts/cancellation for automatic runs, but not manual CI. Coverage, fuzz logs/corpora and local-peer benchmarks save separate artifacts. Benchmarks run on PR/manual only, without shared-runner latency hard thresholds.
+- Integration/stability remain manual opt-in, preserving database secrets/four profiles/OB_TEST_REQUIRE=1/existing selectors; automatic checks never read database credentials. Added CodeQL push/PR/weekly/manual entries with job-local scanning permissions; Dependabot checks Actions/Go modules weekly and updates remain subject to both-version checks. Workflow details are in README's GitHub Actions section.
+- Local Go1.25.0/1.26.0 Windows amd64 build/all-package atomic-coverage tests/vet/compile-only integration/go mod verify/go mod tidy -diff passed. Root coverage 84.5%, wire 90.1%, other internal packages 81.4%–88.5%, with no unagreed threshold. Both-version ordinary/integration-tag golangci-lint 2.14.0 reported 0 issues; actionlint1.7.12, YAML/matrix/22-target completeness, preserved integration credentials/selectors and document structure passed. Executed workflow Bash scripts in 12 success/first-failure/last-failure self-checks, confirming exact arguments, tee failure propagation and stopping after failed targets; command stubs validate dispatch/failure propagation only, not 30-second fuzz. Both versions actually ran CI-equivalent `go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m` successfully, as Windows local-protocol-peer results only. Read-only review found no confirmed issues; no separate report. Remote Actions/Linux/macOS execution/successful race/CodeQL/database integration lack evidence and cannot close D28/D32 or raise acceptance counts.
 
-#### D32 原生批量基准与资源检查扩展
+#### D32 Native Batch Benchmark and Resource-Check Extension
 
-- 基础16场景之外，增加 MySQL batch-rewrite 与 Oracle batch-array-binding，共18场景；两者只在支持的模式登记，普通 TestDriverBenchmarkFixtures、BenchmarkDriver 和8轮 TestDriverResourceStability 共用。MySQL 声明多语句能力、逐批检查服务端合并开关、核对8个结果；Oracle 使用原可写 sql.Tx，核对 flag24、每批 prepare/close、逐项状态及未知计数，不把顺序回退算作优化路径。
-- 复用既有物理会话/池/缓存/事务/资源关闭断言；事务创建和最终 rollback 在计时外，每批完整调用/编解码和结果断言计时。仅扩展测试夹具，不新增公开 API、生产包或依赖。架构中“驱动尚未实现、两版本构建未验证”的过时描述改为引用当前进度，原未验收边界继续保留。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、夹具各10轮、普通及 integration 标签 golangci-lint 各0 issues、integration 仅编译通过。两个新基准各100次、3样本；18场景资源检查各4096次、8轮，共589968次场景操作，均通过，采样见[本地基准](go-driver-benchmarks.md) §4.1、§6.2。禁用改写/数组优化的 overlay 分别使对应夹具按预期失败，确认不会静默测试顺序回退；生产源码未改变。
-- Go1.25 实际 Windows/386 的夹具与默认资源检查通过；文档 UTF-8/链接/锚点/围栏/无机器路径、160项选项与32任务/28实现/0验收、Go 格式、diff 和 actionlint 检查通过。
-- 独立只读走查无确认问题；基准采用重复标量，不独立覆盖输入次序/不同值，数组期望包复用生产编码器，独立字节断言见 TestStmtArrayGolden。未连接数据库，Linux/macOS 实际运行、远程 CI、成功 race、多连接/故障及长期稳定性仍未取证；D28/D30/D31/D32 状态和28/32、0/32计数保持。
+- Beyond the base 16 scenarios, added MySQL batch-rewrite/Oracle batch-array-binding for 18 total, each registered only for its supported mode and shared by TestDriverBenchmarkFixtures, BenchmarkDriver and eight-round TestDriverResourceStability. MySQL declares multi-statements, checks server aggregation per batch and verifies eight results. Oracle uses the original writable sql.Tx, verifying flag24, per-batch prepare/close, item statuses/unknown counts, without counting sequential fallback as optimization.
+- Reuses physical-session/pool/cache/transaction/resource-close assertions. Transaction creation/final rollback are outside timing; complete batch calls/codecs/result assertions are timed. Fixtures only; no public APIs/production packages/dependencies. Architecture's stale “driver unimplemented/both-version build unverified” text now references current progress, retaining unaccepted boundaries.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 fixture rounds, ordinary/integration-tag golangci-lint with 0 issues and compile-only integration passed. Both new benchmarks ran 100 iterations/three samples; 18-scenario resource checks ran 4096 iterations/eight rounds, totaling 589968 scenario operations, all passing; samples are in [local benchmarks](go-driver-benchmarks.md) §§4.1, 6.2. Overlays disabling rewrite/array optimization made respective fixtures fail as expected, proving they cannot silently test sequential fallback. Production source unchanged.
+- Go1.25 actual Windows/386 fixtures/default-resource checks passed; document UTF-8/links/anchors/fences/no-machine-paths, 160 options/32 tasks/28 implemented/0 accepted, Go-format/diff/actionlint passed.
+- Read-only review found no confirmed issues. Benchmarks use repeated scalars without independent input-order/distinct-value coverage; expected array packets reuse the production encoder, with independent byte assertions in TestStmtArrayGolden. No database connections; actual Linux/macOS execution/remote CI/successful race/multiple-connection/fault/long-term stability evidence is missing. D28/D30/D31/D32 statuses and 28/32, 0/32 counts remain.
 
-#### D32 同一物理会话混合资源检查
+#### D32 Mixed-Resource Checks on One Physical Session
 
-- 新增 TestDriverSessionStability，两模式 × 标准/压缩/OB20 各持续复用一条物理连接；每轮混合两次缓存预处理/不同正负输入及类型头复用、3行 Rows 的未读/部分读取后关闭、标准 sql.Tx 提交/回滚，以及1062/23000错误后的失败句柄释放/Ping。只允许一次拨号，逐轮直接检查原 physical 和池，避免 reset 掩盖残留。
-- 复用已有握手/包流/事务及资源断言；peerDial 可选预算保持既有调用默认3秒，新检查每组合2分钟。普通单测每组合8轮；同一迭代环境变量可扩展总轮数，最多9个 GC 后采样点；手动 stability CI 同时执行重建会话和同会话检查。没有新增生产 API、包或依赖，定义与限制见[本地基准](go-driver-benchmarks.md) §7。
-- 独立走查发现并修复“下一次池 reset 可以掩盖事务未恢复”的证明缺口：事务结束后、再次借连接前直接锁定原会话检查 activeTx 为空且自动提交已恢复。overlay 仅跳过 tx.finish 的恢复、保留 ResetSession 的恢复时，删除新断言的夹具实际通过，保留断言后按预期失败；禁用缓存复用的 overlay 也按精确包断言失败。生产代码未改变；最终只读复核无其他确认问题，不另存报告。
-- 初次 lint 指出测试函数复杂度超限，按对端协议、调用方单轮和生命周期提取，并按 context-first 调整参数；最终 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、目标各10轮、普通及 integration 标签 golangci-lint 各0 issues、integration 仅编译通过。Go1.25 实际 Windows/386 的新目标通过。
-- 两版本扩展检查每组合4096轮、每版24576轮均通过，完整测试分别85.434/101.237秒；每组合9个采样点、拨号次数始终1、goroutine观测均5。样本保留同一闲置物理会话，与重建会话的关闭后基线不同，详见本地基准 §7.1；不能据此声称无泄漏。文档/链接/160项选项及32任务/28实现/0验收、Go 格式、diff、actionlint 和 CI 选择器/手动门禁保持检查通过。未连接数据库，Linux/macOS 实际运行、远程 CI、成功 race、并发多连接及全部扩展/故障和生产长期稳定性仍未取证，四项未收口任务及计数保持。
+- Added TestDriverSessionStability, continuously reusing one physical connection for both modes × standard/compressed/OB20. Each round mixes two cached preparations/distinct positive-negative inputs/type-header reuse, close after unread/partial three-row Rows, standard sql.Tx commit/rollback and failed-handle release/Ping after 1062/23000 errors. Exactly one dial is allowed, directly checking original physical session/pool each round so reset cannot hide residue.
+- Reuses handshake/transport/transaction/resource assertions. peerDial optional budgets retain existing default 3 seconds; new checks allow 2 minutes per combination. Ordinary tests run eight rounds per combination; the same iteration environment variable extends rounds, with at most nine post-GC samples. Manual stability CI runs both rebuilt/same-session checks. No production APIs/packages/dependencies; definitions/limits are in [local benchmarks](go-driver-benchmarks.md) §7.
+- Review fixed an evidence gap where next pool reset could hide unrestored transactions: after transaction completion, before reborrowing, directly lock/check the original session for empty activeTx/restored autocommit. Overlay skipping only tx.finish restoration while retaining ResetSession restoration let fixtures pass with the new assertion removed and fail as expected with it retained; disabling cache reuse also failed exact-packet assertions. Production code unchanged; final read-only review found no other confirmed issues, no separate report.
+- Initial lint reported excessive test complexity; extracted peer-protocol/caller-round/lifecycle helpers and used context-first parameters. Final Go1.25.0/1.26.0 Windows amd64 all-package test/vet, 10 targeted rounds, ordinary/integration-tag golangci-lint with 0 issues and compile-only integration passed; Go1.25 actual Windows/386 new targets passed.
+- Extended checks passed 4096 rounds per combination, 24576 per version, in 85.434/101.237 seconds overall. Nine samples per combination, dial count always 1, goroutine observations always 5. Samples retain the same idle physical session, unlike closed-session reconstruction baselines; see local benchmarks §7.1. This cannot establish no leaks. Documentation/links/160 options/32 tasks/28 implemented/0 accepted, Go-format/diff/actionlint and preserved CI selectors/manual gates passed. No database connections; actual Linux/macOS execution/remote CI/successful race/concurrent multiple connections/all extensions/faults/long-term production stability lack evidence. Four open tasks/counts remain.
 
-#### D32 Java 配置初值与入口迁移边界
+#### D32 Java Configuration Defaults and Entry-Point Migration Boundaries
 
-- 对固定 Java 2.4.14 提交的 Options、DefaultOptions、OptionUtils、UrlParser、Driver、内置凭据/PAM 插件及相关测试源码逐项核对。使用未修改的 Options.java 在独立 JVM 编译并反射160个规范字段初值，另以 DriverManager 登录超时7秒验证 connectTimeout 取7000毫秒；这是配置取证，没有加载数据库驱动或连接数据库。映射表为每项补字段初值和固定 Options 行号，区分 HA 补值、postOptionProcess、pipeline 三态后处理与最终运行行为。
-- 补齐10个历史别名、DBNAME/port/驱动选择标记、userKey/pwdKey、PAM 后续 passwordN；明确 Options 另有 allowLocalInfile/nonMappedOptions 两个非规范字段，前者不能当作 allowLoadLocalInfile 的别名。表内仍为160个规范选项，别名不计入数量；标准库/回调承载和严格 DSN 边界见架构 §6.5、配置映射 §2–§4 与使用指南。
-- 新增 TestDSNJavaMigrationBoundary、TestDSNJavaValueCoercions、TestDSNJavaDriverSelectionMarkerIsLiteral：覆盖 ParseDSN 和实际 sql.Open 的配置阶段拒绝/脱敏、Go 单位/零值/严格布尔、JDBC URL 拒绝和合法字段中的选择标记字面值。Go 标准 duration 接受裸0；connectTimeout 的0/0s选择默认10秒，与 Java 0不限时有意不同。只补公开 ConnectTimeout 注释，不修改生产运行行为、API、包或依赖。
-- 忽略区 overlay 分别把未知选项改成静默忽略、把建连零值改成0，新增测试均实际在行为断言处失败，非编译失败；未修改生产源文件。独立只读复核从固定源码重新计算160项初值/链接及10别名，无确认问题，不另存报告。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标各10轮、Go1.25 实际 Windows/386 通过。初次 lint 提示测试字符串重复，改用局部常量并保留已有全大写/新增混合大小写的拒绝覆盖；最终两版本普通及 integration 标签 golangci-lint 各0 issues。文档 UTF-8/链接/锚点/围栏/无机器路径、160项初值和行号/10别名/2额外字段及32任务/28实现/0验收、Go格式和diff检查通过。
-- 这批完成入口和默认值证据，不把160项字段核对视为160项服务端行为验收。真实平台、远程 CI、成功 race 及数据库仍未验证，D28/D30/D31/D32 和28/32实现、0/32验收保持；继续核对逐项运行行为及其本地测试，数据库联调仍暂缓。
+- Checked pinned Java 2.4.14 Options, DefaultOptions, OptionUtils, UrlParser, Driver, built-in credential/PAM plugins and related tests item by item. Compiled unchanged Options.java in an independent JVM and reflected 160 canonical initial fields; DriverManager login timeout 7 seconds also verified connectTimeout=7000ms. This is configuration evidence without loading the database driver/connecting. Mapping rows add initial values/pinned Options line numbers, distinguishing HA fill-ins, postOptionProcess, pipeline tristate postprocessing and final behavior.
+- Added ten historical aliases, DBNAME/port/driver-selection markers, userKey/pwdKey and later PAM passwordN. Clarified two noncanonical Options fields allowLocalInfile/nonMappedOptions; the former is not an alias for allowLoadLocalInfile. Table still counts 160 canonical options, excluding aliases. Standard-library/callback representation/strict DSN boundaries: architecture §6.5, configuration mapping §§2–4 and usage guide.
+- Added TestDSNJavaMigrationBoundary, TestDSNJavaValueCoercions, TestDSNJavaDriverSelectionMarkerIsLiteral, covering configuration-stage rejection/redaction in ParseDSN/actual sql.Open, Go units/zero/strict booleans, JDBC-URL rejection and literal selection-marker values in valid fields. Go standard durations accept bare 0; connectTimeout 0/0s selects default 10 seconds, intentionally differing from Java unlimited 0. Only public ConnectTimeout comments changed, not production behavior/APIs/packages/dependencies.
+- Overlays in ignored areas simulated silently ignored unknown options/zero connection timeout; new tests actually failed behavior assertions, not compilation. Production files unchanged. Independent read-only review recalculated 160 initial values/links/ten aliases from pinned source with no confirmed issues; no separate report.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; new targets passed 10 rounds each and actual Go1.25 Windows/386. Initial duplicate-string lint findings use local constants while preserving existing uppercase/new mixed-case rejection coverage; final ordinary/integration-tag golangci-lint reported 0 issues on both. Document UTF-8/links/anchors/fences/no-machine-paths, 160 defaults/line numbers/ten aliases/two extra fields/32 tasks/28 implemented/0 accepted and Go-format/diff checks passed.
+- This batch completes entry/default evidence, not acceptance of 160 server behaviors. Real platforms/remote CI/successful race/databases remain unverified; D28/D30/D31/D32 and 28/32 implemented, 0/32 accepted remain. Continue per-option runtime/local-test checks; database integration stays deferred.
 
-#### D12/D13 Oracle DATE 元数据修复
+#### D12/D13 Oracle DATE Metadata Fix
 
-- 固定 Java ColumnType.getColumnTypeName 将 Oracle 协议类型12报告为 DATE；Go 原先回落到 MySQL 名称 DATETIME。已在共享 textTypeName 增加 Oracle 分支，同时覆盖结果列、服务端参数元数据及类型支持检查，MySQL 保持 DATETIME；不新增 API、配置、包或依赖。
-- 新增 TestDateColumnTypes/TestDateParameterMetadata：两模式 × 三种包流，结果列再交叉文本/服务端预处理/客户端预处理及 ParseTime 开关，共42组合；核对类型名称、ScanType、闰日时分秒、NULL、语句关闭和同会话 Ping/QUIT。修复前21个 Oracle 组合仅在名称断言失败，MySQL 对照通过；修复后目标通过。
-- TestAllScalarTypes 已补 Oracle DATE 列与整秒含时间输入，三种执行路径检查 DATE/TIMESTAMP 元数据及日期值；MySQL 对照检查 DATE/DATETIME。两工具链均只编译该集成源码，不运行数据库。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过，Go1.25 实际 Windows/386 目标通过；初次 integration lint 的两处重复字符串已提取常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读走查无确认问题；文档/链接/160配置初值及32任务/28实现/0验收、Go格式和diff检查通过。真实数据库、Linux/macOS/远程 CI 与成功 race 未验证，四项未收口任务及计数保持。
+- Pinned Java ColumnType.getColumnTypeName reports Oracle protocol type12 as DATE; Go previously fell through to MySQL DATETIME. Added Oracle branch to shared textTypeName for result columns/server-parameter metadata/type-support checks; MySQL stays DATETIME. No APIs/configuration/packages/dependencies added.
+- Added TestDateColumnTypes/TestDateParameterMetadata: both modes × three transports, with result columns also crossing text/server/client preparation and ParseTime, totaling 42 combinations. Checks type names/ScanType/leap-day time/NULL/statement close/same-session Ping/QUIT. Before fixing, 21 Oracle combinations failed only name assertions while MySQL controls passed; targets passed afterward.
+- TestAllScalarTypes adds Oracle DATE columns/whole-second time inputs, checking DATE/TIMESTAMP metadata/date values across three paths; MySQL controls check DATE/DATETIME. Both toolchains only compiled integration source without databases.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/new targets ×10 passed, actual Go1.25 Windows/386 targets passed. Two initial integration-lint duplicate strings became constants; final ordinary/integration-tag golangci-lint reported 0 issues on both. Read-only review found no confirmed issues. Documentation/links/160 defaults/32 tasks/28 implemented/0 accepted/Go-format/diff checks passed. Real databases/Linux/macOS/remote CI/successful race unverified; four open tasks/counts remain.
 
-#### D13 无符号 BIGINT 的 ScanType
+#### D13 Unsigned BIGINT ScanType
 
-- 依据标准 database/sql.ScanType 的“适合接收列值的 Go 类型”契约，原 int64 无法接收 BIGINT UNSIGNED 超过 MaxInt64 的合法值。共享 RowsColumnTypeScanType 已按协议类型8的 unsigned 标志推荐 uint64，有符号仍为 int64；不改变实际行值的 int64/精确十进制 string 表示，不新增 API、配置、包或依赖。
-- TestUnsignedBigIntScanType 使用实际 database/sql 和本地协议对端，三执行路径 × 三包流，共9组合；按 ScanType 反射创建 Scan 目标，覆盖0、MaxInt64、MaxInt64+1、MaxUint64，有符号-1/0/MaxInt64/MinInt64和 NULL，并检查 statement 关闭、Ping/QUIT 复用。修复前9组合均复现元数据错误及大值扫描溢出；修复后目标通过。
-- TestAllScalarTypes 的 MySQL 夹具增加 unsigned/signed BIGINT，复用既有标量元数据查询路径，按实际 ScanType 反射扫描 MaxUint64/MinInt64；两版本均仅编译该集成源码。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过；两版本普通及 integration 标签 golangci-lint 均0 issues，Go1.25 实际 Windows/386 目标通过。独立只读走查无确认问题；文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过。未连接数据库，Linux/macOS/远程 CI、成功 race 与真实服务端边界仍未验证，四项未收口任务和计数保持。
+- Standard database/sql.ScanType recommends a Go type suitable for the column value; int64 cannot receive valid BIGINT UNSIGNED above MaxInt64. Shared RowsColumnTypeScanType now recommends uint64 for unsigned protocol type8, retaining int64 for signed. Actual int64/exact-decimal-string row representations stay unchanged; no APIs/configuration/packages/dependencies added.
+- TestUnsignedBigIntScanType uses actual database/sql/local protocol peers across three execution paths × three transports, nine combinations. Scan destinations are reflect-created from ScanType; covers 0/MaxInt64/MaxInt64+1/MaxUint64, signed -1/0/MaxInt64/MinInt64 and NULL, plus statement close/Ping/QUIT reuse. All nine reproduced wrong metadata/large-value scan overflow before fixing; targets passed afterward.
+- MySQL TestAllScalarTypes fixtures add unsigned/signed BIGINT and reuse scalar-metadata query paths, reflect-scanning MaxUint64/MinInt64 according to actual ScanType; both versions only compiled integration source.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/new targets ×10 passed; ordinary/integration-tag golangci-lint reported 0 issues on both, actual Go1.25 Windows/386 targets passed. Read-only review found no confirmed issues. Documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff checks passed. No databases; Linux/macOS/remote CI/successful race/real-server boundaries unverified. Four open tasks/counts remain.
 
-#### D21 长参数 typed-nil Reader 校验
+#### D21 Typed-Nil Reader Validation for Long Parameters
 
-- 原校验只拒绝 nil 接口和 nil 指针，接受底层为 nil 的函数/map/slice/channel Reader；nil 函数 Reader 随后的读取可触发调用方函数调用 panic。TestLongDataNilReader 在修复前复现四类输入被接受；复用 LOCAL INFILE 已有的完整 nil 判断，统一为包私有 nilReader，不新增公开 API、配置、包或依赖。
-- TestLongDataNilReaderSession 使用实际 database/sql 与本地协议对端，覆盖两模式 × 标准/压缩/OB20：非法输入在 prepare/upload 前返回 ErrLongData，输入未消费，修正同一对象后成功执行；非 nil 的函数/map/slice/channel 空 Reader 正常上传，最终关闭 statement 并 Ping/QUIT 复用会话。LOCAL INFILE 的借用/持有及 nil 返回规则保持。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过，两版本普通及 integration 标签 golangci-lint 均0 issues；Go1.25 实际 Windows/386 的 LongData/LocalInfile 目标通过。独立只读复核无确认问题，文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过，不另存报告；本轮未连接数据库，D28/D30/D31/D32 和28/32实现、0/32验收保持。
+- Original validation rejected only nil interfaces/pointers, accepting Readers backed by nil functions/maps/slices/channels; reading nil function Readers could panic in caller-function invocation. TestLongDataNilReader reproduced acceptance of all four before fixing. Reused LOCAL INFILE's full nil check as shared private nilReader, without public APIs/configuration/packages/dependencies.
+- TestLongDataNilReaderSession uses real database/sql/local peers across both modes × all transports: invalid input returns ErrLongData before prepare/upload, remains unconsumed, then executes after correcting the same object. Nonnil function/map/slice/channel empty Readers upload normally, then statement close/Ping/QUIT reuse the session. LOCAL INFILE borrowed/owned/nil-return rules remain.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, compile-only integration/new targets ×10 passed; ordinary/integration-tag golangci-lint reported 0 issues on both. Actual Go1.25 Windows/386 LongData/LocalInfile targets passed. Read-only review found no confirmed issues. Documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed; no separate report/no databases this round. D28/D30/D31/D32 and 28/32 implemented, 0/32 accepted remain.
 
-#### D04/D26 自定义拨号 typed-nil 连接校验
+#### D04/D26 Typed-Nil Connections from Custom Dialers
 
-- 自定义 DialContext 返回 typed-nil 连接时，原普通 nil 判断会把它送入读取或错误分支的 Close，触发 nil 指针 panic。TestDialContextNilConnection 经标准 database/sql 在两模式分别复现无错误/普通错误/可重试网络错误三种返回，共6个失败组合；普通 nil 对照及有效连接错误清理通过。
-- dialCandidate 两处分支复用 nilReader 判断，不调用 typed-nil 方法；nil 且无错误返回既有拨号结果错误，带错误则保留错误链和候选重试分类，有效连接与错误同时返回仍恰好关闭一次。普通拨号及 CancelQuery 辅助拨号共用此边界，不新增公开 API、配置、包或依赖。
-- 新目标共12个 nil 组合，检查拨号次数、无凭据请求及无入池；TestDialContextErrorClosesConnection 用关闭计数与对端 EOF 检查所有权和无网络写。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过；Go1.25 实际 Windows/386 新目标通过。初次 lint 的重复测试名称已更名，最终两版本普通及 integration 标签 golangci-lint 均0 issues；独立只读复核无确认问题，文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过，不另存报告。未连接数据库，四项未收口任务及28/32实现、0/32验收保持。
+- When custom DialContext returned typed-nil connections, plain nil checks sent them into read/error-Close paths and panicked. TestDialContextNilConnection reproduced no-error/ordinary-error/retryable-network-error returns in both modes through standard database/sql, six failing combinations; ordinary-nil controls/valid-connection error cleanup passed.
+- Both dialCandidate branches reuse nilReader without invoking typed-nil methods. Nil without error returns the existing invalid-Dial-result error; with errors, chains/candidate retry classification remain. Valid connection plus error still closes exactly once. Ordinary/CancelQuery auxiliary Dial share this boundary, without public APIs/configuration/packages/dependencies.
+- New targets cover 12 nil combinations, checking dial counts/no credential requests/no pool return; TestDialContextErrorClosesConnection checks ownership/no writes via close counts/peer EOF. Go1.25.0/1.26.0 Windows amd64 all-package test/vet, compile-only integration/new targets ×10 passed; actual Go1.25 Windows/386 targets passed. Initial duplicate-test-name lint findings were renamed; final ordinary/integration-tag golangci-lint reported 0 issues on both. Review found no confirmed issues; documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed, no separate report. No databases; four open tasks/28/32 implemented/0/32 accepted remain.
 
-#### D13 二进制字符串类型名称
+#### D13 Binary String Type Names
 
-- 固定 Java ColumnType.getColumnTypeName 与 ColumnDefinition.isBinary 以字符集63区分 BINARY/VARBINARY，不能依据 BINARY_FLAG128将文本 binary 排序规则改为二进制。共享类型名函数已将 MySQL 协议15/253/254对应的名称修正，Oracle VARCHAR2/CHAR保持；结果、参数元数据及语句支持检查共用，ScanType/字节值和长度语义不变。不新增公开 API、配置、包或依赖。
-- TestBinaryStringColumnTypes 用实际 database/sql 覆盖两模式 × 文本/服务端/客户端三路径 × 标准/压缩/OB20，六列同时检查二进制类型及带 binary 排序规则的文本对照；包含0/255原始字节、中文、非 nil 空值、NULL、ScanType、二进制长度及 statement/Ping/QUIT关闭复用。TestBinaryStringParameterMetadata 另覆盖两模式/三包流，合计24组合；修复前9个MySQL结果组合仅名称断言失败，Oracle对照通过。
-- TestAllScalarTypes 已增加 BINARY(4)列，与 VARBINARY(100)检查名称、ScanType、字节长度与内容；固定输入自身包含补零，不把本地对端当作服务端补零证据。两工具链仅编译该集成源码，未连接数据库。独立只读走查无确认问题，不另存报告；D28/D30/D31/D32及28/32实现、0/32验收保持。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、新目标各10轮通过；初次 lint 的重复状态字符串已移除，最终两版本普通及 integration 标签 golangci-lint 各0 issues。Go1.25 实际 Windows/386 新目标、文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过；Linux/macOS、远程 CI、成功 race 与真实服务端列元数据仍未验证。
+- Pinned Java ColumnType.getColumnTypeName/ColumnDefinition.isBinary distinguishes BINARY/VARBINARY by charset63, not BINARY_FLAG128 on text binary collations. Shared naming now corrects MySQL protocol15/253/254 while Oracle VARCHAR2/CHAR stay unchanged; result/parameter metadata/statement-support checks share it. ScanType/byte values/length semantics stay unchanged. No APIs/configuration/packages/dependencies added.
+- TestBinaryStringColumnTypes uses actual database/sql across both modes × text/server/client paths × all transports. Six columns check binary types/text binary-collation controls, including raw 0/255 bytes, Chinese, nonnil empty values, NULL, ScanType, binary lengths and statement/Ping/QUIT close/reuse. TestBinaryStringParameterMetadata additionally covers both modes/all transports, 24 total combinations. Before fixing, nine MySQL result combinations failed only name assertions; Oracle controls passed.
+- TestAllScalarTypes adds BINARY(4), checking names/ScanType/byte lengths/content alongside VARBINARY(100). Fixed input already contains zero padding; local peers do not establish server padding. Both toolchains only compiled integration source without databases. Read-only review found no confirmed issues; no separate report. D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/new targets ×10 passed. Initial duplicate-status-string lint findings were removed; final ordinary/integration-tag golangci-lint reported 0 issues each. Actual Go1.25 Windows/386 new targets/documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed; Linux/macOS/remote CI/successful race/real-server column metadata unverified.
 
-#### D28 Named Pipe 地址 UTF-8 校验
+#### D28 Named Pipe Address UTF-8 Validation
 
-- 原 Named Pipe 地址校验未检查 UTF-8，Windows UTF-16 转换可让非法字节访问不同的管道名。本机独立 go-winio 对端已确认：地址末尾的0xff连接到实际名称末尾为 U+FFFD 的管道。共享 validPipeAddress 已增加 UTF-8 校验，Config/DSN 在拨号及凭据请求前统一返回 Addr 配置错误；合法 Unicode 与 Unix 字面地址语义保持，不新增 API、配置、包或依赖。
-- TestPlatformTransportPipeUTF8 覆盖五种非法编码 × 主机/管道名，共10组，每组同时检查 NewConnector 和百分号编码 DSN；修复前20个入口断言失败，修复后通过。另检查合法中文、补充平面字符及实际 U+FFFD 的地址保持；TestPlatformTransportNamedPipeUTF8 使用本机原生 Unicode 管道完成实际 database/sql 握手、初始化、Ping 和 QUIT/关闭。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、新目标各10轮通过，两版本普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。独立只读走查无确认问题，不另存报告；文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，远端 UNC 权限、真实 Linux VC、远程 CI 与成功 race 仍未取证，D28/D30/D31/D32及计数保持。
+- Named Pipe addresses lacked UTF-8 validation; Windows UTF-16 conversion could access a different pipe name. An independent local go-winio peer confirmed a trailing 0xff address connects to the pipe ending U+FFFD. Shared validPipeAddress now validates UTF-8; Config/DSN returns Addr configuration errors before Dial/credentials. Valid Unicode/Unix literal-address semantics remain, without APIs/configuration/packages/dependencies.
+- TestPlatformTransportPipeUTF8 covers five invalid encodings × host/pipe names, ten groups checking NewConnector/percent-encoded DSN each. Twenty entry assertions failed before fixing and passed afterward. Valid Chinese/supplementary-plane/U+FFFD addresses are retained; TestPlatformTransportNamedPipeUTF8 uses local native Unicode pipes for actual database/sql handshake/initialization/Ping/QUIT/close.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, compile-only integration/new targets ×10 passed; ordinary/integration-tag golangci-lint reported 0 issues each; actual Go1.25 Windows/386 targets passed. Review found no confirmed issues; no separate report. Documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed. No databases; remote UNC permissions/real Linux VC/remote CI/successful race lack evidence, D28/D30/D31/D32/counts remain.
 
-#### D28 原生 IPC 混合会话验证
+#### D28 Native IPC Mixed-Session Validation
 
-- 新增 TestPlatformTransportUnixMixedSessions / TestPlatformTransportNamedPipeMixedSessions，经真实系统 Unix socket / Windows Named Pipe 和驱动内置拨号覆盖两模式 × 标准/压缩/OB20，共12组合。每个组合保持同一物理连接执行两轮：缓存预处理的正负参数与类型头复用、未读/部分读取 Rows 后关闭、事务 rollback/commit、Oracle autocommit 恢复，以及1062/23000错误后的 Ping。复用既有混合夹具和原连接/池/资源守卫，不新增生产 API、包或依赖。
-- 退出检查 QUIT、池清空和原 physical 关闭；Unix 额外核对原 raw.SetDeadline 返回 net.ErrClosed，Named Pipe 与非 Windows Unix 检查对端 EOF。重复测试发现本机 Windows AF_UNIX 已 Close 且收到末尾数据后仍偶发无 EOF，纯标准库1000轮亦复现，故只在该平台/传输用原连接关闭断言替代对端 EOF；没有修改生产关闭策略。新夹具使用短临时目录和有界协议 context，避免 socket 路径限制及失败后的无限等待。
-- 使用 Go overlay 暂时将 IPC 误拨为 TCP、跳过 Rows drain，两项各使12组合按预期失败；暂时仅置关闭标志而不关闭原 raw，6个 Unix 组合均检出泄漏。实际生产源码未改变，最终两工具链新目标各50轮通过，共1200条原生会话、2400轮混合操作；这不是长期稳定性或真实 SQL 语义验收。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译、普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。独立只读走查无确认问题，不另存报告；文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，Linux/macOS Unix、真实 Linux VC、远端 UNC、远程 CI 与成功 race 仍待取证，D28/D30/D31/D32及计数保持。
+- Added TestPlatformTransportUnixMixedSessions / TestPlatformTransportNamedPipeMixedSessions using real OS Unix sockets/Windows Named Pipes and built-in Dial across both modes × all transports, 12 combinations. Each retains one physical connection for two rounds: cached preparation/positive-negative inputs/type reuse, unread/partial Rows close, transaction rollback/commit, Oracle autocommit restoration and Ping after 1062/23000 errors. Reuses mixed fixtures/original-session/pool/resource guards without production APIs/packages/dependencies.
+- Exit checks QUIT/empty pool/original physical close. Unix also verifies raw.SetDeadline returns net.ErrClosed; Named Pipe/non-Windows Unix checks peer EOF. Repetition found Windows AF_UNIX occasionally lacks EOF after local Close/final data; 1000 pure-standard-library rounds reproduced it. Only this platform/transport substitutes original-connection-close assertions for peer EOF; production closing is unchanged. Fixtures use short temporary directories/bounded protocol contexts to avoid socket-path limits/unbounded failure waits.
+- Go overlays temporarily misdialing IPC as TCP/skipping Rows drain each failed all 12 combinations as expected; setting only the closed flag without raw.Close detected leaks in six Unix combinations. Production source unchanged. Final new targets passed 50 rounds per toolchain, totaling 1200 native sessions/2400 mixed-operation rounds, not long-term stability/real-SQL acceptance.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet, compile-only integration/ordinary/integration-tag golangci-lint with 0 issues passed; actual Go1.25 Windows/386 targets passed. Review found no confirmed issues; no separate report. Documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed. No databases; Linux/macOS Unix/real Linux VC/remote UNC/remote CI/successful race need evidence. D28/D30/D31/D32/counts remain.
 
-#### D28/D30 连续切用户的多轮认证
+#### D28/D30 Multiround Authentication During Repeated User Switching
 
-- 新增 TestChangeUserConversation，以本地协议对端经完整 database/sql 建连与初始化，覆盖两种兼容模式 × 8条路径，共16场景。每场景在同一物理会话先由 native 切换到多轮插件，再以缓存插件名及完整含 NUL seed 创建新实例、轮换显式密码；每次成功都重建基线并完成 Ping。核对原凭据提供方仅调用一次、总拨号一次、每个插件独立且只关闭一次，成功后不保留密码或原回调，最终物理连接不回池。
-- 原始令牌包含0x00/0xfe/0xff前缀，区分 nil 与非 nil 空响应；覆盖缺少最终 OK、额外令牌、服务端 ERR、后续阶段 TLS 拒绝及插件 Close 错误。发送后失败检查原连接关闭且不可复用；本地对端等待有界并在测试退出前结束。复用既有 scriptedConversation、握手及基线夹具，不新增生产 API、包或依赖，也未修改生产认证逻辑。
-- Go overlay 故障注入分别截掉令牌首字节、漏发空响应、误用旧凭据提供方、失败后保留连接及忽略 Close 错误，新测试分别在16/2/16/10/2个预期场景失败；没有将夹具编译错误当作检出。恢复原源码后 Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译及新目标各50轮通过，普通及 integration 标签 golangci-lint 各0 issues；Go1.25 实际 Windows/386 新目标通过。
-- 独立只读走查无确认问题，不保存独立报告；文档/链接/160配置及32任务/28实现/0验收、Go格式和diff检查通过。以上是自定义多轮插件的本地协议证据，不替代原生 SSPI/GSSAPI 或真实服务端验收；该轮沙箱内原生 SSPI 因无可用身份凭据跳过，当前 Windows 身份的正向复核见下节。未连接数据库，真实 Linux VC、Linux/macOS、远程 CI 与成功 race 仍未取证，D28/D30/D31/D32及28/32实现、0/32验收保持。
+- Added TestChangeUserConversation using local peers/full database/sql connection/initialization across both modes × eight paths, 16 scenarios. Each same-session case switches native to multiround plugin, then creates a fresh instance from cached plugin name/full NUL-containing seed and rotates explicit passwords. Each success rebuilds baseline/Ping. Original credential provider runs once, Dial once, plugin instances are independent/close once; passwords/original callbacks are not retained, and final physical sessions never return to pools.
+- Raw tokens include 0x00/0xfe/0xff prefixes, distinguishing nil/nonnil-empty responses. Covers missing final OK/extra tokens/server ERR/later-stage TLS rejection/plugin Close errors. Post-send failures verify original close/no reuse; local peers wait within bounds/finish before exit. Reuses scriptedConversation/handshake/baseline fixtures without production APIs/packages/dependencies/auth-logic changes.
+- Go overlay faults truncate first token bytes/omit empty responses/reuse old credential providers/retain failed connections/ignore Close errors, detected in expected 16/2/16/10/2 scenarios without counting fixture compilation errors. Restored-source Go1.25.0/1.26.0 Windows amd64 all-package test/vet, compile-only integration/new targets ×50 passed; ordinary/integration-tag golangci-lint reported 0 issues each; actual Go1.25 Windows/386 targets passed.
+- Review found no confirmed issues; no separate report. Documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed. This is custom multiround-plugin local protocol evidence, not native SSPI/GSSAPI/real-server acceptance. Native SSPI skipped this sandbox round for unavailable credentials; positive current-Windows-identity checks follow. No databases; real Linux VC/Linux/macOS/remote CI/successful race lack evidence. D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain.
 
-#### D28/D30 原生 SSPI 的完整会话与重新认证
+#### D28/D30 Full Sessions and Reauthentication with Native SSPI
 
-- 新增 TestAuthPluginGSSNativeSessions，在当前 Windows 用户身份下使用默认内置 gssAuth、系统 NTLM 与真实本地 TCP/TLS 对端，覆盖两模式 × 最终接受/拒绝，共4场景。每场景完成初始 native-password 到 GSS 切换、完整 database/sql 初始化/Ping，以及同一物理会话连续两次 ChangeUser；每次认证均由新的系统 SSPI 服务端上下文实际校验，成功后重建完整基线并 Ping。数据库用户名轮换不改变当前 Windows 身份，也不证明真实服务端授权。
-- 原生首轮 token 从 COM_CHANGE_USER 中独立解析，核对命令、用户、长度、NTLM 标识、两模式默认库/schema及缓存插件；核对完整含 NUL seed、实际模式、TLS 验证状态和密码清除。最后一轮可在原生上下文完成后返回1045/28000，驱动必须保留错误、关闭原物理会话且无法继续 Ping。成功退出检查 QUIT/EOF；所有场景检查原 raw.SetDeadline 返回 net.ErrClosed、池连接数归零及总拨号一次。复用原 SSPI 握手夹具，无生产逻辑/API/包/依赖变更；新认证断言不输出原生 token。
-- 沙箱内 SEC_E_NO_CREDENTIALS 仍明确 skip；使用当前 Windows 身份运行正向目标，并解析测试事件拒绝任何 skip。Go1.25.0/1.26.0 Windows amd64 原生初始 token、原握手与新目标各25轮通过；新目标合计200条完整会话、600次原生 NTLM 交换。Go1.25 Windows/386 三个原生目标实际通过。Go overlay 临时忽略 AuthConversation 分支、遗漏 raw.Close，两种故障分别在全部4场景被检出；原源码恢复后的最终双版本全包 test/vet、integration 仅编译和普通/integration 标签 golangci-lint 均通过且各0 issues。
-- 独立只读走查无确认问题，不另存报告；架构/计划/兼容矩阵同步标准包流范围，文档/链接/160配置、32任务/28实现/0验收和Go格式/diff检查通过。本地 NTLM 与TCP关闭证据不证明原生资源无泄漏；域 Kerberos/Negotiate、真实 Linux VC、Linux/macOS 系统库、远程 CI、成功 race 及真实数据库仍未验证，D28/D30/D31/D32和计数保持。
+- Added TestAuthPluginGSSNativeSessions under current Windows user identity, using built-in default gssAuth/system NTLM/real local TCP/TLS across both modes × final accept/reject, four scenarios. Each performs initial native-password-to-GSS switch, full database/sql initialization/Ping and two same-session ChangeUser calls. Fresh system SSPI server contexts actually verify each authentication; successes rebuild full baseline/Ping. Database username rotation does not change Windows identity or establish real-server authorization.
+- Independently parses native first-round tokens from COM_CHANGE_USER, checking command/user/length/NTLM identity/both-mode default database/schema/cached plugin. Checks full NUL-containing seeds, actual mode, verified TLS/password clearing. Final round may return 1045/28000 after native completion; driver must retain error/close original session/reject Ping. Successful exits verify QUIT/EOF; all verify raw.SetDeadline=net.ErrClosed, zero pool connections and one dial. Reuses SSPI fixtures without production logic/API/package/dependency changes; new auth assertions never print native tokens.
+- Sandbox SEC_E_NO_CREDENTIALS remains explicit skip; positive targets ran under current Windows identity with event parsing rejecting any skip. Go1.25.0/1.26.0 Windows amd64 native initial-token/original-handshake/new targets passed 25 rounds each; new targets total 200 full sessions/600 native NTLM exchanges. Three native targets actually passed Go1.25 Windows/386. Overlay ignoring AuthConversation/omitting raw.Close each failed all four scenarios; restored-source final both-version all-package test/vet/compile-only integration/ordinary/integration-tag golangci-lint passed with 0 issues each.
+- Review found no confirmed issues; no separate report. Architecture/plan/matrix synchronize standard-transport scope; documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed. Local NTLM/TCP-close evidence does not prove native-resource leak freedom. Domain Kerberos/Negotiate, real Linux VC/Linux/macOS system libraries/remote CI/successful race/real databases remain unverified; D28/D30/D31/D32/counts remain.
 
-#### D32 逐项配置证据与固定标量语义
+#### D32 Per-Option Evidence and Fixed Scalar Semantics
 
-- 配置映射160行新增归类和具体 Test/Example 源文件链接，区分 Go 配置、标准库、显式 API、固定语义、安全拒绝、应用责任、平台适配和不适用；补充证据解释，明确 Example 无 Output 时只编译、Java store 转换/诊断由应用管理、Windows 宿主 ABI 不证明真实 Linux VC，链接齐全不等于逐项功能验收。
-- 新增 TestDSNJavaCanonicalOptions，从固定 Java 2.4.14 源码提取并独立保留160名称预期；158个 query key 在 ParseDSN 和标准 sql.Open 的配置阶段返回脱敏未知项 ConfigError；connectTimeout/servicePrincipalName 两个共享名称检查实际 Go 字段和 sql.Open 接受。历史别名/枚举外参数复用原拒绝断言；不连接数据库、不读取文档生成预期、不把拒绝视为对应功能已实现。
-- 新增 TestMySQLScalarCompatibility，使用 database/sql 和本地协议对端覆盖文本/服务端预处理/客户端预处理 × 标准/压缩/OB20，共9场景；断言 TINYINT（显示宽度1/unsigned）、YEAR 和 BIT(1)/BIT(64) 的类型名、ScanType、原始值、NULL、跨行保留的字节及后续 Ping，保持 Go 整数/字节语义。对端字段不证明真实服务端建表和取值范围。
-- Go overlay 将 TINYINT/BIT 误转布尔、YEAR 误转字符串、未知 Java 参数静默忽略、SPN 丢失，分别在6/9/6/158/1个预期场景检出；无编译失败、panic 或 skip。原始源码没有变动。Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；两个新增目标各25轮且无 skip，Go1.25 实际 Windows/386 的新增及原 Java 迁移目标通过。初次 lint 的重复字符串已提取常量，最终两版本普通及 integration 标签 golangci-lint 均0 issues。
-- 独立只读复核重新核对固定160名称及387个本地 Test/Example 链接，无确认问题，不另存报告；文档/链接/160初值/10别名/2额外字段、32任务/28实现/0验收及 Go 格式/diff 检查通过。元数据入口目前只证明本地查询计划和部分公开投影，全部 Catalog/remarks 组合仍需补证；域认证、真实 Linux VC、Linux/macOS、远程 CI、成功 race 及真实数据库均未据此验收，D28/D30/D31/D32和28/32实现、0/32验收保持。
+- Added categories/concrete Test/Example source links to 160 mapping rows, separating Go configuration, standard library, explicit APIs, fixed semantics, secure rejection, application ownership, platform adapters and not applicable. Explains that Examples without Output compile only; Java store conversion/diagnostics are application-owned; Windows host ABI does not establish real Linux VC; complete links do not establish per-feature acceptance.
+- Added TestDSNJavaCanonicalOptions with 160 expected names extracted/independently retained from pinned Java 2.4.14. 158 query keys return redacted unknown-option ConfigError in ParseDSN/standard sql.Open configuration; shared connectTimeout/servicePrincipalName check actual Go fields/sql.Open acceptance. Aliases/non-enum parameters reuse existing rejection checks. No databases/document-generated expectations; rejection is not implementation of corresponding features.
+- Added TestMySQLScalarCompatibility using database/sql/local peers across text/server/client preparation × all transports, nine scenarios. Asserts TINYINT(display width 1/unsigned), YEAR, BIT(1)/BIT(64) names/ScanType/raw values/NULL/cross-row retained bytes/later Ping, preserving Go integer/byte semantics. Peer columns do not establish real-server DDL/ranges.
+- Overlay faults converting TINYINT/BIT to bool, YEAR to string, silently ignoring Java options or losing SPN were detected in expected 6/9/6/158/1 scenarios, without compile failures/panics/skips. Original source unchanged. Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; both new targets ×25 had no skips; actual Go1.25 Windows/386 new/original migration targets passed. Initial duplicate strings became constants; final ordinary/integration-tag golangci-lint reported 0 issues on both.
+- Independent read-only review rechecked pinned 160 names/387 local Test/Example links with no confirmed issues; no separate report. Documentation/links/160 defaults/ten aliases/two extra fields/32 tasks/28 implemented/0 accepted/Go-format/diff passed. Metadata currently proves local plans/some public projections only; all Catalog/remarks combinations still need evidence. Domain auth/real Linux VC/Linux/macOS/remote CI/successful race/real databases do not gain acceptance; D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain.
 
-#### D13/D32 Catalog 过滤与表/列备注契约
+#### D13/D32 Catalog Filters and Table/Column Remarks Contracts
 
-- 新增 TestMetadataCatalogAndRemarks，使用公开 Metadata、固定 sql.Conn 与本地协议对端，覆盖两模式 × utf8mb4/GBK × 标准/压缩/OB20，共12场景。每场景对 Catalogs/Schemas/Tables/Columns 分别检查空 Catalog、def、通配符、引号注入文本与中文 Catalog，共20请求，再重新查询表/列备注，共22请求；空值不隐式限定当前 schema，非空值要求精确过滤 SQL。MySQL 的 def 和 Oracle 的 NULL/空 catalog 行集分别固定预期。
-- 独立 SQL 预期与固定 GBK 字节向量不调用生产查询计划、插值或字符集编码器；返回通用字典字段名，检查公开固定列名、BIGINT/VARCHAR、ScanType、可空性及值。备注包含中文、单引号、首尾空白和 NULL；MySQL 空串与 NULL 区分，Oracle 夹具不伪造空串语义。两次重新查询必须返回更新的备注；末尾 Ping、QUIT 与关闭检查确认仍为同一物理会话。对端返回固定行集，不执行字典 SQL，不能视为真实字典求值证据。
-- TestMetadataCatalog 集成源码增加两模式 DDL 表/列备注和 Tables/Columns 的五种 Catalog 过滤对照；本轮仅编译，不连接数据库。架构、开发计划与两项 Java 配置映射同步上述范围，没有生产逻辑、公开 API、包或依赖变更。
-- Go overlay 临时忽略 Catalog、将精确比较改为 LIKE、将文本 NULL 改为空串、裁剪备注首尾空白，分别在全部12场景被检出；丢失 MySQL/Oracle 备注投影分别在对应6场景被检出，无编译失败、panic 或 skip，生产源码未改动。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标各25轮且无 skip，Go1.25 实际 Windows/386 新目标通过。初次 lint 的重复字符串已复用/提取测试常量，最终两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读走查无确认问题，不另存报告。真实数据库、域认证、真实 Linux VC、Linux/macOS、远程 CI 与成功 race 仍未验收，D28/D30/D31/D32 和28/32实现、0/32验收保持。
+- Added TestMetadataCatalogAndRemarks through public Metadata/pinned sql.Conn/local peers, both modes × utf8mb4/GBK × all transports, 12 scenarios. Each checks Catalogs/Schemas/Tables/Columns against empty Catalog, def, wildcards, quote-injection text and Chinese Catalog, 20 requests, then requeries table/column remarks, 22 requests total. Empty filters do not imply current schema; nonempty filters require exact SQL. MySQL def and Oracle NULL/empty-catalog rowsets have fixed expectations.
+- Independent SQL expectations/fixed GBK vectors do not call production plans/interpolation/encoders. Generic dictionary fields test public fixed names/BIGINT/VARCHAR/ScanType/nullability/values. Remarks include Chinese, quotes, leading/trailing whitespace and NULL; MySQL empty/NULL stay distinct, Oracle fixtures do not fabricate empty-string semantics. Two requeries must return updated remarks; final Ping/QUIT/close confirm one session. Peers return fixed rowsets without executing dictionary SQL, so this is not real dictionary-evaluation evidence.
+- TestMetadataCatalog integration source adds both-mode DDL table/column remarks/five Catalog-filter comparisons for Tables/Columns; only compiled this round without databases. Architecture/plan/two Java mappings synchronize scope, without production logic/public APIs/packages/dependencies.
+- Overlays ignoring Catalog/changing equality to LIKE/changing text NULL to empty/trimming remarks failed all 12 scenarios; losing MySQL/Oracle remark projections failed respective six scenarios. No compile failures/panics/skips; production source unchanged.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; new targets ×25 had no skips; actual Go1.25 Windows/386 targets passed. Initial duplicate strings reuse/extract constants; final ordinary/integration-tag golangci-lint reported 0 issues on both. Review found no confirmed issues; no separate report. Real databases/domain auth/real Linux VC/Linux/macOS/remote CI/successful race remain unaccepted; D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain.
 
-#### 开发计划步骤与现有证据同步
+#### Development-Plan Steps Synchronized with Existing Evidence
 
-- 按本节已有实现、测试与历史失败→通过记录，修正 D05–D12、D27、D31 的本地步骤，以及 D02 包流 fuzz/386、D07 绑定 fuzz 的勾选；D10/D11 的历史失败尚无对应记录，相关步骤保留未勾选。D28 仅勾选已有 Windows 本地算法/IPC 测试和适配实现，目标平台及真实服务验证仍未完成。计划中的步骤勾选不是任务验收状态，历史失败证据不由当前成功重跑推定。
-- 将 D14 标量输出、D19 游标、D20 过程资源和 D25 FLT 原先混在同一已勾选步骤中的本地验证与数据库验收拆开；真实 TestScalarCall/Returning、TestCursorModes/Updates、TestProcedureResources、TestFullLinkTrace 保持未勾选，源码仅编译。
-- 本轮仅调整开发计划和进度文档，没有修改代码、测试或 CI，也未重新运行 Go 测试/lint；沿用上一代码批次的验证记录，不增加新的运行证据。任务总数和实现/验收计数保持32/28/0，D28/D30/D31/D32 继续进行中。
+- Using existing implementations/tests/historical fail→pass records in this section, corrected local steps for D05–D12/D27/D31 and checked D02 packet-fuzz/386/D07 bind-fuzz steps. D10/D11 historical failures lack corresponding records, so those steps remain unchecked. D28 checks only existing Windows-local algorithm/IPC tests/adapters; target platforms/real services remain incomplete. Plan checkboxes are not acceptance statuses, and current successful reruns do not imply historical failures.
+- Split local validation from database acceptance previously combined in checked D14 scalar-output/D19 cursor/D20 procedure-resource/D25 FLT steps. Real TestScalarCall/Returning, TestCursorModes/Updates, TestProcedureResources and TestFullLinkTrace stay unchecked; source only compiled.
+- This round changes plan/progress documents only, not code/tests/CI, and reran no Go tests/lint. Prior code-batch evidence is reused without new runtime evidence. Counts remain 32/28/0 and D28/D30/D31/D32 remain In progress.
 
-#### D09 COMMIT 写出后的取消与超时分类
+#### D09 Cancellation and Timeout Classification After COMMIT Write
 
-- 修复本地事务的发送/读取边界：完整 COMMIT 写出后，如果读取响应前 context 已取消或超时，原实现直接返回裸 context 错误，丢失 ErrCommitUnknown。现在按 WriteMessage 的发送证据区分发送前拒绝与响应未知；发送后保留 ErrCommitUnknown 和底层 context 原因，淘汰原会话，不重放或补发 ROLLBACK。完整服务端拒绝保留 Error；确认成功后恢复失败仍为 ErrTxCleanup。复用既有 wire、错误分类与标准 database/sql，不增加公开 API、包或依赖。
-- 新增 [TestCommitCanceledAfterWrite、TestCommitDeadlineAfterWrite、TestCommitServerRejection](../tx_commit_test.go)，覆盖两种兼容模式，经真实 database/sql 与本地协议对端检查写出后的取消/超时、明确拒绝、单次提交/拨号、底层关闭、池中无遗留连接及结束后不能回滚。旧 tx.go 的 Go overlay 使取消/超时四场景均按预期因缺少 ErrCommitUnknown 失败；修正后的目标通过。对端仅确认收到 COMMIT，不证明真实提交或回滚结果。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标在 Go1.25 各10轮及实际 Windows/386 通过。初次 lint 的重复模式名称改为复用既有测试常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，不另存报告；架构和使用指南已同步，文档/链接/160配置及32任务/28实现/0验收、Go格式与diff检查通过。未连接数据库，真实平台、远程 CI 和成功 race 的缺口不变，D28/D30/D31/D32 继续进行中。
+- Fixed local-transaction send/read boundaries: after complete COMMIT write, cancellation/deadline before response reading previously returned bare context errors, losing ErrCommitUnknown. WriteMessage send evidence now distinguishes presend rejection/unknown response. Post-send errors retain ErrCommitUnknown/underlying context causes, evict without replay/extra ROLLBACK. Complete server rejection retains Error; restoration failure after confirmed success remains ErrTxCleanup. Reuses wire/error classification/standard database/sql without public APIs/packages/dependencies.
+- Added [TestCommitCanceledAfterWrite, TestCommitDeadlineAfterWrite, TestCommitServerRejection](../tx_commit_test.go), both modes through real database/sql/local peers, checking postwrite cancellation/deadlines/explicit rejection/single commit/dial/underlying close/no pooled leftovers/no rollback after completion. Overlay of old tx.go failed all four cancellation/deadline scenarios for missing ErrCommitUnknown; fixed targets passed. Peers confirm receipt of COMMIT only, not actual commit/rollback results.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; new Go1.25 targets ×10/actual Windows/386 passed. Initial repeated-mode-name lint findings now reuse constants; final ordinary/integration-tag golangci-lint reported 0 issues on both. Review found no confirmed issues; no separate report. Architecture/usage updated; documentation/links/160 options/32 tasks/28 implemented/0 accepted/Go-format/diff passed. No databases; real-platform/remote-CI/successful-race gaps remain, D28/D30/D31/D32 continue.
 
-#### D09/D12 保存点命令的会话字符集
+#### D09/D12 Session Charset for Savepoint Commands
 
-- 修复保存点命令绕过 Session.Charset、直接发送 Go UTF-8 字节的问题；模式引用完成后复用 encodeSQL 严格编码，不可表示的名称在发送前拒绝，不新增公开 API、包或依赖。
-- 新增 [TestSavepointCharset、TestSavepointUnrepresentable](../savepoint_charset_test.go)：两模式 × utf8mb4/GBK × 标准/压缩/OB20 共12个正向场景，以独立固定 GBK 字节 D6 D0 检查含引号的中文名称，覆盖创建、回滚到保存点和 MySQL 释放；Oracle 释放明确拒绝且不发送。两模式检查 GBK 无法表示的名称在发送前失败，后续合法保存点及事务回滚仍成功；同时检查原物理会话所有权和关闭。旧实现的六个 GBK 正向场景发送 UTF-8 字节、两个不可编码场景实际发送名称，均按预期失败；修正后目标通过。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新增目标两版本各10轮及 Go1.25 实际 Windows/386 通过，两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，不另存报告。本地对端仅证明字节、拒绝边界及资源所有权，不证明真实服务端的保存点、回滚或标识符支持；未连接数据库，D28/D30/D31/D32及28/32实现、0/32验收保持。
+- Fixed savepoints bypassing Session.Charset and sending Go UTF-8 bytes directly. After mode-specific quoting, shared encodeSQL strictly encodes names; unrepresentable names reject before send. No public APIs/packages/dependencies added.
+- Added [TestSavepointCharset, TestSavepointUnrepresentable](../savepoint_charset_test.go): both modes × utf8mb4/GBK × all transports, 12 positive cases using independent GBK D6 D0 bytes for quoted Chinese names, covering create/rollback-to/MySQL release. Oracle release rejects without sends. Both modes reject unrepresentable GBK names presend, then valid savepoints/transaction rollback succeed; original-session ownership/close checked. Old implementation failed six GBK positive cases by sending UTF-8 and two unencodable cases by sending names; fixed targets passed.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; new targets ×10 on both/actual Go1.25 Windows/386 passed, ordinary/integration-tag golangci-lint reported 0 issues each. Review found no confirmed issues; no separate report. Local peers prove bytes/rejection/ownership, not real-server savepoints/rollback/identifier support. No databases; D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain.
 
-#### D09 保存点命令的事务取消与期限
+#### D09 Transaction Cancellation and Deadlines for Savepoints
 
-- 修复保存点仅监听调用 context、未监听 BeginTx context 的缺口：事务已取消或超时、而保存点仍等待响应时，标准库自动回滚会等到保存点自己的期限。现在在原会话持锁期间合并两者取消信号，注册回调后检查已结束事务；回调只取消局部 context，返回前停止注册，不触碰后续操作。错误链保留底层收发证据与取消原因；可能发送后沿用 commandOK 的连接淘汰，不补发回滚、不重放，也不新增公开 API、包或依赖。
-- 新增 [TestSavepointTxCancellation、TestSavepointTxDeadline](../savepoint_context_test.go)：两模式/三包流下15个取消场景覆盖创建、回滚到保存点及 MySQL 释放；另有两模式事务期限。对端先确认收到目标命令才取消或等待事务截止，断言操作自身3秒期限尚未到达、返回事务原因、不返回 ErrBadConn、原物理连接关闭、无后续 SQL、不可提交且无重拨。旧实现的两个期限场景和一个 MySQL 取消场景均等待操作自身3秒期限才失败；修正后全部目标通过。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；Go1.25 取消目标25轮、期限目标5轮及实际 Windows/386 通过，Go1.26 新目标各3轮通过。初次 lint 提示测试中的 if/else 可改为 switch，调整后两版本普通及 integration 标签 golangci-lint 各0 issues。独立只读复核无确认问题，保存点相关目标另重复3轮通过，不另存报告。本地对端不证明真实保存点执行、回滚或事务结果；未连接数据库，D28/D30/D31/D32及28/32实现、0/32验收保持。
+- Fixed savepoints listening only to call context rather than BeginTx context: cancelled/expired transactions could leave standard-library automatic rollback waiting until savepoint deadlines. While holding the original-session lock, both cancellation signals now merge and ended transactions are checked after callback registration. Callbacks cancel local contexts only and unregister before return, never touching later operations. Error chains retain I/O evidence/cancellation causes. Possibly sent commands retain commandOK eviction without extra rollback/replay; no public APIs/packages/dependencies.
+- Added [TestSavepointTxCancellation, TestSavepointTxDeadline](../savepoint_context_test.go): 15 cancellation scenarios across both modes/all transports cover create/rollback-to/MySQL release, plus both-mode transaction deadlines. Peers confirm target receipt before cancellation/deadline; asserts operation's own 3-second limit has not elapsed, transaction cause/no ErrBadConn/original close/no later SQL/no commit/redial. Old implementation's two deadline cases/one MySQL cancellation case waited 3 seconds before failing; all fixed targets passed.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; Go1.25 cancellation ×25/deadline ×5/actual Windows/386 passed; Go1.26 new targets ×3 passed. Initial if/else-to-switch lint suggestion addressed; ordinary/integration-tag golangci-lint reported 0 issues each. Review found no confirmed issues; savepoint targets independently passed three more rounds, no separate report. Peers do not establish real savepoint execution/rollback/transaction outcomes. No databases; D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain.
 
-#### D19 敏感游标首批嵌套 REF CURSOR 清理
+#### D19 Nested REF CURSOR Cleanup in Sensitive-Cursor Initial Batches
 
-- 修复敏感游标打开后丢弃首批行时遗漏嵌套 REF CURSOR 的缺口：完整响应读取结束后，在原物理会话持锁期间复用既有有界子游标物化与关闭逻辑；首批行和子树共享消息预算，并预置父 statement ID，拒绝引用父游标。失败沿既有路径淘汰连接，不发布未完成的游标句柄；未新增公开 API、包或依赖。
-- 新增 [TestCursorSensitiveInitialChildren](../cursor_child_test.go)，通过公开 OpenCursor 覆盖正常子游标、NULL、异常父引用和子游标读取报错。正常路径检查先读取/关闭子游标、再关闭父游标且原会话可 Ping；异常路径检查错误保留、无句柄发布及物理连接关闭。旧实现的正常子游标、父引用和读取报错三个场景均按预期失败，修复后四场景通过。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；新目标两版本各10轮及 Go1.25 实际 Windows/386 通过。lint 的重复测试名称已提取常量，最终两版本普通及 integration 标签 golangci-lint 各0 issues；独立只读复核无确认问题，不另存报告。文档链接/160配置、32任务/28实现/0验收及格式/diff 检查通过。未连接数据库；真实服务器游标释放、Linux/macOS、远程 CI 和成功 race 未据此验证，D28/D30/D31/D32及计数保持。
+- Fixed nested REF CURSOR omissions when discarding the initial sensitive-cursor batch. After complete responses, the original locked session reuses bounded child materialization/close; first-batch rows/subtrees share budgets and preseed parent statement IDs to reject parent references. Existing failure paths evict without publishing incomplete handles; no public APIs/packages/dependencies.
+- Added [TestCursorSensitiveInitialChildren](../cursor_child_test.go) through public OpenCursor for normal child/NULL/invalid parent-reference/child-read-error cases. Success checks child read/close before parent close and same-session Ping; failures retain errors/no published handles/physical close. Three old-implementation cases (normal child/parent reference/read error) failed as expected; all four passed after fixing.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; new targets ×10 on both/actual Go1.25 Windows/386 passed. Repeated names became constants; final ordinary/integration-tag golangci-lint reported 0 issues each. Review found no confirmed issues; no separate report. Links/160 options/32 tasks/28 implemented/0 accepted/format/diff passed. No databases; real cursor release/Linux/macOS/remote CI/successful race unverified, D28/D30/D31/D32/counts remain.
 
-#### D06/D32 同池取消与事务隔离
+#### D06/D32 Cancellation and Transaction Isolation in One Pool
 
-- 新增 [TestPoolCancelIsolation](../pool_cancel_test.go)：MySQL/Oracle 两模式 × 标准/压缩/OB20 六组合，每个组合使用同一 sql.DB 的两条物理连接。第一条保留未结束的流式 Rows；第二条已进入事务并发送预处理执行后，才取消第一条请求，并在确认其传输关闭后回复第二条执行结果。检查取消错误、受影响行数、statement 关闭、事务提交、原物理连接 Ping、事务/资源状态清理、无额外建连及最终池关闭；两条连接的关闭都由对端确认，超时不算关闭成功。
-- 使用临时 Go 编译覆盖分别移除取消路径和正常 Close 路径的传输关闭，目标均按预期失败，确认测试能抓住实际关闭遗漏，未将故障注入写入生产源码。重复运行期间修正测试对端编号的调度竞态，并允许 net.Pipe 合法的 EOF/ErrClosedPipe；最终等待发生在测试清理之前，防止清理代码代为关闭造成假阳性。
-- Go1.25.0/1.26.0 Windows amd64 全包 test/vet、integration 仅编译通过；六组合两版本各25轮及 Go1.25 实际 Windows/386 通过。测试函数按 fixture/workload 拆分并调整 context 参数位置后，两版本普通及 integration 标签 golangci-lint 各0 issues；独立只读增量复核无确认问题，不另存报告。没有修改生产代码或对外契约，D28/D30/D31/D32及28/32实现、0/32验收保持；未连接数据库，本地并发组合不替代真实数据库、全部故障组合、平台或成功 race 验收。
+- Added [TestPoolCancelIsolation](../pool_cancel_test.go): both modes × all transports, six combinations using two physical connections in one sql.DB. First retains streaming Rows; second enters a transaction/sends prepared execution before cancelling the first. Only after confirming first transport close does peer reply to second execution. Checks cancellation/affected counts/statement close/commit/original Ping/transaction-resource cleanup/no extra connects/final pool close. Peers confirm both closes; timeout is never success.
+- Temporary compilation overlays removed transport close from cancellation/normal Close paths, making targets fail as expected and proving detection without editing production source. Repetition corrected peer-number scheduling races and allowed legal net.Pipe EOF/ErrClosedPipe. Final waits occur before cleanup so cleanup cannot close on the test's behalf and produce false positives.
+- Go1.25.0/1.26.0 Windows amd64 all-package test/vet/compile-only integration passed; six combinations ×25 per version/actual Go1.25 Windows/386 passed. After fixture/workload extraction/context parameter ordering, ordinary/integration-tag golangci-lint reported 0 issues each. Incremental read-only review found no confirmed issues; no separate report. No production/contract changes; D28/D30/D31/D32/28 implemented of 32/0 accepted of 32 remain. No databases; local concurrency is not real-database/all-fault/platform/successful-race acceptance.
 
-#### D31 XA 错误分类与兼容模式边界
+#### D31 XA Error Classification and Compatibility-Mode Boundaries
 
-- 根据固定 OceanBase 提交 `7b0f43693565654bb1d7343f728bc2013dfff959` 的 mysql_errno.h 与 ob_errno.def，补齐 MySQL 1440 → XAER_DUPID（-8）、1613 → XA_RBTIMEOUT（106）、1614 → XA_RBDEADLOCK（102），其余已知映射及未知错误的 RMERR 回退保持。映射只用于 MySQL 兼容模式，Oracle SQL 错误保留原 Error 并归 RMERR；DBMS_XA 原生返回码路径不变，依据及边界见架构 §16.2.1。
-- 新增 [TestXAMySQLErrorCodes、TestXAOracleServerErrorNamespace](../xa_errors_test.go)：MySQL 十个错误码 × 三种包流 × 开启/一阶段提交，共60个场景，检查原始 code/SQLSTATE/message、ErrXA、完整拒绝不归未知结果或 ErrBadConn、本地关联状态、原连接 Ping、失败提交后的显式回滚及退出普通池；Oracle 九个同号 SQL 错误检查独立命名空间与错误链。旧实现对新增三个 MySQL 码分类错误，Oracle 路径也复现已有编号冲突；修复后通过。
-- Windows Go1.25.0/1.26.0 全包构建、单测/vet、integration 仅编译及普通/integration 标签 golangci-lint 均通过；首次 lint 的测试复杂度及 switch 提示已修正。未连接数据库，不推断服务器会在相应阶段产生上述错误，也不据本地分类测试证明超时/死锁或真实恢复语义。实现28/32、验收0/32保持。
+- Based on mysql_errno.h/ob_errno.def at pinned OceanBase `7b0f43693565654bb1d7343f728bc2013dfff959`, added MySQL 1440 → XAER_DUPID (-8), 1613 → XA_RBTIMEOUT (106), 1614 → XA_RBDEADLOCK (102); other mappings/unknown RMERR fallback remain. Mapping applies only in MySQL mode; Oracle SQL errors retain original Error/classify RMERR. Native DBMS_XA return codes unchanged; bases/boundaries: architecture §16.2.1.
+- Added [TestXAMySQLErrorCodes, TestXAOracleServerErrorNamespace](../xa_errors_test.go): ten MySQL codes × three transports × start/one-phase commit, 60 scenarios, checking original code/SQLSTATE/message, ErrXA, complete rejections not unknown/ErrBadConn, local association state/original Ping/explicit rollback after failed commit/exit from ordinary pool. Nine same-number Oracle SQL errors check separate namespaces/chains. Old implementation misclassified three added MySQL codes and reproduced existing Oracle collisions; fixes passed.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/ordinary/integration-tag golangci-lint passed; initial test-complexity/switch findings fixed. No databases; no inference that servers emit these codes in corresponding stages, or that local classification proves timeouts/deadlocks/real recovery. Implementation 28/32, acceptance 0/32 remain.
 
-#### D30 会话标量读取的错误边界
+#### D30 Error Boundaries for Session Scalar Reads
 
-- 修复会话读取辅助函数在首行前或首行后收到完整服务端 ERR 时额外淘汰连接的问题：保留原 Error，连接处置沿用共享 Rows 状态机；只在完整单行响应后发布值，空结果、额外行/结果及畸形响应仍拒绝并淘汰。不增加公开 API、包或依赖。
-- 新增 [TestSessionReadResponseBoundary](../session_ops_failure_test.go)，覆盖 schema/catalog、client info、会话变量，两模式和三种包流共84个错误/形状场景；新增 [TestBatchRewriteGuardRowError](../batch_rewrite_test.go)，以12个场景确认初始探测错误安全回退，分块后错误只执行剩余输入，逐项确认结果且不重放已完成前缀。旧实现已复现会话读取失败；本轮临时编译覆盖旧实现时12个批量场景全部失败，修复后通过。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet 和 integration 仅编译通过；两版本普通及 integration 标签的 golangci-lint 均0 issues。独立工具已重新构建，38项列表及示例配置离线检查通过，未连接数据库。实现28/32、验收0/32保持；缺少的数据库及平台验证继续单列，不阻塞本地开发。
+- Fixed session-read helpers unnecessarily evicting after complete server ERR before/after the first row. Original Error remains and shared Rows state machine owns disposal. Values publish only after complete single-row responses; empty/extra rows/results/malformed responses still reject/evict. No public APIs/packages/dependencies.
+- Added [TestSessionReadResponseBoundary](../session_ops_failure_test.go) for schema/catalog/client info/session variables, 84 error/shape scenarios across both modes/three transports. Added [TestBatchRewriteGuardRowError](../batch_rewrite_test.go), 12 scenarios verifying safe fallback after initial probe errors and only remaining inputs after later chunk errors, with per-item confirmation/no prefix replay. Old implementation reproduced session-read failure; overlays of old logic failed all 12 batch scenarios this round, fixes passed.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; ordinary/integration-tag golangci-lint reported 0 issues on both. Standalone tool rebuilt; 38-item list/example-config offline checks passed without databases. Implementation 28/32/acceptance 0/32 remain; missing database/platform validation stays separately recorded without blocking local development.
 
-#### D31 XA 提交的客户端取消边界
+#### D31 Client Cancellation Boundaries for XA Commit
 
-- 新增 [TestXACommitContextBoundary](../xa_context_test.go)：通过公开 XACommit、固定 sql.Conn 和本地协议对端，覆盖两模式 × 标准/压缩/OB20 × 调用前已取消/完整发送后取消/等待响应期限，共18个场景。调用前已取消时保留可用会话且不归未知结果；发送后保留 ErrXA、ErrXAOutcomeUnknown、ErrCommitUnknown 及 context 原因，并在任何测试清理前确认底层 EOF/ErrClosedPipe，检查无额外命令或重拨；未据此覆盖驱动内部所有发送前取消位置。
-- 临时编译覆盖移除未知结果分类时，六个发送后取消场景均按预期失败；另移除底层 Close 时，MySQL 标准包流场景明确检出传输未关闭。生产源码没有修改，不将既有正确行为写成新修复。
-- Go1.25 的 FuzzComplex、FuzzHandshake、FuzzAuthPlugins 各30秒通过；该有限本地探索不代表全部输入、平台或认证服务已验证。没有连接数据库，不推断 XA 实际提交/回滚结果，任务计数保持28/32实现、0/32验收。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。测试重复字符串已局部提取常量；只读复核无确认问题，不保存独立走查记录。文档链接、配置/任务计数及 diff 检查通过。
+- Added [TestXACommitContextBoundary](../xa_context_test.go) through public XACommit/pinned sql.Conn/local peers: both modes × all transports × precancelled/post-complete-send-cancel/response-deadline, 18 scenarios. Precancellation retains reusable sessions/no unknown outcome; post-send retains ErrXA/ErrXAOutcomeUnknown/ErrCommitUnknown/context cause, confirming underlying EOF/ErrClosedPipe before cleanup with no extra commands/redial. This does not cover every internal presend cancellation location.
+- Compilation overlays removing unknown-outcome classification made all six post-send cancellation cases fail as expected; separately removing Close made MySQL standard transport detect unclosed transport. Production source unchanged; existing correct behavior is not claimed as a new fix.
+- Go1.25 FuzzComplex/FuzzHandshake/FuzzAuthPlugins passed 30 seconds each; finite local exploration is not validation of all inputs/platforms/auth services. No databases/no inferred actual XA commit/rollback outcomes; counts stay 28/32 implemented/0/32 accepted.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; ordinary/integration-tag golangci-lint reported 0 issues on both. Repeated test strings became local constants; read-only review found no confirmed issues/no separate report. Document links/configuration/task counts/diff checks passed.
 
-#### D14/D20 OUT 发布阶段的取消检查
+#### D14/D20 Cancellation Checks During OUT Publication
 
-- 修复自定义 Scanner 在回调内取消但返回 nil 时，后续内置目的仍被写回、后续 Scanner 仍被调用，直到循环结束才报告取消的问题。共享 assignOutputsContext 现在逐个发布前检查操作/事务 context，保持既有逻辑顺序、错误链及资源统一发布规则；不回滚用户 Scanner 的副作用或此前写回，不新增公开 API、包或依赖。
-- 新增 [TestOutCancelStopsPublication、TestOutTransactionCancelStopsPublication](../out_context_test.go)：前者用公开 pinned.ExecContext 覆盖两模式和三种包流，确认第一个 Scanner 取消后标量保持原值、后续 Scanner 不调用，完整响应收尾后原物理会话可继续 Ping；后者固定事务 context 的相同赋值边界。旧实现六个公开场景全部复现错误发布，事务场景的旧源码编译覆盖也失败；修复后目标通过。既有输出转换、最终化取消和游标转换取消目标一并通过。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读复核无确认问题，七项目标回归独立重跑通过。重新构建 obtest，38项列表、示例配置离线检查及文档/diff检查通过；未连接数据库，计数保持28/32实现、0/32验收。
+- Fixed custom Scanners cancelling inside callbacks but returning nil, allowing later built-in destinations/writebacks/Scanners until loop-end cancellation reporting. Shared assignOutputsContext now checks operation/transaction contexts before each publication, retaining logical order/chains/unified-resource publication. User Scanner effects/earlier writes are not rolled back; no public APIs/packages/dependencies.
+- Added [TestOutCancelStopsPublication, TestOutTransactionCancelStopsPublication](../out_context_test.go). Public pinned.ExecContext covers both modes/all transports, checking unchanged scalar/no later Scanner after first cancels, complete-response finalization and same-session Ping; transaction variant fixes the same assignment boundary under transaction context. All six old public cases reproduced wrong publication; old-source transaction overlay failed too. Fixed targets/existing output-conversion/finalization-cancellation/cursor-conversion-cancellation passed.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; ordinary/integration-tag golangci-lint reported 0 issues on both. Review found no confirmed issues; seven targets independently reran successfully. obtest rebuilt; 38-item list/example-config offline/document/diff checks passed. No databases; counts stay 28/32 implemented/0/32 accepted.
 
-#### D18 复杂值尾部 NULL 的共享限制
+#### D18 Shared Limits for Trailing NULL in Complex Values
 
-- 修复二进制复杂值的先前子树耗尽节点预算后，尾部 NULL 仍无条件扣减并成功返回的问题；NULL 同时补上最大深度检查。原生参数编码复用既有 complexNode 校验 NULL，不再无检查递减。JSON 表示路径既有的逐节点校验保持；无新增 API、包或依赖。
-- [包流测试](../internal/wire/complex_test.go)在旧实现复现 object/array、collect=false/true 四个负数预算场景，以及65537节点被 DecodeBinaryRow/DecodeComplex 接受和 NULL 超深的问题；[编码回归](../complex_regression_test.go)复现相同预算/深度缺口。修复后相关目标通过，并验证恰好65536节点、嵌套值形状及后续整数列不变。[FuzzComplex](../complex_fuzz_test.go)新增嵌套 NULL 种子，并独立统计成功解码树的节点数，约束总量不超过传入预算。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。FuzzComplex 各30秒通过，分别37346/46484次执行，仅证明本次有限输入探索。只读复核无确认问题；obtest 已重新构建，38项列表及示例配置离线检查通过。文档链接、160配置与任务计数检查通过；未连接数据库，实现28/32、验收0/32不变。
+- Fixed trailing NULL unconditionally decrementing/exceeding exhausted node budgets after earlier binary-complex subtrees, and added NULL depth checks. Native parameter encoding reuses complexNode NULL validation instead of unchecked decrement. Existing per-node JSON checks remain; no APIs/packages/dependencies.
+- [Wire tests](../internal/wire/complex_test.go) reproduced four object/array × collect=false/true negative-budget cases, 65537-node acceptance by DecodeBinaryRow/DecodeComplex and excessive NULL depth; [encoding regressions](../complex_regression_test.go) reproduced the same gaps. Fixed targets pass and verify exactly 65536 nodes/nested shapes/later integer columns unchanged. [FuzzComplex](../complex_fuzz_test.go) adds nested-NULL seeds/independently counts successfully decoded tree nodes to enforce input budgets.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; ordinary/integration-tag golangci-lint reported 0 issues on both. FuzzComplex passed 30 seconds each, 37346/46484 executions, as finite exploration only. Review found no confirmed issues; obtest rebuilt/38-item list/example-config offline checks passed. Links/160 options/task counts passed; no databases, implementation 28/32/acceptance 0/32 unchanged.
 
-#### D15/D16 原生 LOB 内部命令的代次校验
+#### D15/D16 Generation Checks for Native LOB Internal Commands
 
-- 修复显式 BLOB/CLOB 分块读写仅在入口检查句柄，服务端事务状态变化后仍继续使用旧 locator、计入失效响应内容的问题。共享 lobCallLocked 在每个内部命令前后比较资源代次，失效时返回 ErrResource，不采纳当前响应或发送后续块，保留此前完成的前缀；当前块的服务器副作用不据此宣称回滚。普通查询自动物化尚无公开句柄时也建立代次，复用注册资源的初始化逻辑，无新增公开 API、包或依赖。
-- 新增[事务状态回归](../lob_epoch_test.go)：公开 BLOB/CLOB 读写 × 首块/中途失效 × 普通/压缩/OB20 共24个场景，校验完成前缀、停止旧 locator 操作和原会话仍可 Ping；另覆盖未注册公开资源的普通查询物化，失效内容不发布并沿用物化失败的连接淘汰规则。旧实现的8个普通包流场景及无句柄物化均复现继续发送，修复后全部通过。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读复核无确认问题，目标回归及资源代次/租约/事务保留测试独立通过。真实 OceanBase/OBProxy、其他平台和 race 未验证；实现28/32、验收0/32不变。
+- Fixed explicit BLOB/CLOB chunk operations checking handles only at entry, then continuing old locators/counting invalidated responses after server transaction-state changes. Shared lobCallLocked compares resource generations before/after each internal command, returning ErrResource on invalidation without accepting current response/later chunks and retaining completed prefixes. Current-block server effects are not claimed rolled back. Ordinary-query automatic materialization establishes generations even before public handles, reusing resource-registration initialization. No public APIs/packages/dependencies.
+- Added [transaction-state regressions](../lob_epoch_test.go): public BLOB/CLOB read/write × first/midstream invalidation × all transports, 24 scenarios, checking prefixes/no later old-locator operations/same-session Ping. Ordinary materialization without registered public resources also rejects invalidated contents and retains materialization-failure eviction. Eight old standard-transport cases/handle-free materialization reproduced extra sends; all fixed cases passed.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; ordinary/integration-tag golangci-lint reported 0 issues on both. Review found no confirmed issues; targeted regressions/resource-generation/lease/transaction-retention tests passed independently. Real OceanBase/OBProxy/other platforms/race unverified; implementation 28/32/acceptance 0/32 unchanged.
 
-#### D15/D19 游标 fetch 的事务代次与失败清理
+#### D15/D19 Transaction Generations and Failure Cleanup in Cursor Fetch
 
-- 修复原生 fetch 先物化当前批次的 LOB/复杂值/子游标，再校验父句柄代次的顺序缺口；共享 fetchCursorResponseLocked 在发送前建立资源代次，完整响应后先校验，再处理当前批次。覆盖普通查询中未注册公开资源的 REF CURSOR，失效时不发布最后一批、不继续 fetch 或读取子资源。static 打开失败按本次记录身份释放父 statement/租约，避免当前代次已失效时跳过清理；无新增 API、包或依赖。
-- 新增[游标事务失效回归](../cursor_epoch_test.go)：普通子游标的未结束标量批次、最后标量批次、LOB 和嵌套 REF CURSOR × 三包流共12场景；显式 forward/static × 三包流共6场景。旧实现4个普通包流场景分别复现额外 fetch、错误发布或子资源读取；加边界检查后，static 场景进一步复现漏关 statement，修复后18场景通过。自动物化失败仍淘汰连接；显式游标完整 fetch 失效会清理句柄，保留原会话给调用方继续操作及回滚。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过。初次 lint 检出测试重复字符串，提取常量后两版本目标回归重跑通过，普通/integration 标签 golangci-lint 均0 issues；独立只读复核无确认问题，18场景独立运行通过。obtest 重建、38项列表及示例配置离线检查通过。未连接数据库，其他平台/race 保留未验证；实现28/32、验收0/32不变。
+- Fixed native fetch materializing LOBs/complex values/child cursors before checking parent generation. Shared fetchCursorResponseLocked establishes generations presend, validates after complete response before processing batches. Covers unregistered ordinary REF CURSOR values: invalidation publishes no final batch and performs no later fetch/child-resource reads. Static-open failure releases parent statement/leases by this record's identity, avoiding skipped cleanup when current generations invalidate. No APIs/packages/dependencies.
+- Added [cursor transaction-invalidation regressions](../cursor_epoch_test.go): ordinary-child unfinished scalar/final scalar/LOB/nested REF CURSOR × all transports, 12 scenarios; explicit forward/static × all transports, six. Four old standard-transport cases reproduced extra fetch/wrong publication/child reads; after boundary checks, static additionally reproduced omitted statement close. All 18 fixed cases passed. Automatic materialization failure still evicts; explicit complete-fetch invalidation cleans handles while retaining caller sessions for further operations/rollback.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed. Initial duplicate-string lint findings became constants; both-version target reruns/ordinary/integration-tag golangci-lint passed with 0 issues. Review found no confirmed issues; 18 scenarios passed independently. obtest rebuild/38-item list/example-config offline checks passed. No databases; other platforms/race unverified, implementation 28/32/acceptance 0/32 unchanged.
 
-#### D15/D19 可更新游标最终响应的事务代次
+#### D15/D19 Transaction Generations in Updatable-Cursor Final Responses
 
-- 修复 Update/Delete/Insert 只在发送前检查资源、最终 OK 结束事务后仍返回成功的问题；共享修改路径在完整收包后复核父游标代次。Refresh 提前到完整收包后、物化 LOB/复杂值前校验，保留物化后的既有检查，避免事务已失效仍读取旧 locator。失败清理游标及临时 statement，完整响应边界保留可用会话；不替调用方提交、回滚或重放，也不将错误返回当作服务端副作用已撤销。无新增公开 API、包或依赖。
-- 新增[修改与刷新回归](../cursor_mutation_epoch_test.go)：两模式 × 三包流 × Update/Delete/Insert 共18场景，以及 MySQL 标量、Oracle 标量/LOB × 三包流共9场景。旧实现三个 MySQL 普通包流修改场景返回 nil，Oracle LOB 刷新在事务结束后发送 DBMS_LOB.READ，均已复现；修复后27场景及既有游标测试通过。检查错误链、不发布 Rows、失败句柄不可继续 Fetch、原物理会话继续执行与调用方显式回滚。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；首次 lint 检出的测试重复字符串已改为常量，两个工具链目标回归重跑及普通/integration 标签 golangci-lint 均通过，lint 均0 issues。独立只读复核未发现确认问题，27场景独立重跑通过。obtest 已重新构建，38项列表及示例配置离线检查通过。真实数据库、其他平台及 race 本轮不运行；实现28/32、验收0/32保持。
+- Fixed Update/Delete/Insert checking resources only presend and returning success when final OK ended transactions; shared mutation path rechecks parent generation after complete response. Refresh validates after complete response/before LOB/complex materialization, retaining post-materialization checks to avoid old-locator reads after invalidation. Failures clean cursors/temporary statements while preserving reusable sessions at complete boundaries. No caller commit/rollback/replay or claims that errors undo server effects; no public APIs/packages/dependencies.
+- Added [mutation/refresh regressions](../cursor_mutation_epoch_test.go): both modes × all transports × Update/Delete/Insert, 18 scenarios; MySQL scalar/Oracle scalar/LOB × all transports, nine. Old three standard-MySQL mutations returned nil; Oracle LOB refresh sent DBMS_LOB.READ after transaction end. All 27 fixed scenarios/existing cursors passed, checking error chains/no Rows publication/failed-handle Fetch rejection/original-session reuse/explicit rollback.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed. Initial repeated test strings became constants; both-toolchain target reruns/ordinary/integration-tag golangci-lint passed, 0 issues each. Review found no confirmed issues; 27 scenarios reran independently. obtest rebuilt/38-item list/example-config offline checks passed. Real databases/other platforms/race did not run; implementation 28/32/acceptance 0/32 remain.
 
-#### D17/D32 表内 BLOB 的逐响应事务代次
+#### D17/D32 Per-Response Transaction Generations for In-Table BLOBs
 
-- 沿配置映射中 emulateLocators/locatorFetchBufferSize 核对表内后端，修复失效读块先写入调用方缓冲区、失效写块先累计完成前缀、短读以 EOF 掩盖资源失效及 Size 返回失效长度的问题。共享内部查询和表内 UPDATE 在每条完整响应后比较发送前的资源代次；打开阶段尚无公开句柄时也先建立代次，避免事务已结束仍发布新句柄。完整响应保留可用会话，不替调用方结束事务或重放命令，也不据此推断已撤销服务端副作用。无新增公开 API、包或依赖。
-- 新增[表内 BLOB 事务回归](../lob_table_epoch_test.go)：标准/压缩/OB20 × 首块/中途失效 × 完整读/短读/写入共18场景，长度3场景，以及 MySQL schema/字典/长度和 Oracle 字典/locator 打开阶段共15场景。旧实现7个普通包流操作场景复现错误数据/计数/EOF/长度，MySQL 长度打开场景复现成功发布句柄；修复后36场景及既有表内 BLOB、游标、描述测试通过。测试核对调用方缓冲区与完成前缀、后续句柄拒绝、原物理会话继续操作及显式回滚。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；初次 lint 的测试重复字符串已提取或复用常量，两个工具链目标回归重跑通过，普通/integration 标签 golangci-lint 均0 issues。独立只读复核未发现确认问题；obtest 重建、38项列表、示例配置离线检查及文档/diff检查通过。数据库、其他平台及 race 本轮未验证，实现28/32、验收0/32不变。
+- Checking emulateLocators/locatorFetchBufferSize mappings found invalid read chunks copied before validation, invalid writes counted into prefixes, short-read EOF hiding resource invalidation and Size returning invalid lengths. Shared internal queries/table UPDATE now compare presend generations after every complete response. Open establishes generations before public handles so ended transactions cannot publish new ones. Complete responses preserve reusable sessions; no caller transaction end/replay/claims of undone server effects. No public APIs/packages/dependencies.
+- Added [table-BLOB transaction regressions](../lob_table_epoch_test.go): all transports × first/midstream invalidation × full-read/short-read/write, 18 scenarios; three length cases and 15 MySQL schema/dictionary/length/Oracle dictionary/locator-open cases. Seven old standard-transport operation cases reproduced wrong data/counts/EOF/length; MySQL length-open published an invalid handle. All 36 fixed scenarios/existing table-BLOB/cursor/description tests passed, checking caller buffers/prefixes/later handle rejection/original-session reuse/explicit rollback.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; initial repeated strings extracted/reused constants, both-toolchain targets reran, ordinary/integration-tag golangci-lint reported 0 issues. Review found no confirmed issues; obtest rebuild/38-item list/example-config offline/document/diff checks passed. Databases/other platforms/race unverified this round; implementation 28/32/acceptance 0/32 unchanged.
 
-#### D15/D19 游标打开响应的事务代次
+#### D15/D19 Transaction Generations in Cursor-Open Responses
 
-- 修复打开后才登记资源导致失效响应被归入新代次的问题。打开流程在同一操作门内记录 prepare 前代次，prepare 完整响应后先检查再执行，execute 响应结束后先检查再登记；Oracle sensitive 还在完整收完最终 OK 后、读取任何 LOB/复杂值/子游标前检查。失效时只清理本次 statement，完整响应保留可用物理会话，不替调用方提交、回滚或重放 SQL。无新增公开 API、包或依赖。
-- 新增[打开事务失效回归](../cursor_open_epoch_test.go)：两模式 forward/static、Oracle sensitive × prepare/execute × 标准/压缩/OB20 共30场景，另有 sensitive 最终 OK 才失效的3场景。旧实现10个普通包流场景复现失效句柄发布、额外 fetch/LOB 读取和 prepare 后继续执行；修复后33场景重复10轮通过，既有游标测试通过。回归验证 ErrResource、无句柄发布、statement 关闭、原会话可继续执行及显式回滚。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；lint 检出的重复测试字符串已提取常量，打开前校验独立为持锁私有函数以满足复杂度约束，两版本目标回归各重复10轮、普通/integration 标签 golangci-lint 均通过，lint 均0 issues。独立只读复核未发现确认问题，目标打开/fetch/子游标回归独立运行通过。obtest 重建、38项列表及示例配置离线检查通过；真实数据库、其他平台和 race 暂缓，实现28/32、验收0/32不变。
+- Fixed registering resources only after open, wrongly assigning invalid responses to new generations. Within one operation gate, open records pre-prepare generations, checks complete prepare responses before execute, then complete execute before registration. Oracle sensitive additionally checks after final OK/before any LOB/complex/child reads. Invalidation cleans this statement only and preserves complete-boundary sessions without caller commit/rollback/SQL replay. No public APIs/packages/dependencies.
+- Added [open transaction-invalidation regressions](../cursor_open_epoch_test.go): both-mode forward/static and Oracle sensitive × prepare/execute × all transports, 30 scenarios, plus three sensitive cases invalidated only at final OK. Ten old standard-transport cases published invalid handles/extra fetch/LOB reads/execute after invalid prepare. All 33 fixed cases ×10/existing cursors passed, checking ErrResource/no handles/statement close/session reuse/explicit rollback.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed. Repeated strings became constants; preopen validation became a locked private helper to meet complexity limits. Both-version targets ×10/ordinary/integration-tag golangci-lint passed with 0 issues. Review found no confirmed issues; open/fetch/child regressions passed independently. obtest rebuild/38-item list/example-config offline checks passed. Real databases/other platforms/race deferred; implementation 28/32/acceptance 0/32 unchanged.
 
-#### D15/D16 原生 LOB 打开代次与参数化失败清理
+#### D15/D16 Native LOB Open Generations and Parameterized-Failure Cleanup
 
-- OpenBlob/OpenClob 在 prepare/查询前建立资源代次，实际发送前校验 prepare/参数处理是否已使代次变化，完整 locator 响应后再次检查，失效时不登记或发布句柄。参数化打开收到完整服务端 ERR 时，已有 Rows 在原操作锁下关闭自动 statement；QueryContext 不再二次调用 Close 重入同一锁，避免清理超时误淘汰原物理会话。内部表内 BLOB/Refresh 使用的无打开快照上下文保持原有语义，无新增公开 API、包或依赖。
-- 新增[原生 LOB 打开回归](../lob_open_epoch_test.go)：BLOB/CLOB × 文本/客户端绑定/服务端预处理/合并执行 × 元数据/最终响应失效 × 三包流共48场景，独立 prepare 失效6场景，以及独立/合并执行完整服务端 ERR 清理6场景。旧实现18个普通包流事务场景复现失效句柄发布或 prepare 后继续执行，2个错误场景复现清理自锁后的坏连接。修复后60场景及既有 LOB/游标/合并执行目标通过；回归验证无句柄发布、无额外 execute、statement 关闭、原会话继续使用和显式回滚。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过；初次 lint 的测试常量、context 参数顺序和复杂度问题已整理，两版本60场景各重复10轮通过，普通/integration 标签 golangci-lint 均0 issues。独立只读复核未发现确认问题，独立重跑60场景及既有清理/取消回归通过；obtest 重建、38项列表及示例配置离线检查通过。数据库联调、其他平台及 race 暂缓，实现28/32、验收0/32保持。
+- OpenBlob/OpenClob establishes generations before prepare/query, validates whether prepare/parameter processing changed them before sending, and rechecks complete locator responses before registration/publication. For parameterized open with complete server ERR, existing Rows closes automatic statements under the original operation lock; QueryContext no longer calls Close again/reenters that lock, avoiding cleanup-timeout false eviction. Internal table-BLOB/Refresh contexts without open snapshots retain semantics. No public APIs/packages/dependencies.
+- Added [native LOB open regressions](../lob_open_epoch_test.go): BLOB/CLOB × text/client binding/server prepare/combined execution × metadata/final-response invalidation × all transports, 48 scenarios; six independent-prepare invalidations/six independent-or-combined complete-server-ERR cleanup cases. Eighteen old standard-transport transaction cases published invalid handles/continued after prepare; two error cases reproduced bad connections from cleanup self-deadlock. All 60 fixed scenarios/existing LOB/cursor/combined targets passed, checking no publication/extra execute, statement close/session reuse/explicit rollback.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; initial test-constant/context-order/complexity lint findings were tidied. Both versions passed 60 scenarios ×10; ordinary/integration-tag golangci-lint reported 0 issues. Review found no confirmed issues; independent 60-scenario/existing cleanup-cancellation reruns passed. obtest rebuild/38-item list/example-config offline checks passed. Database integration/other platforms/race deferred; implementation 28/32/acceptance 0/32 remain.
 
-#### D15/D20 过程资源 OUT 的执行代次
+#### D15/D20 Execution Generations for Procedure Resource OUT
 
-- 资源 OUT 在 prepare、参数编码、长参数上传前建立代次，在主命令发送前和最终响应后检查，防止过程结束事务后把已失效资源登记到新代次。简单完整响应按既有租约释放未发布 Cursor/LOB 及父 statement，保留原会话可用；混合复杂类型延迟行或普通过程资源结果在完整缓冲后已失效时，不再查询字典、读取 locator 或 fetch 子游标，淘汰尚含未物化子资源的物理连接。普通与隐藏 OUT 的字典/物化阶段后同样检查，辅助错误与 ErrResource 同时保留，不发布任何 OUT；只有普通 OUT 的过程仍允许结束事务。无新增公开 API、包或依赖。
-- 新增[资源 OUT 代次回归](../resource_out_epoch_test.go)：三包流 × Cursor/BLOB/CLOB × 直接结束/读完普通行/提前 Close × 元数据/最终 OK 失效共54场景；prepare/长参数上传失效6场景、普通 OUT 正向3场景、复杂类型最终响应/字典响应失效6场景、复杂输入编码失效6场景、普通资源结果缓冲/嵌套 LOB 字典失效15场景，共90场景。旧实现复现失效发布、失效后读取输入/继续发送主命令、字典查询、fetch 和 DBMS_LOB.READ；回归检查普通 OUT 保持原值、无句柄发布、摘要保留 ErrResource、清理及原会话后续执行。
-- Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译通过，普通及 integration 标签 golangci-lint 均0 issues；90场景各重复10轮通过。并发验证期间 TestMetadataCatalogAndRemarks 曾出现2秒超时，未修改该测试，最终两版串行全量及各10轮重跑通过。独立只读复核发现的辅助错误分类与普通资源缓冲缺口已补回归并修复，最终无剩余确认问题。obtest 重建、38项列表、示例配置离线检查及文档/diff检查通过；数据库、其他平台与 race 继续暂缓，实现28/32、验收0/32保持。
+- Resource OUT establishes generations before prepare/argument encoding/long upload and checks before main sends/after final responses, preventing registration of procedure-invalidated resources into new generations. Simple complete responses release unpublished Cursor/LOB/parent statements through existing leases and retain reusable sessions. If complex delayed rows/ordinary procedure-resource results invalidate after full buffering, no dictionary queries/locator reads/child fetch occur; sessions with unmaterialized children evict. Ordinary/hidden OUT also rechecks after dictionary/materialization, retaining auxiliary errors/ErrResource together without any OUT publication. Procedures with ordinary OUT only may still end transactions. No public APIs/packages/dependencies.
+- Added [resource-OUT generation regressions](../resource_out_epoch_test.go): three transports × Cursor/BLOB/CLOB × direct completion/read ordinary rows/early Close × metadata/final-OK invalidation, 54 cases; prepare/long-upload invalidation 6, ordinary-OUT positive 3, complex final/dictionary-response invalidation 6, complex-input encoding invalidation 6 and ordinary-resource buffering/nested-LOB dictionary invalidation 15,90 total. Old implementation published invalid resources/read inputs/sent main commands/queried dictionaries/fetched/DBMS_LOB.READ after invalidation. Checks unchanged ordinary OUT/no handles/ErrResource summaries/cleanup/later session execution.
+- Final serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; ordinary/integration-tag golangci-lint reported 0 issues; 90 scenarios ×10 passed. Parallel verification once hit TestMetadataCatalogAndRemarks 2-second timeout; unchanged tests passed final serial full runs/10 repetitions per version. Review's auxiliary-error classification/ordinary-resource-buffering gaps were covered/fixed, leaving no confirmed issues. obtest rebuild/38-item list/example-config offline/document/diff passed. Databases/other platforms/race remain deferred; implementation 28/32/acceptance 0/32 remain.
 
-#### D03/D04/D12 初始握手身份的字符集边界
+#### D03/D04/D12 Charset Boundaries for Initial Handshake Identity
 
-- 初始认证现在按 `Session.Charset` 严格编码用户名及 CLIENT_CONNECT_WITH_DB 选择的数据库名，与握手 collation 声明和既有 ChangeUser 路径一致；未选择数据库时不在握手编码或发送 Database。编码失败返回仅字段名的 ConfigError，在创建认证插件和发送认证响应前关闭连接；Credentials 回调/认证插件和成功会话的逻辑身份仍使用原始 Go 字符串，密码编码继续独立由 Auth.PasswordCharset 控制。不依赖 Java 用户名 getBytes() 的平台默认编码，无新增公开 API、包或依赖。
-- 新增[握手身份编码回归](../authentication_identity_test.go)：两模式 × UTF-8/UTF8MB3/GBK/GB18030/latin1 × 静态/动态身份20场景，用户名/数据库名各覆盖非法 UTF-8、ASCII/GBK/UTF8MB3 不可表示字符8场景。旧实现12个非 UTF-8 正向场景发送错误字节，8个拒绝场景均创建插件并发送77–84字节认证响应；修复后验证正确字节、原逻辑身份、凭据回调次数、拒绝时零认证字节与零插件创建，以及错误脱敏。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过，28个新增场景两版本各重复10轮通过；两版本普通及 integration 标签 golangci-lint 均0 issues。初次 lint 提示新测试触发全局重复字符串阈值，已在新文件提取/复用常量后重新完成验证。独立只读复核及相关认证/TLS/切用户/建库目标通过，未发现剩余确认问题；架构、开发计划与使用指南同步。真实数据库、其他平台及 race 继续暂缓，实现28/32、验收0/32保持。
+- Initial authentication now strictly encodes usernames/CLIENT_CONNECT_WITH_DB database names with `Session.Charset`, matching handshake collation/existing ChangeUser. Unselected Database is neither encoded nor sent in handshake. Encoding errors return field-name-only ConfigError and close before plugin creation/auth response. Credentials callbacks/plugins/successful sessions retain logical original Go strings; Auth.PasswordCharset independently controls passwords. No dependence on Java username getBytes() platform defaults; no public APIs/packages/dependencies.
+- Added [handshake-identity encoding regressions](../authentication_identity_test.go): both modes × UTF-8/UTF8MB3/GBK/GB18030/latin1 × static/dynamic identity, 20 cases; eight username/database invalid-UTF-8/unrepresentable ASCII/GBK/UTF8MB3 cases. Old implementation sent wrong bytes in 12 non-UTF-8 positives and created plugins/sent 77–84 auth bytes in all eight rejection cases. Fixes verify exact bytes/logical identity/callback counts/zero auth bytes/plugins on rejection/redaction.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; 28 cases ×10 per version passed; ordinary/integration-tag golangci-lint reported 0 issues. Initial new-test global duplicate-string threshold was addressed with extracted/reused constants, then all validation completed. Review/related authentication/TLS/ChangeUser/database-create targets passed with no confirmed findings; architecture/plan/usage synchronized. Real databases/other platforms/race deferred; implementation 28/32/acceptance 0/32 remain.
 
-#### D07/D08/D12 二进制文本参数的编码后预算
+#### D07/D08/D12 Encoded-Byte Budgets for Binary Text Parameters
 
-- 普通 string、NString 和复杂类型文本字段不再按 Go UTF-8 源字节误拒实际较短的 GBK/latin1/UTF16 值；编码前使用码点数下界，严格转码后检查实际内容字节，已有长度前缀、类型头及累计消息上限继续生效。超限不截断、不发送、不重放，LongData 的源字节与转码后字节双重限制不变；SQL 文本及客户端插值的独立预算仍需继续核对。无新增公开 API、包或依赖。
-- 新增[参数编码预算回归](../parameter_encoding_budget_test.go)：48个普通/NString 编码边界、6个复杂字段累计边界、两模式适用组合及三包流公开预处理9场景，共63场景。旧实现7个普通/NString 正向、3个复杂字段正向及9个公开预处理场景误拒；修复后验证精确字节、编码膨胀超限、零/负预算、发送前拒绝及原物理会话继续 Ping。
-- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译通过，63场景两版本各重复10轮通过；两版本普通及 integration 标签 golangci-lint 均0 issues。独立只读复核未发现确认问题；真实数据库、其他平台及 race 继续暂缓，实现28/32、验收0/32保持。
+- Ordinary string/NString/complex text fields no longer reject shorter GBK/latin1/UTF16 values based on Go UTF-8 source bytes. Prescan uses code-point lower bounds; strict conversion checks actual content bytes, retaining length prefixes/type headers/cumulative limits. Over-limit inputs never truncate/send/replay; LongData source/converted dual limits remain. Separate SQL/client-interpolation budgets still need checking. No public APIs/packages/dependencies.
+- Added [parameter-encoding budget regressions](../parameter_encoding_budget_test.go):48 ordinary/NString boundaries, six cumulative complex-field boundaries and nine public-preparation scenarios over applicable modes/all transports, 63 total. Old implementation wrongly rejected seven ordinary/NString positives, three complex positives and nine public-preparation cases. Fixes verify exact bytes/expansion overflow/zero-negative budgets/presend rejection/same-session Ping.
+- Serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; 63 cases ×10 per version passed; ordinary/integration-tag golangci-lint reported 0 issues. Review found no confirmed issues; real databases/other platforms/race remain deferred, implementation 28/32/acceptance 0/32 remain.
 
-#### D07/D08/D10/D12/D14 SQL 与客户端插值的编码后预算
+#### D07/D08/D10/D12/D14 Encoded Budgets for SQL and Client Interpolation
 
-- 普通 SQL、自动/显式 server/client prepare 及 OUT 的原文预检改用码点数，随后严格转码并检查实际消息预算；保留原文解析上限，不以占位符名称改写绕过。客户端插值逐段编码原文及完整字面量，按实际字节累计，包含命令字节和参数两侧空格；Oracle 字面量按编码内容加引号/加倍/NUL 表达式开销检查，MySQL 字符集前缀和 hex 膨胀仍受限。无新增公开 API、包或依赖，缓存原文及 LongData 的独立限制不变。
-- 新增[SQL 编码预算回归](../sql_encoding_budget_test.go)：8个 SQL 边界、12个客户端片段/字面量边界、2个严格编码场景、两模式三包流5种公开执行路径30场景，以及 Oracle server/client OUT 三包流6场景，共58场景。旧实现2个 SQL、5个客户端正向及30个公开执行场景误拒；OUT 单独恢复旧预检后6场景均复现误拒。修复后验证精确编码、膨胀、转义、重复命名参数、消息超限前拒绝及原会话继续 Ping。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译通过，58场景两版本各重复10轮通过；初次 lint 的新测试重复字符串已提取/复用常量，Go1.25 目标回归及两标签 lint 重跑通过，Go1.26 最终串行全量及两标签 lint 通过，lint 均0 issues。独立只读复核无确认问题；真实数据库、其他平台及 race 继续暂缓，实现28/32、验收0/32保持。
+- Ordinary SQL/automatic-explicit server-client prepare/OUT source prechecks use code-point counts before strict conversion/actual message budgets. Source-parser limits remain, so placeholder-name rewrites cannot bypass them. Client interpolation incrementally encodes source/full literals, accumulating actual bytes including command/argument-side spaces. Oracle literals budget encoded contents/quotes/doubling/NUL expressions; MySQL charset prefixes/hex expansion stay bounded. No public APIs/packages/dependencies; cached-source/LongData independent limits remain.
+- Added [SQL-encoding budget regressions](../sql_encoding_budget_test.go): eight SQL boundaries, 12 client fragment/literal boundaries, two strict-encoding cases, 30 public cases across five execution paths/both modes/all transports and six Oracle server/client OUT cases, 58 total. Old implementation wrongly rejected two SQL/five client positives/30 public cases; restoring old OUT precheck alone reproduced rejection in all six. Fixes check exact encoding/expansion/escaping/repeated names/presend over-limit rejection/same-session Ping.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration and 58 cases ×10 per version passed. Initial repeated strings extracted/reused constants; Go1.25 target/two-tag-lint reruns and Go1.26 final serial full/two-tag-lint passed, all lint 0 issues. Review found no confirmed issues; real databases/other platforms/race deferred, implementation 28/32/acceptance 0/32 remain.
 
-#### D12 Number 规范化后的内容预算
+#### D12 Content Budgets After Number Normalization
 
-- Number 改按最终定点十进制字节检查剩余预算，不再因正号、尾随小数点或冗长指数文本误拒实际较短的值。先验证语法和有符号32位指数，再计算输出长度并检查预算及平台 MaxInt，最后复制尾数、补零；保持原有精确值、负号、尾数精度及累计报文限制。无新增公开 API、包或依赖。
-- 新增[Number 预算回归](../number_budget_test.go)：32个规范化边界、2个复杂字段累计前缀边界，以及两模式三包流 server/client 公开预处理12场景，共46场景，另检查正/负极端指数在分配前拒绝。旧实现7个规范化正向、1个复杂字段及12个公开预处理场景误拒；修复后验证精确字节、展开超限发送前拒绝和原会话继续 Ping。FuzzScalars 增加收缩种子与0–510字节变化预算，检查数值精确不变。
-- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译及46场景各10轮通过；两版本普通/integration 标签 golangci-lint 均0 issues。两版本 FuzzScalars 各运行30秒，分别完成712891和660081次执行，无失败；独立只读复核未发现确认问题。真实数据库、其他平台及 race 继续暂缓，实现28/32、验收0/32保持。
+- Number checks remaining budgets against final fixed-decimal bytes, avoiding false rejection from leading plus/trailing decimal points/verbose exponent text. Validates syntax/signed 32-bit exponent, computes output length/checks budgets/platform MaxInt, then copies mantissa/pads zeros. Exact values/signs/mantissa precision/cumulative limits remain. No public APIs/packages/dependencies.
+- Added [Number-budget regressions](../number_budget_test.go):32 normalization boundaries, two cumulative complex-prefix boundaries and 12 public server/client preparation scenarios across both modes/all transports, 46 total; also rejects extreme positive/negative exponents before allocation. Old implementation wrongly rejected seven normalized positives/one complex field/12 public cases. Fixes verify bytes/presend expansion rejection/Ping. FuzzScalars adds contraction seeds/variable 0–510-byte budgets, checking exact numeric equivalence.
+- Serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration and 46 cases ×10 passed; ordinary/integration-tag golangci-lint reported 0 issues. FuzzScalars ran 30 seconds each, 712891/660081 executions without failures; review found no confirmed issues. Real databases/other platforms/race deferred; implementation 28/32/acceptance 0/32 remain.
 
-#### D12 LTZ 客户端与服务端预处理的时区等价性
+#### D12 LTZ Time-Zone Equivalence Across Client and Server Preparation
 
-- LTZ 两种预处理共用会话墙上时间转换。不同 region 的输入先严格解析源瞬间，再转换到配置时区；源 DST 缺口/重叠、目标重叠或转换后年份超出1–9999均拒绝。客户端不再误拒无歧义的跨 region 输入，也不能用偏移字面量绕过二进制路径的限制；同 region 墙上时间原样绑定及既有显式偏移 SQL 格式保持。无新增公开 API、包或依赖。
-- 新增[LTZ 路径回归](../temporal_ltz_paths_test.go)：15类输入各覆盖 server/client，共30场景；标准/压缩/OB20 上两种公开预处理共6场景，合计36场景。旧实现复现3个跨 region/缺省时区误拒、2个目标 DST 重叠错误接受及3个公开客户端路径误拒；独立复核确认的4个年份转换越界也先补回归复现、再修复。回归验证精确纳秒/日期/字节、源错误发送前拒绝、statement 关闭及原会话继续 Ping。
-- Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译、36场景各10轮及普通/integration 标签 golangci-lint 均通过，lint 均0 issues。FuzzScalars 增加 LTZ 种子与两路径接受/拒绝一致性断言，两版本各运行30秒，分别完成651477和628217次执行，无失败。独立只读复核最终无剩余确认问题；真实数据库、其他平台及 race 暂缓，实现28/32、验收0/32保持。
+- Both LTZ preparation paths share session-wall-time conversion. Different-region inputs strictly resolve source instants before configured-zone conversion; source DST gaps/overlaps, target overlaps and converted years outside 1–9999 reject. Client paths no longer reject unambiguous cross-region inputs or bypass binary restrictions using offset literals. Same-region wall-time binding/existing explicit-offset SQL format remain. No public APIs/packages/dependencies.
+- Added [LTZ-path regressions](../temporal_ltz_paths_test.go):15 input families × server/client, 30 cases, plus six public-preparation cases over all transports, 36 total. Old implementation wrongly rejected three cross-region/default-zone inputs/three public-client cases and accepted two target DST overlaps. Review's four converted-year overflows also gained failing regressions before fixes. Checks exact nanoseconds/date/bytes, presend source-error rejection/statement close/Ping.
+- Final serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration, 36 cases ×10/ordinary/integration-tag golangci-lint passed, all 0 issues. FuzzScalars adds LTZ seeds/two-path acceptance-rejection equivalence and ran 30 seconds each, 651477/628217 executions without failures. Final review found no confirmed issues; real databases/other platforms/race deferred, implementation 28/32/acceptance 0/32 remain.
 
-#### D12 固定偏移名称与 LTZ region 身份
+#### D12 Fixed-Offset Names and LTZ Region Identity
 
-- LTZ 不再把 `time.FixedZone` 的显示名称当作区域时区身份；同 region 墙上时间直传仅依据初始化实际设置的会话时区。固定偏移即使叫 UTC 或 America/New_York，也必须解析源 region 并按实际偏移转换，保留日期进位、纳秒、DST 和年份范围校验。复用既有 sessionTimeZone，无新增公开 API、配置、包或依赖。
-- 扩展[LTZ 路径回归](../temporal_ltz_paths_test.go)，新增7类固定偏移输入各覆盖两种预处理，共14场景，以及三包流公开预处理6场景；该回归组现有56场景。旧实现14个新增直接场景均复现错误墙上时间或错误接受，6个新增公开路径均观察到错误执行字节；修复后验证正确小时/跨日/纳秒、源 region 不可解析/重叠/缺口和年份越界拒绝、原会话复用，既有真实 region 墙上时间保留回归继续通过。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及56场景各10轮通过；初次 lint 的测试重复字符串已提取常量，Go1.25 目标回归及两标签 lint 重跑通过，Go1.26 最终全量及两标签 lint 通过，lint 均0 issues。两版本 FuzzScalars 各运行30秒，分别完成650461和654521次执行，无失败；独立只读复核未发现剩余确认问题。真实数据库、其他平台及 race 暂缓，实现28/32、验收0/32保持。
+- LTZ no longer treats `time.FixedZone` display names as region identity; direct same-region wall-time binding relies on the actual initialized session zone. Fixed offsets named UTC/America/New_York still resolve source regions/convert by real offsets, retaining date carry/nanoseconds/DST/year checks. Reuses sessionTimeZone without public APIs/configuration/packages/dependencies.
+- Expanded [LTZ regressions](../temporal_ltz_paths_test.go) with seven fixed-offset input families × both preparation paths, 14 cases, plus six public cases across three transports; group now 56 cases. All 14 old direct cases reproduced wrong wall time/acceptance, all six public cases wrong execution bytes. Fixes verify hours/day rollover/nanoseconds, invalid/overlap/gap source regions/year rejection/Ping; actual-region wall-time preservation still passes.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration and 56 cases ×10 passed. Initial repeated strings became constants; Go1.25 target/two-tag-lint reruns and Go1.26 final full/two-tag-lint passed, all 0 issues. FuzzScalars ran 30 seconds each, 650461/654521 executions without failure; review found no confirmed issues. Real databases/other platforms/race deferred; implementation 28/32/acceptance 0/32 remain.
 
-#### D12/D32 独立验收工具的完整日期/时间断言
+#### D12/D32 Complete Date/Time Assertions in the Standalone Acceptance Tool
 
-- obtest 的 scalars 不再用日期/微秒字符串前缀判定通过：Oracle DATE 必须与预期午夜一致，时间戳要求标准墙上时间、完整解析及精确纳秒。等价尾随零可接受；多余非零纳秒、非法尾部、超九位小数及单数字小时绕过均拒绝，防止 Go 时间解析截断小数后误报成功。复用标准库，无新配置、公开驱动 API 或依赖。
-- 新增[TestScalarsTemporalAssertions](../cmd/obtest/scalars_test.go)，两模式/文本与参数化查询共32个离线流程，同时检查成功/失败状态和自建表清理。旧前缀实现复现20个漏检；独立复核补充的单数字小时/十位小数在初次修复上仍错误通过，增加回归后修复。夹具仅检查工具编排和断言，不代表真实数据库往返，38个可执行场景及实现28/32、验收0/32计数保持。
-- Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译及32场景各10轮通过；普通及 integration 标签 golangci-lint 两版本均0 issues。首次 lint 的测试重复状态文本已提取常量后重新完成两版本验证；独立只读复核最终无剩余确认问题，不另存报告。obtest 已重建，38项列表、配置离线检查及文档/diff 检查通过；真实数据库、其他平台及 race 暂缓。
+- obtest scalars no longer accepts date/microsecond prefixes. Oracle DATE must equal expected midnight; timestamps require standard wall-time format/full parsing/exact nanoseconds. Equivalent trailing zeros are accepted; extra nonzero nanoseconds, invalid tails, over-nine-digit fractions and single-digit-hour bypasses reject, preventing parser truncation from false success. Standard library reused; no configuration/public driver APIs/dependencies.
+- Added [TestScalarsTemporalAssertions](../cmd/obtest/scalars_test.go),32 offline workflows across both modes/text-parameterized queries, checking pass/fail/table cleanup. Old prefix logic missed 20 errors; review's single-digit-hour/ten-digit-fraction cases still passed the first fix and were then covered/fixed. Fixtures validate tool orchestration/assertions, not real round trips; 38 executable scenarios/28 implemented of 32/0 accepted of 32 remain.
+- Final serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration and 32 cases ×10 passed; ordinary/integration-tag golangci-lint reported 0 issues each. Initial repeated-status text became constants before rerunning both versions. Final review found no confirmed issues/no separate report. obtest rebuilt/38-item list/config offline/document/diff passed; real databases/other platforms/race deferred.
 
-#### D12 NString 预处理的 national charset 一致性
+#### D12 National-Charset Consistency for NString Preparation
 
-- 客户端生成 UNISTR 前按 NCharset → Charset → utf8mb4 严格校验字符可表示性，与服务端二进制绑定一致；保留 UNISTR 及各路径原有的内容/消息预算。显式 national UTF16 与 SQL latin1/ASCII 分离，不能因连接字符集无法表示原值而误拒。无新公开 API、配置、包或依赖。
-- 新增[两路径字符集回归](../national_charset_paths_test.go)共62个离线场景；旧实现复现5类客户端漏检（显式GBK、GBK回退、ASCII、utf8mb3、latin1），其余正向/非法UTF-8检查保持。公开预处理覆盖标准/压缩/OB20，先成功执行，再本地拒绝非法输入，随后复用同一statement并Ping原会话。FuzzScalars 增加 national charset 种子及充足预算下的接受/拒绝等价检查；本地定向回归通过。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及62场景各10轮通过；初次 lint 的新增测试重复字符串已复用常量/调整场景标签，两版本普通及 integration 标签 lint 均0 issues。两版 FuzzScalars 各30秒完成709812/880118次执行，无失败；独立只读复核未发现确认问题，不另存报告。obtest 重建、38项列表、示例配置离线检查及文档/diff检查通过；真实数据库、其他平台及race按当前约束暂缓，实现28/32、验收0/32保持。
+- Before client UNISTR generation, strict representability checks follow NCharset → Charset → utf8mb4, matching server binary binding while retaining UNISTR/path content/message budgets. Explicit national UTF16 is independent of SQL latin1/ASCII, avoiding false rejection because connection charsets cannot encode originals. No public APIs/configuration/packages/dependencies.
+- Added [two-path charset regressions](../national_charset_paths_test.go),62 offline cases. Old client missed five rejection families (explicit GBK/GBK fallback/ASCII/utf8mb3/latin1); other positives/invalid UTF-8 remain. Public preparation covers all transports, succeeds first, rejects invalid input locally, then reuses the same statement/Ping. FuzzScalars adds national-charset seeds/acceptance equivalence with ample budgets; targeted regressions passed.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration and 62 cases ×10 passed. Initial repeated strings now reuse constants/adjust labels; ordinary/integration lint reported 0 issues each. FuzzScalars ran 30 seconds each, 709812/880118 executions without failures. Review found no confirmed issues/no separate report. obtest rebuild/38-item list/example-config offline/document/diff passed; real databases/other platforms/race deferred by current constraint, implementation 28/32/acceptance 0/32 remain.
 
-#### D18/D32 独立验收工具的 OBJECT/ARRAY 内容断言
+#### D18/D32 OBJECT/ARRAY Content Assertions in the Standalone Tool
 
-- complex 场景的 OBJECT OUT 复用完整内容检查，核对精确 NUMBER、RAW、属性顺序和 schema；集合首尾改用不同的 NUMBER/RAW 种子，逐位置检查内容并保持与对象所在 schema 一致。等价十进制尾零可接受，不再仅以类型名和字段数量判定输出成功。无新驱动 API、配置或依赖。
-- 新增[20个离线流程](../cmd/obtest/complex_test.go)，覆盖成功、等价数字、错误内容/属性/schema、集合错序/重复/NULL/缺项；旧实现复现6类 OBJECT OUT 漏检，集合回归同时暴露原重复种子及重复头元素错误通过。测试夹具补事务事件，并仅在预期失败分支允许省略后续输出/计数，要求事务回滚、表/集合类型/对象类型逆序清理。定向测试通过，不增加真实数据库验收计数。
-- 原 integration 复杂类型用例同步不同集合种子、schema 和完整 OUT 内容；DATE 只接受预期整秒或驱动可返回的六位零微秒表示，避免前缀漏检及合法零小数误拒。新增7项离线断言回归，原数据库流程仍仅编译。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 源码编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；最终 DATE 断言回归及 integration 标签 lint 两版本重跑通过。首次 lint 的重复 DROP SQL 已提取共享测试常量；独立只读复核发现的零微秒误拒已修复并确认无新问题，不另存报告。obtest 已重建，38项唯一场景列表和示例配置离线检查通过；实现28/32、验收0/32保持，真实数据库、其他平台及race继续暂缓。
+- Complex OBJECT OUT now uses full-content checks for exact NUMBER/RAW/attribute order/schema. Collection first/last use distinct NUMBER/RAW seeds, checking contents at each position/schema consistency with objects. Equivalent decimal trailing zeros are accepted; type names/field counts alone no longer imply success. No driver APIs/configuration/dependencies.
+- Added [20 offline workflows](../cmd/obtest/complex_test.go), covering success/equivalent numbers/wrong contents/attributes/schema/collection order/duplicates/NULL/missing entries. Old implementation missed six OBJECT-OUT error families; collections also exposed repeated seeds/duplicated head elements passing. Fixtures add transaction events and omit later outputs/counts only on expected failure, requiring rollback/reverse table/collection/object-type cleanup. Targets passed without raising real acceptance counts.
+- Integration complex cases also use distinct collection seeds/schema/full OUT contents. DATE accepts only expected whole seconds or driver-supported six-zero microsecond forms, preventing prefix gaps/false rejection of valid zero fractions. Added seven offline-assertion regressions; real-database workflows only compiled.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/integration compilation/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each. Final DATE regressions/integration lint reran both versions. Initial duplicate DROP SQL became shared constants. Review's zero-microsecond false rejection was fixed, with no new findings/no separate report. obtest rebuild/38 unique scenarios/example-config offline passed; implementation 28/32/acceptance 0/32 remain, real databases/other platforms/race deferred.
 
-#### D12/D32 独立工具的 Oracle 专用标量场景
+#### D12/D32 Oracle-Specific Scalars in the Standalone Tool
 
-- 新增 oracle-scalars，自动建表并插入带值/NULL 两行，使用公开 NString、TimestampTZ、TimestampLTZ、IntervalYM/DS 和 RowID 类型；文本与参数化读取核对 Unicode、纳秒、原 TZ 偏移、LTZ 等价时刻、最大负 interval 及全部 typed NULL，ROWID 必须能定位原记录。场景仅适用 Oracle 兼容模式，显式 server prepare 和 UTF-16 national charset，保留配置 location；无新驱动 API、包或依赖。
-- 新增[TestOracleScalarsWorkflow](../cmd/obtest/oracle_scalars_test.go)，两条读取路径共32个离线流程，检查错误值/原偏移丢失/纳秒损失、等价 LTZ、五种 typed NULL、ROWID 绑定与定位及自建表清理；缺少场景时先失败，接入后通过。非法 TZ 回归暴露夹具 Next 后列数缩为1、扫描错误时触发标准库 panic 的问题，固定整轮列数后同例通过；Query fixture 新增参数检查，防止 ROWID 被改成普通字符串。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues。首次 lint 的重复路径标签已调整，测试按准备/校验职责拆分；独立只读复核未发现确认问题，不另存报告。obtest 重建，39项唯一列表、默认配置和单独选择 oracle-scalars 的离线检查通过；文档/链接/配置映射及diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race继续暂缓。
+- Added oracle-scalars, creating a table/two value-NULL rows with public NString, TimestampTZ, TimestampLTZ, IntervalYM/DS and RowID. Text/parameterized reads check Unicode/nanoseconds/original TZ offset/equivalent LTZ instant/maximum negative intervals/all typed NULL; ROWID must locate originals. Oracle-only, explicit server prepare/national UTF-16, retaining configured location. No driver APIs/packages/dependencies.
+- Added [TestOracleScalarsWorkflow](../cmd/obtest/oracle_scalars_test.go),32 offline workflows across both read paths, checking wrong values/lost original offsets/nanoseconds/equivalent LTZ/five typed NULLs/ROWID binding/location/table cleanup. Missing scenario failed first, then passed. Invalid-TZ regression exposed fixture columns shrinking to 1 after Next and causing standard-library panic on Scan failure; fixed whole-round column count passed the same case. Query fixtures add argument checks against replacing ROWID with plain strings.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each. Initial repeated-path labels adjusted; tests split preparation/validation. Review found no confirmed issues/no separate report. obtest rebuild/39 unique scenarios/default config/oracle-scalars-only offline checks passed; documentation/links/mapping/diff passed. Implementation 28/32/acceptance 0/32 remain, real databases/other platforms/race deferred.
 
-#### D12/D32 独立工具的 MySQL 专用标量场景
+#### D12/D32 MySQL-Specific Scalars in the Standalone Tool
 
-- 新增 mysql-scalars，自动建表和准备三组边界值及全 NULL 行，覆盖正负838小时/零 TIME(6)、YEAR、完整 unsigned/signed BIGINT、TINYINT(1) 整数、BIT(1/9)、VARBINARY 空值/零字节和 BINARY(4) 补零。文本与参数化查询同时验证内容、NULL 和固定行数，以及 ColumnTypes 的类型、ScanType、二进制字节长度；仅适用 MySQL 兼容模式，显式 server prepare/ParseTime=false。无新驱动 API、包或依赖。
-- 新增[TestMySQLScalarsWorkflow](../cmd/obtest/mysql_scalars_test.go)44个离线流程；缺少场景时先失败，接入后全部工具测试和lint通过。夹具使用固定元数据及独立字面量输入/返回值，检查类型、参数、结果关闭和自建表清理；新增 fixtureStep.rows 承载元数据对端，不改动可执行工具的数据库接口。
-- 按固定 OceanBase TIME_MAX_VAL/time_overflow_trunc 核对 SQL 范围，修正初始越界种子及原 integration 的同类输入/断言；改用最大整秒838:59:59和-838:59:58.999999分别验证边界/微秒。最大整秒允许六位零小数，非零小数拒绝；新增正反例先在旧种子/断言上失败，再修正通过。范围源码见[工具说明](go-driver-test-tool.md)，原 integration 仍仅编译。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，Windows/386 的44个新增流程通过。首次 lint 的重复测试字符串已调整；独立只读复核发现的 TIME 范围问题已修正，复核无剩余确认问题，不另存报告。obtest 重建，40项唯一列表、示例配置和单独选择 mysql-scalars 的离线检查通过。实现28/32、验收0/32保持，真实数据库、其他平台及race继续暂缓。
+- Added mysql-scalars, creating a table/three boundary rows/all-NULL row for positive/negative 838-hour/zero TIME(6), YEAR, full unsigned/signed BIGINT, integer TINYINT(1), BIT(1/9), VARBINARY empty/zero bytes and BINARY(4) padding. Text/parameterized reads check contents/NULL/fixed row counts and ColumnTypes names/ScanType/binary-byte lengths. MySQL-only, explicit server prepare/ParseTime=false. No driver APIs/packages/dependencies.
+- Added [TestMySQLScalarsWorkflow](../cmd/obtest/mysql_scalars_test.go),44 offline workflows. Missing scenario failed before adding; all tool tests/lint passed afterward. Fixed-metadata/independent literal input/result fixtures check types/arguments/close/table cleanup. New fixtureStep.rows provides metadata peers without changing executable database interfaces.
+- Checked fixed OceanBase TIME_MAX_VAL/time_overflow_trunc SQL bounds, correcting initial out-of-range seeds/similar integration inputs/assertions. Uses maximum whole-second 838:59:59/-838:59:58.999999 for boundaries/microseconds; maximum seconds allow six zero fractional digits, reject nonzero fractions. New positive/negative cases failed old seeds/assertions, then passed fixes. Source: [tool guide](go-driver-test-tool.md); integration still only compiled.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each; 44 new workflows passed Windows/386. Initial repeated strings adjusted; review's TIME-range issue fixed with no remaining findings/no separate report. obtest rebuild/40 unique scenarios/example/mysql-scalars-only config offline passed. Implementation 28/32/acceptance 0/32 remain, real databases/other platforms/race deferred.
 
-#### D13/D32 独立工具的元数据内容校验
+#### D13/D32 Metadata Content Validation in the Standalone Tool
 
-- 修复 metadata 场景只检查字典行数导致错误内容仍通过的缺口。保持原自建 ID/V 表和三类字典查询，新增 catalog/schema/表身份、列名/位置/类型/长度/精度/scale/NULL、主键及两列 ColumnTypes 内容断言；完整关闭每份结果后再复用会话，失败仍清理表。复用公开 Metadata，不新增驱动 API、包或依赖。
-- [TestMetadataContentWorkflow/TestMetadataSchemaFilters](../cmd/obtest/metadata_test.go) 共90个离线流程：旧实现50个错误输入被误判通过，修复后全部通过；另覆盖缺行/多行、未知必需属性、读取/关闭错误、非空 schema 的转义和精确大小写。夹具使用独立字面量元数据，仅替代外部数据库，不代表真实字典行为。
-- 独立复核发现 MySQL 字典 DATA_TYPE 的 int 与公开 ColumnTypes 的 INTEGER 不能共用预期；按驱动实际归一化路径拆分断言，夹具结果类型采用独立字面量。更正夹具先复现正常 MySQL 结果被拒，再修正通过；复核无剩余确认问题，不另存报告。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，新增重复测试字符串已提取常量或调整。Windows/386 的90个元数据流程通过；obtest 重建，40项唯一列表、示例及单独选择 metadata 的配置离线检查通过，文档/链接/diff检查通过。场景保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
+- Fixed metadata accepting wrong contents based on dictionary row counts alone. Retains self-created ID/V table/three dictionary queries and adds catalog/schema/table identity, column names/positions/types/lengths/precision/scale/NULL, PK/two-column ColumnTypes assertions. Closes every result completely before reuse; failures still clean tables. Reuses public Metadata without driver APIs/packages/dependencies.
+- [TestMetadataContentWorkflow/TestMetadataSchemaFilters](../cmd/obtest/metadata_test.go) has 90 offline workflows:50 wrong inputs passed old logic and all regressions pass after fixing. Also covers missing/extra rows/unknown required properties/read-close errors/nonempty-schema escaping/exact case. Independent literal metadata fixtures replace external databases only, not real dictionary behavior.
+- Review found MySQL dictionary DATA_TYPE int/public ColumnTypes INTEGER cannot share expectations; split by actual driver normalization, with independent literal result types. Corrected fixtures first reproduced normal MySQL rejection, then passed fixes. No confirmed findings remain/no separate report.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each, repeated strings extracted/adjusted.90 metadata workflows passed Windows/386. obtest rebuild/40 unique scenarios/example/metadata-only config offline/document/links/diff passed.40 scenarios/implementation 28/32/acceptance 0/32 unchanged; real databases/other platforms/race deferred.
 
-#### D19/D20/D32 独立工具的游标批次完整性
+#### D19/D20/D32 Cursor-Batch Completeness in the Standalone Tool
 
-- 修复 checkCursorBatch 首行匹配后立即成功、遗漏多余行和后续 Rows.Err 的缺口。共享断言在比对内容后要求批次结束并检查最终读取错误，保留 defer 关闭及关闭错误传播；前向/静态、刷新、敏感游标和 REF CURSOR 输出调用点同步生效，无新 API、包或依赖。
-- 新增[TestCursorBatchAssertions](../cmd/obtest/cursor_test.go)22个离线流程，覆盖两列普通游标和单列 REF CURSOR；旧实现6个重复/额外行及后续读取错误被误判通过，修复后拒绝。另检查缺行、NULL/非法标识符、列宽/内容、关闭错误、所有结果关闭及自建表清理；夹具仅替代外部数据库。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；Windows/386 的22个新流程通过。独立只读复核未发现确认问题，不另存报告；obtest 重建，40项唯一列表、示例及游标/资源输出选择配置的离线检查通过，文档/链接/diff检查通过。工具保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
+- Fixed checkCursorBatch returning success immediately after first-row matches, missing extra rows/later Rows.Err. Shared assertion requires batch end/final-read-error checks after content matches, retaining deferred close/error propagation. Forward/static/refresh/sensitive/REF-CURSOR output callers all inherit it without APIs/packages/dependencies.
+- Added [TestCursorBatchAssertions](../cmd/obtest/cursor_test.go),22 offline workflows for two-column ordinary cursors/single-column REF CURSOR. Old logic missed six duplicate/extra-row/later-read-error cases, now rejected. Also checks missing rows/NULL/invalid IDs/column width/contents/close errors/all results closed/table cleanup; fixtures replace external databases only.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each; 22 new workflows passed Windows/386. Review found no confirmed issues/no separate report. obtest rebuild/40 unique scenarios/example/cursor-resource-output config offline/document/links/diff passed. Tool 40 scenarios/implementation 28/32/acceptance 0/32 unchanged; real databases/other platforms/race deferred.
 
-#### D14/D32 独立工具的例程主动异常识别
+#### D14/D32 Deliberate Routine Exception Recognition in the Standalone Tool
 
-- 修复 routines/routines-client 把任意服务器错误作为“失败不发布输出”的成功证据：按自建 SQL 要求 MySQL1644/Oracle20001 的结构化错误，且 OUT 哨兵保持7；不接受语法/权限/例程缺失等无关失败。integration 的 TestScalarCall 同步收紧；错误码按固定 OceanBase 的 SIGNAL 映射和 Oracle 应用异常转换核对，依据见[工具说明](go-driver-test-tool.md)。无新 API、包或依赖。
-- 新增[TestRoutineFailureAssertions](../cmd/obtest/routines_test.go)48个离线流程，两模式和两个预处理场景完整执行三份例程的创建、两轮 INOUT/OUT、函数和主动异常，检查参数方向/初值、成功/失败状态与三份对象逆序清理；旧实现24个无关服务器错误被误判通过，修复后拒绝。另覆盖正确/包装错误、意外成功、传输/超时和失败输出发布；夹具不代表真实例程已验收。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过，两版本普通/integration 标签 lint 均0 issues；Windows/386 的48个例程流程通过。首次 lint 的重复类型字符串已提取测试常量；独立只读复核未发现确认问题，不另存报告。obtest 已重建，40项唯一列表、示例及例程场景选择配置的离线检查通过，文档/链接/diff检查通过。工具保持40项，实现28/32、验收0/32不变，真实数据库、其他平台及race继续暂缓。
+- Fixed routines/routines-client treating any server error as successful evidence of “failure does not publish outputs”. Self-created SQL requires structured MySQL 1644/Oracle 20001 and OUT sentinel 7 unchanged; unrelated syntax/permission/missing-routine failures reject. Integration TestScalarCall tightened too. Codes checked against pinned OceanBase SIGNAL mapping/Oracle application-exception conversion; basis: [tool guide](go-driver-test-tool.md). No APIs/packages/dependencies.
+- Added [TestRoutineFailureAssertions](../cmd/obtest/routines_test.go),48 offline workflows across both modes/two preparation scenarios, fully creating three routines, two INOUT/OUT rounds/function/deliberate exceptions, checking directions/initial values/status/reverse object cleanup. Old logic accepted 24 unrelated-server-error cases, now rejects. Also covers proper/wrapped errors/unexpected success/transport-timeout/failed-output publication; fixtures do not establish real routine acceptance.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each; 48 routine workflows passed Windows/386. Initial repeated type strings became constants. Review found no confirmed issues/no separate report. obtest rebuild/40 unique scenarios/example/routine-selection config offline/document/links/diff passed. Tool 40 scenarios/implementation 28/32/acceptance 0/32 unchanged; real databases/other platforms/race deferred.
 
-#### D11/D32 独立工具的行数策略验收入口
+#### D11/D32 Row-Count Policy Acceptance Entry Points in the Standalone Tool
 
-- 新增 counts-matched/counts-changed，分别固定 MatchedRows 和 MySQL ChangedRows；自建整数表和数据，经标准 Exec、Execute 完成摘要及单项 Sequential 批量检查 INSERT、无变化/变化/无匹配 UPDATE、DELETE/空 DELETE，MySQL 另检查 upsert 的无变化/变化/插入原生计数。每条路径清空后重建数据，最后验证无残留行，并复用既有清理与报告；无新公开 API、包或依赖。工具场景增至42项。
-- 新增[TestRowsAffectedWorkflows](../cmd/obtest/counts_test.go)51个离线流程：先复现场景不存在，再实现并通过；标准库 net.Pipe 夹具独立给出 SQL 和协议字节，经真实公开驱动检查 CLIENT_FOUND_ROWS、错误计数/零、溢出、服务端错误和失败清理。初始夹具漏掉 MySQL ENGINE 后缀已修正；Execute 溢出会淘汰原会话，夹具按真实生命周期补新连接初始化后的 DROP，不把环境或夹具问题写成功能缺陷。仅隔离无参数 SQL 和单项批量的计数契约，不证明数据库 SQL 行为。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues，首次 lint 的重复字符串已提取常量/复用表名后重跑。Windows/386 的51个新增流程通过；独立只读复核未发现确认问题，不另存报告。obtest 已重建，42项唯一列表、示例及计数场景选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
+- Added counts-matched/counts-changed for fixed MatchedRows/MySQL ChangedRows. Self-created integer tables/data use standard Exec, finalized Execute summaries and single-item Sequential batches to check INSERT, unchanged/changed/no-match UPDATE, DELETE/empty DELETE; MySQL adds native upsert unchanged/changed/insert counts. Each path rebuilds cleared data, checks no residual rows and reuses cleanup/reporting. No public APIs/packages/dependencies; tool now 42 scenarios.
+- Added [TestRowsAffectedWorkflows](../cmd/obtest/counts_test.go),51 offline workflows. Missing scenarios failed before implementation. Standard-library net.Pipe fixtures independently provide SQL/protocol bytes through real public driver, checking CLIENT_FOUND_ROWS/wrong counts/zero/overflow/server errors/failure cleanup. Missing initial MySQL ENGINE suffix fixed; Execute overflow evicts, so fixtures add fresh-connection initialization/DROP according to lifecycle. Environment/fixture issues are not claimed as feature defects. Isolates zero-argument SQL/single-item count contracts only, not database SQL behavior.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each after initial repeated strings extracted/table names reused.51 new workflows passed Windows/386. Review found no confirmed issues/no separate report. obtest rebuild/42 unique scenarios/example/count-selection config offline/document/links/diff passed. Implementation 28/32/acceptance 0/32 remain; real databases/other platforms/race deferred.
 
-#### D13/D32 独立工具的参数元数据验收入口
+#### D13/D32 Parameter-Metadata Acceptance Entry Point in the Standalone Tool
 
-- 新增 metadata-parameters，自建 ID/V 表及单行种子，描述带位置参数的 UPDATE、Oracle 重复命名参数 UPDATE 和无参数 SELECT；检查11列模式、物理/逻辑位置、规范化名称、未知方向、模式对应的 nullable、尺寸完整性与原始协议字节。接受未知类型/尺寸，不从 SQL 推断列定义或 IN/OUT；每次描述后验证原值未改变，最后确认仅有一行并清理。沿用公开 Metadata，目标 PrepareMode 不改变服务端描述契约；无新公开 API、包或依赖，工具增至43项。
-- 新增[TestParameterMetadataWorkflow](../cmd/obtest/parameter_metadata_test.go)53个离线流程，场景缺失时先失败，实现后通过；覆盖已知/未知描述、负 scale 和原始方向、错误列/参数身份/重复名称/nullable/尺寸/协议范围、缺行/多行、读取/关闭错误及意外副作用，检查公开请求 Query/Kind、结果关闭与失败后清理。夹具只替代公开 Metadata 结果，不代表实际 prepare 或数据库执行；底层行为仍由已有驱动协议测试及后续真实联调分别取证。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 lint 均0 issues。首次 lint 的重复测试字符串和函数复杂度已通过复用常量、拆分读取与逐行校验后修正；Windows/386 的53个新增流程通过。独立只读复核未发现确认问题，不另存报告；obtest 已重建，43项名称唯一性、示例及参数描述选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
+- Added metadata-parameters, creating ID/V table/one seed row and describing positional UPDATE, repeated-named Oracle UPDATE and zero-argument SELECT. Checks 11-column schema, physical/logical positions, normalized names, unknown directions, mode-specific nullable, size completeness/raw protocol bytes. Unknown types/sizes are valid; definitions/IN-OUT are not inferred from SQL. Every description verifies unchanged source values; final single-row check/cleanup. Public Metadata retained; target PrepareMode does not alter server-description contracts. No APIs/packages/dependencies; tool now 43 scenarios.
+- Added [TestParameterMetadataWorkflow](../cmd/obtest/parameter_metadata_test.go), 53 offline flows, failing before scenario existed then passing. Covers known/unknown descriptions, negative scale/raw direction, wrong columns/identities/repeated names/nullable/sizes/protocol ranges, missing/extra rows/read-close errors/unexpected side effects; checks public Query/Kind, result close/failure cleanup. Fixtures replace public Metadata results only, not actual prepare/database execution; existing protocol tests/later integration separately establish those.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration lint reported 0 issues each. Initial repeated strings/complexity addressed through constants/split read-row-validation helpers; 53 new workflows passed Windows/386. Review found no confirmed issues/no separate report. obtest rebuild/43-name uniqueness/example/parameter-selection config offline/document/links/diff passed. Implementation 28/32/acceptance 0/32 remain; real databases/other platforms/race deferred.
 
-#### D05/D22/D24/D32 独立工具的重复键错误识别
+#### D05/D22/D24/D32 Duplicate-Key Error Recognition in the Standalone Tool
 
-- CRUD、优化执行不再将任意服务器错误/非空错误当作重复主键成功验证；共享检查按实际兼容模式要求 MySQL 1062 / Oracle 1。普通批量与原生 array binding 统一检查失败位置、完成数、汇总及失败输入各自的错误码和 stop/continue 状态；保留策略及事务/内容断言。旧 Oracle CRUD 夹具的 MySQL 错误码已修正；无新公开 API、包或依赖，工具仍为43项。
-- 新增[TestDuplicateKeyWorkflows / TestBatchDuplicateAssertions](../cmd/obtest/duplicate_test.go)：最终56个完整 SQL 编排流程和80个批量结果场景，覆盖正确/包装/同类合并错误、错误模式/语法/权限/缺表/数据超长/零码、意外成功、传输及取消错误，以及汇总/输入不一致、错位、完成数、缺失/额外输入和状态/错误组合。初始48流程复现28个误判；进一步复核与回归确认首轮修复仍漏检4个混合错误工作流和12个批量合并错误场景，已改为检查完整错误树，仅当所有叶子均为同模式重复键才接受，避免掩盖清理失败。工作流替代 SQL 驱动、批量直接提供结果，不代表真实优化或原生 array binding 已运行；集成策略/批量断言同步，新增不连接数据库的 TestDuplicateKeyErrors。
-- Windows Go1.25.0/1.26.0 最终串行全包构建、单测、vet、integration 仅编译、离线 TestDuplicateKeyErrors 及全部工具回归各10轮通过；两版本普通/integration 标签 golangci-lint 均0 issues。首次 lint 的新增测试重复字符串已提取常量；Windows/386 的136个新增场景及集成辅助分类回归通过。独立只读复核确认合并错误问题修复后无剩余明确问题，不另存报告；obtest 已重建，43项名称唯一性、示例及相关四场景选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
+- CRUD/optimized execution no longer accepts arbitrary server/nonempty errors as duplicate-PK evidence. Shared checks require actual-mode MySQL 1062/Oracle 1. Ordinary/native-array batches consistently check failure positions/completed counts/summary/per-input codes/stop-continue state while retaining strategy/transaction/content assertions. Old Oracle CRUD fixtures corrected from MySQL codes. No APIs/packages/dependencies; tool remains 43 scenarios.
+- Added [TestDuplicateKeyWorkflows / TestBatchDuplicateAssertions](../cmd/obtest/duplicate_test.go): final 56 SQL workflows/80 batch-result cases for correct/wrapped/same-class joined errors, wrong-mode/syntax/permission/missing-table/overlong-data/zero codes, unexpected success/transport/cancellation, inconsistent summary-inputs/positions/counts/missing-extra inputs/status-error combinations. Initial 48 workflows exposed 28 false passes; review/regressions found first fix still missed four mixed-error workflows/12 joined-batch errors. Full error trees now require every leaf to be same-mode duplicate-key, preserving cleanup failures. Workflows replace SQL driver/batches supply results, not real optimization/native-array execution. Integration strategy/batch assertions synchronized; new TestDuplicateKeyErrors is database-free.
+- Final serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/offline TestDuplicateKeyErrors/all tool regressions ×10 passed; ordinary/integration golangci-lint reported 0 issues each. Initial repeated strings became constants; 136 new scenarios/integration helper-classification regressions passed Windows/386. Review confirmed joined-error fixes/no remaining findings, no separate report. obtest rebuild/43-name uniqueness/example/four related scenario config offline/document/links/diff passed. Implementation 28/32/acceptance 0/32 remain; real databases/other platforms/race deferred.
 
-#### D05 标准生成键的未知值与独立溢出
+#### D05 Unknown Standard Generated Keys and Independent Overflow
 
-- 修正共享 result.LastInsertId：OK 包 insert ID 为0时返回 ErrUnsupported，不再因 RowsAffected 已知而把0当作可用生成 ID；不改变 RowsAffected=0 的合法结果。文本、标准预处理、多结果及内部命令共用此边界；不新增查询、模式猜测、公开 API 或依赖。架构 §13.3 与使用指南同步明确字段可用性和错误含义。
-- 扩充[TestResultCounts](../execute_test.go)为7个公开 database/sql + 协议对端场景：零计数/零 ID、普通计数/ID、有影响行却无 ID、最大 int64 ID、ID 单独溢出、计数单独溢出且保留可用 ID、两者同时溢出。先复现两处零 ID 错误接受，再修复通过；移除旧测试在计数溢出后提前返回的盲区，始终校验两个方法。既有 Execute 的完整 uint64/未知 ID 摘要回归保留；这些测试不证明实际服务端生成键 SQL 行为。
-- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译通过；TestResultCounts、既有未知值/溢出与 Execute 摘要回归两版本各重复10轮通过，两版本普通/integration 标签 golangci-lint 均0 issues。Windows/386 的上述目标回归通过；obtest 已重建，43项名称唯一性及示例配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race暂缓。
+- Fixed shared result.LastInsertId: OK insert ID 0 now returns ErrUnsupported instead of treating zero as available because RowsAffected is known; legitimate RowsAffected=0 unchanged. Text/standard preparation/multiple results/internal commands share boundaries without new queries/mode guesses/public APIs/dependencies. Architecture §13.3/usage clarify availability/error meanings.
+- Expanded [TestResultCounts](../execute_test.go) to seven public database/sql+peer cases: zero count/ID, ordinary count/ID, affected rows without ID, maximum int64 ID, ID-only overflow, count-only overflow retaining valid ID, both overflow. Reproduced two wrong zero-ID acceptances before fixes. Removed old early-return blind spots after count overflow; always checks both methods. Existing Execute full-uint64/unknown-ID summaries remain; tests do not prove real generated-key SQL behavior.
+- Serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration passed; TestResultCounts/existing unknown-overflow/Execute-summary regressions ×10 each passed; ordinary/integration golangci-lint reported 0 issues each. Corresponding targets passed Windows/386; obtest rebuild/43-name uniqueness/example-config offline/document/links/diff passed. Implementation 28/32/acceptance 0/32 remain; real databases/other platforms/race deferred.
 
-#### D05/D11/D32 独立工具的生成键验收入口
+#### D05/D11/D32 Generated-Key Acceptance Entry Point in the Standalone Tool
 
-- 新增 MySQL 专用 generated-keys，在本轮自建 unsigned BIGINT 自增表上分别验证普通 Exec 与 Execute；普通范围 LastInsertId 和摘要 ID 对比落库值，提高本轮表的自增起点后检查标准 int64 溢出与完整 uint64 摘要。每次插入后 UPDATE 均确认无旧 ID，最终核对四行并清理；不假定连续 ID、不修改租户/全局配置，不新增公开 API、包或依赖。工具增至44项，Oracle 返回列继续由 returning 覆盖。
-- 新增 TestGeneratedKeyWorkflows 的31个公开驱动/内存协议流程，覆盖正常/边界 ID、未知/错误 ID、计数/范围/缺行/SQL 错误、多余结果和清理失败；非法 unsigned 数据必须淘汰原连接，由新连接只执行初始化及清理。标准溢出不能取得完整 ID，测试只检查错误和落库范围，Execute 承担精确比较。修正最初两处夹具问题后目标回归通过；首次 lint 的共享字面量及复杂度问题经复用常量、拆分故障设置修正。
-- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译及全部工具回归各10轮通过；两版本普通/integration 标签 golangci-lint 均0 issues，Windows/386 的31个生成键流程均通过。独立只读复核无确认问题，不另存报告；obtest 已重建，44项名称唯一性、默认/示例及生成键选择配置离线检查、文档/链接/diff检查通过。实现28/32、验收0/32保持；未连接数据库，实际自增范围/分配、其他平台和race不据此验收。
+- Added MySQL-only generated-keys, creating unsigned BIGINT autoincrement tables and checking ordinary Exec/Execute. Ordinary-range LastInsertId/summary IDs compare with stored values; raising this table's initial increment checks standard int64 overflow/full uint64 summaries. UPDATE after each insert must have no stale ID; final four rows verified/cleaned. No consecutive-ID assumptions/tenant-global configuration changes/public APIs/packages/dependencies. Tool now 44 scenarios; Oracle returned columns remain covered by returning.
+- Added 31 public-driver/in-memory-protocol TestGeneratedKeyWorkflows for normal/boundary/unknown/wrong IDs, counts/ranges/missing rows/SQL errors/extra results/cleanup failures. Invalid unsigned data must evict original connections; new ones only initialize/clean. Standard overflow cannot expose full IDs, so tests check errors/stored range while Execute compares exact values. Targets passed after two initial fixture fixes; repeated literals/complexity addressed with constants/split fault setup.
+- Serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/all tool regressions ×10 passed; ordinary/integration golangci-lint reported 0 issues each; 31 workflows passed Windows/386. Review found no confirmed issues/no separate report. obtest rebuild/44-name uniqueness/default-example/generated-key config offline/document/links/diff passed. Implementation 28/32/acceptance 0/32 remain. No databases; real increment ranges/allocation/other platforms/race are unaccepted.
 
-#### D14/D30/D32 独立工具的预期错误完整性
+#### D14/D30/D32 Complete Expected-Error Checks in the Standalone Tool
 
-- 修正 routines/routines-client 与 cancel-query 的预期错误断言：原 errors.As 只找到某个预期服务端错误就可能接受，同时发生的清理/超时/其他服务器失败会被忽略。提取既有重复键检查的 onlyServerErrorCode，逐层包装/全部合并分支只接受非 nil、同预期码的服务端错误；重复键保留两模式码选择。集成例程/取消断言同步复用，不改驱动公开 API、协议或依赖。
-- 例程离线流程由48增至68，新增同码合并、超时/清理/其他码合并及外层包装，保持 INOUT/OUT、函数结果、哨兵和三对象逆序清理。取消检查补充混合失败拒绝与同码合并接受；先复现16个例程误通过和两模式共6个取消误接受，再修复通过。新增 TestExpectedServerErrors 的84项离线分类，覆盖六个预期码、包装/嵌套合并、nil/typed nil、不同分支顺序及无关失败。
-- Windows Go1.25.0/1.26.0 串行全包构建、单测、vet、integration 仅编译、上述离线分类及全部工具回归各10轮通过；两版本普通/integration 标签 golangci-lint 均0 issues。Windows/386 的例程/取消/重复键/批量和分类目标回归通过；独立只读复核无确认问题，不另存报告。obtest 已重建，44项名称唯一性、示例及相关场景选择配置离线检查、文档/链接/格式/diff检查通过。实现28/32、验收0/32保持，真实数据库、其他平台和race继续暂缓。
+- Fixed routines/routines-client/cancel-query expected-error assertions: errors.As finding one expected server error could ignore simultaneous cleanup/timeout/other-server failures. Extracted onlyServerErrorCode from duplicate-key checks; every wrapping/joined branch must end in nonnil expected-code server errors. Duplicate keys retain both-mode code selection. Integration routine/cancellation assertions reuse it without public API/protocol/dependency changes.
+- Routine offline flows grow 48→68 with same-code joins/timeout-cleanup-other-code joins/outer wrapping, retaining INOUT/OUT/function/sentinel/reverse three-object cleanup. Cancellation adds mixed-error rejection/same-code-join acceptance. Reproduced 16 false routine passes/six cancellation acceptances across both modes before fixes. New TestExpectedServerErrors has 84 offline classifications for six codes/wrapping/nested joins/nil/typed nil/branch orders/unrelated failures.
+- Serial Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/offline classification/all tool regressions ×10 passed; ordinary/integration golangci-lint reported 0 issues each. Routine/cancellation/duplicate/batch/classification targets passed Windows/386. Review found no confirmed issues/no separate report. obtest rebuild/44-name uniqueness/example/related-selection config offline/document/links/format/diff passed. Implementation 28/32/acceptance 0/32 remain; real databases/other platforms/race deferred.
 
-#### D32 同池三连接并发混合负载
+#### D32 Concurrent Mixed Workloads on Three Connections in One Pool
 
-- 新增 `TestDriverConcurrentSessionStability`，两模式/三包流各固定同池三条物理会话，复用单连接的预处理缓存/类型复用、Rows 提前关闭、事务提交/回滚和可恢复错误/Ping 流程。各连接的 statement ID/参数值不同，每段首轮对端等待三个执行请求后才返回首个 OK，保证实际并发；工作 goroutine 只返回错误，由主测试统一等待，不在工作 goroutine 中调用 Fatal。
-- 拆分既有资源守卫的池检查与物理会话检查；逐轮锁定原连接检查，采样段核对 open=3/inUse=3/idle=0。全部释放后同时重借三个不同的原会话并 Ping，最终核对池和物理连接关闭；错误路径取消全部工作并关闭原连接，避免对端等待完整测试预算。共享客户端负载改为返回错误，原单会话和平台 IPC 调用同步更新；不改生产实现、公开 API、包依赖或驱动配置。
-- 默认每连接8轮、最多9次 GC 后采样；手动稳定性 CI 保留既有4096迭代检查，另外以每连接1024轮执行本项。复现、预算和范围见[本地基准 §8](go-driver-benchmarks.md#8-同池三连接并发混合负载)。本项不提前关闭 D32 或增加28/32、0/32计数；数据库、其他目标平台及成功 race 继续暂缓。
-- 三项 Go overlay 反向验证：关闭 Oracle autocommit 恢复、禁用缓存复用、只标记关闭而不关闭底层连接，最终测试均按预期失败。独立复核指出既有 QUIT 辅助检查可能被测试清理制造的关闭掩盖；删除底层 Close 时初版新测试确实误通过，改为仅接受 EOF/ErrClosedPipe 并在任何清理前等待三对端完成后明确失败。复核确认修正有效，无剩余明确问题，不另存报告。
-- Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译、定向混合会话/资源守卫回归各10轮（含 -parallel=1）通过，两版本普通/integration 标签 golangci-lint 均0 issues；Windows/386 的对应定向测试通过。两版本扩展测试各18432轮、54个 GC 后采样点通过，完整用时31.429秒/28.884秒；原始会话/池/关闭断言通过，108个采样点均为7个 goroutine、3次拨号，有限样本不代表无泄漏。actionlint、CI 选择器/预算/无 secrets、文档链接及本地路径检查通过；GitHub CI 本身未运行。
+- Added `TestDriverConcurrentSessionStability`, pinning three same-pool physical sessions for both modes/three transports. Reuses single-session cache/type reuse/early Rows close/transaction commit-rollback/recoverable errors/Ping. Statement IDs/arguments differ per connection; peers await three first-round execution requests before first OK each segment, ensuring actual concurrency. Workers return errors; main test waits, never calling Fatal in workers.
+- Split existing pool/physical-session resource guards. Each round locks original connections; sample segments check open=3/inUse=3/idle=0. After release, simultaneously reborrow three distinct original sessions/Ping; final checks pool/physical close. Failures cancel all workers/close originals to avoid full-budget peer waits. Shared client workloads now return errors; single-session/IPC callers updated. No production/public API/package/configuration changes.
+- Default eight rounds per connection/at most nine post-GC samples; manual stability CI retains 4096-iteration existing checks and runs this item at 1024 rounds per connection. Reproduction/budgets/scope: [local benchmarks §8](go-driver-benchmarks.md#8-concurrent-mixed-load-on-three-pooled-connections). This does not close D32/raise 28/32 or 0/32; databases/other target platforms/successful race remain deferred.
+- Three overlay checks disable Oracle autocommit restoration/cache reuse/underlying close while setting closed flags; final tests fail as expected. Review noted QUIT helpers could hide omissions through test cleanup; the first new test incorrectly passed without Close. Restricting acceptance to EOF/ErrClosedPipe and awaiting all three peers before cleanup made it explicitly fail. Review confirmed effectiveness/no remaining findings/no separate report.
+- Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/targeted mixed-session/resource guards ×10 (including -parallel=1) passed; ordinary/integration golangci-lint reported 0 issues each; corresponding Windows/386 targets passed. Extended runs passed 18432 rounds/54 post-GC samples per version in 31.429/28.884 seconds. Original-session/pool/close checks passed; 108 samples each observed seven goroutines/three dials. Finite samples are not leak freedom. actionlint/CI selectors/budgets/no-secrets/document links/local-path checks passed; GitHub CI itself did not run.
 
-#### D10/D32 JDBC CONVERT 操作数边界
+#### D10/D32 JDBC CONVERT Operand Boundaries
 
-- 修复显式 RewriteJDBCEscapes 在 MySQL 布尔/浮点模拟中缺少操作数括号的问题，例如 `CONVERT(2 OR 0, SQL_BOOLEAN)` 必须保留为 `1=(2 OR 0)`，不变成 `1=2 OR 0`。保留与1比较、0e0提升浮点及原有两模式类型映射，不改普通 SQL 的默认路径，不新增 API、配置、包或依赖。
-- 新增 TestJDBCConvertOperandBoundaries 的12个转换流程，检查 OR/XOR/比较/位运算、NULL、嵌套转换、参数数量及末尾行注释；TestJDBCConvertMissingOperand 覆盖两模式/五种类型/八种空操作数，共80例。先在旧实现复现9个括号错误和4个返回无效 SQL 的空白操作数；初次修复再复现3个换行被裁掉及注释操作数未拒绝的问题，按裁剪后的操作数再次词法检查、仅裁左侧空白生成输出后通过。独立复核发现 Unicode 空白裁剪与原始词法校验不一致，新增全角空格、NBSP 及前后注释组合先复现50个漏检，再统一校验规则修复。原有双模式转换用例同步补充 Oracle 行注释 CAST 回归。
-- 同步兼容矩阵 §23 的同池三连接稳定性证据，保持实现28/32、验收0/32；转换回归不代表服务端 SQL 等价验收。
-- 最终 Windows Go1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及 JDBC 定向回归各20轮通过；两版本普通/integration 标签 golangci-lint 均0 issues，Windows/386 的 JDBC 定向测试通过。独立复核指出的 Unicode 空白问题已补失败→通过回归并修复，未另存走查报告；文档链接、配置映射及 diff 检查通过。真实数据库、其他平台和 race 按当前约束暂缓。
+- Fixed missing operand parentheses in explicit RewriteJDBCEscapes MySQL boolean/float emulation: `CONVERT(2 OR 0, SQL_BOOLEAN)` must stay `1=(2 OR 0)`, never `1=2 OR 0`. Retains comparison with 1, 0e0 float promotion/both-mode mappings, without ordinary-SQL-default/API/configuration/package/dependency changes.
+- Added 12 TestJDBCConvertOperandBoundaries conversion flows for OR/XOR/comparisons/bitwise/NULL/nesting/argument counts/trailing line comments; TestJDBCConvertMissingOperand covers both modes/five types/eight empty operands, 80 cases. Old logic reproduced nine parentheses errors/four whitespace operands yielding invalid SQL. First fix exposed three stripped-newline/comment-only cases; trimmed operands are relexed and output trims left whitespace only. Review found Unicode-trimming/raw-lexing inconsistency; fullwidth spaces/NBSP/comment combinations reproduced 50 omissions before unified validation. Existing both-mode conversions add Oracle line-comment CAST regression.
+- Synchronized compatibility matrix §23 same-pool three-session stability evidence. Implementation 28/32/acceptance 0/32 remain; conversion regressions are not server-SQL-equivalence acceptance.
+- Final Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/JDBC targets ×20 passed; ordinary/integration golangci-lint reported 0 issues each; Windows/386 JDBC targets passed. Review's Unicode-whitespace issue received fail→pass regressions/fixes, no separate report. Links/mapping/diff passed. Real databases/other platforms/race deferred by current constraint.
 
-#### D01/D32 Go1.26 最低版本升级
+#### D01/D32 Minimum-Version Upgrade to Go1.26
 
-- 最低支持版本调整为 Go1.26.0，沿用本次 go.mod/go.sum 中已升级的依赖；包文档、README、架构、开发计划、使用指南和验收工具说明同步。历史 Go1.25/1.26 的测试、fuzz 和基准记录保留采集时版本，不作为升级后兼容性证据；当前复现命令仅使用 Go1.26。
-- CI 的八组 Go 矩阵统一为1.26.x，保留 Linux/Windows/macOS、`CGO_ENABLED=0` coverage、原生 ABI、386、22目标 fuzz、基准、手动稳定性及四数据库 profile。格式/module 和 actionlint 检查继续在 Linux 执行；CodeQL 已使用1.26.x。数据库检查仍须手动显式开启。
-- 实际工具链为 Go1.26.0 Windows/amd64；go mod tidy -diff、go mod verify、全包 build/test/vet、integration 仅编译通过，普通与 integration 标签 golangci-lint 均0 issues；Windows/386 全包实际测试和 obtest 的44项离线列表通过。actionlint、文档链接/配置映射/任务计数及 diff 检查通过。
-- 本次未连接真实数据库，未执行 Linux/macOS、成功 race 或远程 GitHub Actions；实现28/32、验收0/32保持。
+- Minimum support moves to Go1.26.0, retaining dependencies already upgraded in this go.mod/go.sum. Package docs/README/architecture/plan/usage/tool guide synchronized. Historical Go1.25/1.26 test/fuzz/benchmark records retain collection versions, not post-upgrade compatibility evidence; current reproduction commands use Go1.26 only.
+- Eight CI Go matrices use 1.26.x, retaining Linux/Windows/macOS, `CGO_ENABLED=0` coverage, native ABI/386/22-target fuzz/benchmarks/manual stability/four database profiles. Formatting/module/actionlint remain Linux; CodeQL already uses 1.26.x. Database checks remain explicit manual opt-in.
+- Actual toolchain Go1.26.0 Windows/amd64: go mod tidy -diff/go mod verify/all-package build-test-vet/compile-only integration passed; ordinary/integration golangci-lint reported 0 issues. Actual Windows/386 all-package tests/44-item obtest offline list passed. actionlint/links/mapping/counts/diff passed.
+- No real databases/Linux/macOS/successful race/remote GitHub Actions this round; implementation 28/32/acceptance 0/32 remain.
 
-#### D01/D32 CI 跨平台修复与零 cgo 策略
+#### D01/D32 Cross-Platform CI Fixes and Zero-Cgo Policy
 
-- 修复 Windows 与 macOS 的 CI 失败。Windows：PowerShell 会把未加引号的 `-flag=value.ext` 从点处拆成两个参数，`-coverprofile=coverage.out` 因而变成 `-coverprofile=coverage` 与 `.out`，报 `no required module provides package .out`；改为引用参数值。macOS：`sockaddr_un.sun_path` 仅 104 字节，`t.TempDir()` 以测试名生成目录，长子测试名使 socket 路径达 107–109 字节，`bind` 返回 `EINVAL`；新增 `unixTempDir`/`listenUnix` 辅助函数，在短前缀 `os.MkdirTemp` 目录内绑定，五处 Unix socket 测试统一改走该路径。
-- 移除 CI 的 `-race` 并显式设置 `CGO_ENABLED=0`。驱动为纯 Go，仓库无 `import "C"`，而 `-race` 按工具链设计强制 cgo（`CGO_ENABLED=0` 下直接报 `-race requires cgo`）。此前本机 race 进程启动即返回 `0xc0000139`，正是该依赖暴露的症状。现每次 CI 均验证零 cgo 构建；竞态检测改为 cgo 环境手动执行，不计入常规检查。README、架构 §20.1、开发计划 §5.3 及进度 §5 的 V03 同步。
-- 本地验证：Go1.27.2 Windows/amd64、`CGO_ENABLED=0` 全包 `go test ./...` 通过（含全部命名管道与 Unix socket 用例，无 skip、无 FAIL），`go vet ./...` 与 gofmt 干净；CI 同款命令覆盖率 85.8%，`coverage.out` 正常生成。命名管道用例在受限沙箱下因禁止访问命名管道而失败，属环境限制，完全权限下全部通过。未连接真实数据库，Linux/macOS 与远程 GitHub Actions 仍未运行；实现28/32、验收0/32保持。
+- Fixed Windows/macOS CI failures. Windows PowerShell splits unquoted `-flag=value.ext` at the dot, turning `-coverprofile=coverage.out` into `-coverprofile=coverage`/`.out`, causing `no required module provides package .out`; argument values are now quoted. macOS `sockaddr_un.sun_path` is 104 bytes; test-name-derived t.TempDir() made 107–109-byte socket paths and bind returned EINVAL. New unixTempDir/listenUnix helpers bind within short-prefix os.MkdirTemp directories; five Unix socket tests use them.
+- Removed CI `-race` and explicitly set `CGO_ENABLED=0`. Driver is pure Go, repository has no `import "C"`; toolchain race requires cgo (`CGO_ENABLED=0` returns `-race requires cgo`). Prior Windows race process startup returned `0xc0000139`, exposing this dependency. CI now verifies zero-cgo every run; race is manual in cgo environments, excluded from regular checks. README/architecture §20.1/plan §5.3/progress §5 V03 synchronized.
+- Local verification: Go1.27.2 Windows/amd64, `CGO_ENABLED=0` all-package `go test ./...` passed, including every Named Pipe/Unix socket case without skips/FAIL; `go vet ./...`/gofmt clean. CI-equivalent command coverage 85.8% and coverage.out generated. Named Pipe tests failed under sandbox access denial, an environment limitation; all passed with full permissions. No real databases; Linux/macOS/remote GitHub Actions still did not run. Implementation 28/32/acceptance 0/32 remain.
 
-### 2026-10-19 Connector/J 功能差异修复
+### 2026-10-19 Connector/J Feature-Gap Fixes
 
-- 批量生成键：BatchItem 追加 InsertID/InsertIDKnown，逐项、多发、多语句和单项 array 块保留服务端实际非零 ID，十进制字符串覆盖完整 uint64；多项聚合不分配或推算各行键。
-- 字符集：增加 HKSCS/HKSCS31 的 UTF-8 载荷和 OceanBase 协议编号152/153，GB18030_2022 使用独立2022映射、默认编号217，SET NAMES 保留名称；补齐新 collation 的列长度解释，旧 GB18030 行为保持。独立 OpenJDK BMP 全量编码/双字节及 BMP 四字节解码摘要、认证和数据路径向量通过；字符集 fuzz 20秒通过。
-- MySQL 具名 CALL：原会话 gate 内按声明名映射 IN/OUT/INOUT，覆盖 server/client、直接/显式预处理、Exec/Query/输出路径；校验期间仅查元数据，普通 MySQL SQL 仍只接受位置参数。旧版/未知版本精确例程元数据使用 SHOW CREATE PROCEDURE/FUNCTION 回退，保留权限错误、预算和取消，不执行或重放业务。
-- 元数据：MetadataColumns 保留原13列并追加 auto_increment/generated；追加 MetadataTypeInfo 提供内置 SQL 类型族，保持 Oracle MetadataTypes 的 UDT 语义。未知/服务端相关属性保持 NULL。
-- 多 VALUES：追加显式 BatchMultiValues，仅合并简单 MySQL INSERT 占位符元组；BatchResult.Chunks 提供实际聚合计数/ID和输入范围，逐项不推算。覆盖三包流、参数/字节/行分块、有效前缀、本地错误、服务器继续/停止、取消、损坏/断线、安全回退及原事务回滚。BatchRewrite 和默认策略保持原行为。
-- 验证范围：本轮仅使用 Windows Go1.27.2 与内存协议对端；全包测试跳过已确认被沙箱拒绝访问的 TestPlatformTransportNamedPipe 系列，数据库 integration 仅编译。全包构建/vet、普通与integration标签 golangci-lint（均0 issues）、全包回归及integration仅编译通过；文档链接/格式/diff检查通过；未执行 Linux 部署、数据库/OBProxy联调、race或Go1.26最低版本运行验证。实现28/32、真实验收0/32不变；按用户请求本地提交，不推送。
+- Batch generated keys: BatchItem adds InsertID/InsertIDKnown; sequential/multi-send/multi-statement/single-item array blocks retain actual nonzero server IDs as full-uint64 decimal strings. Multi-item aggregates never assign/infer per-row keys.
+- Character sets: added UTF-8 payloads for HKSCS/HKSCS31 with OceanBase protocol IDs 152/153. GB18030_2022 uses a separate 2022 mapping/default ID 217; SET NAMES retains its name. Added new-collation length interpretation; old GB18030 unchanged. Independent full-BMP OpenJDK encoding/two-byte/BMP-four-byte decoding digests and auth/data-path vectors passed; charset fuzz passed 20 seconds.
+- Named MySQL CALL: maps IN/OUT/INOUT by declaration name within original-session gate across server/client, direct/explicit prepare, Exec/Query/output paths. Validation only queries metadata; ordinary MySQL SQL remains positional-only. Older/unknown-version exact-routine metadata falls back to SHOW CREATE PROCEDURE/FUNCTION, retaining permission errors/budgets/cancellation without executing/replaying business SQL.
+- Metadata: MetadataColumns retains original 13 columns and adds auto_increment/generated; new MetadataTypeInfo provides built-in SQL type families, preserving Oracle MetadataTypes UDT semantics. Unknown/server-dependent properties remain NULL.
+- Multi-VALUES: new explicit BatchMultiValues combines simple MySQL INSERT placeholder tuples only. BatchResult.Chunks exposes actual aggregate counts/IDs/input ranges without per-item inference. Covers all transports/parameter-byte-row chunking/valid prefixes/local errors/server continue-stop/cancellation/corruption-disconnect/safe fallback/original rollback. BatchRewrite/default strategies retain behavior.
+- Validation: this round used Windows Go1.27.2/in-memory peers only. All-package tests skipped confirmed sandbox-denied TestPlatformTransportNamedPipe families; database integration only compiled. All-package build/vet/ordinary-integration golangci-lint (0 issues each)/full regressions/compile-only integration passed; links/format/diff passed. No Linux deployment/database-OBProxy integration/race/Go1.26-minimum runtime validation. Implementation 28/32/real acceptance 0/32 unchanged; locally committed at user request, no push.
 
-#### D32 例程元数据走查修复
+#### D32 Routine-Metadata Review Fixes
 
-- MySQL 参数字典关联补上 ROUTINE_TYPE，具名 CALL 仅查询 PROCEDURE，避免同名函数的返回值/参数混入；旧版 CALL 不再改查同名 FUNCTION，公开元数据的函数回退保留。
-- SHOW CREATE 声明接受 YEAR/YEAR(4)，保留非法长度拒绝；列与例程参数的 TIME/DATETIME/TIMESTAMP scale 改读 DATETIME_PRECISION，其他类型保留 NUMERIC_SCALE。
-- TestRoutineCreateYear、TestMySQLMetadataTemporalScale、TestMySQLRoutineMetadataNamespaces 和具名 CALL 协议断言在修复前失败、修复后通过；补充旧版 YEAR(4) 具名调用及过程不存在后原会话 Ping 的回归，既有公开函数回退和多字符集/三包流元数据契约通过。未连接数据库或运行 Linux 部署，实现28/32、真实验收0/32不变。
-- Windows Go1.27.2 下 build、vet、普通/integration 标签 lint（均0 issues）、integration 仅编译及全包测试通过；测试跳过沙箱访问受限的 Named Pipe 系列。首次全包测试在未修改的 TestPlatformTransportUnix 清理等待中超时，主包和随后全包复跑均通过；保留此偶发测试阻塞记录。未运行 race 或 Go1.26 最低版本验证。
+- MySQL parameter-dictionary joins now include ROUTINE_TYPE, and named CALL queries PROCEDURE only so same-named function returns/arguments cannot mix. Old-version CALL no longer tries same-named FUNCTION; public function metadata fallback remains.
+- SHOW CREATE declarations accept YEAR/YEAR(4), retaining invalid-length rejection. Column/routine TIME/DATETIME/TIMESTAMP scale now reads DATETIME_PRECISION; other types retain NUMERIC_SCALE.
+- TestRoutineCreateYear, TestMySQLMetadataTemporalScale, TestMySQLRoutineMetadataNamespaces/named-CALL protocol assertions failed before fixes/passed afterward. Added old-version YEAR(4) named calls/Ping after missing procedures; public function fallback/multicharset/three-transport metadata contracts passed. No databases/Linux deployment; implementation 28/32/real acceptance 0/32 unchanged.
+- Windows Go1.27.2 build/vet/ordinary-integration lint (0 issues each)/compile-only integration/all-package tests passed, skipping sandbox-restricted Named Pipe families. Initial full run timed out in unchanged TestPlatformTransportUnix cleanup; root-package/subsequent full reruns passed. This intermittent test hang remains recorded. No race/Go1.26-minimum verification.
 
-## 6. 待取证条件与推进方式
+## 6. Outstanding Evidence and How to Proceed
 
-D32 新增[独立数据库验收工具](go-driver-test-tool.md)及[配置示例](obtest.example.json)，覆盖 44 个集中执行场景，自动准备/清理表、过程、类型和本轮 XA 分支，生成逐项 JSON 结果。工具不依赖 `go test`；本地验证记录见上方各子项。真实数据库场景尚未运行，不据此增加数据库验收计数。
+D32 adds a [standalone database acceptance tool](go-driver-test-tool.md)/[example configuration](obtest.example.json), with 44 centrally executed scenarios, automatic table/procedure/type/current-run XA preparation-cleanup and per-item JSON results. It is independent of `go test`; local evidence is in subitems above. Real database scenarios have not run and do not raise database acceptance counts.
 
-D32 工具配置边界修复：不再把 1 MiB 截断当作文件结束，超限配置在任何数据库连接前明确拒绝；读取错误保持脱敏。新增 TestConfigInputBounds，旧实现对超限空白、边界后第二对象及非法尾部三个场景错误接受，修复后通过，另覆盖恰好上限的合法文件和读取失败。Windows Go 1.25.0/1.26.0 全包构建、单测、vet、integration 仅编译及普通/integration 标签 lint 均通过；未连接数据库，实现及验收总数保持 28/32、0/32。
+D32 tool-configuration boundary fix: 1 MiB truncation is no longer treated as EOF; over-limit configuration explicitly rejects before database connections and read errors stay redacted. New TestConfigInputBounds reproduced three old false acceptances (excess whitespace/second object beyond boundary/invalid tails), then passed fixes; also covers exact-limit valid files/read failures. Windows Go1.25.0/1.26.0 all-package build/unit tests/vet/compile-only integration/ordinary-integration lint passed. No databases; implementation/acceptance totals remain 28/32, 0/32.
 
-| ID | 条件 | 影响范围 | 解除/取证方式 | 当前判断 |
+| ID | Condition | Affected scope | Resolution/evidence method | Current assessment |
 | --- | --- | --- | --- | --- |
-| E01 | 两模式 OceanBase 与 OBProxy 实际测试入口/版本 | D04 起的集成验收 | 配置测试 profile，运行 TestSmoke 并记录版本/模式 | 未确认；不阻塞配置与包流 |
-| E02 | Go 1.26 工具链及平台运行能力 | 当前基线兼容声明、D32 | CI 安装目标版本并保存 go version 与测试结果 | 升级前 Windows 两目标版本已运行；当前 Go1.26 证据见 §5.6；Linux/macOS 与远程 Actions 仍缺证据。CI 已改为 `CGO_ENABLED=0` 并持续验证零 cgo 构建，race 不再是 CI 门禁，需在 cgo 环境手动取证。2026-10-18 只读查询 GitHub Actions 运行列表为空，工作流定义不计运行通过 |
-| E03 | reset/PrepareExecute/offset fetch/LOB V2/array binding 支持组合 | D09、D16、D19、D22、D24 | 固定 Java 条件 + 实际目标版本用例 | 待取证；未知时保守选择或拒绝 |
-| E04 | Oracle 游标与 LOB/类型字典同连接交错边界 | D16、D18–D20 | 在完整 fetch 响应边界验证原事务可见性 | 待取证；禁止换辅助会话冒充 |
-| E05 | OUT/REF CURSOR 响应顺序和父 statement 依赖 | D14、D20 | 协议夹具 + 真实过程/多输出生命周期测试 | 待取证；保持发布与租约契约 |
-| E06 | 各平台认证、IPC 及拓扑发现环境 | D27、D28 | 每个适配器独立运行/失败用例 | Windows 原生 IPC、当前身份 NTLM/SSPI 及合成 VC ABI 已有上述本地证据；Linux/macOS 系统 GSSAPI、域认证与真实 Linux VC 库/运行环境仍缺，不能用交叉编译或 Windows 合成夹具替代 |
-| E07 | Java 全部 option 的逐项对应 | D01 起持续、D32 收口 | 固定版本提取并归类，每项关联 Go 承载与任务 | 160项规范清单/字段初值、10历史别名及内置枚举外入口已核对；逐项运行行为与测试、平台及真实目标仍需闭环 |
+| E01 | Actual OceanBase/OBProxy test endpoints/versions for both modes | Integration acceptance from D04 | Configure profiles, run TestSmoke, record versions/modes | Unconfirmed; does not block configuration/packet transport |
+| E02 | Go1.26 toolchain/platform runtime capability | Current baseline compatibility claims, D32 | CI installs target version/saves go version/results | Both Windows target versions ran before upgrade; current Go1.26 evidence: §5.6. Linux/macOS/remote Actions lack evidence. CI now uses `CGO_ENABLED=0` to verify zero-cgo continuously; race is manual in cgo environments, not a CI gate. Read-only GitHub Actions query on 2026-10-18 returned an empty run list; workflow definitions are not passing runs |
+| E03 | Supported reset/PrepareExecute/offset-fetch/LOB-V2/array-binding combinations | D09, D16, D19, D22, D24 | Pinned Java conditions + actual target-version cases | Evidence pending; conservative selection/rejection when unknown |
+| E04 | Same-connection interleaving of Oracle cursors/LOB/type dictionaries | D16, D18–D20 | Verify original-transaction visibility at complete fetch-response boundaries | Evidence pending; auxiliary sessions cannot substitute |
+| E05 | OUT/REF-CURSOR response ordering/parent-statement dependencies | D14, D20 | Protocol fixtures + real procedure/multiple-output lifecycle tests | Evidence pending; retain publication/lease contracts |
+| E06 | Platform authentication/IPC/topology discovery environments | D27, D28 | Independent run/failure cases per adapter | Windows native IPC/current-identity NTLM-SSPI/synthetic VC ABI have local evidence above. Linux/macOS system GSSAPI/domain authentication/real Linux VC libraries/runtime are missing; cross-compilation/Windows synthetic fixtures cannot replace them |
+| E07 | Per-option representation of all Java options | Continuous from D01; closure D32 | Extract/classify pinned version, link every option to Go representation/task | 160 canonical fields/defaults, ten aliases/built-in non-enum entries checked; runtime behavior/tests/platforms/real targets still need closure |
 
-这些是开发输入和验证条件，不是缩减功能的决定。出现实际阻塞时，只标记受影响的具体工作，并写明可继续工作；缺少目标平台运行环境不等于全部本地开发停止。
+These are development inputs/validation conditions, not scope-reduction decisions. Actual blockers identify only affected work and work that can continue. Missing target-platform runtime environments do not stop all local development.
 
-## 7. 下一步工作
+## 7. Next Steps
 
-1. 对已确认的本地功能缺口按失败用例、修复、单测/lint 和本地提交推进；D28/D30/D31 的目标平台及真实服务验证单列待补，不要求先取得 Linux 环境。保持单公开根包、池隔离与单向依赖；没有新的实现证据时不提高完成计数。
-2. 继续按配置映射核对运行行为与本地测试的逐项对应，使用故障对端验证标准 database/sql，不连接真实数据库；不重复把已核对的字段/别名数量作为功能进展。
-3. 保留完整 G2–G6 范围；数据库联调暂缓，Linux/CI 和所有未执行条目如实保留。
+1. Address confirmed local gaps through failing cases/fixes/unit tests/lint/local commits. Separately retain outstanding D28/D30/D31 platform/real-service checks without requiring Linux first. Preserve one public root package/pool isolation/unidirectional dependencies; no new implementation evidence means no higher completion counts.
+2. Continue checking per-option runtime behavior/local tests against mappings, using fault peers/standard database/sql without real database connections. Do not count already-checked field/alias quantities again as feature progress.
+3. Retain full G2–G6 scope; database integration stays deferred, and Linux/CI/all unexecuted items stay accurately recorded.
 
-本表只管理开发事实和后续动作，不保存独立走查报告，也不预估尚无依据的完成日期。
+This record manages development facts/next actions only, without separate walkthrough reports or unsupported completion-date estimates.

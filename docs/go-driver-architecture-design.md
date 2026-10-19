@@ -1,140 +1,140 @@
-# OceanBase Go 驱动架构设计
+# OceanBase Go Driver Architecture Design
 
-状态：架构与接口契约，分项本地实现及验收状态以开发进度为准。本文面向完整功能适配，不以基础 CRUD 作为最终范围。
+Status: architecture and interface contracts. Refer to development progress for the local implementation and acceptance status of each item. This document targets complete feature adaptation; basic CRUD is not the final scope.
 
-## 1. 目标、已确认要求与设计基线
+## 1. Goals, Confirmed Requirements, and Design Baseline
 
-已确认要求：
+Confirmed requirements:
 
-1. 驱动面向 OceanBase，统一承载 Oracle、MySQL 两种兼容模式。
-2. 将 Java 驱动的完整功能纳入 Go 架构，逐项说明承载方式和验证条件。
-3. 遵守 Go 习惯，保持普通业务的 API 简洁，不复刻 JDBC 的类层次。
-4. 最低 Go 版本为 **1.26**；本设计不依赖 Go 1.27 新增接口。
-5. 日志使用调用方传入的 `*slog.Logger`；不使用全局默认 logger。
-6. 设计文档保存在本仓库 `docs` 目录。
+1. Target OceanBase with unified support for Oracle and MySQL compatibility modes.
+2. Account for the Java driver's complete functionality in the Go architecture, explaining the implementation approach and verification conditions for every capability.
+3. Follow Go conventions, keep ordinary application APIs simple, and avoid reproducing the JDBC class hierarchy.
+4. The minimum Go version is **1.26**; this design does not depend on interfaces introduced in Go 1.27.
+5. Use the caller-provided `*slog.Logger`; do not use the global default logger.
+6. Keep design documents in this repository's `docs` directory.
 
-参考基线：
+Reference baseline:
 
-- [Java 源码结构与功能大纲](obconnector-j-architecture-outline.md)。
-- 实施拆解见 [开发计划](go-driver-development-plan.md)，任务状态与验证证据统一维护在 [开发进度](go-driver-development-progress.md)。
-- Java 源码：[oceanbase/obconnector-j](https://github.com/oceanbase/obconnector-j)，版本 `2.4.14`，提交 `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`。
-- 标准库源码参考版本：Go `1.27.2`。已阅读 `database/sql` 和 `database/sql/driver` 的接口契约；选用的是 Go 1.26 已存在的接口。必须用真正的 Go 1.26 工具链编译及测试。
-- Go 历史 API 清单也已核对：`RowsNextResultSet` 自 Go 1.8 提供，`sql.Out` / `NamedValueChecker` 自 Go 1.9 提供，`slog` / `context.AfterFunc` 自 Go 1.21 提供；这些核心机制均不要求 Go 1.26 或 1.27。
-- 以下 API 名称、包划分、默认策略和资源限制是本方案建议；不是已经发布的兼容承诺。
+- [Java Source Structure and Feature Outline](obconnector-j-architecture-outline.md).
+- See the [Development Plan](go-driver-development-plan.md) for implementation tasks. Maintain task status and verification evidence in [Development Progress](go-driver-development-progress.md).
+- Java source: [oceanbase/obconnector-j](https://github.com/oceanbase/obconnector-j), version `2.4.14`, commit `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`.
+- Standard library source reference: Go `1.27.2`. The `database/sql` and `database/sql/driver` interface contracts have been reviewed; the selected interfaces already exist in Go 1.26. Compilation and testing must use a genuine Go 1.26 toolchain.
+- Historical Go API lists have also been checked: `RowsNextResultSet` dates from Go 1.8, `sql.Out` / `NamedValueChecker` from Go 1.9, and `slog` / `context.AfterFunc` from Go 1.21. None of these core mechanisms requires Go 1.26 or 1.27.
+- The API names, package layout, default policies, and resource limits below are proposals in this design, not published compatibility commitments.
 
-“全功能”按可观察能力适配：包括普通执行、两类预处理、名称绑定、过程/函数、OUT/INOUT、RETURNING、批量、游标及可更新结果、大对象、复杂类型、元数据、本地与 XA 事务、地址发现、故障切换、安全认证、OB20、追踪和诊断。Java 的 OSGi、JMX、JDBC 旧类名及 Java 对象序列化应映射到 Go 的相应机制，不成为 Go 用户必须学习的 API。
+“Complete functionality” means adapting observable capabilities: ordinary execution, both preparation strategies, named binding, procedures/functions, OUT/INOUT, RETURNING, batching, cursors and updatable results, large objects, complex types, metadata, local and XA transactions, address discovery, failover, secure authentication, OB20, tracing, and diagnostics. Java OSGi, JMX, legacy JDBC class names, and Java object serialization should map to corresponding Go mechanisms rather than become APIs that Go users must learn.
 
-能力本身受 OceanBase/OBProxy 的版本和协商结果限制。设计包含这些能力，不等于任意版本、任意模式都能执行它们；不支持时应给出明确错误或采用保持语义的实现。
+Capabilities depend on the OceanBase/OBProxy version and negotiation results. Including a capability in the design does not mean every version and mode can execute it. Unsupported cases must return a clear error or use an implementation that preserves semantics.
 
-## 2. 总体方案
+## 2. Overall Design
 
-采用 **`database/sql` 标准入口 + 一个公共 `oceanbase` 包 + 共享会话/执行内核 + 显式的模式处理**。
+Use **the standard `database/sql` entry point + one public `oceanbase` package + a shared session/execution core + explicit mode handling**.
 
-| 决策 | 设计 |
+| Decision | Design |
 | --- | --- |
-| 普通调用 | `sql.DB`、`sql.Conn`、`sql.Tx`、`sql.Stmt`、`sql.Rows` |
-| 连接池 | 由 `database/sql` 管理，驱动不再实现一个池 |
-| 物理连接 | 一个底层 Socket 对应一个物理会话；执行过程中不换 Socket |
-| 兼容模式 | 从认证响应识别；配置中的模式仅作为期望约束 |
-| 扩展能力 | 标准接口能表达的继续使用标准接口；不能表达的提供小型函数或具体类型 |
-| 类型扩展 | 输入使用 `NamedValueChecker`；普通读取使用 `Scanner` 和标准值 |
-| Go 1.26 适配 | 不依赖 `RowsColumnScanner`、`sql.ConvertAssign`，不使用标准库内部符号或 `go:linkname` |
-| 日志 | Connector 实例持有调用方 logger，nil 表示关闭日志 |
-| 重试 | 新建连接可更换候选地址；已发送业务操作不自动重放 |
-| 实现方式 | 优先纯 Go、标准库；字符集及平台认证等确有需要时使用范围明确的依赖 |
+| Ordinary calls | `sql.DB`, `sql.Conn`, `sql.Tx`, `sql.Stmt`, `sql.Rows` |
+| Connection pool | Managed by `database/sql`; the driver does not implement another pool |
+| Physical connection | One underlying socket represents one physical session; do not switch sockets during execution |
+| Compatibility mode | Identify it from the authentication response; configured mode is only an expected-mode constraint |
+| Extensions | Use standard interfaces wherever they can express the capability; otherwise expose small functions or concrete types |
+| Extended types | Use `NamedValueChecker` for input; use `Scanner` and standard values for ordinary reads |
+| Go 1.26 compatibility | No dependency on `RowsColumnScanner` or `sql.ConvertAssign`; no standard library internal symbols or `go:linkname` |
+| Logging | Each Connector holds the caller's logger; nil disables logging |
+| Retries | New connections may try another candidate address; never automatically replay a business operation that has been sent |
+| Implementation | Prefer pure Go and the standard library; use narrowly scoped dependencies where character sets or platform authentication require them |
 
-不采用在一个入口下简单转发给两个现有数据库驱动的总体结构。Java 已显示 Oracle 兼容模式涉及 OceanBase 自身的命令、类型、LOB 和游标扩展，必须有本驱动可控制的共享协议实现。[J01][J02]
+Do not implement the overall design as a single entry point that merely forwards to two existing database drivers. The Java source shows that Oracle compatibility mode involves OceanBase-specific commands, types, LOBs, and cursor extensions, requiring a shared protocol implementation controlled by this driver.[J01][J02]
 
 ```mermaid
 flowchart TD
-    APP[业务代码] --> SQL[database/sql]
-    APP --> EXT[批量 / LOB / Cursor / 元数据 / XA 扩展]
+    APP[Application code] --> SQL[database/sql]
+    APP --> EXT[Batch / LOB / Cursor / Metadata / XA extensions]
     EXT --> SQL
     SQL --> ADAPTER[Driver / Connector / Conn / Stmt / Rows / Tx]
-    ADAPTER --> CORE[会话与执行内核]
-    CORE --> MODE[Oracle / MySQL 兼容模式处理]
-    CORE --> WIRE[命令、响应、标准包流 / 压缩 / OB20]
-    CORE --> ROUTE[连接建立时的选址和地址发现]
-    WIRE --> NET[net.Conn / TLS / 认证]
+    ADAPTER --> CORE[Session and execution core]
+    CORE --> MODE[Oracle / MySQL compatibility mode handling]
+    CORE --> WIRE[Commands, responses, standard packet stream / compression / OB20]
+    CORE --> ROUTE[Address selection and discovery during connection establishment]
+    WIRE --> NET[net.Conn / TLS / authentication]
     NET --> OB[OceanBase / OBProxy]
-    CORE -. 结构化诊断 .-> LOG[外部注入的 slog.Logger]
+    CORE -. Structured diagnostics .-> LOG[Caller-provided slog.Logger]
 ```
 
-扩展层复用同一内核、连接和错误规则，不另建一套连接管理系统。
+The extension layer reuses the same core, connections, and error rules; it does not introduce separate connection management.
 
-## 3. 比 Java 骨架更深入的约束
+## 3. Constraints Beyond the Java Skeleton
 
-| 源码事实 | Go 架构必须作出的处理 |
+| Source fact | Required Go architecture response |
 | --- | --- |
-| 认证 OK 状态位识别 Oracle 兼容模式 | `Config.Mode` 不强制改解释器；连接成功后校验实际模式。[J01] |
-| 相同类型码存在两套类型解释 | 解码上下文必须包含实际模式，不能仅按类型码转换。[J03] |
-| Java 接收普通、callable OUT、cursor 和多结果响应 | 响应解析是一个完整状态机，不能读到第一份结果就归还连接。[J04] |
-| Java COM_RESET_CONNECTION 会清理 prepare 缓存 | Go 的 session reset 必须同时处理 statement ID 的失效和重新 prepare。[J05] |
-| Java 的部分 LOB 路径为避开活跃流式结果另开连接 | Go 不复制隐式辅助连接；大对象通过明确的会话归属和游标批次边界完成读写。[J06] |
-| Java 会判定某些 SELECT 可以重放 | Go 不依据 SQL 首词判定安全性；有函数、副作用、锁语义的 SELECT 也不能据此重放。[J07] |
-| Java PrepareExecute 及 offset fetch 另有版本条件 | 功能判定结合模式、选项、版本和能力；不把一个 `isOracle` 布尔值当作全部能力。[J08] |
-| Go 的 `ErrBadConn` 会触发标准库重试 | 业务操作可能已执行时必须返回原错误，并通过 Validator 淘汰连接。[G01][G02] |
-| Go 的 Rows 与 Scanner 主要传递标准值 | 复杂值必须有明确定义的无损表示；连接相关句柄使用独立扩展入口。[G03][G04] |
+| Authentication OK status bits identify Oracle compatibility mode | `Config.Mode` does not force another interpreter; validate the actual mode after connecting.[J01] |
+| The same type codes have two interpretations | Decoding context must include the actual mode; type code alone is insufficient.[J03] |
+| Java receives ordinary, callable OUT, cursor, and multiple-result responses | Response parsing is a complete state machine; do not return the connection after reading only the first result.[J04] |
+| Java COM_RESET_CONNECTION clears the prepare cache | Go session reset must also invalidate statement IDs and prepare statements again.[J05] |
+| Some Java LOB paths open another connection to avoid active streaming results | Go does not copy implicit auxiliary connections; large objects use explicit session ownership and cursor batch boundaries.[J06] |
+| Java considers some SELECT statements replayable | Go does not infer safety from the first SQL word; SELECT statements with functions, side effects, or locking semantics cannot safely be replayed on that basis.[J07] |
+| Java PrepareExecute and offset fetch have additional version requirements | Gate features using mode, options, version, and capabilities; one `isOracle` boolean cannot represent every capability.[J08] |
+| Go `ErrBadConn` triggers standard library retries | When a business operation might have executed, return its original error and discard the connection through Validator.[G01][G02] |
+| Go Rows and Scanner primarily exchange standard values | Complex values require explicit lossless representations; connection-bound handles use separate extension entry points.[G03][G04] |
 
-## 4. 包与文件组织
+## 4. Package and File Organization
 
-建议先保留一个公共包，按 Go 文件组织职责；只有协议边界和可独立复用的内部子系统进入 `internal`。
+Start with one public package and organize responsibilities by Go file. Only protocol boundaries and independently reusable `internal` subsystems belong in `internal`.
 
 ```text
 go-oceanbase/
 ├── go.mod                         go 1.26
-├── driver.go / connector.go        注册、配置快照、建连入口
-├── config.go / dsn.go              Go 配置与连接串
-├── conn.go / session.go            物理会话、生命周期、操作状态
-├── mode.go / capabilities.go       实际模式、版本与生效能力
-├── stmt.go / execute.go            普通执行及两类预处理
-├── bind.go / bind_oracle.go         参数计划、名称绑定、类型处理
-├── rows.go / result.go             标准 Rows、多结果、计数和生成键
-├── codec.go / codec_mysql.go       共享值转换及 MySQL 兼容模式
-├── codec_oracle.go / types.go      Oracle 兼容模式及公开扩展值
-├── tx.go / savepoint.go / xa.go    本地事务、保存点、XA
-├── batch.go / call.go              批量、过程、输出参数
-├── lob.go / cursor.go              连接相关扩展资源
-├── metadata.go / metadata_sql_*.go 数据库结构和类型字典
-├── error.go / logging.go           错误、注入日志及诊断
-├── trace.go / local_infile.go      请求追踪、本地数据导入
+├── driver.go / connector.go        Registration, configuration snapshots, connection entry points
+├── config.go / dsn.go              Go configuration and connection strings
+├── conn.go / session.go            Physical sessions, lifecycle, operation state
+├── mode.go / capabilities.go       Actual mode, versions, effective capabilities
+├── stmt.go / execute.go            Ordinary execution and both preparation strategies
+├── bind.go / bind_oracle.go         Parameter plans, named binding, type handling
+├── rows.go / result.go             Standard Rows, multiple results, counts, generated keys
+├── codec.go / codec_mysql.go       Shared value conversions and MySQL compatibility mode
+├── codec_oracle.go / types.go      Oracle compatibility mode and public extension values
+├── tx.go / savepoint.go / xa.go    Local transactions, savepoints, XA
+├── batch.go / call.go              Batching, procedures, output parameters
+├── lob.go / cursor.go              Connection-bound extension resources
+├── metadata.go / metadata_sql_*.go Database structure and type dictionaries
+├── error.go / logging.go           Errors, injected logging, diagnostics
+├── trace.go / local_infile.go      Request tracing, local data import
 ├── internal/
-│   ├── wire/                      包边界、缓冲、命令与响应基础结构、OB20
-│   ├── auth/                      认证算法及算法自身的阶段状态
-│   ├── routing/                   地址、TNS/OCP、负载均衡、黑名单
-│   └── charset/                   字符集编码与 collation 映射
-├── examples/                      标准用法与扩展用法
-└── docs/                          架构、能力矩阵、协议证据和 API 说明
+│   ├── wire/                      Packet boundaries, buffers, command/response foundations, OB20
+│   ├── auth/                      Authentication algorithms and their phase state
+│   ├── routing/                   Addresses, TNS/OCP, load balancing, blacklist
+│   └── charset/                   Character encoding and collation mapping
+├── examples/                      Standard and extension usage
+└── docs/                          Architecture, capability matrix, protocol evidence, API documentation
 ```
 
-这些文件名用于说明职责，不要求一次创建所有空文件。`wire` 不依赖 `database/sql` 或公共业务类型；`routing` 不执行用户 SQL；模式处理留在同一 Go 包内，避免为了两个内置模式建立跨包接口层。
+These filenames describe responsibilities; they do not require creating every empty file at once. `wire` does not depend on `database/sql` or public business types; `routing` does not execute user SQL. Mode handling stays in the same Go package, avoiding a cross-package interface layer for two built-in modes.
 
-允许的生产包依赖固定为 `oceanbase → internal/{wire,auth,routing,charset}`；这四个内部包不得导入根包，初始也不互相导入。它们可以依赖标准库和所属任务确认的必要算法/平台库。根包负责组合、握手顺序、认证安全门禁、会话执行、模式和策略；内部包只接收自身定义的小型输入值、返回自身结果，不接收整个 Config/Conn，也不为共享类型增加 common/core/interfaces 包。
+Allowed production dependencies are fixed as `oceanbase → internal/{wire,auth,routing,charset}`. These four internal packages must not import the root package and initially must not import one another. They may depend on the standard library and necessary algorithm/platform libraries confirmed by their tasks. The root package owns composition, handshake ordering, authentication security gates, session execution, mode, and policy. Internal packages accept small inputs of their own types and return their own results; they do not receive an entire Config/Conn or introduce common/core/interfaces packages for shared types.
 
-| 类型/行为 | 归属及转换边界 |
+| Type/behavior | Ownership and conversion boundary |
 | --- | --- |
-| Config、Mode、公开凭据回调及认证工厂/插件接口 | 根包；公开签名只使用公开类型/标准库类型，不泄漏 internal 类型 |
-| 算法输入、challenge/response、算法阶段状态 | auth 自有类型；根包适配公开插件与内置算法，受控发送及 TLS 门禁留在根包；auth 不操作 wire/Socket |
-| 包头、基础握手字段、命令/响应结构 | wire 自有类型；根包将字段转成实际 Mode、Capabilities 和错误 |
-| 地址、发现结果、负载选择状态 | routing 自有类型；根包提供必要配置值并检查模式/角色策略，不传整个 Config |
-| 编码器、collation 数据 | charset 自有类型；根包 codec 负责数据库类型和值语义 |
+| Config, Mode, public credential callbacks, authentication factory/plugin interfaces | Root package; public signatures use only public or standard library types and never expose internal types |
+| Algorithm inputs, challenge/response, algorithm phase state | auth-owned types; the root package adapts public plugins and built-in algorithms and retains controlled sending and TLS gates; auth never operates wire/sockets |
+| Packet headers, basic handshake fields, command/response structures | wire-owned types; the root package converts fields into actual Mode, Capabilities, and errors |
+| Addresses, discovery results, load selection state | routing-owned types; the root package supplies necessary configuration values and validates mode/role policies without passing an entire Config |
+| Encoders and collation data | charset-owned types; root-package codecs own database type and value semantics |
 
-测试辅助 `internal/testutil` 只依赖标准库，用 net.Conn、字节及 context 模拟对端，不导入根包或上述内部包；生产代码不得导入它。包测试可以单向使用 testutil，外部 API 测试和 integration 可导入根包。D01 起 CI 用 `go list -deps ./...` 检测实际循环；D02 增加根包外部测试 `architecture_test.go`，解析 `go list -deps -json -test -tags=integration ./...` 校验生产及测试 import 边，阻止反向/横向依赖。新增内部包或依赖边先同步本节及测试规则，不能仅因编译暂时通过而放行。
+The test helper `internal/testutil` depends only on the standard library and simulates peers using net.Conn, bytes, and context. It must not import the root package or the internal packages above, and production code must not import it. Package tests may depend on testutil in one direction; external API and integration tests may import the root package. From D01, CI uses `go list -deps ./...` to detect actual cycles. D02 adds the external root-package test `architecture_test.go`, parsing `go list -deps -json -test -tags=integration ./...` to validate production and test import edges and reject reverse/lateral dependencies. New internal packages or dependency edges must first update this section and the test rules; temporarily successful compilation is insufficient.
 
-模式分派采用具体函数和小范围 `switch`，例如 `initSession`、`encodeParameter`、`decodeColumn`、`metadataSQL`。只有两种实现且调用点固定时，不先引入 DialectFactory、ProtocolFactory、ServiceContainer 等结构。
+Use concrete functions and small `switch` statements for mode dispatch, such as `initSession`, `encodeParameter`, `decodeColumn`, and `metadataSQL`. With only two implementations and fixed call sites, do not introduce DialectFactory, ProtocolFactory, ServiceContainer, or similar structures upfront.
 
-## 5. 普通用户的入口
+## 5. Entry Points for Ordinary Users
 
-连接字符串入口继续保留：
+Retain the connection string entry point:
 
 ```go
 db, err := sql.Open("oceanbase", "oceanbase://app:secret@127.0.0.1:2881/demo?mode=auto")
 ```
 
-需要 logger、TLS 或外部凭据时，建议使用程序化配置：
+For logging, TLS, or external credentials, prefer programmatic configuration:
 
 ```go
-// oceanbase 已按项目的最终模块路径导入；示例中的符号属于设计 API。
+// oceanbase is imported using the project's final module path; the symbols below are design APIs.
 logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 connector, err := oceanbase.NewConnector(oceanbase.Config{
@@ -159,148 +159,148 @@ if err := db.PingContext(ctx); err != nil {
 }
 ```
 
-这是用法片段，不是已可运行的包。`NewConnector` 验证配置并生成快照，不进行网络连接；实际建连发生在 `Connect`。用户名按 OceanBase/OBProxy 所需形式传递，不擅自拆写 tenant/cluster 语义。
+This is a usage fragment, not an already runnable package. `NewConnector` validates configuration and creates a snapshot without connecting to the network; the actual connection is established in `Connect`. Pass usernames in the form required by OceanBase/OBProxy without independently splitting or rewriting tenant/cluster semantics.
 
-主要入口建议保持为：
+Keep the main entry points as:
 
 ```go
 func ParseDSN(dsn string) (Config, error)
 func NewConnector(cfg Config) (driver.Connector, error)
 ```
 
-不再提供另一个 DB、Connection、Transaction 或 Pool 包装类。直接使用 `sql.OpenDB`，避免重复维护 Go 标准库已经提供的构造和连接池配置。
+Do not add another DB, Connection, Transaction, or Pool wrapper. Use `sql.OpenDB` directly to avoid maintaining constructors and connection pool configuration already supplied by the Go standard library.
 
-### 5.1 D32 标准连接池与生命周期
+### 5.1 D32 Standard Connection Pool and Lifecycle
 
-`sql.Open` / `sql.OpenDB` 返回并发安全、延迟建连的 `*sql.DB`，应用长期复用并在退出时关闭。`sql.Conn.Close` 归还租约，`sql.DB.Close` 关闭池；不能用每次请求创建/关闭 DB 的方式模拟 Java Connection。模式绑定属于 Connector；需要独立模式、身份、配置或生命周期时分别创建 Connector 和 DB，不共享可变配置。使用同一 Connector 创建多个 DB 时会共享其模式锁定、路由/发现和关闭状态；关闭任意 DB 会关闭该 Connector，其他 DB 随后不能再建立物理会话，因此不要复用 Connector 创建独立池。
+`sql.Open` / `sql.OpenDB` return a concurrency-safe `*sql.DB` with lazy connection establishment; applications should reuse it long term and close it on shutdown. `sql.Conn.Close` returns a lease; `sql.DB.Close` closes the pool. Creating/closing a DB per request must not emulate a Java Connection. Mode binding belongs to the Connector. Create separate Connectors and DBs for independent modes, identities, configurations, or lifecycles, without shared mutable configuration. Multiple DBs created from one Connector share its mode lock, routing/discovery, and closed state. Closing any DB closes that Connector, preventing the others from creating further physical sessions; do not reuse a Connector for independent pools.
 
-| 能力 | Go 原生契约与默认差异 |
+| Capability | Native Go contract and default differences |
 | --- | --- |
-| 最大连接数 | `SetMaxOpenConns(n)` 限制物理连接数，`n<=0` 无上限，Go 默认0；Java maxPoolSize 默认8。达到上限的借用等待业务 context，不额外建连，也不重放 SQL |
-| 空闲连接数 | `SetMaxIdleConns(n)` 是空闲上限，Go 默认2，`n<=0` 不保留空闲会话，正数受 MaxOpenConns 上限约束；不是 Java minPoolSize 的保底，也不主动预热 |
-| 一次性就绪 | 应用可同时持有 N 个 sql.Conn，逐个 Ping 后统一归还，见[示例](../pool_example_test.go)。这样检查多个物理会话；连续调用 DB.Ping 可能始终复用一个会话。示例 helper 检查 N 不超过当前最大连接数，必须在池配置稳定的启动阶段配合超时使用；失败/取消释放已借租约，健康连接仍可留在池中，不回滚已经完成的建连 |
-| 空闲与寿命 | `SetConnMaxIdleTime` / `SetConnMaxLifetime` 都是 duration，默认0关闭；Java maxIdleTime 默认600秒、最小60秒。过期回收由标准库触发，非精确定时器；持有中的 Conn/Tx/Rows 不因寿命到期被主动打断，归还或下次借用时淘汰/替换 |
-| 校验 | `PingContext` 显式访问服务端；Validator 只判断本地会话有效性。Routing.ValidationInterval 正数在复用的 ResetSession 中按上次操作完成后的空闲时长决定是否发送 PING，0关闭；Java poolValidMinDelay 默认1000毫秒，0则每次借用都校验，两者零值语义不同。没有复制 Java 后台定时校验池 |
-| 会话基线与缓存 | 每条新物理会话都执行必要初始化；Managed reset 只恢复已跟踪的事务/autocommit 状态，任意业务 SQL 的会话变量不会被完整清除，需要完全隔离时用 ResetFull 淘汰。Java staticGlobal 默认false，true 表示假定服务端全局变量恒定并缓存初始化信息，不是进程静态配置开关；Go 不实现这种跨会话全局变量缓存，不由其他池提供初始化值 |
-| 标识与监控 | 应用变量/外部 logger.With("pool", name) 标识池，db.Stats 提供 OpenConnections/InUse/Idle、累计 WaitCount/WaitDuration、三类关闭计数；由应用接入监控，不自动注册 JMX、exporter 或日志后台任务。Logger=nil 仍静默 |
+| Maximum connections | `SetMaxOpenConns(n)` limits physical connections; `n<=0` is unlimited, and the Go default is 0; Java maxPoolSize defaults to 8. At the limit, borrowers wait under the operation context; no extra connection is created and no SQL is replayed |
+| Idle connections | `SetMaxIdleConns(n)` is an upper bound, defaulting to 2 in Go; `n<=0` retains no idle sessions, and positive values are capped by MaxOpenConns. It is not the guaranteed minimum of Java minPoolSize and performs no proactive warmup |
+| One-time readiness | Applications may hold N sql.Conn leases simultaneously, Ping each, then return them together; see the [example](../pool_example_test.go). This checks multiple physical sessions; repeated DB.Ping calls may reuse one session. The example helper checks that N does not exceed the current connection maximum and must run with a timeout during startup while pool configuration is stable. Failure/cancellation releases acquired leases; healthy connections may remain pooled, and completed connection establishment is not rolled back |
+| Idle time and lifetime | `SetConnMaxIdleTime` / `SetConnMaxLifetime` use durations; 0 disables either by default. Java maxIdleTime defaults to 600 seconds with a 60-second minimum. The standard library triggers expiry cleanup; it is not an exact timer. Held Conn/Tx/Rows are not interrupted when lifetime expires; connections are discarded/replaced on return or next checkout |
+| Validation | `PingContext` explicitly contacts the server; Validator checks only local session validity. A positive Routing.ValidationInterval sends PING in ResetSession when a reused session has been idle long enough since its last completed operation; 0 disables this. Java poolValidMinDelay defaults to 1000 milliseconds and validates on every checkout at 0, so zero-value semantics differ. No Java background validation pool is copied |
+| Session baseline and cache | Every new physical session receives required initialization. Managed reset restores only tracked transaction/autocommit state; it does not clear all session variables changed by arbitrary business SQL. Use ResetFull to discard sessions when full isolation is required. Java staticGlobal defaults to false; true assumes constant server global variables and caches initialization information, rather than enabling process-static configuration. Go does not implement this cross-session global-variable cache or obtain initialization values from other pools |
+| Identification and monitoring | Identify pools through application variables or external logger.With("pool", name). db.Stats exposes OpenConnections/InUse/Idle, cumulative WaitCount/WaitDuration, and three closure counters. Applications integrate monitoring; the driver does not automatically register JMX, exporters, or background logging tasks. Logger=nil remains silent |
 
-本地 TestPool* 直接使用实际驱动与 database/sql，协议对端检查两模式初始化、同会话 PING/QUIT、取消零发送和物理连接计数；涵盖预热/失败/取消/服务端拒绝、限额等待、复用、空闲/寿命回收和独立 Auto 模式池。旧 Java 池 DSN 名称明确拒绝，没有新增公共包、生产配置或驱动池。真实服务端空闲超时、容量、长期负载及监控部署仍待联调；示例不维持最小连接数，也不构成 D32 整项完成。
+Local TestPool* tests use the actual driver and database/sql. Protocol peers check initialization in both modes, same-session PING/QUIT, zero sends on cancellation, and physical connection counts. They cover warmup/failure/cancellation/server rejection, limit waits, reuse, idle/lifetime cleanup, and independent Auto-mode pools. Legacy Java pool DSN names are explicitly rejected; no public package, production configuration, or driver pool was added. Real server idle timeouts, capacity, sustained load, and monitoring deployment still require integration validation. The example does not maintain a minimum connection count and does not complete all of D32.
 
-## 6. 配置模型和默认值
+## 6. Configuration Model and Defaults
 
-`Config` 的常用字段置于第一层：`Addr`、`User`、`Password`、`Database`、`Mode`、`Logger`、`TLSConfig`、`ConnectTimeout`。高级选项按真实职责分组，不照搬 Java 的全部布尔开关。
+Keep common `Config` fields at the top level: `Addr`, `User`, `Password`, `Database`, `Mode`, `Logger`, `TLSConfig`, and `ConnectTimeout`. Group advanced options by actual responsibility rather than copying every Java boolean switch.
 
-| 分组 | 承载能力与建议默认值 |
+| Group | Capabilities and proposed defaults |
 | --- | --- |
-| 连接 | `Addr` 默认 `127.0.0.1:2881`；静态 User 或 Credentials 回调必填；连接建立总预算默认 10 秒，受调用 context 更早期限约束 |
-| 连接声明 | `Interactive` 默认 false；`ConnectionAttributes` 默认 nil，仅显式提供应用元数据；见 §6.1 |
-| 初始数据库 | `CreateDatabaseIfMissing` 默认 false；仅新 MySQL 模式物理连接可显式创建并选择非空 Database，见 §6.4 |
-| 读取预算 | `ReadTimeout` 默认0，关闭独立读取超时；正值限制每次底层网络 Read，context 的较早期限仍生效，见 §12.5.1 |
-| 模式 | `ModeAuto` 为零值；`ModeMySQL` / `ModeOracle` 是实际模式校验约束 |
-| 传输 | `TLSConfig *tls.Config`、`DialContext`；TCP 为默认；nil 不主动启用 TLS，非 nil 必须成功验证 TLS，禁止降级；明文凭据限制见 §17.2 |
-| 凭据/认证 | 外部 Credentials 回调、按 Connector 配置的认证插件工厂；未提供回调时使用静态 User/Password/ProxyUser；代理登录见 §6.3 |
-| 协议 | `Config.Protocol`：Compression、OB20、Checksum、ProxyChecksum、NewMetadata；零值 FeatureAuto，另有 FeatureOff/FeatureRequired；以建连协商结果为准 |
-| 执行 | 自动选用服务端预处理；显式支持客户端预处理、合并执行、缓存和批量策略；`AllowMultiStatements` 默认 false；`RowsAffectedMode` 默认 `MatchedRows`，见 §11.4 |
-| 会话 | 字符集、NCHAR 字符集、Location、会话初始化设置、Managed/Full 两种 reset 策略 |
-| 资源 | 最大逻辑消息、LOB 物化上限、FetchSize、`MaxResultItems`、关闭/清理时间上限、缓存容量 |
-| HA | Config.Routing：静态地址、固定角色、组内策略、单次/总建连预算、有界黑名单；ValidationInterval 可选复用前探活；见 §17.1.1 |
-| 诊断 | 慢请求阈值、受限包追踪回调、完整链路追踪；日志开关由 Logger 是否为 nil 决定 |
+| Connection | `Addr` defaults to `127.0.0.1:2881`; static User or a Credentials callback is required; the total connection establishment budget defaults to 10 seconds, constrained by any earlier calling-context deadline |
+| Connection declarations | `Interactive` defaults to false; `ConnectionAttributes` defaults to nil and sends application metadata only when explicitly supplied; see §6.1 |
+| Initial database | `CreateDatabaseIfMissing` defaults to false; only new MySQL-mode physical connections may explicitly create and select a nonempty Database; see §6.4 |
+| Read budget | `ReadTimeout` defaults to 0, disabling the separate read timeout; a positive value limits each underlying network Read, while any earlier context deadline still applies; see §12.5.1 |
+| Mode | `ModeAuto` is the zero value; `ModeMySQL` / `ModeOracle` constrain actual mode validation |
+| Transport | `TLSConfig *tls.Config`, `DialContext`; TCP is the default. nil does not proactively enable TLS; non-nil requires successfully verified TLS and forbids downgrade. See §17.2 for plaintext credential restrictions |
+| Credentials/authentication | External Credentials callback and per-Connector authentication plugin factories; use static User/Password/ProxyUser without a callback. See §6.3 for proxy login |
+| Protocol | `Config.Protocol`: Compression, OB20, Checksum, ProxyChecksum, NewMetadata; the zero value is FeatureAuto, with FeatureOff/FeatureRequired also available; connection negotiation determines the outcome |
+| Execution | Automatically select server-side preparation; explicitly support client-side preparation, combined execution, caching, and batch policies; `AllowMultiStatements` defaults to false; `RowsAffectedMode` defaults to `MatchedRows`, see §11.4 |
+| Session | Charset, NCHAR charset, Location, session initialization settings, Managed/Full reset policies |
+| Resources | Maximum logical message size, LOB materialization limit, FetchSize, `MaxResultItems`, close/cleanup timeout, cache capacity |
+| HA | Config.Routing: static addresses, fixed roles, within-group policy, per-attempt/total connection budgets, bounded blacklist; optional ValidationInterval checks liveness before reuse; see §17.1.1 |
+| Diagnostics | Slow-request threshold, bounded packet tracing callback, full-link tracing; Logger nilness controls logging |
 
-建议初始资源默认值：逻辑消息上限 64 MiB、单个 LOB 自动物化上限 16 MiB、游标 fetch 128 行、一次 Execute 的结果摘要上限 `MaxResultItems=1024`、清理时间上限 1 秒。具体限制可以配置；超过限制返回明确错误，不截断后宣称成功；大对象提示使用流式入口。物理分包长度和逻辑消息上限是两个不同概念。
+Proposed initial resource defaults: 64 MiB maximum logical message, 16 MiB automatic materialization per LOB, cursor fetch of 128 rows, `MaxResultItems=1024` result summaries per Execute, and a 1-second cleanup timeout. Limits are configurable. Exceeding a limit returns a clear error rather than truncating and claiming success; large objects should direct callers to streaming entry points. Physical packet size and logical message limits are separate concepts.
 
-认证配置现有接口为 `Credentials func(context.Context) (Credentials, error)`、`AuthOptions{RSAKey, Plugins}`。Plugins 按协议插件名映射到每次认证的工厂，返回实现 Security/Respond 的插件。RSAKey 使用调用方固定的公钥且在 Connector 中复制，禁自动检索。回调、插件工厂及外部 TLS 对象内的回调/私钥对象需满足并发安全与 context 契约。接口的安全边界见 [兼容矩阵](go-driver-compatibility-matrix.md)。
+Existing authentication configuration interfaces are `Credentials func(context.Context) (Credentials, error)` and `AuthOptions{RSAKey, Plugins}`. Plugins maps protocol plugin names to per-authentication factories returning plugins implementing Security/Respond. RSAKey is a caller-pinned public key copied into the Connector; automatic retrieval is forbidden. Callbacks, plugin factories, and callbacks/private-key objects inside external TLS objects must meet concurrency and context contracts. See the [Compatibility Matrix](go-driver-compatibility-matrix.md) for interface security boundaries.
 
-首次握手的用户名及 CLIENT_CONNECT_WITH_DB 选择的数据库名均从 Go UTF-8 字符串严格编码为 `Session.Charset`，与握手 collation 声明及 ChangeUser 一致。无效 UTF-8 或不可表示的字符在创建认证插件/发送认证响应前返回脱敏 ConfigError 并关闭连接；未声明选库位时不在握手内编码或发送 Database。插件收到的 Credentials 及认证成功后的会话身份仍是原始 Go 字符串；密码编码独立由 `Auth.PasswordCharset` 控制。不依赖 Java 用户名 getBytes() 的平台默认编码。
+The initial handshake username and database name selected by CLIENT_CONNECT_WITH_DB are strictly encoded from Go UTF-8 strings into `Session.Charset`, consistently with the handshake collation declaration and ChangeUser. Invalid UTF-8 or unrepresentable characters return a redacted ConfigError and close the connection before creating authentication plugins/sending authentication responses. Without the database-selection bit, Database is neither encoded nor sent in the handshake. Plugins still receive original Go strings in Credentials, as does the authenticated session identity; password encoding is separately controlled by `Auth.PasswordCharset`. Do not depend on the platform-default encoding of Java username getBytes().
 
-配置规则：
+Configuration rules:
 
-- DSN 使用 `net/url` 的转义规则；参数名严格校验，未知项报错，敏感重复项报错。
-- `mode` 等与行为有关的参数不得静默忽略；错误信息不得包含完整 DSN 或密码。
-- logger、函数回调、TLS 对象通过 Go 配置传入，不用全局注册表或字符串名称寻找实例。
-- Connector 复制切片和 map，并 clone TLS 配置；公开 cfg 后续修改不改变已建立 Connector。外部回调和 logger 自身需满足各自并发契约。
-- 不提供允许任意 Java 参数透传的 `map[string]any`。每个公开选项必须对应已有功能和明确语义。
+- DSNs use `net/url` escaping rules. Validate parameter names strictly; reject unknown options and duplicated sensitive options.
+- Never silently ignore behavioral parameters such as `mode`; error messages must not contain the complete DSN or password.
+- Pass loggers, function callbacks, and TLS objects through Go configuration, without global registries or instance lookup by string name.
+- The Connector copies slices/maps and clones TLS configuration; subsequent changes to public cfg do not change an existing Connector. External callbacks and loggers must meet their own concurrency contracts.
+- Do not provide a `map[string]any` that forwards arbitrary Java options. Every public option must correspond to an existing feature and explicit semantics.
 
-### 6.1 D32 已实现的连接属性与交互标志
+### 6.1 D32 Implemented Connection Attributes and Interactive Flag
 
-`Config.Interactive` 对应 Java `interactiveClient`，两者默认均为 false；DSN 使用 `interactive=true/false`。启用时发送 CLIENT_INTERACTIVE 客户端请求位，不要求 greeting 先声明该位；实际空闲超时由服务端的 interactive_timeout 配置决定，不改变 Go context 或查询超时。
+`Config.Interactive` corresponds to Java `interactiveClient`; both default to false. The DSN uses `interactive=true/false`. Enabling it sends CLIENT_INTERACTIVE without requiring the greeting to advertise it first. The actual idle timeout follows server interactive_timeout settings without changing Go contexts or query timeouts.
 
-`Config.ConnectionAttributes map[string]string` 仅程序化提供，默认 nil；键和值使用 Go UTF-8 字符串，由驱动快照并按 `Session.Charset` 严格编码，握手和 ChangeUser 共用该路径。允许空值，拒绝空键、NUL、无效 UTF-8、不可表示字符和编码后键冲突。以下划线开头的键及 `ob_capability_flag` 保留给协议，不允许借此覆盖能力位或代理身份；代理登录使用独立的 §6.3 身份字段。
+`Config.ConnectionAttributes map[string]string` is programmatic only and defaults to nil. Keys and values are Go UTF-8 strings, snapshotted and strictly encoded using `Session.Charset` through the same path for handshakes and ChangeUser. Empty values are allowed; empty keys, NUL, invalid UTF-8, unrepresentable characters, and encoded key collisions are rejected. Keys starting with an underscore and `ob_capability_flag` are protocol-reserved and cannot override capability bits or proxy identity. Proxy login uses the separate identity fields in §6.3.
 
-属性区（包含驱动声明、键值及全部长度前缀）累计受 `Limits.MaxMessageBytes` 限制；编码前按字符数检查最小空间，编码后逐项扣减预算，避免 GBK 收缩误拒与无界聚合。完整握手仍受原有消息限额约束。配置错误只返回字段名；目标未声明 CLIENT_CONNECT_ATTRS 时，显式非空属性在请求凭据前返回 ErrUnsupported，不静默丢弃。
+The entire attribute area, including driver declarations, key/value pairs, and all length prefixes, is bounded by `Limits.MaxMessageBytes`. Before encoding, character counts establish minimum required space; after encoding, each item consumes the remaining budget, avoiding false rejection from GBK contraction and unbounded aggregation. The full handshake still obeys the existing message limit. Configuration errors return field names only. If the target lacks CLIENT_CONNECT_ATTRS, explicit nonempty attributes return ErrUnsupported before credentials are requested rather than being silently discarded.
 
-Go 不自动采集 Java 的 PID、线程、OS、主机等动态属性，因此 Java `sendConnectionAttributes`/默认属性排除列表映射为调用方控制该 map 的内容，而不是复制全局开关。nil/空 map 不发送应用属性，驱动协议声明及显式代理身份仍由各自配置产生。属性不会被驱动日志或诊断回调输出；是否保护传输仍遵循 `TLSConfig`，启用 TLS 时属性只存在于验证成功后的握手响应内。
+Go does not automatically collect Java's dynamic PID, thread, OS, host, or similar attributes. Java `sendConnectionAttributes` and its default-attribute exclusion list therefore map to caller control of this map, not copied global switches. A nil/empty map sends no application attributes; driver protocol declarations and explicit proxy identity still come from their respective configuration. Attributes are excluded from driver logs and diagnostic callbacks. Transport protection follows `TLSConfig`; with TLS enabled, attributes appear only in the handshake response after successful verification.
 
-本地覆盖两模式、UTF-8/GBK、GB18030 扩展编码、长度前缀阈值、配置快照、保留键、能力缺失、TLS，以及普通/压缩/OB20 的 ChangeUser 重发；不代表已验证服务端属性表可见性或 interactive_timeout 的实际效果。
+Local coverage includes both modes, UTF-8/GBK, extended GB18030 encoding, length-prefix thresholds, configuration snapshots, reserved keys, missing capabilities, TLS, and ChangeUser retransmission over ordinary/compressed/OB20 streams. This does not verify visibility in server attribute tables or the actual effect of interactive_timeout.
 
-### 6.2 D32 已实现的连接排序规则
+### 6.2 D32 Implemented Connection Collation
 
-`SessionOptions.Collation string` / DSN `collation` 对应 Java `connectionCollation`；Go 零值为空，Java 默认 null，均不额外选择自定义排序规则。非空值先按原始 ASCII 标识符校验（最长128字节），再转小写；拒绝空白、引号、分隔符、NUL、非 ASCII 和无效 UTF-8，不用字符串拼接承载任意 SQL。
+`SessionOptions.Collation string` / DSN `collation` corresponds to Java `connectionCollation`. Go's zero value is empty and Java defaults to null; neither selects an additional custom `collation`. Nonempty values must first pass original ASCII-identifier validation (maximum 128 bytes), then are lowercased. Whitespace, quotes, separators, NUL, non-ASCII, and invalid UTF-8 are rejected; string concatenation must not carry arbitrary SQL.
 
-MySQL 兼容模式初始化使用 `SET NAMES <Charset> COLLATE <Collation>`，以同一命令设置 client/connection/results 字符集和 connection 排序规则。排序规则不擅自改写调用方 Charset，未设置 Charset 时仍默认 utf8mb4；名称是否存在、是否匹配该字符集由目标服务原子校验，失败保留服务端错误并关闭连接，不回退成默认规则。依据为固定 Java `AbstractConnectProtocol.setCollationVariables` 的模式条件，以及 [OceanBase v4.3.5_CE MySQL 语法](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/sql/parser/sql_parser_mysql_mode.y) 的 `NAMES charset_name_or_default opt_collation`。
+MySQL compatibility mode initializes with `SET NAMES <Charset> COLLATE <Collation>`, setting client/connection/results character sets and connection collation in one command. Collation never rewrites the caller's Charset; unspecified Charset still defaults to utf8mb4. The target server atomically validates the name and charset compatibility. Failure preserves the server error and closes the connection without default fallback. Evidence is the mode condition in pinned Java `AbstractConnectProtocol.setCollationVariables` and `NAMES charset_name_or_default opt_collation` in the [OceanBase v4.3.5_CE MySQL grammar](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/sql/parser/sql_parser_mysql_mode.y).
 
-执行 Session.Variables/InitSQL 后复用同一设置恢复基线，ChangeUser 初始化和 Full reset 的新连接继续应用该配置；Managed reset 的职责边界不变。驱动编码始终由 Charset 决定，结果解码按列的实际 collation ID，不从名称猜测字节编码。
+After Session.Variables/InitSQL, the same setting restores the baseline. ChangeUser initialization and new Full reset replacement connections continue applying it; the Managed reset boundary is unchanged. Driver encoding always follows Charset; result decoding follows each column's actual collation ID without guessing encoding from its name.
 
-Java 在 Oracle 兼容模式忽略该选项，Go 显式配置则拒绝：已指定 ModeOracle 时 NewConnector 返回 `ConfigError{Field:"Session.Collation"}`；ModeAuto 认证后识别为 Oracle 时，在任何初始化 SQL 前返回 ErrUnsupported。此字段不替代 Oracle 的 NLS 设置。
+Java ignores this option in Oracle compatibility mode; Go rejects explicit configuration. With ModeOracle set, NewConnector returns `ConfigError{Field:"Session.Collation"}`; with ModeAuto identified as Oracle after authentication, it returns ErrUnsupported before initialization SQL. This field does not replace Oracle NLS settings.
 
-本地覆盖配置/DSN、UTF-8/GBK/utf8mb3 别名、初始化恢复、ChangeUser、Full reset 替换连接、普通/压缩/OB20、服务端错误及 Oracle 拒绝。`ExampleSessionOptions_collation` 可运行且不建立网络连接。四目标 TestSessionCollation 集成源码已接手动 CI：MySQL 正向验证会话状态、比较效果、预处理 Unicode 和重建基线，Oracle 验证配置拒绝；本阶段仅编译，不提供真实效果或版本兼容承诺。
+Local coverage includes configuration/DSN, UTF-8/GBK/utf8mb3 aliases, initialization restoration, ChangeUser, Full reset replacement, ordinary/compressed/OB20 streams, server errors, and Oracle rejection. `ExampleSessionOptions_collation` runs offline. Four-target TestSessionCollation integration source is wired into manual CI: MySQL checks session state, comparisons, prepared Unicode, and baseline reconstruction; Oracle checks configuration rejection. This phase compiles it only and makes no real-effect or version-compatibility commitment.
 
-### 6.3 D32 已实现的代理用户登录
+### 6.3 D32 Implemented Proxy User Login
 
-`Config.ProxyUser string` / DSN `proxyUser` 是 Oracle 兼容模式的代理目标，`User`/`Password` 始终是认证账户及其密码。零值为空，关闭代理登录，对应 Java `useProxyUser=false`；非空直接给出目标，不解析 Java `padmin[admin]@tenant` 用户名语法，不自动大小写折叠或去引号。驱动不生成代理授权 SQL，目标身份及授权关系由服务端确认。
+`Config.ProxyUser string` / DSN `proxyUser` specifies an Oracle-mode proxy target; `User`/`Password` always identify the authenticating account and its password. The empty zero value disables proxy login, corresponding to Java `useProxyUser=false`. A nonempty value directly names the target; the driver does not parse Java's `padmin[admin]@tenant` syntax, fold case, or strip quotes. It generates no proxy authorization SQL; the server confirms target identity and authorization.
 
-`Credentials` 增加同名 `ProxyUser` 字段；凭据回调每次完整替换 User/Password/ProxyUser，包括用空 ProxyUser 清除静态目标。静态字段仍须通过 NewConnector 配置校验，回调不用于绕过错误配置（例如 ModeMySQL 的非空静态目标）。构造该公开结构体应使用命名字段；已有非命名双字段字面量需要改为 `Credentials{User: user, Password: password}`，不能把新增字段称为对该用法的源码兼容。字符串配置快照、回调并发/context 契约、密码与 TLS 门禁沿用原规则。
+`Credentials` adds a `ProxyUser` field. Each credential callback completely replaces User/Password/`ProxyUser`, including clearing a static target with empty `ProxyUser`. Static fields must still pass NewConnector validation; callbacks cannot bypass invalid configuration such as a nonempty static target in ModeMySQL. Construct this public struct with named fields. Existing unkeyed two-field literals must become `Credentials{User: user, Password: password}`; adding the field is not source-compatible with that usage. String snapshots, callback concurrency/context contracts, password rules, and TLS gates remain unchanged.
 
-目标按 Session.Charset 严格编码到专用 `__ob_client_proxy_user_name` 属性，拒绝 NUL、无效 UTF-8、不可表示字符；与应用属性、协议声明和全部长度前缀共用属性区预算，并继续受整条认证消息的上限约束。应用 map 不能覆盖该键。静态配置在 NewConnector 校验，动态凭据在创建认证插件/发送响应之前校验；启用 TLS 时仅在成功验证后的认证响应中发送目标。
+The target is strictly encoded using Session.Charset into dedicated `__ob_client_proxy_user_name`. NUL, invalid UTF-8, and unrepresentable characters are rejected. It shares the attribute-area budget with application attributes, protocol declarations, and all length prefixes and remains subject to the complete authentication-message limit. Application maps cannot override this key. NewConnector validates static configuration; dynamic credentials are validated before authentication plugin creation/response transmission. With TLS enabled, the target is sent only after successful verification.
 
-目标非空而没有 CLIENT_CONNECT_ATTRS 时返回 ErrUnsupported。静态目标且无回调时在请求凭据前拒绝；有回调时先取得完整凭据，允许它清除目标，仍非空才拒绝。显式 ModeMySQL 在配置/ChangeUser 预检拒绝；ModeAuto 最终识别 MySQL 时在初始化 SQL 前返回 ErrUnsupported 并关闭连接。服务端拒绝（包括1235）保留原错误，不自动重试普通登录；属性能力和认证 OK 不是独立的代理目标证明，实际身份仍需目标联调验证。
+A nonempty target without CLIENT_CONNECT_ATTRS returns ErrUnsupported. A static target without a callback is rejected before requesting credentials. With a callback, obtain full credentials first, allowing it to clear the target; reject only if it remains nonempty. Explicit ModeMySQL is rejected during configuration/ChangeUser preflight. If ModeAuto identifies MySQL, return ErrUnsupported and close before initialization SQL. Preserve server rejection errors (including 1235) without retrying ordinary login. Attribute support and authentication OK do not independently prove the proxy target; actual identity still requires target integration validation.
 
-ChangeUser 每次显式传入代理目标，空值清除，不继承旧目标或调用原凭据回调。成功后记录认证用户与代理目标，重新初始化会话；默认 Oracle schema 仍按认证用户名的 @ 前部分构造，与固定 Java sendChangeUser 路径一致，代理目标不隐式替代显式 Database。旧句柄/CancelTarget 失效、失败淘汰和切换后不回原池的规则不变。新池连接仍使用原 Connector 的目标。
+Every ChangeUser call explicitly supplies its proxy target; empty clears it without inheriting the previous target or calling the original credential callback. Success records the authenticating user and target and reinitializes the session. Default Oracle schema still derives from the authenticating username before @, matching pinned Java sendChangeUser; the target does not implicitly replace explicit Database. Existing rules invalidating old handles/CancelTarget, discarding failures, and preventing return to the original pool after switching remain. New pool connections still use the original Connector target.
 
-CancelQuery 除原有入口、认证用户、模式、TLS 与连接 ID 检查外，还比较两条连接认证成功时的代理目标；辅助凭据回调返回不同目标或清除目标时，拒绝发送 KILL。拒绝不会改变原查询的身份或自动重放业务。用户名/目标不写入驱动日志或诊断。
+Besides existing endpoint, authenticating-user, mode, TLS, and connection-ID checks, CancelQuery compares the targets recorded after successful authentication on both connections. If auxiliary credentials return another target or clear it, refuse to send KILL. Rejection changes neither the original query identity nor automatically replays business operations. Usernames/targets are excluded from logging and diagnostics.
 
-固定源码依据：`Credential.java` 的目标分离、`SendHandshakeResponsePacket.java` 的专用属性（L88、L399）和 ChangeUser 重发（L280）、`ConnectionOracleTest.testProxyUser` 的代理与实际用户断言。`TestProxyUser*` 覆盖配置、DSN、动态覆盖/清除、能力/模式/编码/预算、TLS、普通/压缩/OB20 的 ChangeUser、池隔离及取消身份。外部 ExampleNewConnector_proxyUser 可离线运行。TestProxyUserSessions 提供 Oracle 直连/代理的真实身份、切换/清除与新池恢复用例，MySQL 验证配置拒绝；本阶段仅编译。
+Pinned evidence: target separation in `Credential.java`, dedicated attributes in `SendHandshakeResponsePacket.java` (L88, L399), ChangeUser retransmission (L280), and proxy/actual-user assertions in `ConnectionOracleTest.testProxyUser`. `TestProxyUser*` covers configuration, DSN, dynamic replacement/clearing, capability/mode/encoding/budget, TLS, ChangeUser over all three streams, pool isolation, and cancellation identity. External ExampleNewConnector_proxyUser runs offline. TestProxyUserSessions provides Oracle direct/proxy identity, switching/clearing, and new-pool restoration cases; MySQL checks configuration rejection. This phase compiles it only.
 
-### 6.4 D32 已实现的初始数据库创建
+### 6.4 D32 Implemented Initial Database Creation
 
-`Config.CreateDatabaseIfMissing` / DSN `createDatabaseIfMissing=true/false` 对应 Java `createDatabaseIfNotExist`，默认均为 false。必须显式开启并指定非空 Database；名称按 Session.Charset 严格编码，拒绝 NUL、无效 UTF-8 和不可表示字符，不在配置错误中回显名称。显式 ModeOracle 在 NewConnector 拒绝；ModeAuto 认证后实际为 Oracle 时在初始化 SQL 之前返回 ErrUnsupported 并关闭，不像 Java 静默忽略创建请求。
+`Config.CreateDatabaseIfMissing` / DSN `createDatabaseIfMissing=true/false` corresponds to Java `createDatabaseIfNotExist`; both default to false. Explicit enabling and nonempty Database are required. Strict Session.Charset encoding rejects NUL, invalid UTF-8, and unrepresentable characters without echoing names in configuration errors. NewConnector rejects explicit ModeOracle. If ModeAuto authenticates as Oracle, return ErrUnsupported and close before initialization SQL, rather than silently ignoring creation as Java does.
 
-开启后初始握手不声明 CLIENT_CONNECT_WITH_DB，不发送数据库名，也不要求服务端支持该握手位；完成认证、模式检查与协议协商后，在同一物理连接建立字符集/自动提交/版本/时区基线，再发送 `CREATE DATABASE IF NOT EXISTS` 和 COM_INIT_DB，最后运行 Session.Variables/InitSQL。标识符使用反引号并对内含反引号双写，名称不作为 SQL 值或未转义片段拼接；COM_INIT_DB 使用原始名称的连接字符集编码。关闭时沿用普通握手选库语义。
+When enabled, the initial handshake neither declares CLIENT_CONNECT_WITH_DB nor sends a database name and does not require server support for that bit. After authentication, mode checks, and protocol negotiation, establish charset/autocommit/version/timezone baseline on the same physical connection, send `CREATE DATABASE IF NOT EXISTS` and COM_INIT_DB, then run Session.Variables/InitSQL. Quote identifiers with backticks and double embedded backticks; do not concatenate names as SQL values or unescaped fragments. COM_INIT_DB encodes the original name using connection charset. When disabled, ordinary handshake database selection applies.
 
-创建与选库服从同一个 ConnectTimeout/路由尝试预算，保留服务端错误；失败关闭连接，不重试其他地址或回退普通登录。DDL 可能已生效，初始化失败、取消或断连不会自动删除数据库；IF NOT EXISTS 也不保证无 CREATE 权限的账户能连接既有数据库，必须按服务端权限处理。驱动不为数据库指定额外默认字符集/排序规则，沿用服务端 CREATE 默认值。
+Creation and selection share ConnectTimeout/routing attempt budgets and preserve server errors. Failure closes the connection without another address or ordinary-login fallback. DDL may already have taken effect; initialization failure, cancellation, or disconnect never automatically deletes the database. IF NOT EXISTS does not guarantee accounts lacking CREATE privilege can connect to existing databases; server authorization applies. The driver adds no default charset/collation and uses server CREATE defaults.
 
-池中新物理连接/Full reset 替换会再次执行 IF NOT EXISTS；普通复用不重复执行。ChangeUser 的派生配置清除此选项，仅按其 database 参数重新认证，不自动建库；CancelQuery 辅助连接也清除此选项，正常选库后直接执行取消，不产生建库副作用。原 Connector 配置不受这些局部清除影响，不新增包或全局状态。
+New physical pool connections and Full reset replacements execute IF NOT EXISTS again; ordinary reuse does not. ChangeUser clears this option in derived configuration and reauthenticates using its database parameter without creating databases. CancelQuery auxiliary connections also clear it and cancel immediately after normal database selection, avoiding creation side effects. These local changes do not alter the original Connector configuration; no packages or global state are added.
 
-固定 Java 依据：AbstractConnectProtocol 的 CLIENT_CONNECT_WITH_DB 条件（L337–L342）和 additionalData 创建/USE 顺序（L1378–L1386）。本地 TestCreateDatabase* 覆盖握手、三种 framing、UTF-8/GBK、转义、初始化顺序、两模式拒绝、服务端失败/总预算与 ChangeUser/取消隔离。TestCreateDatabaseSessions 提供 MySQL 直连/代理的创建、既有库、InitSQL 和物理替换用例，要求专用 CREATE/DROP DATABASE 权限 fixture；Oracle 只验证配置拒绝，本阶段均不联网。
+Pinned Java evidence: CLIENT_CONNECT_WITH_DB conditions in AbstractConnectProtocol (L337–L342) and additionalData create/USE ordering (L1378–L1386). Local TestCreateDatabase* covers handshake, three framing modes, UTF-8/GBK, quoting, initialization order, mode rejection, server failure/total budget, and ChangeUser/cancellation isolation. TestCreateDatabaseSessions provides MySQL direct/proxy creation, existing-database, InitSQL, and physical-replacement cases requiring dedicated CREATE/DROP DATABASE fixtures. Oracle checks configuration rejection only; this phase performs no live connections.
 
-### 6.5 D32 Java 配置迁移边界
+### 6.5 D32 Java Configuration Migration Boundary
 
-[配置映射](go-driver-options-mapping.md)逐项列出固定 Java 版本160个规范字段的初值，另列10个历史别名、DBNAME/port、驱动选择标记和插件专用参数；别名不增加规范项计数。默认值核对以 Options 字段初始化、DefaultOptions.parse、postOptionProcess 及 UrlParser 的实际分支为准，不能从选项说明直接推断最终行为。
+The [Options Mapping](go-driver-options-mapping.md) lists initial values for all 160 canonical fields in pinned Java, separately listing 10 historical aliases, DBNAME/port, driver-selection markers, and plugin parameters. Aliases do not increase canonical counts. Defaults follow actual Options initializers, DefaultOptions.parse, postOptionProcess, and UrlParser branches; descriptions alone cannot establish final behavior.
 
-Go 保持一个 Config 与严格 URL 入口。历史别名、Properties、Java store/类名及任意未知项不进入 DSN；各能力由既有 Go 配置、标准库或应用闭包承载，具体入口见映射。需要覆盖已解析值时，先 ParseDSN，再修改 Config，最后 NewConnector；后者重新校验并复制，不存在两套参数合并优先级。所有 query 名称区分大小写、重复及空值拒绝；布尔仅 true/false，Java 的裸毫秒和带引号布尔不自动转换。
+Go keeps one Config and a strict URL entry point. Historical aliases, Properties, Java stores/class names, and unknown options are not admitted into DSNs. Existing Go configuration, standard library facilities, or application closures carry capabilities; see the mapping for entry points. To override parsed values, ParseDSN, modify Config, then call NewConnector, which revalidates and copies it. There are no competing parameter-merge precedence systems. Query names are case-sensitive; duplicates/empty values are rejected. Booleans accept only true/false, without automatic conversion of Java bare milliseconds or quoted booleans.
 
-尤其不能直接照抄 connectTimeout：Java 通常默认30000毫秒、受 DriverManager 登录超时影响，显式0表示不限时；Go 默认10秒，正值使用 duration。time.ParseDuration 接受的 `0` 与 `0s` 均沿用10秒默认，不关闭建连总预算。ReadTimeout 的零值则关闭独立读取超时；二者仍服从 context 的较早期限。JDBC 的 disableMariaDbDriver 子串规则不应用到 Go 密码或数据库内容，作为 query key 仍拒绝。
+Do not copy connectTimeout directly: Java normally defaults to 30000 milliseconds, is affected by DriverManager login timeout, and uses explicit `0` for unlimited time. Go defaults to 10 seconds and uses durations for positive values. Both `0` and `0s` accepted by time.ParseDuration retain the 10-second default rather than disabling total connection budgets. Zero ReadTimeout instead disables the separate read timeout; both obey earlier context deadlines. JDBC disableMariaDbDriver substring rules do not apply to Go password/database contents, but that query key remains rejected.
 
-本地 TestDSNJava* 覆盖别名/隐式入口拒绝、ParseDSN 与 sql.Open 的配置阶段错误、脱敏、单位/零值及选择标记字面值；未增加生产 API、包或全局配置。160项默认值有固定源码证据，不代替每项运行行为、真实平台或服务端验收。
+Local TestDSNJava* covers alias/implicit-entry rejection, ParseDSN/sql.Open configuration errors, redaction, units/zero values, and literal selection markers. No production API, package, or global configuration was added. Pinned evidence supports all 160 defaults, without replacing acceptance of every runtime behavior, platform, or server.
 
-## 7. 标准库接口实现表
+## 7. Standard Library Interface Implementation Table
 
-| 内部类型 | 必须实现的接口 | 关键规则 |
+| Internal type | Required interfaces | Key rules |
 | --- | --- | --- |
-| driver | `driver.Driver`、`driver.DriverContext` | 注册名 `oceanbase`；Open/OpenConnector 使用同一解析器 |
-| connector | `driver.Connector` | 并发安全，创建多个等价会话；不保存 Connect 的 context 作后续查询 context |
-| conn | `driver.Conn`、`ConnPrepareContext`、`ConnBeginTx` | 所有主路径支持 context；旧方法仅委托同一实现 |
-| conn | `ExecerContext`、`QueryerContext` | 统一快速执行路径；不在已发送命令后返回 `ErrSkip` |
-| conn | `Pinger`、`SessionResetter`、`Validator` | 真实探活、复用前检查、归还前淘汰；`IsValid` 不进行网络 I/O |
-| conn / stmt | `NamedValueChecker` | 标准值按标准库转换；扩展值显式校验，不能一律返回 nil |
-| stmt | `driver.Stmt`、`StmtExecContext`、`StmtQueryContext` | statement 绑定具体物理会话，NumInput 遵守绑定计划 |
-| tx | `driver.Tx` | Commit/Rollback 的旧接口用有界网络 I/O；不假定存在 CommitContext |
-| rows | `driver.Rows`、`RowsNextResultSet` | 流式读取、完整多结果清理、缓冲所有权清晰 |
-| rows | 五个 `RowsColumnType*` 接口 | 支持 `Rows.ColumnTypes()`；未知属性返回 `ok=false` |
-| result | `driver.Result` | int64 溢出检查；无可靠生成 ID 时 LastInsertId 返回错误 |
+| driver | `driver.Driver`, `driver.DriverContext` | Register as `oceanbase`; Open/OpenConnector share one parser |
+| connector | `driver.Connector` | Concurrency-safe, creates equivalent sessions; never retain Connect context for later queries |
+| conn | `driver.Conn`, `ConnPrepareContext`, `ConnBeginTx` | Main paths support context; legacy methods delegate to the same implementation |
+| conn | `ExecerContext`, `QueryerContext` | Unified fast execution path; never return `ErrSkip` after sending a command |
+| conn | `Pinger`, `SessionResetter`, `Validator` | Real liveness checks, checks before reuse, disposal before return; `IsValid` performs no network I/O |
+| conn / stmt | `NamedValueChecker` | Standard values use standard library conversion; explicitly validate extensions instead of always returning nil |
+| stmt | `driver.Stmt`, `StmtExecContext`, `StmtQueryContext` | Statements bind to physical sessions; NumInput follows binding plans |
+| tx | `driver.Tx` | Legacy Commit/Rollback use bounded network I/O; never assume CommitContext exists |
+| rows | `driver.Rows`, `RowsNextResultSet` | Streaming reads, complete multiple-result cleanup, explicit buffer ownership |
+| rows | Five `RowsColumnType*` interfaces | Support `Rows.ColumnTypes()`; unknown attributes return `ok=false` |
+| result | `driver.Result` | Check int64 overflow; LastInsertId errors without reliable generated IDs |
 
-Go 1.26 不提供 `RowsColumnScanner` 和 `sql.ConvertAssign`，本方案不将自定义 struct 作为普通 `Rows.Next` 的输出。Go 1.27 未来若优化扫描，只作为内部优化，不改变公开值语义。[G03][G05]
+Go 1.26 provides neither `RowsColumnScanner` nor `sql.ConvertAssign`; ordinary `Rows.Next` does not return custom structs. Future Go 1.27 scanning improvements are internal optimizations only and must not change public value semantics.[G03][G05]
 
-## 8. 模式、版本、能力和会话状态
+## 8. Mode, Version, Capabilities, and Session State
 
 ```go
 type Mode uint8
@@ -312,182 +312,182 @@ const (
 )
 ```
 
-内部应分开保存：
+Store the following separately internally:
 
-- `expectedMode`：来自 Config，可以是 Auto。
-- `actualMode`：认证后的实际兼容模式，只能是 MySQL 或 Oracle。
-- `serverVersion` / `obVersion`：协议版本字符串与 OceanBase 版本。
-- `negotiatedCapabilities`：握手及连接属性反馈确定的能力。
-- `effectiveOptions`：结合配置、版本及能力计算出的生效行为。
-- `sessionState`：事务状态、schema、字符集、时区、活跃结果和资源代次。
+- `expectedMode`: from Config; may be Auto.
+- `actualMode`: actual post-authentication compatibility mode; MySQL or Oracle only.
+- `serverVersion` / `obVersion`: protocol version string and OceanBase version.
+- `negotiatedCapabilities`: capabilities confirmed by handshake and connection attributes.
+- `effectiveOptions`: behavior computed from configuration, version, and capabilities.
+- `sessionState`: transaction state, schema, character sets, timezone, active results, resource generation.
 
-模式不匹配：关闭新连接，返回包含期望/实际模式的错误，不重解释同一份响应。服务端缺少要求的必要能力时同样在使用前报错。
+On mode mismatch, close the new connection and return expected/actual modes in the error; never reinterpret the same response. Missing required server capabilities likewise fail before use.
 
-不把所有能力都视为可直接通过一个握手位判断。PrepareExecute、offset fetch 等要结合源码中的版本门槛及真实服务器验证；版本字符串无法解析时采用已确认的保守路径，不假定“最新版本”。
+Not every capability follows one handshake bit. PrepareExecute, offset fetch, and similar features require source-based version gates and real-server verification. Unparseable versions use confirmed conservative paths, not an assumed latest version.
 
-一个连接池保持同一模式：ModeAuto 在该 Connector 第一个成功初始化的连接上原子锁定模式，后续候选地址若返回另一模式则拒绝。地址源按同一 OceanBase 逻辑服务配置，不允许一个池混入两个不同租户或数据库服务。检查过程不记录密码。
+A pool keeps one mode. ModeAuto atomically locks the Connector to its first successfully initialized connection's mode; reject later candidates returning another mode. Address sources must represent the same logical OceanBase service, never mixing tenants/database services. Checks do not log passwords.
 
-## 9. 建连、传输与协议层
+## 9. Connection Establishment, Transport, and Protocol Layer
 
-建连顺序：选址 → Dial → 初始握手 → TLS → 认证 → 模式识别 → OB 能力协商 → 包流选择 → 会话初始化 → 基线快照。
+Connection sequence: address selection → Dial → initial handshake → TLS → authentication → mode identification → OB capability negotiation → packet-stream selection → session initialization → baseline snapshot.
 
-- 建连 context 和 ConnectTimeout 覆盖选址、外部凭据、TLS、认证与初始化的总预算，不能为每个候选地址重新取得一整份预算；平台同步调用及 Shared Memory 无关联分配的软预算例外见 §9.0.1、§9.0.5。
-- 支持 TCP、Unix socket；Windows Named Pipe、Shared Memory、OBProxy VC 通过提供的 Go 平台适配及 `DialContext` 接口接入。平台专用实现使用 build tags，不让所有平台加载原生认证/传输依赖。
-- 标准包、压缩包和 OB20 复用命令编解码；OB20 自身维护 request ID、序号、扩展信息和校验。
-- 必须处理分包、重组、EOF/OK 终止差异、附加 OK、session tracking、OUT 响应与多结果。
-- 包长度、列数、嵌套深度、压缩解开后的大小都在分配前检查；各 int 转换在 32 位平台做溢出检查。
-- 未知字段若可按长度安全跳过，则保留连接同步；无法确定边界的未知协议结构使该连接失效。
-- 不采用未识别类型一律当作 BLOB 的隐式兜底；Java 中存在此路径，Go 版改为明确的 UnsupportedType 错误，避免把类型解释错误传播给业务。[J03]
+- Connection context and ConnectTimeout cover address selection, external credentials, TLS, authentication, and initialization as one budget, never renewed per candidate. See §9.0.1 and §9.0.5 for soft-budget exceptions involving synchronous platform calls and unassociated Shared Memory allocation.
+- Support TCP/Unix sockets. Windows Named Pipe, Shared Memory, and OBProxy VC integrate through supplied Go platform adapters and `DialContext`. Build tags isolate platform-specific native authentication/transport dependencies.
+- Standard packets, compression, and OB20 share command codecs; OB20 manages request IDs, sequence numbers, extra information, and checksums.
+- Handle fragmentation, reassembly, EOF/OK terminator differences, extra OK packets, session tracking, OUT responses, and multiple results.
+- Validate packet lengths, column counts, nesting depth, and decompressed sizes before allocation; check int conversions for overflow on 32-bit platforms.
+- Safely length-skippable unknown fields preserve synchronization; unknown structures with uncertain boundaries invalidate the connection.
+- Never implicitly treat every unknown type as BLOB. Java has this path; Go instead returns UnsupportedType to prevent incorrect type interpretation reaching applications.[J03]
 
-### 9.0.1 D28 已实现的 TCP、Unix 与 Named Pipe
+### 9.0.1 D28 Implemented TCP, Unix, and Named Pipe
 
-`Config.Network` 默认 `tcp`；`unix` 使用 `net.Dialer.DialContext` 连接 `Addr` 中的 Unix socket 字面地址，路径不做环境变量或用户目录展开。`pipe` 在 Windows 使用 `github.com/Microsoft/go-winio v0.6.2`，Addr 为显式 UNC Named Pipe 名称。已建立管道的收发使用 overlapped I/O 和 deadline；拨号时检查 context，并在管道忙时轮询。非 Windows 的内置 pipe 拨号返回 ErrUnsupported；调用方自定义 DialContext 仍可以接管相同 network/address。平台实现以 build tags 隔离，不加载额外本地库；直接使用 `golang.org/x/sys/windows` 识别管道暂时不存在的错误，让其进入已有重试流程，权限错误仍直接返回。
+`Config.Network` defaults to `tcp`. `unix` uses `net.Dialer.DialContext` with literal socket `Addr`, without environment/home expansion. Windows `pipe` uses `github.com/Microsoft/go-winio v0.6.2` with explicit UNC Named Pipe Addr. Established pipes use overlapped I/O/deadlines; dialing checks context and polls busy pipes. Built-in pipe dialing returns ErrUnsupported outside Windows, but custom DialContext may handle that network/address. Build tags isolate implementation without extra native libraries. `golang.org/x/sys/windows` identifies temporarily missing pipes for existing retries; permission errors return immediately.
 
-Named Pipe 的 UNC 地址必须是有效 UTF-8，Config/DSN 在建连前统一拒绝无效字节，包括主机名和管道名；避免 Windows UTF-16 转换替换字节后访问不同的端点。合法中文、补充平面字符和实际的 U+FFFD 保留，不将有效替换字符本身判为错误。Unix socket 继续使用 Go/OS 的字面地址语义。
+Named Pipe UNC addresses must be valid UTF-8. Config/DSN reject invalid host/pipe bytes before connecting so Windows UTF-16 replacement cannot select another endpoint. Valid Chinese text, supplementary-plane characters, and literal U+FFFD are preserved; a valid replacement character is not an error. Unix sockets keep literal Go/OS address semantics.
 
-原生 IPC 混合会话测试使用系统 Unix listener / Windows Named Pipe listener 和驱动内置拨号；两种兼容模式交叉标准/压缩/OB20，每条连接连续执行缓存预处理、提前关闭 Rows、提交/回滚和可恢复 SQL 错误。逐轮直接检查原物理会话与池，不借助重新借连接后的 reset 掩盖残留。退出时核对 QUIT，Unix 原连接关闭后 SetDeadline 必须返回 net.ErrClosed；Named Pipe 及非 Windows Unix 另检查对端 EOF。Windows AF_UNIX 曾出现 Close 成功后对端不报 EOF 的情况，纯标准库亦可复现，该组合以原连接确实关闭为判据；不为测试改动生产拨号/关闭策略。Windows 已运行两种传输；Linux/macOS Unix socket 仍需 CI 实际运行，测试对端不代替真实服务。
+Native IPC mixed-session tests use system Unix/Windows Named Pipe listeners and built-in driver dialing. Both modes cross standard/compressed/OB20 streams, repeatedly executing cached preparation, early Rows close, commit/rollback, and recoverable SQL errors on each connection. Each round checks original physical sessions/pools directly, without checkout reset hiding residual state. Exit checks QUIT; SetDeadline on the closed original Unix connection must return net.ErrClosed. Named Pipe and non-Windows Unix also check peer EOF. Windows AF_UNIX has shown successful Close without peer EOF, reproducible with the standard library alone; that combination checks actual original-connection closure. Tests do not alter production dialing/closing. Both transports have run on Windows; Linux/macOS Unix sockets still need CI execution, and test peers do not replace real services.
 
-IPC 是一个显式固定端点，拒绝与 Routing.Endpoints 或 Discovery 混用；次数、单次/总建连预算、初始化、空闲验证与后续命令继续使用既有流程。不会因 IPC 失败自动回退 TCP。TLSConfig 非 nil 时，IPC 必须显式指定证书 ServerName，不能把文件路径或管道名当证书主机名；nil TLS 不构成明文密码豁免。DialContext 收到实际 Network 和 Addr，并继续承担 context/失败资源所有权契约。
+IPC is one explicit fixed endpoint and rejects Routing.Endpoints/Discovery combinations. Attempt counts, per-attempt/total budgets, initialization, idle validation, and subsequent commands retain existing flows. IPC failure never falls back to TCP. Non-nil TLSConfig requires explicit certificate ServerName for IPC rather than a file/pipe name; nil TLS grants no plaintext exemption. DialContext receives actual Network/Addr and retains context/failure-resource ownership contracts.
 
-DSN 使用 `network=unix|pipe&socket=转义后的地址`；必须成对出现，tcp/默认网络禁止 socket。URL authority 不再是 IPC 拨号地址；database path 仍是数据库名。程序化 Config 直接指定 Network/Addr，无需伪造 TCP 主机。解析后再次传入 NewConnector 的配置保持可用。
+DSNs use `network=unix|pipe&socket=escaped-address`; these must appear together, and tcp/default networks forbid socket. URL authority is no longer the IPC dial address; the database path remains the database name. Programmatic Config sets Network/Addr directly without inventing TCP hosts. Parsed configuration remains valid when passed to NewConnector again.
 
-Unix 的实际目标取决于 Go/OS 的 AF_UNIX 支持，Linux 抽象地址也由 Go/OS 处理；本机 Windows 的文件 socket 已运行测试。Named Pipe 已运行本机 Windows 对端；远端 UNC 还需对应部署和权限验收。go-winio 底层打开管道使用同步 CreateFile，远端 SMB 打开若阻塞，context 无法中断该调用，ConnectTimeout 无法作为其严格墙钟上限；调用返回后驱动仍检查取消并关闭已取得连接。两者均有本地协议握手、基线、Ping、QUIT/关闭及明文门禁测试，不等于真实 OceanBase/OBProxy 已暴露相应端点。Shared Memory 的独立实现见 §9.0.5，OBProxy VC 的独立宿主适配见 §9.0.6，真实平台仍待验收。
+Unix targets depend on Go/OS AF_UNIX support, including Go/OS handling of Linux abstract addresses. Local Windows file sockets have run tests. Named Pipe has run local Windows peers; remote UNC still requires deployment/permissions acceptance. go-winio uses synchronous CreateFile: blocking remote SMB opens cannot be interrupted by context, so ConnectTimeout is not a strict wall-clock bound. After return, the driver still checks cancellation and closes acquired connections. Both transports have local handshake, baseline, Ping, QUIT/closure, and plaintext-gate tests; this does not prove real OceanBase/OBProxy exposes these endpoints. Separate Shared Memory and OBProxy VC host implementations appear in §9.0.5/§9.0.6; real platforms remain unaccepted.
 
-### 9.0.2 D32 TCP 配置的 Go 原生承载
+### 9.0.2 D32 Native Go TCP Configuration
 
-TCP 的七个 Java 配置项通过现有 `Config.DialContext` 与 Go 标准库完成适配，不增加 TCPOptions、第二套拨号器接口或全局工厂。回调收到当前候选入口的 network/address 和剩余建连 context，返回原始 net.Conn；驱动随后执行相同 TLS、模式协商和初始化，回调不能通过包装连接取得明文认证豁免。回调及其捕获的 Dialer/地址由调用方管理，Connector 不复制函数内部对象，应在使用期间保持配置不可变、允许并发拨号。
+Seven Java TCP options use existing `Config.DialContext` and Go's standard library, without TCPOptions, another dialer interface, or global factories. Callbacks receive current candidate network/address and remaining connection context, returning raw net.Conn; the driver performs unchanged TLS, mode negotiation, and initialization. Wrapping connections grants no plaintext-authentication exemption. Callers manage callbacks and captured Dialer/addresses; Connector cannot copy function internals, so keep configuration immutable and allow concurrent dialing.
 
-返回 nil 或 typed-nil 连接且无错误时，驱动在 TLS/读取/请求凭据前直接拒绝，不切换候选。返回错误时保留原错误及既有候选重试规则，只关闭实际非 nil 的连接，typed-nil 不调用其方法；此规则同样用于显式取消的辅助拨号。TestDialContextNilConnection 与 TestDialContextErrorClosesConnection 覆盖两模式、两种 nil、错误传播/重试和错误返回连接恰好关闭一次。
+Nil/typed-nil connections without errors are rejected before TLS/reads/credential requests without switching candidates. Errors retain original error/retry rules and close only genuinely non-nil connections, never invoking typed-nil methods. This also applies to explicit-cancellation auxiliary dialing. TestDialContextNilConnection/TestDialContextErrorClosesConnection cover both modes/nil forms, propagation/retry, and exactly-once closure of connections returned with errors.
 
-| Java option | Go 承载和默认差异 |
+| Java option | Go equivalent and default differences |
 | --- | --- |
-| tcpNoDelay | `(*net.TCPConn).SetNoDelay(bool)`；Go 1.26 的内置 TCP 连接默认 true，与 Java 相同 |
-| tcpAbortiveClose | `SetLinger(0)` 显式开启，`SetLinger(-1)` 保持正常后台发送/关闭；默认不强制 RST，与 Java false 对应 |
-| localSocketAddress | `net.Dialer.LocalAddr = &net.TCPAddr{IP: localIP}`，端口0由系统分配；这是 TCP 源接口绑定，不是 Unix socket 地址 |
-| tcpKeepAlive | `net.Dialer.KeepAliveConfig`；禁用可用 KeepAlive=-1 且 KeepAliveConfig.Enable=false。Go 默认尝试启用，idle/interval 各15秒、count9；Java 默认 true，但没有在此项固定相同探测参数 |
-| tcpRcvBuf / tcpSndBuf | `SetReadBuffer` / `SetWriteBuffer`；内置驱动保持 OS 默认/自动调优，不硬编码缓冲大小；OS 可调整实际值 |
-| socketFactory | `Config.DialContext` 函数注入；不解析 Java 类名、反射加载或注册进程级工厂 |
+| tcpNoDelay | `(*net.TCPConn).SetNoDelay(bool)`; built-in Go 1.26 TCP defaults to true, matching Java |
+| tcpAbortiveClose | Explicit `SetLinger(0)` enables it; `SetLinger(-1)` keeps normal background sending/closing. Default does not force RST, matching Java false |
+| localSocketAddress | `net.Dialer.LocalAddr = &net.TCPAddr{IP: localIP}`; port 0 is system-assigned. TCP source interface binding, not a Unix socket address |
+| tcpKeepAlive | `net.Dialer.KeepAliveConfig`; disable with KeepAlive=-1 and KeepAliveConfig.Enable=false. Go attempts default enabling with 15-second idle/interval and count 9; Java defaults true without specifying identical probes here |
+| tcpRcvBuf / tcpSndBuf | `SetReadBuffer` / `SetWriteBuffer`; built-in behavior retains OS defaults/autotuning without hardcoded sizes; OS may adjust actual values |
+| socketFactory | Inject `Config.DialContext`; no Java class-name parsing, reflection, or process-global factories |
 
-完整[可编译示例](../tcp_example_test.go)使用 LocalAddr/KeepAliveConfig、TCP_NODELAY、读写缓冲和 linger，并检查 setter 错误、在失败时关闭已取得连接。示例的64KiB缓冲与30秒/10秒/3次 keep-alive 只是应用配置示范；内置默认不因此改变。net.Dialer 对 keep-alive 设置采用 best effort，若应用必须确认显式策略，应在取得 TCPConn 后调用 SetKeepAliveConfig 并检查错误，示例已包含此步骤。需要在 SYN 之前设置 socket option 时使用标准 `net.Dialer.ControlContext`，其原生选项与支持条件由平台决定。
+The complete [compilable example](../tcp_example_test.go) uses LocalAddr/KeepAliveConfig, TCP_NODELAY, buffers, and linger, checking setter errors and closing acquired connections on failure. Its 64 KiB buffers and 30-second/10-second/3-probe keep-alive are application examples, not built-in defaults. net.Dialer keep-alive is best effort; applications requiring confirmation must call SetKeepAliveConfig on acquired TCPConn and check errors, as the example does. Before-SYN options use standard `net.Dialer.ControlContext`; options/support are platform-dependent.
 
-`SetLinger(0)` 可能丢弃待发送数据并使对端观察到连接重置；它不证明 COM_QUIT 已送达，也不回滚已执行/提交的 SQL，不能作为防重放或未知结果恢复策略。示例默认关闭此选项，独立用例只检查显式关闭终止本地传输，不强求跨平台相同的 RST 错误码。keep-alive 探测也不替代 ReadTimeout、调用 context、池空闲/生命周期配置或业务状态确认。
+`SetLinger(0)` may discard pending data and cause peer-visible resets. It neither proves COM_QUIT delivery nor rolls back executed/committed SQL and cannot prevent replay or recover unknown outcomes. The example disables it by default; a separate case checks local transport termination without requiring identical cross-platform RST codes. Keep-alive does not replace ReadTimeout, contexts, pool idle/lifetime settings, or business-state confirmation.
 
-这些策略只通过程序化 Config 注入，七个同名 Java DSN 参数继续明确拒绝，不静默透传。TCP 专用示例对 unix/pipe 返回 ErrUnsupported，不回退 TCP；原有 IPC 实现保持独立。TestTCPDialContext* 在本地原生 TCP 对端验证源地址、选中入口、单次工厂调用、握手/初始化/Ping/QUIT、明文认证拒绝、取消及显式 abortive close；ExampleConfig_tcpOptions 本身不联网。实际远端接口、OS 缓冲/探测行为与数据库部署仍待验证。
+Policies are programmatic only; all seven Java DSN names stay explicitly rejected. TCP-specific examples return ErrUnsupported for unix/pipe without fallback; IPC remains separate. TestTCPDialContext* uses native local TCP peers to check source addresses, selected endpoints, single factory calls, handshake/initialization/Ping/QUIT, plaintext rejection, cancellation, and abortive close. ExampleConfig_tcpOptions is offline. Real remote interfaces, OS buffering/probes, and databases remain unverified.
 
-固定 Java 依据：DefaultOptions 的 tcpNoDelay/tcpAbortiveClose/localSocketAddress（L100–L116）、tcpKeepAlive/tcpRcvBuf/tcpSndBuf/socketFactory（L225–L249），以及 AbstractConnectProtocol.createSocket（L249–L285）。默认 Go 行为以1.26标准库 net.Dialer/newTCPConn 为依据；不把 Java 选项有对应 Go API 当作真实网络验收已完成。
+Pinned Java evidence: DefaultOptions tcpNoDelay/tcpAbortiveClose/localSocketAddress (L100–L116), tcpKeepAlive/tcpRcvBuf/tcpSndBuf/socketFactory (L225–L249), and AbstractConnectProtocol.createSocket (L249–L285). Go defaults follow Go 1.26 net.Dialer/newTCPConn. Matching Go APIs do not establish real-network acceptance.
 
-### 9.0.3 D32 SOCKS5 代理的 Go 承载
+### 9.0.3 D32 Go SOCKS5 Proxy Support
 
-SOCKS5 通过现有 `Config.DialContext` 配合 Go 官方 `golang.org/x/net/proxy.SOCKS5` 承载；[可编译应用示例](../socks_example_test.go)使用显式代理地址和支持 context 的 `net.Dialer`，再将 `proxy.ContextDialer.DialContext` 直接交给驱动。不新增代理配置结构、拨号接口或全局注册表，不读取 ALL_PROXY/NO_PROXY，不在代理失败时绕过代理直连。回调在构建 Connector 前创建，可复用于并发新连接；代理配置及来源对象在使用期间保持不可变。
+SOCKS5 uses existing `Config.DialContext` with official `golang.org/x/net/proxy.SOCKS5`. The [compilable example](../socks_example_test.go) supplies an explicit proxy and context-aware `net.Dialer`, passing `proxy.ContextDialer.DialContext` directly to the driver. No new proxy struct/dial interface/global registry, ALL_PROXY/NO_PROXY reading, or direct bypass after proxy failure. Construct the callback before Connector, reuse it for concurrent connections, and keep proxy configuration/source objects immutable.
 
-Java socksProxyHost 默认 null、socksProxyPort 默认1080；Go 默认仍直连，需要代理时调用方显式组合 `net.JoinHostPort(host, "1080")`（IPv6 同样适用），两个 Java 同名 DSN 参数均拒绝。驱动把当前路由候选入口原样交给回调；主机名交给 SOCKS 服务器解析，驱动不先解析成 IP 或固定到初始 Config.Addr。重试沿用总预算、角色和黑名单，不重放业务 SQL，也不自动切回直连。
+Java socksProxyHost defaults null and socksProxyPort 1080. Go still defaults direct; callers explicitly use `net.JoinHostPort(host, "1080")`, including IPv6. Both Java DSN names are rejected. Current routing candidates pass unchanged to callbacks; SOCKS resolves hostnames remotely without driver-side IP resolution or pinning to initial Config.Addr. Retries retain total budgets/roles/blacklists without replay or automatic direct fallback.
 
-代理用户名/密码使用独立的 `proxy.Auth`，与 OceanBase Credentials/ProxyUser 无关；nil 表示仅请求无认证方式。非 nil 时该库同时允许服务器选择无认证或用户名密码，不能把它当作“必须使用用户名密码”的策略。SOCKS5 用户名密码协商本身是明文，随后建立的数据库 TLS 不保护先前的代理协商；部署侧决定代理链路保护，不能因代理已认证而放宽数据库 TLS 门禁。数据库 TLS 仍验证选中数据库入口或调用方显式 ServerName，不使用代理主机名代替。
+Proxy credentials use separate `proxy.Auth`, unrelated to OceanBase Credentials/ProxyUser. Nil requests only no-authentication; non-nil permits server-selected no-authentication or username/password and does not mandate password authentication. SOCKS5 password negotiation is plaintext; subsequent database TLS does not protect it. Deployment protects that link without relaxing database TLS gates. Database TLS verifies selected database endpoints or explicit ServerName, never the proxy hostname.
 
-ConnectTimeout/AttemptTimeout 和调用 context 覆盖代理 TCP 与 SOCKS 协商、后续数据库握手/初始化；取消或失败由拨号器关闭隧道。预算到期时 socket deadline 可能先于 context 定时器触发，错误可能为 context.DeadlineExceeded 或 net.Error.Timeout；不要求所有自定义拨号器归一成同一个错误。成功返回的连接不继承建连 context 的寿命，后续命令继续使用各自的 context/ReadTimeout。仅支持 TCP 目标，IPC 不享有代理豁免。`connectProxy` 是另一项 Java 初始化策略，不是 SOCKS 或 HTTP CONNECT 开关，其显式初始化策略见 §9.0.4，不由 SOCKS 自动启用。
+ConnectTimeout/AttemptTimeout and contexts cover proxy TCP/SOCKS and later database handshake/initialization; dialers close tunnels on cancellation/failure. Socket deadlines can precede context timers, returning context.DeadlineExceeded or net.Error.Timeout; custom dialers need not normalize all errors. Successful connections do not inherit establishment-context lifetimes; later commands use separate context/ReadTimeout. Only TCP targets are supported, without IPC proxy exemptions. Java `connectProxy` is a separate initialization policy, not SOCKS/HTTP CONNECT; its explicit counterpart in §9.0.4 is not automatically enabled.
 
-Go1.26 基线下，示例和本地测试使用 x/net v0.61.0，模块依赖为 x/sys v0.49.0、x/text v0.43.0；依赖升级需全包及跨平台回归；驱动生产包不导入 x/net，公开 API 和生产包依赖方向不变。本地 TestSOCKS* 覆盖两模式/三种包流、域名远端解析、认证、失败前零数据库凭据、路由切换、取消与连接关闭、TLS 正反向和目标身份；真实代理部署、DNS/权限、吞吐及数据库联调未验收。
+Go 1.26 examples/local tests use x/net v0.61.0, with x/sys v0.49.0 and x/text v0.43.0 module dependencies; upgrades require full-package/cross-platform regression. Production packages do not import x/net, preserving APIs/dependency directions. TestSOCKS* covers both modes/three streams, remote DNS, authentication, zero database credentials before proxy success, routing switches, cancellation/closure, positive/negative TLS, and target identity. Real proxy deployment, DNS/permissions, throughput, and database integration remain unaccepted.
 
-### 9.0.4 D32 显式跳过版本探测
+### 9.0.4 D32 Explicit Version-Probe Suppression
 
-`Session.SkipVersionProbe`（DSN `skipVersionProbe`）默认 false；只有应用确认目标不提供 `ob_version()` 等初始化探测时才显式开启。开启后初始建连、ChangeUser 和取消查询辅助连接均不发版本查询，内部 OceanBase 版本保持未知；仍以认证结果确认兼容模式，保留字符集、自动提交、时区、NCharset、Variables 和 InitSQL 的全部初始化与错误处理。不得从 TCP/SOCKS/OBProxy 地址推断此策略，也不把握手协议版本、应用 InitSQL 或元数据查询结果当作已确认 OceanBase 版本。
+`Session.SkipVersionProbe` (DSN `skipVersionProbe`) defaults false; explicitly enable only when the application knows targets lack initialization probes such as `ob_version()`. Initial connections, ChangeUser, and cancellation auxiliaries then send no version query and retain unknown internal OceanBase versions. Authentication still confirms mode; charset, autocommit, timezone, NCharset, Variables, InitSQL initialization/error handling remain. Never infer this from TCP/SOCKS/OBProxy addresses or treat handshake versions, application InitSQL, or metadata responses as confirmed OceanBase versions.
 
-未知版本不启用 PrepareExecute、offset fetch 或版本受限的 SQL checksum；Oracle 原生 OUT/LOB 操作、敏感游标、流式长参数及 XA 按既有能力门禁返回 ErrUnsupported，普通 CRUD、标准预处理及事务继续使用原路径。MetadataServerInfo 是显式业务请求，仍执行其版本查询，不受初始化策略抑制。默认探测失败必须关闭连接并保留错误，不能自动降级成“跳过探测”；必要基线或 InitSQL 失败时同样不发布连接。
+Unknown versions disable PrepareExecute, offset fetch, and version-gated SQL checksums. Oracle native OUT/LOB, sensitive cursors, streaming long parameters, and XA return ErrUnsupported through existing gates; ordinary CRUD/preparation/transactions remain unchanged. Explicit MetadataServerInfo still queries its version regardless of initialization suppression. Default probe failure preserves errors and closes connections without automatic suppression fallback; baseline/InitSQL failures likewise prevent publishing connections.
 
-Java connectProxy 默认 false，跳过部分 session 变量读取、ob_version 和 auto_increment_increment 探测；Go 无对应的隐式变量/自增步长读取，只映射实际存在的可选版本探测，不迁移一个含义模糊的 connectProxy 布尔字段，也不接受其 Java DSN 名称。此策略不保证某个代理接受其他必要基线 SQL，真实部署仍需验证；使用前应评估上述高级能力限制。
+Java connectProxy defaults false, skipping some session-variable reads, ob_version, and auto_increment_increment probes. Go has no matching implicit variable/increment reads and maps only its existing optional version probe, without an ambiguous connectProxy field or Java DSN name. This does not guarantee a proxy accepts other baseline SQL; deployment still needs validation. Evaluate advanced-capability restrictions before use.
 
-Java `usePipelineAuth` 默认 null，UrlParser 将缺省解析为 false；它选择的是认证后的初始化分支，不改变认证插件或 TLS。[固定 postConnectionQueries](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L978) 在该选项下还临时缩短读取超时至500ms，并可能回退 additionalData；但[该版本 sendPipelineAdditionalData](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1103) 对每个 SET 随即 getResult，不能据名称或配置描述宣称实际并行发送。Go 固定使用认证最终 OK 后逐条发送/完整消费的初始化，不提供同名开关、不临时改成500ms、不在初始化失败后重试可能产生副作用的 InitSQL。沿用 ConnectTimeout/context 总预算与独立 ReadTimeout；TestInitializationErrorBoundary 覆盖认证、字符集、自动提交、时区、变量及 InitSQL 的拒绝、错误链、关闭和不入池；TestVersionProbeSessions/Initialization 分别覆盖两模式/三包流成功及自定义基线恢复。这里不宣称初始化流水线或建连性能收益。
+Java `usePipelineAuth` defaults null, resolved to false by UrlParser. It selects post-authentication initialization without changing plugins/TLS. Pinned [postConnectionQueries](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L978) also temporarily shortens reads to 500 ms and may fall back to additionalData. Yet pinned [sendPipelineAdditionalData](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L1103) immediately calls getResult per SET; names/descriptions cannot establish parallel sending. Go sends/fully consumes initialization statements sequentially after final authentication OK, without a same-named switch, temporary 500 ms timeout, or retries of potentially side-effecting failed InitSQL. Existing ConnectTimeout/context and separate ReadTimeout apply. TestInitializationErrorBoundary covers authentication/charset/autocommit/timezone/variables/InitSQL rejection, chains, closure, and pool exclusion. TestVersionProbeSessions/Initialization cover both modes/three streams and custom-baseline restoration. No initialization pipelining/performance benefit is claimed.
 
 ### 9.0.5 D28 Windows Shared Memory
 
-`Config{Network: "sharedmemory", Addr: "MYSQL"}` 选择 Windows 原生命名事件/文件映射传输，DSN 为 `network=sharedmemory&socket=MYSQL`。Addr 是服务端对象基名，不是磁盘文件；可显式使用 `Local\` 或 `Global\` 前缀。仅允许一个命名空间前缀、非空 UTF-8 基名，无 NUL/反斜杠/首尾空白；总长最多220个 UTF-16 单元，为连接 ID 和事件后缀留空间。不展开环境变量；无前缀且本地 CONNECT_REQUEST 不存在时才尝试 Global 命名空间，权限错误不触发该回退。默认仍为 TCP，Java sharedMemory 名称不作为 DSN 别名。
+`Config{Network: "sharedmemory", Addr: "MYSQL"}` selects Windows native named-event/file-mapping transport; the DSN is `network=sharedmemory&socket=MYSQL`. Addr is the server object basename, not a disk file; explicit `Local\`/`Global\` prefixes are allowed. Permit only one namespace prefix and a nonempty UTF-8 basename without NUL, backslashes, or edge whitespace. Total length is at most 220 UTF-16 units, reserving room for connection IDs/event suffixes. No environment expansion. Try Global only when no prefix is supplied and local CONNECT_REQUEST is absent, never on permission errors. TCP remains default; Java sharedMemory is not a DSN alias.
 
-实现位于根包 Windows 平台文件，复用已有 x/sys/windows，不新增公开接口、包或依赖。非 Windows 的内置拨号明确返回 ErrUnsupported，自定义 DialContext 仍可承接相同 network/address。固定 IPC 端点、Routing/Discovery 排斥、显式 TLS ServerName 和所有认证门禁与 §9.0.1 相同；本地共享内存不能替代经过校验的 TLS。
+Implementation stays in root-package Windows files using existing x/sys/windows, without new public interfaces, packages, or dependencies. Built-in non-Windows dialing explicitly returns ErrUnsupported; custom DialContext may handle the same network/address. Fixed IPC endpoints, Routing/Discovery exclusion, explicit TLS ServerName, and authentication gates match §9.0.1. Local shared memory does not replace verified TLS.
 
-协议依据固定 Java [SharedMemorySocket](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/io/socket/SharedMemorySocket.java)：CONNECT_MUTEX 串行化 CONNECT_REQUEST/CONNECT_ANSWER 和4字节连接 ID 映射；随后打开该 ID 的五个事件和16004字节 DATA 区。ID 按有符号32位十进制形成对象名。Go 用固定 OS 线程持有/释放分配 mutex，不创建替代服务端映射、不扩大对象访问权限；mutex 仅申请 SYNCHRONIZE，CONNECT_DATA 为 FILE_MAP_READ，DATA 为 FILE_MAP_WRITE（提供可读写 view），兼容 Java 的最小 ACL。获得 ID 后优先取得 CONNECTION_CLOSED，后续打开失败或取消时通知服务端并释放本地资源。
+Protocol evidence is pinned Java [SharedMemorySocket](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/io/socket/SharedMemorySocket.java): CONNECT_MUTEX serializes CONNECT_REQUEST/CONNECT_ANSWER and the four-byte connection-ID mapping; then five ID-specific events and a 16004-byte DATA area open. IDs use signed 32-bit decimal object names. Go holds/releases allocation mutexes on a fixed OS thread, creates no substitute server mappings, and widens no permissions. Mutex access is SYNCHRONIZE only, CONNECT_DATA uses FILE_MAP_READ, and DATA uses FILE_MAP_WRITE (read/write view), matching Java minimum ACLs. After acquiring an ID, obtain CONNECTION_CLOSED first so later open failure/cancellation can notify the server and release resources.
 
-**分配阶段的取消是软预算。** 等待 CONNECT_MUTEX 和发请求前可及时取消；一旦已发 CONNECT_REQUEST，答案没有请求关联 ID，必须继续持锁等答案，取得 ID 后关闭这次分配的会话并返回原 context 错误。否则下一连接可能误领旧答案。此阶段不能保证 ConnectTimeout、AttemptTimeout 或调用 context 的严格墙钟上限；服务端永久不答会使本次拨号持续等待并占用一个 OS 线程，后来的有限时连接可在等待锁时超时退出。驱动不丢弃后台 worker、不重发未完成请求，也不发送取消后会话的数据库凭据。共用端点的其他客户端必须遵守相同命名 mutex 协议；无法保证与绕过该锁的旧客户端并发分配安全。
+**Allocation cancellation has a soft budget.** Waiting for CONNECT_MUTEX and the stage before sending can cancel promptly. After CONNECT_REQUEST is sent, answers lack correlation IDs, so retain the lock until an answer arrives, then close that allocated session and return the original context error; otherwise another connection could claim the old answer. ConnectTimeout, AttemptTimeout, and calling contexts cannot impose strict wall-clock bounds here. A permanently silent server leaves this dial waiting and holding one OS thread; later bounded callers may time out waiting for the mutex. The driver neither abandons background workers nor resends incomplete requests or sends database credentials for canceled sessions. Other clients sharing the endpoint must obey the same named mutex protocol; safe concurrent allocation cannot be guaranteed with legacy clients bypassing it.
 
-DATA 的前4字节为 little endian 长度，payload 上限16000；不照搬 Java 将16004误作内容上限的越界路径。Read 先复制整块到 Go 缓冲再 ACK，支持调用方部分读取；零长度或超长原生块拒绝。Write 按上限分块，成功通知对端后计入 n，中途超时保留已通知前缀；最后一块不额外等 ACK，因此 Close 可能丢弃尚未消费的尾块，QUIT 不保证送达，不能据此认定 SQL 已回滚或未执行。单一数据区不能承载双向 pipeline，sharedmemory 的 BatchAuto/BatchMultiSend 在发包前回退 BatchSequential，返回实际策略；同一功能仍通过顺序执行完成。
+DATA begins with a four-byte little-endian length and supports at most 16000 payload bytes, avoiding Java's out-of-bounds path treating 16004 as payload capacity. Read copies the full block to a Go buffer before ACK and supports partial caller reads; zero/oversized native blocks are rejected. Write splits at the limit and counts bytes after notifying the peer, retaining the notified prefix on timeout. The last block does not wait for another ACK, so Close may discard an unconsumed tail; QUIT delivery is not guaranteed and cannot prove SQL rollback/nonexecution. One data area cannot support bidirectional pipelining: sharedmemory BatchAuto/BatchMultiSend falls back to BatchSequential before sending and reports the actual strategy, preserving functionality through sequential execution.
 
-建成后的 Read/Write 支持动态提前、延后和清除 deadline，超时保留 os.ErrDeadlineExceeded/net.Error.Timeout。Close 先唤醒等待者，等待原生 wait/内存访问退出后才关闭 handle/unmap，避免在 Win32 等待期间关闭 handle；两方向调用分别串行化。没有为每次 I/O 创建 goroutine，也不轮询事件。本机测试覆盖两模式/三包流、初始化/Ping/QUIT、TLS 目标验证及拒绝、分块/部分读取、非法长度、动态 deadline/Close、分配前后取消/延迟答案、并发分配/负数 ID、部分打开失败及批量回退；这些不是实际服务端、对象 ACL 或混合客户端互操作验收。OBProxy VC 的独立适配见 §9.0.6，D28 的平台/真实服务证据仍独立管理。
+Established Read/Write supports moving deadlines earlier/later or clearing them, retaining os.ErrDeadlineExceeded/net.Error.Timeout. Close wakes waiters, waits for native wait/memory access to exit, then closes handles/unmaps, avoiding handle closure during Win32 waits. Each I/O direction is serialized. No per-I/O goroutines or event polling. Local tests cover both modes/three streams, initialization/Ping/QUIT, TLS target verification/rejection, blocks/partial reads, invalid lengths, dynamic deadlines/Close, pre/post-allocation cancellation/delayed answers, concurrent allocation/negative IDs, partial-open failures, and batch fallback. These do not accept real servers, object ACLs, or mixed-client interoperability. Separate OBProxy VC adaptation is in §9.0.6; D28 platform/live-service evidence remains separately tracked.
 
-### 9.0.6 D28 嵌入式 OBProxy VC
+### 9.0.6 D28 Embedded OBProxy VC
 
-固定 OBProxy 提交 `81eeae92526f5efbee516e863c7234532dfa6175` 的 [C 入口](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/driver/c/ob_proxy_vc_c.cpp)、[进程初始化](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/ob_proxy_init.cpp)、[客户端](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/proxy/client/ob_driver_client.cpp)和[布局](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/utils/ob_layout.cpp)表明：init 启动唯一 OBProxy，再创建未连接的客户端句柄；数据通道是工作目录中的 `.obproxy/obproxy.domain`。原生 Close 直接释放句柄，超时 setter 不唤醒正在 poll 的 I/O，send 还会折叠错误码，因此数据收发使用 Go 标准 Unix net.Conn。
+Pinned OBProxy commit `81eeae92526f5efbee516e863c7234532dfa6175` [C entry points](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/driver/c/ob_proxy_vc_c.cpp), [process initialization](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/ob_proxy_init.cpp), [client](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/proxy/client/ob_driver_client.cpp), and [layout](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/utils/ob_layout.cpp) show init starts a single OBProxy then creates an unconnected client handle; data uses `.obproxy/obproxy.domain` in the working directory. Native Close immediately frees handles, timeout setters do not wake polling I/O, and send collapses error codes. Data I/O therefore uses standard Go Unix net.Conn.
 
-[ObProxyMain 启动和信号处理](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/ob_proxy_main.cpp)显示：客户端运行模式也会安装 SIGINT、SIGTERM 等信号处理器，未采用 Go 运行时要求的 SA_ONSTACK；同时修改 locale/allocator、注册退出回调、创建后台线程。直接将该库加载进 Go 进程会破坏运行时和应用信号契约。因此由项目提供的独立 C 宿主加载库，隔离这些进程副作用；Go 仍保留单一根包和 DialContext 接口。
+[ObProxyMain startup and signals](https://github.com/oceanbase/obproxy/blob/81eeae92526f5efbee516e863c7234532dfa6175/src/obproxy/ob_proxy_main.cpp) show client mode also installs SIGINT/SIGTERM and other handlers without Go runtime-required SA_ONSTACK, changes locale/allocators, registers exit callbacks, and starts background threads. Loading it directly into Go would violate runtime/application signal contracts. A project-supplied separate C host loads the library and isolates process side effects; Go retains one root package and DialContext.
 
 ```mermaid
 flowchart LR
     DB[database/sql] --> Dial[Go DialContext]
-    Dial -->|首次启动与就绪握手| Host[C 宿主进程]
-    Host -->|官方 init / close| Native[OBProxy 原生库]
-    Dial -->|Unix net.Conn / TLS / 统一协议| Socket[.obproxy/obproxy.domain]
+    Dial -->|First startup and readiness handshake| Host[C host process]
+    Host -->|Official init / close| Native[Native OBProxy library]
+    Dial -->|Unix net.Conn / TLS / shared protocol| Socket[.obproxy/obproxy.domain]
     Native --> Socket
 ```
 
-`NewOBProxyDialer(hostPath, libraryPath, proxyConfig)` 返回 Config.DialContext。hostPath 是从 [宿主源文件](../tools/obproxy-host/main.c)构建的可信可执行文件绝对路径，libraryPath 是可信原生共享库绝对路径；不搜索 PATH、不自动下载或执行 shell。Linux 可在项目根目录构建：
+`NewOBProxyDialer(hostPath, libraryPath, proxyConfig)` returns Config.DialContext. hostPath is the absolute path of a trusted executable built from [host source](../tools/obproxy-host/main.c); libraryPath is an absolute trusted native shared-library path. No PATH search, automatic downloads, or shell execution. Build on Linux from the repository root:
 
 ```sh
 cc -std=c11 -O2 -Wall -Wextra -Werror -o obproxy-go-host tools/obproxy-host/main.c -ldl -pthread
 ```
 
-原生库及其依赖由部署方单独提供，以上命令只构建宿主。Go 生产目标为带 `obproxy` build tag 的 Linux amd64/arm64；其他目标明确 ErrUnsupported。普通驱动编译无需 C 编译器或该库，宿主按平台独立构建；Windows 的 obproxytest 仅执行自建 C ABI 夹具，不声明 Windows 原生 OBProxy 支持。
+Deployment supplies native libraries/dependencies separately; the command above builds only the host. Go production targets are Linux amd64/arm64 with the `obproxy` build tag; other targets explicitly return ErrUnsupported. Ordinary builds need neither a C compiler nor the library; build the host separately per platform. Windows obproxytest runs only a custom C ABI fixture and does not claim native Windows OBProxy support.
 
-proxyConfig 是原生 `-o` 内容，仅允许合法 UTF-8、无 NUL、最多4095字节，避免官方固定 argv 缓冲溢出。构造只校验并捕获工作目录；首次拨号启动宿主，将原始配置通过 stdin 的 uint32 little endian 长度帧发送，宿主编码为唯一 JSON proxy_config 字段（空配置为 `{}`）。原生输出与控制通道分离：宿主在加载库前重定向 stdout/stderr 到空设备，原生文件日志仍由原生配置管理。宿主调用官方 `ob_proxy_vc_c_init` / `ob_proxy_vc_c_close`，立即释放未连接的临时句柄，再返回8字节就绪消息 `OBV1` + int32 little endian 状态；缺库、缺符号、空句柄或非零状态均失败。Go 在失败路径关闭管道、终止并回收宿主；读取端独立于 cmd.Wait，避免退出与就绪读取竞态。
+proxyConfig contains native `-o` content: valid UTF-8, no NUL, maximum 4095 bytes to avoid the official fixed argv buffer overflow. Construction only validates and captures the working directory. First dialing starts the host and sends original configuration over stdin as a uint32 little-endian length frame; the host encodes it as the sole JSON proxy_config field (empty configuration becomes `{}`). Native output is separate from control: before loading, the host redirects stdout/stderr to the null device; native configuration still owns file logs. The host calls official `ob_proxy_vc_c_init` / `ob_proxy_vc_c_close`, immediately releases the temporary unconnected handle, then returns an eight-byte readiness message `OBV1` + int32 little-endian status. Missing library/symbols, nil handles, or nonzero status fail. Go closes pipes, terminates/reaps failed hosts; the reader is independent of cmd.Wait to prevent exit/readiness races.
 
-宿主启动后保留 stdin 控制管道；父进程退出使其 EOF，专用监视线程直接终止宿主全部原生线程，包括 init 卡住的情况。DB.Close 只关闭业务连接，不停止共享宿主；成功启动的库不卸载。宿主/库/配置/工作目录组成进程唯一身份：相同身份并发共享一次初始化，不同身份拒绝；失败结果缓存，不自动重启或重放业务。宿主后续退出由 Unix 连接错误暴露，不能据此推断 SQL 是否执行。
+After startup the host retains stdin as a control pipe; parent exit causes EOF and a dedicated monitor thread terminates all native threads, even when init is stuck. DB.Close closes business connections only, not the shared host; successfully initialized libraries are never unloaded. Host/library/configuration/working directory form one process-wide identity: identical concurrent callers share one init, differing identities are rejected. Failures are cached without restart/replay. Later host exit surfaces through Unix errors and cannot establish whether SQL executed.
 
-Config 使用 `Network=unix`、`Addr=.obproxy/obproxy.domain`；回调拒绝其他 network/路径，不混用路由/发现、不回退 TCP。原生启动会删除/重建该 socket，须独占工作目录，绝对 socket 路径最多107字节，使用期间不得 chdir；不同配置须使用独立父进程和不同目录。首次启动前已取消不会启动宿主；等待中的调用可按 context 返回，但共享 init 继续，不能宣称取消即原生初始化停止。后续连接、动态 deadline 和 Close 均使用标准 Unix 连接。
+Config uses `Network=unix`, `Addr=.obproxy/obproxy.domain`. The callback rejects other networks/paths, routing/discovery mixing, and TCP fallback. Native startup deletes/recreates the socket, so the working directory must be exclusive; absolute socket paths are at most 107 bytes and chdir is forbidden during use. Different configurations require separate parent processes/directories. Cancellation before initial startup creates no host; waiting calls may return on context while shared init continues, so cancellation does not imply native initialization stopped. Subsequent connections, dynamic deadlines, and Close use standard Unix connections.
 
-每条物理会话复用标准 TLS、认证、模式识别和初始化，IPC 不获得明文凭据豁免，TLS 必须显式 ServerName。Java cs_id 仅用于原生客户端日志，Go 继续使用既有协议连接 ID 和外部传入的 slog，nil 静默；原生日志在独立进程中管理，不接入 slog.Default。离线夹具覆盖 ABI、配置转义/边界、就绪/失败/EOF 清理、两模式和三包流；真实 Linux 原生库启动、信号处理、退出及服务端互操作仍需平台验收。
+Every physical session reuses standard TLS, authentication, mode identification, and initialization. IPC grants no plaintext exemption; TLS requires explicit ServerName. Java cs_id is native-client logging only; Go retains protocol connection IDs and caller-supplied slog, with nil silent. Native logging remains in the separate process and never uses slog.Default. Offline fixtures cover ABI, configuration escaping/limits, readiness/failure/EOF cleanup, both modes, and three streams. Real Linux native-library startup, signals, exit, and server interoperability still require platform acceptance.
 
-### 9.1 已实现的包流与协商（D23）
+### 9.1 Implemented Packet Streams and Negotiation (D23)
 
-`ProtocolOptions` 的六项策略及 DSN `compression`、`ob20`、`checksum`、`proxyChecksum`、`newMetadata`、`fullLinkTrace` 均只接受 `auto|off|required`。配置非法或互相冲突时在 Dial 前拒绝。策略只在建连阶段选择，业务执行后不换协议、不重放。
+All six `ProtocolOptions` policies and DSN `compression`, `ob20`, `checksum`, `proxyChecksum`, `newMetadata`, `fullLinkTrace` accept only `auto|off|required`. Invalid/conflicting configuration fails before Dial. Selection happens only during establishment; execution never changes protocols or replays business operations.
 
-| 能力 | 选择和行为 |
+| Capability | Selection and behavior |
 | --- | --- |
-| Compression | greeting 中 CLIENT_COMPRESS 与客户端策略的交集；认证最终 OK 后使用 zlib 外层 7 字节头；压缩无收益则发送未压缩帧 |
-| OB20 | CONNECT_ATTRS 声明代理位 8/15，最终认证 OK 的 session tracking `ob_capability_flag` 位 8 确认；优先于可选压缩；CompressionRequired 不请求 OB20 |
-| Checksum | OB20 CRC16 头与零初始、无取反 CRC32C 负载校验；auto 发校验并验证收到的非零校验；off 不发校验，但收到非零校验仍验证；required 要求 OB20 且对零校验同样比较实际值 |
-| ProxyChecksum | 对应 Java `useObChecksum` 的代理能力位 3/6，与 OB20 CRC 独立；auto 请求，required 必须确认两位，off 不声明且拒绝非零回显；驱动不因此宣称已验证代理到后端的校验 |
-| NewMetadata | 客户端属性位 1（数值 2）请求，`__ob_client_capability_flag` 确认；列包布局不变；Oracle NCHAR/NVARCHAR2 长度为字符数，RAW/ROWID 长度来自 precision，LOB 长度未知；不照搬 JDBC 的 Java 类和显示宽度规则 |
-| FullLinkTrace | D25；OB20 + FLT 位14，支持新 extra 位15及 ShowTrace 位18；日志独立，详见 §18.3.1 |
+| Compression | Intersection of greeting CLIENT_COMPRESS and client policy; after final authentication OK, use zlib with a seven-byte outer header; send uncompressed frames when compression saves nothing |
+| OB20 | CONNECT_ATTRS declares proxy bits 8/15; final authentication OK session-tracking `ob_capability_flag` bit 8 confirms it. Preferred over optional compression; CompressionRequired does not request OB20 |
+| Checksum | OB20 CRC16 headers and zero-initialized, uncomplemented CRC32C payloads. auto sends checksums and validates received nonzero checksums; off sends none but still validates nonzero received checksums; required demands OB20 and compares actual values even against zero checksums |
+| ProxyChecksum | Java `useObChecksum` proxy capability bits 3/6, independent of OB20 CRC. auto requests, required demands both confirmed bits, off omits declaration and rejects nonzero echoes. This does not prove proxy-to-backend checksums were verified |
+| NewMetadata | Request client attribute bit 1 (value 2), confirmed by `__ob_client_capability_flag`; column layout stays unchanged. Oracle NCHAR/NVARCHAR2 lengths count characters, RAW/ROWID lengths use precision, LOB length is unknown. Do not copy JDBC Java-class/display-width rules |
+| FullLinkTrace | D25; OB20 + FLT bit 14, supporting new-extra bit 15 and ShowTrace bit 18; independent of logging, see §18.3.1 |
 
-未确认的 auto 能力保持标准行为；required 缺失、off 却被启用及非法能力回显均使建连失败。CompressionRequired 与 OB20Required/ChecksumRequired/FullLinkTraceRequired 冲突；OB20Off 与 ChecksumRequired/FullLinkTraceRequired 冲突。新属性保留已实现的 locator-v2 位，不请求尚未实现的 extra-OK、session sync 或路由；D25 FLT 协商见 §18.3.1。
+Unconfirmed auto capabilities retain standard behavior. Missing required capabilities, enabled off capabilities, and invalid echoes fail establishment. CompressionRequired conflicts with OB20Required/ChecksumRequired/FullLinkTraceRequired; OB20Off conflicts with ChecksumRequired/FullLinkTraceRequired. New attributes retain implemented locator-v2 bits without requesting unimplemented extra-OK, session sync, or routing. See §18.3.1 for D25 FLT negotiation.
 
-两层大小独立：外层长度及 zlib 解压长度均由 24 位字段约束，最多 `0xffffff` 字节；OB20 外层体另含 28 字节开销。一个外层帧可包含多个逻辑消息；每个逻辑消息继续单独执行 `Limits.MaxMessageBytes` 检查，不能将聚合帧误算作一条消息。解压输出最多读取声明长度加一，并拒绝长度不符、损坏流和尾随压缩数据；内层跨帧头、跨 16 MiB 续包及空终止包共用原逻辑消息状态机。
+Size layers are independent: outer/decompressed lengths use 24-bit fields, at most `0xffffff` bytes; OB20 outer bodies add 28 bytes overhead. One outer frame may contain multiple logical messages, each independently checked against `Limits.MaxMessageBytes`; never count an aggregate frame as one message. Decompression reads at most declared length plus one and rejects mismatches, corrupt streams, and trailing compressed data. Inner headers crossing frames, 16 MiB continuation packets, and empty terminators reuse the logical-message state machine.
 
-OB20 每条命令重置双层序号，24 位 request ID 递增并回绕；接收校验 connection ID、request ID、序号、标志及新 extra 的 TLV 长度。未知有界 extra 安全跳过；旧 extra 按总长度跳过，不假称已处理其业务字段。所有损坏、部分写或 I/O 中取消使连接失效；错误保留实际网络读写字节数。已有未消费帧数据时不能通过重置开始另一条命令。外层 last 标志不替代内层完整响应边界。
+OB20 resets both sequence layers per command; 24-bit request IDs increment and wrap. Receivers validate connection/request IDs, sequences, flags, and new-extra TLV lengths. Unknown bounded extras are safely skipped; old extras are skipped by total length without claiming their fields were processed. Corruption, partial writes, and cancellation during I/O invalidate connections; errors preserve actual network byte counts. Unconsumed frame data prevents resetting into another command. Outer last flags do not replace complete inner response boundaries.
 
-当前 compression/OB20 下批量 multi-send 在发送前回退逐项，`BatchResult.Strategy` 报告 Sequential。未来只有为各在途命令维护独立包流身份并验证等价性后才启用流水线。
+Current compressed/OB20 multi-send batches fall back to sequential before sending; `BatchResult.Strategy` reports Sequential. Enable future pipelining only after separate packet-stream identities are maintained for each in-flight command and equivalence is verified.
 
-源码依据：[握手与两类 checksum 属性](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L361)、[最终 OK 及包流切换](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823)、[OB20 布局](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/flt/OceanBaseProtocolV20.java)、[新元数据解释](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L443)。本地协议验证与真实兼容验收分开，见兼容矩阵 §14。
+Source evidence: [handshake and both checksum attributes](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L361), [final OK and stream switching](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823), [OB20 layout](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/flt/OceanBaseProtocolV20.java), [new metadata interpretation](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L443). Local protocol verification remains distinct from real compatibility acceptance; see Compatibility Matrix §14.
 
-## 10. 执行内核与绑定
+## 10. Execution Core and Binding
 
-### 10.1 路径选择
+### 10.1 Path Selection
 
-- 无参数普通执行优先 COM_QUERY。
-- 有参数默认走服务端 prepare/execute，避免在普通调用中实现文本插值。
-- Config.PrepareMode 默认 PrepareServer；显式 PrepareClient 采用模式感知的词法计划和文本编码。MySQL 文本使用明确字符集的 hex literal；Oracle 使用引用及类型字面量。执行时使用当前 NO_BACKSLASH_ESCAPES，不插入 sql_mode 查询。当前不自动降级。
-- Oracle 游标、LOB 或需要扩展协议的语句可选择服务端执行，即使没有 IN 参数。
-- 连接中保留原 SQL、绑定计划和 statement 代次；服务端缓存按物理会话存放，LRU 有界，驱逐时释放服务端资源。
-- PrepareExecute、checksum、参数类型头复用、long/piece data、多发包、bulk、array binding 均是同一内核内的实现策略。
+- Prefer COM_QUERY for ordinary parameterless execution.
+- Default parameterized execution to server prepare/execute, avoiding ordinary-call text interpolation.
+- Config.PrepareMode defaults PrepareServer; explicit PrepareClient uses mode-aware lexical plans/text encoding. MySQL text uses charset-qualified hex literals; Oracle uses quoting/type literals. Use current NO_BACKSLASH_ESCAPES without querying sql_mode during execution. No automatic fallback currently.
+- Oracle cursor, LOB, and extension-protocol statements may select server execution even without IN parameters.
+- Retain original SQL, binding plan, and statement generation on the connection; bounded per-session LRU server caches release evicted server resources.
+- PrepareExecute, checksum, parameter-type-header reuse, long/piece data, multi-send, bulk, and array binding are implementation strategies in the same core.
 
-SQL 文本、服务端 prepare、原生 OUT 和客户端插值最终按会话编码后的字节限制消息；COM_QUERY/COM_STMT_PREPARE 的命令字节也占预算。词法解析前保留原 SQL 码点数的有界预检，不按 UTF-8 源字节误拒 GBK/latin1 收缩文本；占位符名称的改写收缩不用于绕过原文解析上限。客户端插值在 UTF-8 原文上确定边界和转义，再逐段编码 SQL 片段及完整字面量，累计扣减实际字节和参数两侧空格，不重复编码已有传输字节。Oracle 引号、引号加倍、NUL 的 CHR(0) 与括号均计入编码后预算；MySQL 字符集前缀和 hex 膨胀照常计入。非法编码及超限在业务命令发送前拒绝，不截断、不重放，已同步会话可继续使用。StatementCacheSQLLimit 的原文 UTF-8 字节限制及 LongData 的双重内容限制独立保持。
+SQL text, server preparation, native OUT, and client interpolation are ultimately limited by session-encoded bytes; command bytes for COM_QUERY/COM_STMT_PREPARE also consume budget. Before lexing, retain bounded checks based on original SQL code points, avoiding false rejection of UTF-8 text shrinking under GBK/latin1. Placeholder-name shrinking cannot bypass original parsing limits. Interpolation determines boundaries/escaping in UTF-8, then encodes SQL fragments and complete literals segment by segment, charging actual bytes and surrounding parameter spaces without reencoding transport bytes. Oracle quotes, doubled quotes, NUL CHR(0), and parentheses consume encoded budget; MySQL charset prefixes/hex expansion also count. Invalid encoding/limits fail before business sends without truncation/replay; synchronized sessions remain usable. Independent original UTF-8 StatementCacheSQLLimit and dual LongData content limits remain.
 
-Oracle RETURNING 所需的 COM_STMT_PREPARE_EXECUTE 基础编码、输出解码及能力门禁随 D14 实现，不等到 D24 优化任务。D24 显式依赖 D14，复用该路径扩展通用执行选择、缓存和性能策略；D14 不反向依赖 D24。协议是语义前提时不能退回未证实支持该语义的普通执行路径。[J17]
+Implement the COM_STMT_PREPARE_EXECUTE basic encoding, output decoding, and capability gates needed by Oracle RETURNING in D14 rather than waiting for D24 optimization. D24 explicitly depends on D14 and reuses that path for general execution selection, caching, and performance policy; D14 does not depend on D24. When protocol is a semantic requirement, do not fall back to ordinary execution without proven support.[J17]
 
-降级只在尚未执行业务操作时发生。服务端 prepare 返回可确认的不支持错误，才可按配置退到客户端 prepare；执行响应丢失不触发另一条执行路径。
+Fallback occurs only before business execution. Only confirmed unsupported server-prepare errors may permit configured client-prepare fallback; lost execution responses never trigger another execution path.
 
-多语句文本必须显式启用 `AllowMultiStatements`；过程调用或 Oracle 匿名块内部的分号不等于多个顶层语句。带参数的多语句若不能走服务端预处理，应在发送前报能力错误，或使用调用方已显式选择的客户端预处理；不能为支持多语句而偷偷打开文本插值。需要保留混合结果的完整顺序和逐项计数时使用 §11.4 的 Execute。
+Multi-statement text requires explicit `AllowMultiStatements`; semicolons inside procedures/Oracle blocks are not multiple top-level statements. Parameterized multi-statements unsupported by server preparation must fail capability checks before sending or use explicitly selected client preparation; never secretly enable interpolation. Use Execute (§11.4) for full ordered mixed results/per-item counts.
 
-### 10.1.1 已实现的可选执行策略（D24）
+### 10.1.1 Implemented Optional Execution Strategies (D24)
 
-通过 `Config.Execution ExecutionOptions` 显式启用；零值保留原有分开 prepare/execute、不缓存、每次发送类型头、不发送 SQL checksum。普通业务仍使用 `database/sql`，没有第二套连接池或 Statement API。
+Enable explicitly through `Config.Execution ExecutionOptions`; zero values preserve separate prepare/execute, no cache, type headers each time, and no SQL checksum. Ordinary applications still use `database/sql`, without another pool/Statement API.
 
 ```go
 cfg.Execution = oceanbase.ExecutionOptions{
@@ -499,115 +499,115 @@ cfg.Execution = oceanbase.ExecutionOptions{
 }
 ```
 
-五项 DSN 为 `prepareExecute`、`statementCacheSize`、`statementCacheSQLLimit`、`reuseParameterTypes`、`statementChecksum`；布尔只接受 `true|false`，负缓存限制在拨号前拒绝。缓存容量 0 关闭；SQL 长度上限 0 归一为 1024，按原 Go SQL 字符串的 UTF-8 字节数计算。
+Five DSN options: `prepareExecute`, `statementCacheSize`, `statementCacheSQLLimit`, `reuseParameterTypes`, `statementChecksum`. Booleans accept only `true|false`; negative cache limits fail before dialing. Capacity 0 disables caching; SQL length limit 0 normalizes to 1024 original Go-string UTF-8 bytes.
 
-| 策略 | 已实现选择与边界 |
+| Strategy | Implemented selection and boundaries |
 | --- | --- |
-| 通用 PrepareExecute | Oracle 兼容模式、显式启用且实际 ob_version >= 2.2.76；普通带参数调用直接用 ID 0 合并，后续复用取得的 ID；显式 sql.Stmt 保留标准 Prepare 与 Close 所有权 |
-| 能力缺失 | MySQL、未知或旧实际版本在发送前保留标准 prepare/execute；不把 greeting 版本当作实际 OceanBase 版本。显式客户端预处理保持客户端路径 |
-| OUT 与长参数 | D14 必需 OUT 合并协议不受通用优化开关影响；长参数先取得 ID 再上传，普通执行保留标准 execute；原生 OUT/游标使用其必需扩展命令。没有上传后的重新选择或业务重放 |
-| SQL checksum | 原始零初始、无取反 CRC32C，输入为实际发送字符集编码后的重写 SQL；标准 execute 仅 Oracle 且实际版本 >= 4.1.2，占原 iteration 字段；合并命令放尾部专用字段，iteration 仍为 1。与 OB20/代理 checksum 独立，批量和游标的标准 execute 应用同一门禁 |
-| 类型头复用 | 同一 statement、完整响应成功后才保存类型向量；类型含 unsigned 位及复杂描述字节，任何变化或执行失败后重发。只保留类型/描述，不保留上次参数数据；NULL bitmap 和值仍逐次编码 |
-| 自动 statement 缓存 | 每物理会话各有有界 LRU；仅完整成功且无资源租约的自动 SELECT/INSERT/UPDATE/DELETE/REPLACE 回收。SQL 文本为键，借出的 handle 不在空闲缓存内；失败、超长、驱逐及连接关闭释放服务端 ID |
-| 会话变化 | 普通文本及 OUT 路径开始前清空空闲缓存；非缓存类 prepared SQL 同样清空，NO_BACKSLASH_ESCAPES 变化拒绝复用。Full reset 淘汰物理会话，旧缓存和 ID 不迁移到新连接 |
-| 过程及连接资源 | CALL/匿名块不进入透明 LRU，避免过程会话副作用使旧缓存失效；重复调用使用显式 sql.Stmt，由标准库和调用方管理寿命。OpenBlob/OpenClob、普通复杂结果、REF CURSOR 和 Execution 摘要沿用完整响应及同会话资源边界 |
+| General PrepareExecute | Oracle mode, explicitly enabled, actual ob_version >= 2.2.76. Ordinary parameterized calls combine with ID 0, then reuse returned IDs; explicit sql.Stmt retains standard Prepare/Close ownership |
+| Missing capability | MySQL, unknown, or old actual versions retain standard prepare/execute before sending. Greeting versions are not actual OceanBase versions; explicit client preparation remains client-side |
+| OUT and long parameters | D14-required combined OUT protocol is independent of general optimization. Long parameters acquire IDs before upload; ordinary execution retains standard execute while native OUT/cursors use required extensions. No reselection/replay after upload |
+| SQL checksum | Zero-initialized, uncomplemented CRC32C of rewritten SQL encoded in actual transport charset. Standard execute uses it only for Oracle actual version >= 4.1.2 in the former iteration field; combined commands use a dedicated trailing field and iteration 1. Independent of OB20/proxy checksums; standard batch/cursor execute shares the gate |
+| Type-header reuse | Save vectors only after complete successful responses for the same statement. Types include unsigned bits/complex descriptions; resend on any change or execution failure. Retain types/descriptions only, never previous data; encode NULL bitmaps/values every time |
+| Automatic statement cache | Bounded per-session LRU; recycle only fully successful automatic SELECT/INSERT/UPDATE/DELETE/REPLACE without resource leases. Key by SQL text; checked-out handles are not idle-cached. Failure, excessive length, eviction, and connection close release server IDs |
+| Session changes | Clear idle cache before ordinary text/OUT paths and noncacheable prepared SQL; refuse reuse after NO_BACKSLASH_ESCAPES changes. Full reset discards physical sessions without migrating IDs/cache |
+| Procedures and connection resources | CALL/anonymous blocks bypass transparent LRU because procedure session effects can invalidate old cache. Use explicit sql.Stmt for repeated calls with caller/standard-library lifetimes. OpenBlob/OpenClob, complex results, REF CURSOR, and Execution summaries retain complete-response/same-session boundaries |
 
-不另建 Java 式 callable facade、全局 SQL 字符串缓存或共享服务端 ID。发送后失败直接报告，SQL 错误不回退另一种策略；响应损坏、取消及传输失同步淘汰连接。本地字节协议测试与编码 benchmark 不证明真实数据库性能或版本兼容；四目标 `TestExecuteStrategies` 源码及 CI 入口已提供，当前只编译。
+No Java-style callable facade, global SQL cache, or shared server IDs. Failures after sending are reported directly; SQL errors never switch strategy. Corruption, cancellation, and desynchronization discard sessions. Local byte-protocol tests/encoding benchmarks do not prove real database performance/version compatibility. Four-target `TestExecuteStrategies` source/CI entry exists but is compiled only.
 
-### 10.2 占位符与名称绑定
+### 10.2 Placeholders and Named Binding
 
-| 模式 | 支持规则 |
+| Mode | Supported rules |
 | --- | --- |
-| MySQL 兼容模式 | `?` 按位置绑定；带名称的参数不静默按位置处理，明确报错 |
-| Oracle 兼容模式 | `?` 位置绑定；`:name` 配合 `sql.Named("name", value)`；`:1` 等数字名称按位置计划处理 |
+| MySQL compatibility | Positional `?`; explicitly reject named parameters rather than silently treating them positionally |
+| Oracle compatibility | Positional `?`; `:name` with `sql.Named("name", value)`; numeric names such as `:1` follow positional plans |
 
-同一语句混合位置与名称绑定、缺失参数、重复提供同名参数、多余参数均在发送前报错。SQL 中同名绑定多次出现时，同一输入值映射到各个物理位置；OUT 重复绑定只接受服务端可证明一致的输出语义，否则报错。
+Reject mixed positional/named binding, missing parameters, duplicate supplied names, and excess arguments before sending. Repeated SQL names map one input to every physical occurrence. Repeated OUT binding requires provably consistent server output semantics, otherwise fails.
 
-词法计划必须覆盖单/双引号、反引号、注释、转义、Oracle q-quote 和 `:=`。不按字符串替换冒号，不把匿名块内部的分号认作多语句分隔符。
+Lexical plans cover single/double quotes, backticks, comments, escapes, Oracle q-quotes, and `:=`. Never replace colons textually or treat anonymous-block semicolons as multi-statement separators.
 
-普通 SQL 使用服务端原生语法。Java JDBC escape 的等价能力由显式兼容转换函数提供，转换仍使用词法状态机；不对所有 Go SQL 默认改写。
+Ordinary SQL uses native server syntax. Explicit compatibility conversion functions provide Java JDBC escape equivalents through lexical state machines; Go SQL is not rewritten by default.
 
-`RewriteJDBCEscapes` 的 MySQL `CONVERT` 布尔/浮点兼容表达式始终括住完整操作数，保留其中 OR、XOR、位运算和比较的原有优先级；布尔转换沿用与1比较的既有语义。两模式转换均保留操作数末尾行注释的换行，避免生成的括号或 CAST 后缀被注释吞掉；空白或只有注释的缺失操作数返回 ErrBind。`TestJDBCConvertOperandBoundaries`、`TestJDBCConvertMissingOperand` 和 `TestJDBCEscapes` 验证转换文本、嵌套及参数数量；这些本地断言不证明真实服务端计算结果。
+MySQL `CONVERT` boolean/floating expressions from `RewriteJDBCEscapes` always parenthesize complete operands, retaining OR/XOR/bitwise/comparison precedence; boolean conversion retains existing comparison-to-1 semantics. Both modes preserve newline after trailing operand line comments so generated parentheses/CAST suffixes are not commented out. Whitespace/comment-only missing operands return ErrBind. `TestJDBCConvertOperandBoundaries`, `TestJDBCConvertMissingOperand`, and `TestJDBCEscapes` check text, nesting, and argument counts, not real server evaluation.
 
-固定 Java 的 `encloseParamInParentheses` 默认 true，但自2.4.10起实际只在 Oracle 文本参数前写空格，未包裹括号；见 [ComQuery.addParenthesesArroundValue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L366)。Go 客户端预处理和批量改写统一在每个字面量两侧保留空格，防止负数与前置减号拼成注释，或数字与后续别名连成指数。此规则固定启用，两模式均适用；不增加可关闭参数边界保护的开关。标准服务端预处理继续发送独立二进制参数，不改写 SQL 的括号或表达式优先级。TestClientParameterBoundaries 通过公开 ExecContext/sql.Stmt 覆盖两模式/三包流、重复命名参数、负数/数字别名及含分号的引号字符串；这些是编码边界证据，真实 SQL 解释仍待联调。
+Pinned Java `encloseParamInParentheses` defaults true but since 2.4.10 merely inserts a space before Oracle text parameters, without parentheses; see [ComQuery.addParenthesesArroundValue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L366). Go client preparation/batch rewriting always preserves spaces around each literal, preventing negative values plus preceding minus from forming comments or numbers plus aliases from becoming exponents. Always enabled in both modes; no switch disables boundary protection. Server preparation sends separate binary parameters without SQL-parenthesis/precedence changes. TestClientParameterBoundaries exercises public ExecContext/sql.Stmt in both modes/three streams, repeated names, negatives/numeric aliases, and semicolons in quoted strings. These prove encoding boundaries; live SQL interpretation still needs integration.
 
-### 10.3 扩展操作如何进入同一个内核
+### 10.3 Routing Extensions Through the Same Core
 
-标准库不能直接表达批量、scroll fetch 或 locator 操作。扩展 helper 内部可传递一个**包私有请求值**给 ExecContext/QueryContext，由 `NamedValueChecker` 接受，并在发送前从 SQL 参数中分离。
+The standard library cannot directly express batch, scroll fetch, or locator operations. Helpers may internally pass a **package-private request value** to ExecContext/QueryContext, accepted by `NamedValueChecker` and separated from SQL arguments before sending.
 
-- 请求值只在本包构造，含具体操作和结果承载指针；不是公共 `any` 指令容器。
-- 不通过全局变量、goroutine ID、context 中的字符串命令或特殊 SQL 文本传递操作。
-- 不用 `ErrRemoveArgument` 在参数检查阶段修改连接，避免后续参数校验失败时留下隐式状态。
-- 所有参数先转换、校验，再执行；批量内部的每个参数也走同一转换规则。
-- 该机制只服务标准接口没有表达位置的能力，不绕过标准库的连接选择、事务绑定和并发管理。
+- Only this package constructs requests containing concrete operations/result pointers, not a public `any` command container.
+- Do not carry operations through globals, goroutine IDs, context string commands, or special SQL text.
+- Do not mutate connections during argument checking through `ErrRemoveArgument`, which could leave implicit state when later validation fails.
+- Convert/validate every argument before executing; batch parameters share conversion rules.
+- Use this mechanism only where standard interfaces cannot express a capability; retain standard connection selection, transaction binding, and concurrency management.
 
-## 11. 结果、错误与值转换
+## 11. Results, Errors, and Value Conversion
 
-### 11.1 普通结果
+### 11.1 Ordinary Results
 
-`Rows.Next` 输出 `nil`、`int64`、`float64`、`bool`、`string`、`[]byte`、`time.Time`，必要时使用标准协议允许的子游标 `driver.Rows`。不把一个任意结构体直接交给 `database/sql`。[G03]
+`Rows.Next` yields `nil`, `int64`, `float64`, `bool`, `string`, `[]byte`, `time.Time`, and standard-protocol child-cursor `driver.Rows` where needed. Never pass arbitrary structs directly to `database/sql`.[G03]
 
-数据缓冲可在 Next 间复用，但必须遵守 `[]byte` 和 `sql.RawBytes` 的寿命规则。对调用方拥有的副本和类型 Scanner 内部保存的数据负责复制；不能在 Close 时覆盖调用方仍引用的独立内存。
+Buffers may be reused between Next calls subject to `[]byte`/`sql.RawBytes` lifetime rules. Copy caller-owned values and data retained by type Scanners; Close must not overwrite independent memory still referenced by callers.
 
-响应解析器处理普通结果、更新计数和 callable OUT 的完整边界。`NextResultSet` 只切换普通行结果集，不能承担公开逐项计数的职责；更新计数和结果顺序由 §11.4 的 Execute 暴露。OUT 控制结果不伪装成用户的普通结果集。
+Parsers handle complete ordinary-result, update-count, and callable-OUT boundaries. `NextResultSet` switches ordinary row sets only, not public per-item counts; Execute (§11.4) exposes counts/order. OUT control results never masquerade as user row sets.
 
-### 11.2 类型映射
+### 11.2 Type Mapping
 
-| 数据语义 | 普通 Scan 来源 | 精确/特殊用法 |
+| Data semantics | Ordinary Scan source | Exact/special usage |
 | --- | --- | --- |
-| 有符号整数 | int64 | 超界报错 |
-| 无符号大整数 | int64 能表示时为 int64，否则十进制 string | 可 Scan 到 uint64；输入 uint64 由 NamedValueChecker 保留并检查 |
-| DECIMAL、NUMBER | 精确十进制 string | 自带轻量 `Number` 或第三方 Scanner；不经 float64 中转 |
-| FLOAT、DOUBLE、BINARY_FLOAT/DOUBLE | float64 | 按协议精度转换；NaN/Inf 是否允许按类型和配置校验 |
-| CHAR/VARCHAR、NCHAR/NVARCHAR2 | UTF-8 string | NCHAR 输入使用 `NString` 保留绑定类型；固定 CHAR 的空格语义由服务端和列类型决定 |
-| BINARY、RAW、BLOB 内联值 | []byte | RAW/ROWID 的显式类型用于指定输入协议类型 |
-| BOOL、BIT | bool 或 []byte，按列类型和配置固定 | 不把所有 TINYINT(1) 强制转换为 bool |
-| JSON | string | 可 Scan 到 []byte/自定义 JSON Scanner；大数不经 JSON float64 转换 |
-| 无时区 DATE/DATETIME/TIMESTAMP | 规范文本；可配置解析为 time.Time | 保留日期或本地时间语义；不默认为 UTC 瞬间 |
-| 带时区 TIMESTAMP | 包含精度、偏移及可用 region 信息的规范文本 | `TimestampTZ` Scanner/输入类型保留 region；不得只剩格式化偏移 |
-| TIMESTAMP LTZ | 依据明确的会话时区读取的规范文本 | `TimestampLTZ` 保留其与无时区值不同的类型身份 |
-| TIME、YEAR、零日期 | TIME 为可含负号及超过 24h 的文本；YEAR 为整数 | 零日期默认保留原值；要求解析 time.Time 时遇非法日期明确报错 |
-| INTERVAL YM / DS | 无损规范文本 | `IntervalYM` / `IntervalDS` 保留月数或日秒精度，不全部塞入 time.Duration |
-| OBJECT、ARRAY/集合 | 带版本和类型描述的无损文本表示 | `Object` / `Array` Scanner；绑定时发送真实复杂类型协议 |
-| BLOB/CLOB/NCLOB | 普通查询受限物化为 []byte/string | 流式及修改使用 Blob/Clob 扩展，不用假装字节值的连接句柄 |
-| REF CURSOR | 标准子 driver.Rows 或明确的输出游标入口 | 在父资源及原会话内读取 |
-| GEOMETRY | 原始 []byte | 不擅自按 UTF-8 解码 |
+| Signed integers | int64 | Overflow errors |
+| Large unsigned integers | int64 when representable, otherwise decimal string | Scan into uint64; NamedValueChecker preserves/checks uint64 input |
+| DECIMAL, NUMBER | Exact decimal string | Lightweight `Number` or third-party Scanner; no float64 intermediate |
+| FLOAT, DOUBLE, BINARY_FLOAT/DOUBLE | float64 | Protocol precision; type/configuration gates NaN/Inf |
+| CHAR/VARCHAR, NCHAR/NVARCHAR2 | UTF-8 string | `NString` preserves NCHAR input type; server/column type defines fixed CHAR spaces |
+| BINARY, RAW, inline BLOB | []byte | Explicit RAW/ROWID types select input protocol types |
+| BOOL, BIT | bool or []byte, fixed by column/configuration | Never force all TINYINT(1) into bool |
+| JSON | string | Scan into []byte/custom JSON Scanner; large numbers avoid JSON float64 conversion |
+| Timezone-free DATE/DATETIME/TIMESTAMP | Canonical text; optional time.Time parsing | Preserve date/local-time semantics, not implicit UTC instants |
+| TIMESTAMP with timezone | Canonical text retaining precision, offset, available region | `TimestampTZ` Scanner/input retains region rather than only a formatted offset |
+| TIMESTAMP LTZ | Canonical text using explicit session timezone | `TimestampLTZ` retains identity distinct from timezone-free values |
+| TIME, YEAR, zero dates | TIME text may be negative/exceed 24h; YEAR integer | Preserve zero dates by default; explicit time.Time parsing rejects invalid dates |
+| INTERVAL YM / DS | Lossless canonical text | `IntervalYM` / `IntervalDS` preserve months/day-second precision rather than squeezing into time.Duration |
+| OBJECT, ARRAY/collections | Lossless text with format version/type descriptors | `Object` / `Array` Scanner; binding uses real complex-type protocol |
+| BLOB/CLOB/NCLOB | Bounded ordinary-query []byte/string materialization | Streaming/mutation uses Blob/Clob extensions, not connection handles disguised as bytes |
+| REF CURSOR | Standard child driver.Rows or explicit output cursor | Read within parent resource/original session |
+| GEOMETRY | Original []byte | Never assume UTF-8 |
 
-`BIGINT UNSIGNED` 的 `ColumnTypes().ScanType()` 为 uint64，覆盖完整0–18446744073709551615范围；有符号 BIGINT 为 int64。ScanType 是建议的 Scan 目标类型，不要求等于每行 driver.Value 的实际类型：无符号行值仍在 int64 可表示时使用 int64，其余为精确十进制 string，由 database/sql 无损扫描到 uint64。可空列使用指针或 `sql.Null[uint64]`，ScanType 不把 NULL 编为0。
+`BIGINT UNSIGNED` has `ColumnTypes().ScanType()` uint64, covering 0–18446744073709551615; signed BIGINT uses int64. ScanType recommends a target and need not equal each row's actual driver.Value: unsigned values use int64 when possible, otherwise exact decimal strings, allowing lossless database/sql scanning into uint64. Nullable columns use pointers or `sql.Null[uint64]`; ScanType never encodes NULL as zero.
 
-`Number` 仅负责无损表示、验证和 Scanner/Valuer，不实现一套十进制运算库。输入扩展类型首先由 `NamedValueChecker` 识别并保持协议类型；普通第三方 `driver.Valuer` 再按标准库契约转换。[G04]
+`Number` provides lossless representation, validation, and Scanner/Valuer, not a decimal arithmetic library. `NamedValueChecker` first recognizes extension values and preserves protocol identity; ordinary third-party `driver.Valuer` conversion then follows standard contracts.[G04]
 
-复杂值的普通 Scan 表示需自描述：格式版本、schema/type 名称、字段顺序与类型、NULL、精确数值、时间和二进制都有明确标记。已采用 `encoding/json` 实现的 format=1 带类型标签表示，数值以十进制文本保存、二进制以 base64 保存；`Object.Scan`/`Array.Scan` 负责解析。它是公开、文档化的类型表示，不是进程内句柄或对未知类型的兜底。
+Ordinary Scan representations of complex values must describe format version, schema/type name, field order/types, NULL, exact numbers, temporal values, and binary explicitly. The implemented `encoding/json` format=1 uses type tags, decimal text for numbers, and base64 for binary; `Object.Scan`/`Array.Scan` parse it. This is a documented public representation, not an in-process handle or fallback for unknown types.
 
-输入 Object/Array 保留明确的类型名和字段顺序；不将任意 struct 反射成数据库对象，不将任意 slice 自动当作 Oracle 集合。类型描述缓存以会话模式、schema、type 名称及可得版本为键；DDL 或类型失配后刷新描述，业务执行不盲目重放。
+Object/Array inputs retain explicit type names/field order. Do not reflect arbitrary structs into database objects or treat arbitrary slices as Oracle collections. Descriptor-cache keys include mode, schema, type name, and available version; refresh after DDL/type mismatch without blindly replaying business execution.
 
-### 11.2.1 已实现的标量约定（D12）
+### 11.2.1 Implemented Scalar Conventions (D12)
 
-公开类型使用轻量值：`Number`、`NString`、`RowID`、`TimestampTZ`、`TimestampLTZ`、`IntervalYM`、`IntervalDS` 的底层为 string，`Raw` 为 []byte；均实现 Scanner/Valuer。NULL 使用 `sql.Null[T]` 或 nil 指针；Raw 的 nil 表示 NULL，非 nil 空切片表示空值。驱动在通用 Valuer 之前识别这些具体类型及其 `sql.Null[T]`，保留输入协议身份；普通 Scan 仍只输出标准 driver.Value。Oracle 是否将空字符串/空 RAW 归为 NULL 由服务端决定，驱动不伪造空值。
+Public values are lightweight: `Number`, `NString`, `RowID`, `TimestampTZ`, `TimestampLTZ`, `IntervalYM`, `IntervalDS` underlie string; `Raw` underlies []byte; all implement Scanner/Valuer. NULL uses `sql.Null[T]`/nil pointers; nil `Raw` is NULL and non-nil empty `Raw` is empty. The driver recognizes these types and their `sql.Null[T]` before generic Valuer to retain input identity; ordinary Scan still emits standard driver.Value only. Server semantics determine Oracle empty-string/RAW normalization to NULL; the driver does not fabricate empties.
 
-Number 验证十进制与指数文本，不接收 float64 来重建精确值，也不实现运算。输入按精确 DECIMAL/NUMBER 编码；指数仅在有界展开后发送，避免 MySQL 将其当作 DOUBLE。超界、非法编码或无法无损表达的转换返回错误，不截断或替换。RowID 保留行标识文本，Oracle 输入沿用字符串参数；客户端显式构造 CHARTOROWID。
+Number validates decimal/exponent text, never reconstructs exact values from float64, and implements no arithmetic. Inputs encode exact DECIMAL/NUMBER; bounded exponent expansion precedes sending so MySQL does not interpret DOUBLE. Overflow, invalid encoding, and lossy conversion error rather than truncate/replace. RowID retains row-identifier text; Oracle binds it as a string, while clients explicitly construct CHARTOROWID.
 
-Number 的内容预算按规范化后的定点十进制字节计算，不因正号、尾随小数点或指数写法较长而误拒实际较短的值。先验证十进制语法和有符号32位指数，再从尾数位数、小数点及指数计算输出长度；确认不超过剩余预算和当前平台 MaxInt 后才复制尾数及补零。原有有效数字、负号和尾数小数精度沿既有定点转换保留，不转 float64；长度前缀、复杂字段及完整命令仍受各自累计限额约束。这不放宽结果报文、LongData 或 SQL 原文解析的独立限额。
+Number budgets count normalized fixed-decimal bytes, avoiding false rejection from longer plus signs, trailing dots, or exponent spellings. Validate decimal syntax and signed 32-bit exponent, calculate output length from mantissa digits/decimal point/exponent, check remaining budget/platform MaxInt, then copy digits/pad zeros. Existing significant digits, signs, and mantissa scale remain through fixed conversion, never float64. Prefixes, complex fields, and entire commands retain cumulative limits. Independent result-message, LongData, and original-SQL limits are not relaxed.
 
-时间默认保留文本；`Session.ParseTime`（DSN `parseTime`）默认 false，启用后仅将无时区 DATE/DATETIME/TIMESTAMP 解析为 time.Time，依据明确的 `Session.Location`。默认 UTC，建连实际设置会话 time_zone；Variables/InitSQL 完成后重新应用连接字符集、时区及 NCHAR 基线，使编解码一致。业务执行期间如自行修改这些设置，必须保证与 Config 一致；Managed reset 不解析任意用户 SQL 来追踪这些变化。零日期、DST 缺口/重叠在解析为瞬间时返回 ErrType，TIME 和 YEAR 保留原有持续时间文本/整数语义。
+Temporal values preserve text by default. `Session.ParseTime` (DSN `parseTime`) defaults false; enabling parses only timezone-free DATE/DATETIME/TIMESTAMP into time.Time using explicit `Session.Location`. Default UTC is actually applied as session time_zone on connection. Reapply connection charset, timezone, and NCHAR baseline after Variables/InitSQL for consistent codecs. Business SQL changing these settings must keep Config consistent; Managed reset does not parse arbitrary SQL to track them. Zero dates and DST gaps/overlaps return ErrType when parsed into instants; TIME/YEAR retain duration-text/integer semantics.
 
-Oracle 兼容模式的协议类型12表示 `DATE`，`ColumnTypes().DatabaseTypeName()` 和服务端参数元数据均报告 `DATE`，保留时分秒；MySQL 兼容模式同一协议类型报告 `DATETIME`。类型名称不随 ParseTime 改变，后者只控制 Scan 来源为文本或 time.Time，不改变数据库类型身份。依据固定 Java 的 [ColumnType.getColumnTypeName](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L454)；TestDateColumnTypes/TestDateParameterMetadata 覆盖两模式/三包流、三种执行路径与 ParseTime/NULL；真实 TestAllScalarTypes 的 DATE/TIMESTAMP 检查仅编译，待联调。
+Oracle protocol type 12 means `DATE`; `ColumnTypes().DatabaseTypeName()` and server parameter metadata report `DATE`, preserving hours/minutes/seconds. MySQL reports `DATETIME` for the same protocol type. ParseTime changes text/time.Time Scan sources, never database identity. Evidence: pinned Java [ColumnType.getColumnTypeName](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L454). TestDateColumnTypes/TestDateParameterMetadata cover both modes/three streams, three execution paths, ParseTime/NULL. Live TestAllScalarTypes `DATE`/TIMESTAMP checks are compiled only, awaiting integration.
 
-带时区值的文本例为 `2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT`。偏移必需，region/缩写可选；已知 region 与偏移不一致时拒绝。未知 region 原文和显式偏移保留，Time() 使用该偏移，不猜测 region。LTZ 原生字段只有会话墙上时间；固定偏移会话追加偏移，具转换规则的会话追加 region，例如 `2024-11-03 01:30:00.000000001 America/New_York`。其 Time() 在歧义时拒绝；同会话 region 可原样绑定，本机瞬间转换到歧义 LTZ 墙上时间也拒绝，防止丢失 fold。客户端与服务端预处理共用 LTZ 会话转换规则：不同 region 的墙上时间须先无歧义地解析为瞬间，再转换到配置的会话时区；源时间缺口/重叠、目标时间重叠或转换后年份超出1–9999均在发送前拒绝。客户端对转换后的 region 输入发送会话墙上时间，对显式偏移输入保留偏移字面量，但两者均须先通过相同的目标墙上时间校验。需要指定 fold 时使用 TimestampTZ 绑定，由服务端转换到 LTZ 列。
+Timezone text example: `2024-11-03 01:30:00.123456789 -04:00 America/New_York EDT`. Offset is required; region/abbreviation optional. Reject disagreement with known regions; preserve unknown regions and explicit offsets, with Time() using the offset without guessing. Native LTZ fields carry session wall time only: append offset for fixed sessions or region for transitioning sessions, e.g. `2024-11-03 01:30:00.000000001 America/New_York`. Time() rejects ambiguity. Same-session regions may bind unchanged, but converting local instants into ambiguous LTZ wall times also fails to avoid losing fold. Client/server preparation share session conversion: resolve different-region wall times unambiguously to instants, then convert into configured session timezone. Reject source gaps/overlaps, target overlaps, and resulting years outside 1–9999 before sending. Client preparation sends converted region inputs as session wall time and explicit-offset inputs as offset literals; both pass the same target-wall-time checks. Use TimestampTZ binding and server LTZ conversion to specify fold.
 
-LTZ 的同 region 判断使用初始化实际发布的会话时区，不能仅比较 `time.Location.String()`。`time.FixedZone` 的名称只是调用方标签，即使叫 `UTC` 或某个 IANA region，也按实际固定偏移处理；同名 region 输入仍须先解析源时区并转换，不能跳过 DST、年份及偏移校验。具转换规则且实际会话 region 一致时，才保留原始墙上时间。
+LTZ same-region checks use the actual published initialization timezone, not just `time.Location.String()`. A `time.FixedZone` name is merely a caller label: even `UTC` or an IANA name follows the actual fixed offset. Same-name region inputs still resolve source zones and convert, without skipping DST/year/offset validation. Preserve original wall time only for transitioning zones matching actual session regions.
 
-Oracle 时间协议保留纳秒与原有精度；普通 time.Time 输入使用原生 TIMESTAMP(9)，MySQL 协议只支持微秒，超过精度明确报错。IntervalYM/DS 保留符号、最高九位年/日与最高九位秒小数，不换算成 time.Duration。二进制和文本行中的 Oracle 扩展时间均按原生字段体解码，不能把它误当成字符文本。
+Oracle temporal protocol preserves nanoseconds/original precision; ordinary time.Time binds native TIMESTAMP(9). MySQL supports microseconds only and explicitly rejects greater precision. IntervalYM/DS retain sign, up to nine year/day digits, and nine fractional-second digits without time.Duration conversion. Decode Oracle extended temporal values in binary/text rows as native field bodies, never character text.
 
-字符集叶包使用 x/text v0.41.0；连接 SQL、预处理 SQL、参数、结果和列名均进行相应编解码。已实现映射与限制见[兼容条件矩阵](go-driver-compatibility-matrix.md)。NString 使用 NCharset；未显式指定时回退到连接 Charset。UTF16 仅用于 NCHAR/结果，不能作为 SQL 客户端字符集；未知编码/collation 明确拒绝。所有语法判断在 Go UTF-8 文本上完成，然后编码；不在 GBK 字节中寻找引号或占位符。
+The charset leaf package uses x/text v0.41.0; connection SQL, prepared SQL, parameters, results, and column names receive matching codecs. See [Compatibility Conditions](go-driver-compatibility-matrix.md) for mappings/limits. NString uses NCharset, falling back to connection Charset when unspecified. UTF16 is NCHAR/results-only, not an SQL client charset. Unknown encoding/collation is rejected. Parse syntax in Go UTF-8 then encode; never seek quotes/placeholders inside GBK bytes.
 
-客户端预处理的 NString 即使生成纯 ASCII 的 UNISTR，也必须先按 NCharset → Charset → utf8mb4 校验字符可表示性，与服务端绑定一致；不得借 Unicode 转义绕过 GBK、ASCII、utf8mb3 或 latin1 的限制。显式 UTF16 national charset 仍允许连接字符集不能表示的 Unicode 值，SQL 继续使用 UNISTR；本地拒绝不发送执行命令、不破坏已同步 statement/会话。二进制参数内容预算和 UNISTR 的 SQL 膨胀预算分别保持，不要求两路径在相同数值的大小预算下接受同一输入。
+Even when client-prepared NString generates ASCII UNISTR, first validate representability using NCharset → Charset → utf8mb4, matching server binding. Unicode escapes cannot bypass GBK/ASCII/utf8mb3/latin1 restrictions. Explicit UTF16 national charset still allows Unicode unrepresentable in connection charset using UNISTR. Local rejection sends no execute command and preserves synchronized statements/sessions. Binary-parameter content and UNISTR SQL-expansion budgets remain separate; equal numeric limits need not accept identical input across paths.
 
-二进制绑定的普通 string、NString 及复杂值内文本字段按转码后的字节占用参数预算，不因 Go UTF-8 源字符串较长而误拒 GBK/latin1/UTF16 收缩值。分配前仅按码点数检查至少一字节的下界，转码后仍严格检查实际内容；长度前缀、类型头和命令开销由既有参数/消息累计预算扣除。编码膨胀、非法输入和超限不截断或替换，发送前拒绝不破坏已同步会话。SQL 文本/客户端插值另按 §10.1 的实际编码与累计开销检查，也不改变 LongData.MaxBytes 对源字节与转码后字节的双重限制。
+Binary-bound ordinary strings, NString, and complex text fields consume post-transcoding parameter bytes, avoiding false rejection when GBK/latin1/UTF16 shrinks Go UTF-8. Before allocation, code-point counts check only a one-byte minimum; actual encoded content is strictly checked. Existing cumulative parameter/message budgets charge prefixes, type headers, and command overhead. Expansion, invalid input, and excess limits reject before sending without truncation/replacement or desynchronization. SQL/interpolation separately follow §10.1 encoded/cumulative checks; LongData.MaxBytes still limits source and encoded bytes.
 
-### 11.2.2 已实现的 OBJECT/ARRAY 约定（D18）
+### 11.2.2 Implemented OBJECT/ARRAY Conventions (D18)
 
-公开值均位于根包，不增加公开 codec/descriptor 包：
+Public values remain in the root package without public codec/descriptor packages:
 
 ```go
 type Attribute struct {
@@ -630,24 +630,24 @@ type Array struct {
 }
 ```
 
-Schema、Type、字段 Name/Type 使用字典精确拼写；Schema 省略时在原会话查询 CURRENT_SCHEMA。Object 输入按字典字段顺序逐项检查，Attribute.Type 可省略；不反射任意 struct 或 slice。Array.Type 为空表示匿名集合，ElementType 是内置类型或显式对象类型；匿名对象集合的 Schema/ElementVersion 描述元素。具名集合从字典解析元素类型。Version/ElementVersion 来自协议；0 表示服务端当前版本，不从字典虚构数字版本。
+Schema, Type, and field Name/Type use exact dictionary spelling; omitted Schema queries CURRENT_SCHEMA on the original session. Object input validates dictionary field order; Attribute.Type is optional. No arbitrary struct/slice reflection. Empty Array.Type means anonymous collection; ElementType is a built-in or explicit object type. Schema/ElementVersion describe anonymous object-collection elements. Named collections resolve element types from dictionaries. Version/ElementVersion come from protocol; 0 means current server version, not an invented dictionary number.
 
-`Null=true` 表示整个 SQL NULL；普通 nil/空 Elements 均表示空集合，元素 nil 保留为元素 NULL。Object/Array 均实现 Scanner/Valuer，Scan(nil) 设置 Null；失败的 Scan 不修改目标。标准查询返回 format=1 JSON 字符串，包含 kind、schema、type、version、null、fields（name/type/value）或 elementType、elementVersion、elements。空 fields/elements 可省略，扫描后规范化为空容器。NUMBER 使用十进制字符串，RAW/BLOB 使用 base64，DATE/TIMESTAMP 使用墙钟文本，子对象/集合使用同格式嵌套文档，元素顺序与字段顺序不变。Valuer 提供该无损表示；本驱动先由 NamedValueChecker 保留值身份，再发送原生复杂参数，不把 JSON 当作服务器对象值。
+`Null=true` means whole SQL NULL; nil/empty Elements otherwise mean empty collections, with nil elements preserving element NULL. Object/Array implement Scanner/Valuer; Scan(nil) sets Null, and failed Scan leaves targets unchanged. Standard queries return format=1 JSON containing kind/schema/type/version/null, fields (name/type/value), or elementType/elementVersion/elements. Empty fields/elements may be omitted and normalize to empty containers. NUMBER uses decimal strings, RAW/BLOB base64, DATE/TIMESTAMP wall-time text, and nested objects/collections the same document format; order remains unchanged. Valuer supplies this lossless form; NamedValueChecker first preserves identity and sends native complex parameters, never JSON as server objects.
 
-原生绑定与结果支持 Oracle 兼容模式，使用 COMPLEX(160) 及服务端预处理二进制结果。对象参数头携带 schema/name/version；集合参数头为匿名头和元素协议类型，对象元素另携带其类型名/版本。文本结果缺少可验证的复杂值表示，明确 ErrUnsupported；客户端插值不生成复杂值字面量，已发送操作不会为切换协议而重放。MySQL 兼容模式的原生复杂输入同样明确拒绝。
+Native binding/results support Oracle mode using COMPLEX(160) and server-prepared binary results. Object headers carry schema/name/version; collection headers are anonymous plus element protocol type, with object-element names/versions. Text results lack a verifiable representation and return ErrUnsupported; client interpolation creates no complex literals and sent operations never replay to switch protocol. MySQL native complex inputs are also rejected explicitly.
 
-已实现字段输入为 NUMBER/INTEGER/DECIMAL/NUMERIC、CHAR/VARCHAR/VARCHAR2、NCHAR/NVARCHAR2、RAW、DATE 及嵌套对象/集合；非 NULL TIMESTAMP/LOB 字段输入没有已确认的写协议，返回 ErrUnsupported。内置集合元素头当前仅支持数值、CHAR/VARCHAR/VARCHAR2、RAW、DATE；NCHAR/NVARCHAR2/TIMESTAMP/LOB 集合即使为空或全 NULL 也在发送前拒绝。结果支持以上基础字段以及 TIMESTAMP、BLOB/CLOB/NCLOB 的有界内容物化。未支持的字段/元素类型明确报错，不兜底成未知字节或伪造成功；这些边界尚不能作为全部复杂类型的真实兼容验收。
+Implemented field inputs: NUMBER/INTEGER/DECIMAL/NUMERIC, CHAR/VARCHAR/VARCHAR2, NCHAR/NVARCHAR2, RAW, DATE, nested objects/collections. Non-NULL TIMESTAMP/LOB field writes lack confirmed protocol and return ErrUnsupported. Built-in element headers currently support numbers, CHAR/VARCHAR/VARCHAR2, RAW, DATE only; NCHAR/NVARCHAR2/TIMESTAMP/LOB collections reject before sending even if empty/all NULL. Results add TIMESTAMP and bounded BLOB/CLOB/NCLOB materialization. Unsupported fields/elements explicitly fail, never unknown-byte fallback or fabricated success. These boundaries do not accept all complex types against real servers.
 
-物化前先有界缓冲整个剩余响应，包括后续结果集和隐藏 OUT；完成响应后才能同会话查字典或读取嵌套 LOB。Close/Exec 排空同样执行这条路径，Close 的清理 context 传到最终复杂 OUT 解码，错误时不发布 OUT。根复杂值共享剩余预算，节点、字段元数据、普通值和嵌套 LOB 累计计入；LOB 读取前检查剩余额度，RAW/BLOB 计入 base64 膨胀，最终 JSON 及整响应再次受限。最大嵌套深度 32、节点 65536、JSON 16 MiB，并与更小的 MaxMessageBytes、MaxLOBBytes 同时约束；不通过扩大单个 LOB 预算绕过总量限制。
+Before materialization, boundedly buffer the entire remaining response, including later row sets/hidden OUT; only then query dictionaries/read nested LOBs on the same session. Close/Exec draining shares this path; Close cleanup context reaches final complex OUT decoding, publishing no OUT on error. Root complex values share remaining budgets, cumulatively counting nodes, field metadata, ordinary values, and nested LOBs. Check budget before LOB reads, charge RAW/BLOB base64 expansion, and bound final JSON/full response again. Limits: depth 32, 65536 nodes, JSON 16 MiB, jointly constrained by smaller MaxMessageBytes/MaxLOBBytes; larger per-LOB limits cannot bypass totals.
 
-NULL 字段和元素同样消耗一个节点并受嵌套深度约束，不能在先前子树耗尽预算后继续接受尾部 NULL。二进制行的复杂字段定位、树解码及原生参数编码均执行该检查；恰好达到上限仍可处理。[包流边界测试](../internal/wire/complex_test.go)覆盖两类容器、定位/物化、65536/65537 节点及后续列边界，[编码回归](../complex_regression_test.go)与[模糊测试](../complex_fuzz_test.go)补充共享预算和 NULL 深度断言。
+NULL fields/elements each consume one node and obey depth limits; trailing NULLs cannot be accepted after prior subtrees exhaust budgets. Complex binary-row location, tree decoding, and native parameter encoding all check this; exact-limit values remain valid. [Stream boundary tests](../internal/wire/complex_test.go) cover both containers, location/materialization, 65536/65537 nodes, and following columns; [encoding regression](../complex_regression_test.go) and [fuzz tests](../complex_fuzz_test.go) add shared-budget/NULL-depth checks.
 
-描述复用 D13 的类型/属性/集合/同义词查询计划。优先实体类型，再 private/PUBLIC 同义词；拒绝远程 DB_LINK、循环和超深依赖。缓存仅存在于一个物理会话的单个业务命令内，以模式/schema/name/协议版本为键；每次业务命令和 reset 清空，不跨权限/schema 变化复用。帧解析与描述失配时清缓存并仅重新解析已缓冲字节，业务 SQL 不重放；相同形状下的类型语义变化仍需目标服务端版本/字典联调验证。描述查询累计响应也受 MaxMessageBytes 限制。
+Descriptors reuse D13 type/attribute/collection/synonym query plans, preferring concrete types then private/PUBLIC synonyms and rejecting remote DB_LINK, cycles, or excessive dependencies. Cache lasts one business command on one physical session, keyed by mode/schema/name/protocol version, cleared per command/reset rather than reused across schema/permission changes. Frame/descriptor mismatch clears it and reparses buffered bytes only, never business SQL. Same-shape semantic type changes still require server-version/dictionary integration. Descriptor-query cumulative responses also obey MaxMessageBytes.
 
-上述能力已有本地协议/标准 database/sql 回归；`TestComplexTypes` 仅编译，Oracle/OBProxy 的类型定义、同义词、协议版本和原事务可见性尚未联调。
+These capabilities have local protocol/standard database/sql regressions. `TestComplexTypes` is compiled only; Oracle/OBProxy type definitions, synonyms, versions, and original-transaction visibility remain untested live.
 
 
-### 11.3 错误
+### 11.3 Errors
 
 ```go
 type Error struct {
@@ -657,13 +657,13 @@ type Error struct {
 }
 ```
 
-服务端错误通过 `errors.As` 取得 Code/SQLState；传输、context、能力不支持、类型转换和批量错误保留各自信息及 `Unwrap`。不根据一份 MySQL 错误表强行解释 Oracle 兼容模式错误。
+Use `errors.As` for server Code/SQLState; transport, context, unsupported-capability, conversion, and batch errors retain their information and `Unwrap`. Do not force Oracle errors through a MySQL error table.
 
-`Error.Message` 保留服务端返回信息；服务端信息自身可能包含 SQL 片段，日志默认只记录 Code/SQLState 和错误类别，不自动输出完整 Message。
+`Error.Message` preserves server text, which may itself contain SQL fragments. Default logs record only Code/SQLState and error category, never the full Message automatically.
 
-### 11.4 混合结果、逐项计数与执行状态
+### 11.4 Mixed Results, Per-Item Counts, and Execution State
 
-普通业务继续使用标准 Exec/Query。对多语句、过程或需要完整结果摘要的执行，增加一个具体结果对象，不包装 DB/Conn 或实现第二套行读取 API：
+Ordinary applications retain standard Exec/Query. Multi-statements, procedures, and executions needing complete summaries use a concrete result object without DB/Conn wrappers or another row-reading API:
 
 ```go
 type ResultKind uint8
@@ -680,24 +680,24 @@ type ResultColumn struct {
 
 type ResultInfo struct {
     Kind              ResultKind
-    RowSetIndex       int // 非行结果为 -1；行结果从 0 开始
+    RowSetIndex       int // -1 for non-row results; row results start at 0
     RowsAffected      int64
     RowsAffectedKnown bool
-    InsertID          string // 无损十进制值，不受 int64 限制
+    InsertID          string // Lossless decimal value, not limited to int64
     InsertIDKnown     bool
     Complete          bool
     Err               error
     Warnings          WarningSummary
-    Columns           []ResultColumn // 仅行结果；按投影顺序保存列标签及服务端来源
+    Columns           []ResultColumn // Row results only; labels/server origins in projection order
 }
 
 type ExecutionSnapshot struct {
-    Results []ResultInfo // 服务端可观察结果的原始顺序
+    Results []ResultInfo // Original server-observable result order
     Done    bool
     Err     error
 }
 
-type Execution struct { /* 私有字段 */ }
+type Execution struct { /* private fields */ }
 
 func Execute(ctx context.Context, session Session, query string,
     args ...any) (*Execution, error)
@@ -706,25 +706,25 @@ func (e *Execution) Snapshot() ExecutionSnapshot
 func (e *Execution) Close() error
 ```
 
-Session 的定义见 §14.1。Execute 只接受非 nil 的 `*sql.Conn` 或 `*sql.Tx`，通过其 QueryContext 和包私有请求完成执行，由标准库构造 Rows。它同时承载普通过程结果和 §13.2 的连接相关输出，不另设 Call 或多结果专用入口。
+Session is defined in §14.1. Execute accepts only non-nil `*sql.Conn` or `*sql.Tx`, executing through QueryContext/package-private requests with standard-library-created Rows. It handles both ordinary procedure results and connection-bound output (§13.2), without separate Call/multiple-result entry points.
 
-- `Rows()` 始终返回同一个标准 Rows，读取方式仍为 Next/Scan/NextResultSet。成功时即使只有命令结果，也返回一个无行的 Rows，调用方仍需消费或关闭它。
-- 解析器在第一份行结果之前、两份行结果之间及最后一份行结果之后读取命令响应，按顺序追加摘要。调用方推进 Rows 或关闭执行，摘要才继续更新；Snapshot 不驱动网络读取。
-- 例如 `UPDATE → SELECT → UPDATE` 的摘要顺序为 Command、Rows、Command；只有中间一项的 RowSetIndex 为 0，两个命令的计数各自保存。不会为计数插入假行集，也不会把 SELECT 返回行数当作 RowsAffected。
-- 一个命令结果可以有已知的 0 计数；Known 区分“已知为 0”与“服务端没有提供”。无法表示为 int64 的计数返回明确溢出错误。生成 ID 仅在协议可靠提供时可知，不补查、不猜测。
-- 过程返回多少项以协议实际可观察结果为准。保留确有计数语义的最终 CALL 汇总响应；纯 OUT/session tracking 等控制响应不新增业务项。不从一个汇总计数虚构过程内部各语句的计数，也不一概丢弃尾随 OK 或零计数。
-- Rows 项在读到完整结果边界后标记 Complete；成功 drain 也可以使它完成，不表示业务读取了每一行。命令项收到完整 OK 后完成；明确的独立服务端 ERR 可形成 Failure 项。行结果中途失败则保留该项未完成及其错误，不生成虚假的后续项。
-- Snapshot 并发安全并返回摘要及各项 Columns 切片的独立副本。Done 表示该执行已结束，包括失败结束；成功条件为 Done 且 Err 为 nil。失败时保留已确认的前缀、列来源和原错误，未观察到的语句是否执行不能由摘要推断。
-- 参数/配置在发送前失败可以返回 nil、error；开始发送后若 QueryContext 直接失败，仍返回非 nil Execution 和 error，保留已经确认的信息，此时 Rows 可为 nil。不能以 ErrBadConn 隐藏部分执行结果。
-- Close 幂等，有界关闭/排空 Rows 并完成摘要、OUT 和资源发布。它返回读取、最终化或清理的错误，即使 Rows 已自动关闭，也不能丢失此前错误。取消、超时或清理失败时标记未完成结果，清理未发布资源并淘汰无法同步的会话。调用方停止行迭代后调用 Close，检查 Execute 错误、Rows.Err、Close 错误和最终 Snapshot。
-- Snapshot 只复制驱动内存状态，可与行迭代并发调用；它不查询标准 Rows。标准库内部事务取消没有向驱动公开，显式 Commit/Rollback 自动关闭未读 Rows 时，其取消错误由 Execution.Close 读取 Rows.Err 并合并到最终摘要，保留此前驱动错误和原始超时原因。Done 表示驱动已完成收尾；取得包含标准库错误的最终摘要以 Close 为边界。
-- `Rows().Close()` 走同一最终化逻辑；已发布 Cursor/LOB 的寿命见 §13.2，不随 Execution.Close 关闭。Rows 的读取与关闭仍遵守标准库并发契约；仅 Snapshot 允许并发观察，不承诺并发 Next。
-- 摘要达到 MaxResultItems 后不再无界分配：返回资源上限错误，保留已记录前缀并有界清理，不能将后续项默认为未执行或静默丢弃后返回成功。
-- 列来源在一个行集的完整元数据读取并验证后一次发布；未完整元数据、隐藏 OUT、命令或 Failure 不发布 Columns。整个 Execution 的元数据累计受 MaxMessageBytes 限制，复用行集元数据的保守内存估算（包含结构开销及扩展描述），超过预算时保留此前结果并淘汰连接。普通 Query 的 Rows 不额外保存摘要。
+- `Rows()` always returns the same standard Rows using Next/Scan/NextResultSet. Successful command-only executions still return an empty Rows that must be consumed or closed.
+- The parser reads command responses before the first row set, between row sets, and after the last, appending summaries in order. Summaries advance only when callers advance Rows or close execution; Snapshot never drives network reads.
+- `UPDATE → SELECT → UPDATE` yields Command, Rows, Command summaries; only the middle item has RowSetIndex 0. Command counts remain separate, without fake row sets or counting SELECT rows as RowsAffected.
+- Command results may have known zero counts. Known distinguishes zero from missing server information. Counts unrepresentable as int64 explicitly overflow. Generated IDs are known only from reliable protocol values, without follow-up queries/guessing.
+- Procedure items follow protocol-observable results. Retain final CALL summaries with genuine count semantics; OUT/session-tracking control responses add no business items. Never invent per-statement counts from aggregates or indiscriminately drop trailing OK/zero counts.
+- Rows items become Complete at full result boundaries, including successful drain even if callers did not read every row. Commands complete on full OK; independent explicit ERR may create Failure items. Mid-row failure leaves that item incomplete with its error and invents no later items.
+- Snapshot is concurrency-safe and independently copies summaries and Columns slices. Done means execution ended, including failure; success requires Done and nil Err. Failure preserves confirmed prefixes, origins, and original errors; summaries cannot establish whether unobserved statements executed.
+- Pre-send parameter/configuration failure may return nil,error. After sending starts, direct QueryContext failure still returns non-nil Execution plus error with confirmed information; Rows may be nil. ErrBadConn must not hide partial results.
+- Close is idempotent, boundedly closes/drains Rows, and finalizes summaries, OUT, and resource publication. It returns read/finalization/cleanup errors even if Rows auto-closed. Cancellation/timeout/cleanup failure marks incomplete results, cleans unpublished resources, and discards unsynchronized sessions. After stopping iteration, call Close and inspect Execute error, Rows.Err, Close error, and final Snapshot.
+- Snapshot copies driver memory only and may run concurrently with iteration; it does not query standard Rows. Standard-library transaction cancellation is not exposed to drivers. When explicit Commit/Rollback auto-closes unread Rows, Execution.Close reads Rows.Err and merges cancellation into final summaries while retaining previous driver errors/original timeout causes. Done means driver finalization finished; Close is the boundary for final summaries including standard-library errors.
+- `Rows().Close()` uses the same finalization. Published Cursor/LOB lifetimes (§13.2) survive Execution.Close. Reading/closing Rows retains standard-library concurrency contracts; only Snapshot supports concurrent observation, not concurrent Next.
+- At MaxResultItems, stop unbounded allocation, return a resource-limit error, retain recorded prefixes, and perform bounded cleanup. Never assume later items did not execute or silently discard them and report success.
+- Publish column origins atomically after complete verified row-set metadata. Incomplete metadata, hidden OUT, commands, and Failure have no Columns. Execution metadata cumulatively obeys MaxMessageBytes using conservative row-set memory estimates including structs/extended descriptors. Excess preserves prior results and discards connections. Ordinary Query Rows stores no extra summaries.
 
-普通 `sql.Result` 仍只有标准 LastInsertId/RowsAffected；多语句 Exec 返回最后一个命令结果的可知计数/ID，没有可用命令结果时相应方法返回明确错误，不把不同语句的计数相加。需要逐项信息使用 Execute；给内部 driver.Result 加方法不能穿透标准库包装。[G10]
+Ordinary `sql.Result` still exposes standard LastInsertId/RowsAffected only. Multi-statement Exec returns the final command's known count/ID; without a usable command result, methods return explicit errors rather than adding counts across statements. Use Execute for per-item information; driver.Result methods cannot pass through standard-library wrapping.[G10]
 
-计数策略单独固定，不由某次读取方式改变：
+Count policy is fixed independently of the reading method:
 
 ```go
 type RowsAffectedMode uint8
@@ -735,97 +735,97 @@ const (
 )
 ```
 
-Config.RowsAffectedMode 默认 MatchedRows。MySQL 兼容模式通过 CLIENT_FOUND_ROWS 选择 UPDATE 的匹配行数或实际修改行数，与 Java 默认策略一致。[J13] INSERT、DELETE、upsert 等保留服务端在该能力位下的原生计数，不统一改成 1。Oracle 兼容模式保留其原生匹配行语义，不模拟 ChangedRows；显式要求 ChangedRows 时在识别实际模式后的初始化阶段拒绝，不能开始业务操作。
+Config.RowsAffectedMode defaults MatchedRows. MySQL CLIENT_FOUND_ROWS chooses UPDATE matched/changed counts, matching Java defaults.[J13] INSERT/DELETE/upsert retain native server counts under that bit rather than normalizing to 1. Oracle retains native matched-row semantics without ChangedRows emulation. Explicit ChangedRows is rejected during post-identification initialization before business execution.
 
-标准 Exec、Execute、ExecBatch 和游标 DML 使用同一生效策略；未知计数、零和溢出有不同状态。可更新游标及模拟 BLOB 的存在性判断必须遵守 §14.4、§15，不能把 ChangedRows 下的无变化更新判为记录不存在。
+Standard Exec, Execute, ExecBatch, and cursor DML share effective policy; unknown, zero, and overflowing counts differ. Updatable cursor/emulated BLOB existence checks must follow §14.4/§15, never equating unchanged ChangedRows updates with nonexistent records.
 
-## 12. 连接、事务、重试和取消
+## 12. Connections, Transactions, Retries, and Cancellation
 
-### 12.1 连接状态与并发
+### 12.1 Connection State and Concurrency
 
-核心状态至少区分：`ready`、`commandRunning`、`rowsActive`、`transactionActive`、`broken`、`closed`，并另存 XA/游标/LOB 的资源状态。它们是可组合的状态约束，不强行压成一个互斥枚举。
+Core states distinguish at least `ready`, `commandRunning`, `rowsActive`, `transactionActive`, `broken`, `closed`, with separate XA/cursor/LOB state. These are composable constraints, not forced into a mutually exclusive enum.
 
-`database/sql` 管理 Conn 的串行调用。驱动只为取消回调、关闭和连接相关扩展保留必要同步，不为每条查询创建一个常驻工作 goroutine，不实现命令多路复用。
+`database/sql` serializes Conn calls. Drivers synchronize only cancellation callbacks, closure, and connection-bound extensions as necessary, without persistent per-query worker goroutines or command multiplexing.
 
-标准查询持有连接直到 Rows 结束。扩展游标允许在完整 fetch 响应已经读完的边界执行匹配该资源的后续命令；未读的网络响应绝不与另一个命令交错。
+Standard queries hold connections until Rows finishes. Extension cursors allow resource-matching commands only at fully consumed fetch-response boundaries; unread responses never interleave with other commands.
 
-### 12.2 ErrBadConn 与结果不确定性
+### 12.2 ErrBadConn and Uncertain Outcomes
 
-| 场景 | 返回和处理 |
+| Scenario | Return and handling |
 | --- | --- |
-| 进入操作时已知连接失效，尚未开始该操作 | 可返回 `driver.ErrBadConn`，由标准库重新获取连接 |
-| 建连失败 | 返回具体建连错误；Connect/Open 不返回 ErrBadConn |
-| 参数、类型、包大小在发送前验证失败 | 返回具体错误；连接仍同步时可复用 |
-| 开始发送后的网络错误或响应丢失 | 返回原传输错误，标记连接 broken；不能包装为 ErrBadConn |
-| COMMIT 响应丢失 | 返回 `ErrCommitUnknown`，包括完整写出后、读取响应前发生的取消/超时；保留底层 context 错误，不自动再提交或回滚并声称已撤销 |
-| 已收到服务端错误 | 返回服务端错误；是否保留连接取决于协议同步及会话状态 |
+| Connection known invalid on entry, operation not started | May return `driver.ErrBadConn` for standard-library reacquisition |
+| Connection establishment fails | Return specific connection errors; Connect/Open do not return ErrBadConn |
+| Parameter/type/packet-size validation fails before sending | Return specific errors; reuse synchronized connections |
+| Network error/lost response after sending starts | Return original transport errors and mark broken; never wrap as ErrBadConn |
+| COMMIT response lost | Return `ErrCommitUnknown`, including cancellation/timeouts after full write before response read; retain underlying context errors without recommitting or rolling back and claiming reversal |
+| Server error received | Return server error; connection retention depends on synchronization/session state |
 
-关闭坏连接和允许重试是两个独立决定。Validator 负责淘汰连接，不能为了淘汰而把所有错误变成 ErrBadConn。[G01][G02]
+Discarding bad connections and allowing retries are independent decisions. Validator discards connections; never convert every error to ErrBadConn merely to discard them.[G01][G02]
 
-### 12.3 本地事务和保存点
+### 12.3 Local Transactions and Savepoints
 
-- `BeginTx` 校验隔离级别、只读参数及模式能力；不能默默降到其他隔离级别。
-- 事务中的所有操作使用原物理会话；不在事务中透明换地址、换模式或重新建连。
-- Commit/Rollback 恢复驱动更改的事务设置；恢复失败时丢弃连接，事务结果与恢复错误分别保留。
-- `Savepoint`、`RollbackTo` 等函数操作调用方已有的 `*sql.Tx`，校验并按模式引用标识符，再经 `Session.Charset` 严格编码；不可表示的名称在发送前拒绝，原事务仍可使用。服务端没有 RELEASE 语义时返回明确能力错误。
-- 保存点操作同时监听调用和 BeginTx 的 context，事务取消或超时会中断阻塞响应并保留原因；可能已发送后淘汰会话，不补发回滚或重放。事务 context 被取消时配合标准库的 Rollback；网络已断时不伪称已完成服务端回滚。
+- `BeginTx` validates isolation, read-only options, and mode capabilities; no silent isolation downgrade.
+- All transaction operations retain the original physical session, without transparent rerouting, mode changes, or reconnection.
+- Commit/Rollback restores driver-modified transaction settings; failed restoration discards connections while retaining transaction outcomes and restoration errors separately.
+- `Savepoint`, `RollbackTo`, etc. operate on existing caller `*sql.Tx`, validating/mode-quoting identifiers and strictly encoding `Session.Charset`. Unrepresentable names fail before sending without invalidating the transaction. Unsupported RELEASE semantics return explicit capability errors.
+- Savepoints monitor both call and BeginTx contexts. Cancellation/timeouts interrupt blocked responses and preserve causes; possible sending discards sessions without additional rollback/replay. Cooperate with standard Rollback on transaction cancellation without claiming server rollback if networking has failed.
 
-### 12.3.1 D32 自动提交、只读事务和角色策略
+### 12.3.1 D32 Autocommit, Read-Only Transactions, and Role Policies
 
-Go 以标准 `sql.Tx` 管理事务，四个 Java 选项的功能按下表承载；不新增全局自动提交开关或连接级 `SetReadOnly`，同名 Java DSN 参数严格拒绝。
+Go uses standard `sql.Tx`; four Java options map as below without global autocommit switches or connection `SetReadOnly`. Matching Java DSN names are strictly rejected.
 
-| Java 选项及默认值 | Go 承载与行为差异 |
+| Java option/default | Go equivalent and behavioral differences |
 | --- | --- |
-| autocommit=true | 新物理连接及 ChangeUser 初始化必须得到 autocommit 开启且无活动事务的最终状态；配置 Variables/InitSQL 关闭它会使初始化失败。普通事务使用 BeginTx；需要手动事务控制时先取得 sql.Conn，在同一 Conn 显式执行模式原生 SQL 并完成 COMMIT/ROLLBACK。不要在 sql.DB 上执行 SET autocommit=0 后依赖后续调用使用同一会话 |
-| assureReadOnly=true | `BeginTx(ctx, &sql.TxOptions{ReadOnly:true})` 在当前 Socket 设置服务端事务属性。MySQL 使用 START TRANSACTION READ ONLY，Oracle 关闭 autocommit 后使用 SET TRANSACTION READ ONLY；服务端拒绝写入的错误按原错误码/SQLSTATE 返回。不解析业务 SQL 判断是否只读，也不把端点角色标签当作权限证明 |
-| failOnReadOnly=false | Java 可在主库不可用时回退只读入口；Go 的显式 Routing.Role 始终严格过滤，失败不回退未知或相反角色。RoleAny 表示不限制候选角色，不证明可写。RoleReadOnly 本地拒绝 ReadOnly=false 的 BeginTx；该角色不会自动把普通 SQL 放进只读事务。读写服务由应用分别持有标准 sql.DB |
-| oracleChangeReadOnlyToRepeatableRead=false | Java 的可选 Connection.setReadOnly 到 RepeatableRead 重解释不迁移；Go ReadOnly 始终保留只读事务含义，Oracle 明确拒绝 LevelRepeatableRead。Oracle 支持默认、ReadCommitted、Serializable；ReadOnly+ReadCommitted 拒绝，ReadOnly+Serializable 使用 Oracle 的只读事务快照，实际隔离行为待真实目标验证 |
+| autocommit=true | New connections/ChangeUser must finish initialization with autocommit enabled and no active transaction; Variables/InitSQL disabling it fail initialization. Use BeginTx normally. Manual control requires sql.Conn with mode-native SQL and completed COMMIT/ROLLBACK on that Conn. Never SET autocommit=0 through sql.DB and assume later calls share its session |
+| assureReadOnly=true | `BeginTx(ctx, &sql.TxOptions{ReadOnly:true})` sets server transaction attributes on the current socket. MySQL uses START TRANSACTION READ ONLY; Oracle disables autocommit then SET TRANSACTION READ ONLY. Preserve write-rejection codes/SQLSTATE. Do not parse business SQL for read-only classification or treat role tags as authorization proof |
+| failOnReadOnly=false | Java may fall back to read-only endpoints when primary is unavailable. Go explicit Routing.Role filters strictly with no unknown/opposite-role fallback. RoleAny imposes no role constraint and proves no writability. RoleReadOnly locally rejects BeginTx ReadOnly=false but does not automatically wrap ordinary SQL in read-only transactions. Applications hold separate standard sql.DBs for read/write services |
+| oracleChangeReadOnlyToRepeatableRead=false | Do not migrate Java's optional Connection.setReadOnly reinterpretation as RepeatableRead. Go ReadOnly always means read-only transactions; Oracle explicitly rejects LevelRepeatableRead. Supported Oracle levels: default, ReadCommitted, Serializable. Reject ReadOnly+ReadCommitted; ReadOnly+Serializable uses Oracle read-only snapshots, whose real isolation awaits target verification |
 
-MySQL 可用隔离级别为默认、ReadCommitted、RepeatableRead、Serializable；显式级别在 START TRANSACTION 前设置。Oracle 读写事务显式指定 ReadCommitted/Serializable 时发送相应 SET TRANSACTION ISOLATION LEVEL。未知/不支持的组合在事务设置 SQL 前拒绝。
+MySQL supports default, ReadCommitted, RepeatableRead, Serializable, setting explicit levels before START TRANSACTION. Oracle read/write transactions explicitly requesting ReadCommitted/Serializable send SET TRANSACTION ISOLATION LEVEL. Unknown/unsupported combinations fail before transaction-setting SQL.
 
-固定 Conn 的手动 autocommit=0 不会在相邻调用间被 reset，BeginTx 明确拒绝嵌套或自动提交已关闭的会话。Managed 池复用根据服务端状态先 ROLLBACK 未完成事务，再恢复 autocommit=1；不能反序执行以免提交待处理工作。标准事务结束也检查并恢复自动提交，失败使用 ErrTxCleanup 且淘汰会话；Full reset 继续使用物理替换。任意 SQL 改变的其他会话状态不在 Managed 的完整恢复承诺内。
+Manual autocommit=0 on fixed Conn is not reset between calls; BeginTx rejects nesting or autocommit-disabled sessions. Managed reuse first ROLLBACKs pending transactions from server state, then restores autocommit=1; reversing order could commit pending work. Standard transaction end also restores autocommit; failures return ErrTxCleanup and discard sessions. Full reset still physically replaces connections. Managed does not promise full restoration of arbitrary SQL-changed session state.
 
-源码依据：[Java 四项默认值](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L287)、[setReadOnly 重解释](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseConnection.java#L1215)、[assureReadOnly 的会话设置](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L2068)。`TestTransactionNative*`、既有 Tx/Reset/Role 用例和外部 `ExampleNewConnector_readOnlyTransactions` 提供本地协议/编译证据，不代表数据库权限、快照隔离或真实主从故障验收。
+Source evidence: [four Java defaults](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L287), [setReadOnly reinterpretation](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseConnection.java#L1215), [assureReadOnly settings](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L2068). `TestTransactionNative*`, existing Tx/Reset/Role tests, and external `ExampleNewConnector_readOnlyTransactions` provide local protocol/compile evidence, not live privilege, snapshot-isolation, or primary/replica-failure acceptance.
 
 ### 12.4 Session reset
 
-默认 Managed 策略恢复驱动管理的设置，检查未完成事务、未清理响应和异常资源。它不承诺识别任意 SQL 引起的临时表、包状态和用户变量变化；依赖这些状态的业务使用 `sql.Conn` 或事务固定会话。
+Default Managed restores driver-managed settings and checks unfinished transactions, unread responses, and abnormal resources. It cannot recognize every arbitrary-SQL temporary-table/package/user-variable change; applications relying on these use `sql.Conn` or transactions to pin sessions.
 
-Full 策略在池复用边界执行经验证的服务端 reset，并恢复初始化基线。服务端无可靠 reset 时丢弃旧连接，让 Connector 创建新会话。该模式会失去旧 statement ID；内部以 generation 标记失效，并在下一次使用标准 sql.Stmt 时重新 prepare。
+Full performs verified server reset at pool-reuse boundaries and restores initialization baseline. Without reliable reset, discard old connections and let Connector create sessions. Old statement IDs are lost; internal generations invalidate them and standard sql.Stmt reparses on next use.
 
-`ResetSession` 无法恢复基线时先标记连接失效，再返回 `driver.ErrBadConn`；此时下一项用户操作尚未开始，允许标准库安全获取新连接。不能只返回一个普通 reset 错误并假定标准库一定停止使用该连接。
+When `ResetSession` cannot restore baseline, mark invalid then return `driver.ErrBadConn`: the next business operation has not started, allowing safe reacquisition. Do not return only ordinary reset errors and assume standard-library reuse stops.
 
-不能在固定 `sql.Conn` 的相邻调用之间随意 reset，也不能在事务中 reset。不会通过猜测 SQL 首词维护“已经清理了全部会话”的假象。
+Never reset arbitrarily between fixed `sql.Conn` calls or within transactions. Guessing first SQL words cannot support claims that all session state was cleaned.
 
-### 12.5 Context、超时与关闭
+### 12.5 Context, Timeouts, and Closure
 
-- 所有网络操作同时考虑 context deadline 和配置的 I/O/清理预算。
-- 操作开始前检查取消；执行中使用 deadline 加 `context.AfterFunc` 中断阻塞 I/O。
-- 默认取消会关闭底层连接并使其失效，以保证后续不会把残留响应当成下一条响应。
-- AfterFunc 的 stop 返回 false 时要协调回调结束；不能让旧请求的回调在连接重用后关闭新请求。[G06]
-- QueryContext 的操作 context 生命周期延续到 Rows 读取/关闭结束；Connect 和 Prepare 的 context 不存入长期连接/statement。
-- Rows.Close、Stmt.Close 和 Conn.Close 的网络清理均有上限。清理不了就关闭会话，不无限 drain，也不使用无界 Background 网络请求。
-- 需要主动服务端 `KILL QUERY` 的场景提供显式 CancelQuery 能力，目标由先前取得的连接信息和会话代次确定；辅助通道由调用方已配置的 Connector 建立，使用同一认证/TLS策略。该能力与默认 context 取消分开，不将 KILL 成功当作原操作未执行的证明。
+- Every network operation considers context deadlines and configured I/O/cleanup budgets.
+- Check cancellation before operations; combine deadlines and `context.AfterFunc` to interrupt blocked I/O.
+- Default cancellation closes/invalidates underlying connections so residual responses cannot become the next response.
+- If AfterFunc stop returns false, coordinate callback completion so old callbacks cannot close reused connections during new requests.[G06]
+- QueryContext context lasts through Rows reading/closure; Connect/Prepare contexts never persist in long-lived connections/statements.
+- Rows.Close, Stmt.Close, and Conn.Close network cleanup is bounded. Close undrainable sessions, avoiding unlimited drains or unbounded Background network calls.
+- Explicit CancelQuery provides active server `KILL QUERY` using previously obtained identity/generation. Auxiliary channels use caller-configured Connector and identical authentication/TLS policy. Separate from default context cancellation; successful KILL does not prove the original operation never executed.
 
-Java `enableQueryTimeouts` 默认 true，控制 Statement.setQueryTimeout 的共享定时任务，[OceanBaseStatement.executeQueryPrologue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseStatement.java#L271) 还受是否使用服务端超时及批量路径影响。Go 使用每次 ExecContext/QueryContext 的 context；不提供全局禁用 context 的开关，不偷偷加服务端超时前缀或发送 KILL。Background 没有业务 deadline，仍受读取/清理预算约束。PrepareContext 的 context 只管 prepare，后续执行必须另传其业务 context；QueryContext 的 context 则覆盖 Rows 生命周期。超时发送前不污染原会话，可能发送后必须淘汰，不返回能触发业务重放的 ErrBadConn；不证明数据库已中止或回滚。TestStatementContextDeadline 用固定 sql.Conn/sql.Stmt 覆盖两模式/三包流、两类预处理、预先过期后仍可 Ping、执行 deadline 早于 ReadTimeout 和未知结果不回池；事务/Rows 的期限由 TestExecutionTxDeadline、TestTextNextResultUsesQueryDeadline 等既有测试覆盖。
+Java `enableQueryTimeouts` defaults true and controls shared Statement.setQueryTimeout timers; [OceanBaseStatement.executeQueryPrologue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseStatement.java#L271) also depends on server timeouts/batch paths. Go uses per-ExecContext/QueryContext contexts without global disabling, hidden server-timeout prefixes, or automatic KILL. Background has no business deadline but retains read/cleanup budgets. PrepareContext covers only preparation; execution needs its own context, while QueryContext covers Rows lifetime. Pre-send timeout preserves sessions; possible sends discard them without replay-triggering ErrBadConn and do not prove server abort/rollback. TestStatementContextDeadline covers fixed sql.Conn/sql.Stmt, both modes/three streams, both preparations, Ping after pre-expiry, execution deadlines before ReadTimeout, and unknown outcomes excluded from pools. Existing TestExecutionTxDeadline/TestTextNextResultUsesQueryDeadline cover transaction/Rows deadlines.
 
-### 12.5.1 D32 已实现的网络读取超时
+### 12.5.1 D32 Implemented Network Read Timeout
 
-`Config.ReadTimeout` / DSN `readTimeout` 使用 Go duration，零值关闭，负值/无效值拒绝；例如 `readTimeout=5s`。对应固定 Java `socketTimeout` 的 SO_TIMEOUT 语义，不接受毫秒数字或同名历史别名。Java 标准默认0、Aurora 模式默认10000ms；Go 所有路由/兼容模式统一默认关闭，ConnectTimeout 与业务 context 继续独立生效。
+`Config.ReadTimeout` / DSN `readTimeout` uses Go durations, zero disabled, rejecting negative/invalid values; e.g. `readTimeout=5s`. It corresponds to pinned Java `socketTimeout` SO_TIMEOUT without accepting bare milliseconds or that historical alias. Java defaults 0 normally and 10000 ms in Aurora; Go defaults disabled across routes/modes, independently of ConnectTimeout/business contexts.
 
-内置或外部 DialContext 成功返回 net.Conn 后、认证/TLS 之前，在底层传输接入读取预算；因此握手、TLS、初始化、普通/压缩/OB20、预处理、Rows、LOB、ChangeUser 和取消辅助通道均使用同一机制。每次底层 Read 开始时，以“当前时间 + ReadTimeout”和当前请求 deadline 的较早者设置 read deadline。完成读取后，下次读取重新计时，连接空闲、调用方处理 Rows 的时间不消耗下次预算；TLS 或解压缓存的读取不产生新的底层网络等待。并发流水线写入刷新 deadline 不得延长正在阻塞的读取预算，清除外部 deadline 也不能清除该上限。
+After built-in/custom DialContext returns net.Conn and before authentication/TLS, attach the underlying read budget. Handshake, TLS, initialization, ordinary/compressed/OB20, preparation, Rows, LOB, ChangeUser, and cancellation auxiliaries share it. Each underlying Read sets the earlier of now+ReadTimeout and request deadline, restarting on the next Read. Idle/caller Rows processing does not consume future budgets; TLS/decompression-buffer reads create no new network wait. Concurrent pipeline-write deadline refresh must not extend an already blocked read; clearing external deadlines cannot remove this cap.
 
-它不是总查询/总逻辑消息期限：持续有字节到达时可多次重置，完整命令仍需调用方 context 限时。写入、拨号、发现源、凭据/认证回调与调用方 Reader 不受该读取值约束，继续使用各自 context/已有预算；TLS 内部写控制记录也保留写方向预算。默认0不创建额外传输包装，不新增包、依赖或后台协程；取消继续复用已有 AfterFunc/关闭协调。
+This is not a whole-query/logical-message deadline: ongoing bytes may repeatedly reset it, so full commands still need caller contexts. Writes, dialing, discovery, credential/auth callbacks, and caller Readers retain separate contexts/budgets. TLS control-record writes also keep write budgets. Default 0 adds no transport wrapper, package, dependency, or goroutine; cancellation reuses existing AfterFunc/closure coordination.
 
-独立读取超时保留原网络错误，可用 errors.As 到 net.Error 并检查 Timeout；调用 context 未到期时不伪装成 context.DeadlineExceeded。context 更早到期或取消时保留其原错误。失败淘汰当前物理会话，不能返回池或把已经写出的业务映射为 ErrBadConn 触发重放；写出后的执行结果未知，批量保留已知/未知状态。新建连接的握手传输失败仍遵循原有有限切换规则，初始化失败不切换，均受同一总建连预算限制。
+Read timeout retains network errors for errors.As net.Error/Timeout rather than pretending context.DeadlineExceeded before context expiry. Earlier context expiry/cancellation retains its original error. Failure discards sessions without pool reuse or replay-triggering ErrBadConn for written operations. Post-write outcomes are unknown; batches retain known/unknown states. Initial handshake transport failures retain bounded address switching; initialization failures do not switch. Both retain one total establishment budget.
 
-固定 Java 依据：DefaultOptions SOCKET_TIMEOUT（L117–L127）及 AbstractConnectProtocol.createSocket 的 setSoTimeout（L255–L257）。TestReadTimeout* / TestDSNReadTimeout 与外部离线 Example 覆盖两模式、三种包流、握手/初始化/TLS、Rows、批量、逐次重置、context 优先和并发刷新。TestReadTimeoutSessions 四目标源码要求只读慢 SQL fixture，本阶段仅编译，真实服务端执行、代理缓冲与断连后后台查询是否继续运行仍待联调。
+Pinned Java evidence: DefaultOptions SOCKET_TIMEOUT (L117–L127) and AbstractConnectProtocol.createSocket setSoTimeout (L255–L257). TestReadTimeout* / TestDSNReadTimeout and offline external Example cover both modes/three streams, handshake/initialization/TLS, Rows, batches, per-read resets, context precedence, and concurrent refresh. Four-target TestReadTimeoutSessions requires read-only slow-SQL fixtures and is compiled only. Live server execution, proxy buffering, and queries continuing after disconnect remain unvalidated.
 
-## 13. 批量、过程、OUT 和 RETURNING
+## 13. Batching, Procedures, OUT, and RETURNING
 
-### 13.1 标准过程调用
+### 13.1 Standard Procedure Calls
 
-Oracle 兼容模式沿用原生匿名块与命名参数：
+Oracle mode retains native anonymous blocks/named parameters:
 
 ```go
 var out string
@@ -836,17 +836,17 @@ _, err := db.ExecContext(ctx,
 )
 ```
 
-INOUT 使用 `sql.Out{Dest: &value, In: true}`。驱动在发送前校验非 nil、可写的 Dest，读取 INOUT 初值，并在全部所需响应消费完成后写回。[G07]
+INOUT uses `sql.Out{Dest: &value, In: true}`. Validate non-nil writable Dest before sending, read initial values, then write back after consuming all required responses.[G07]
 
-无法仅由 Go 指针推断的 OUT 类型使用小型 `Out` 扩展值，明确数据库类型和必要的长度/精度。可推断的普通类型优先直接用 sql.Out。
+Use small `Out` extension values for types not inferable from Go pointers, specifying database types/required lengths/precision. Prefer direct sql.`Out` for inferable ordinary types.
 
-普通 OUT 目的支持指向 bool、各宽度有符号/无符号整数、float32/64、string、[]byte、time.Time 的可写指针，以及 sql.Scanner；整数和精度转换进行边界检查。NULL 必须写入可表示 NULL 的目的，例如 sql.Null[T] 或本包的可空 Scanner，不能静默变成零值。不支持的目的类型在发送前拒绝。Object/Array 等值通过自己的 Scanner 读取；连接句柄不走普通标量赋值。
+Ordinary OUT accepts writable pointers to bool, signed/unsigned integers of all widths, float32/64, string, []byte, time.Time, and sql.Scanner, with integer/precision bounds. NULL requires nullable targets such as sql.Null[T] or package nullable Scanners, never silent zero values. Reject unsupported targets before sending. Object/Array use their Scanners; handles do not use scalar assignment.
 
-MySQL 兼容模式使用其 CALL/函数语法和能力对应的 OUT 路径。对于不同服务端只支持变量中转的情况，中转在同一固定会话内完成并清理，不在整个 sql.DB 上跨连接执行。
+MySQL mode uses native CALL/function syntax and capability-appropriate OUT paths. Servers requiring intermediate variables use one fixed session and clean them up, never cross-connection operations across sql.DB.
 
-内置标量输出先完成服务端响应及临时值转换，再写回所有目标，避免转换失败造成部分写回。调用方自定义 Scanner 可能具有不可回滚的副作用；逐个调用时一旦失败就返回明确错误，并说明先前目标可能已更新，不承诺任意 Scanner 的原子性。批量 OUT 则按项保存状态。
+Built-in scalar outputs finish responses/temporary conversion before all assignments, preventing partial writes on conversion failure. User Scanners may have irreversible effects: failure returns clear errors noting earlier targets may have changed, without arbitrary Scanner atomicity. Batch OUT retains per-item states.
 
-D14 的具体入口与边界：
+D14 entry points and boundaries:
 
 ```go
 type Out struct {
@@ -859,20 +859,20 @@ type Out struct {
 }
 ```
 
-- Type 为封闭的 SQL 标量类型名，忽略两端空白及大小写；空值由 Go 目的类型推断。自定义 Scanner 必须显式声明 Type，INOUT 还需实现 driver.Valuer。Number、NString、Raw、RowID、时间/间隔以及标准 sql.Null[T] 保留输入身份；普通 unsigned 值支持完整 uint64 范围。
-- Length 为文本字符数或二进制字节数，单位由声明类型决定；0 表示不额外约束。Precision/Scale 用于 NUMBER/DECIMAL 的无损范围验证，Precision=0 时 Scale 必须为 0。Oracle 精度最大 38、scale -84..127；MySQL 精度最大 65、scale 0..30 且不大于精度。输出超界报错，驱动不截断或舍入。
-- Type 和尺寸用于客户端模式/值约束。纯 OUT 按 Java 路径发送 NULL，服务端从 SQL 或例程形参确定类型；需要强制数据库类型时在 SQL 中显式转换。句柄、LOB、OBJECT/ARRAY 的协议绑定由后续任务实现，标量入口在发送前拒绝相应目的。
-- Oracle OUT/INOUT/RETURNING 使用真实 ob_version() >=2.2.76 的 COM_STMT_PREPARE_EXECUTE；版本未知或更旧时在发送业务前返回 ErrUnsupported。该语义要求也适用于 PrepareClient。接收参数/列描述、内部输出、强制尾随 OK/ERR，临时 statement 关闭后才发布输出；显式服务端 statement 可复用原 ID。
-- MySQL 使用每次调用随机命名的私有会话变量，固定同一连接完成初始化、原 SQL、输出 SELECT 和变量清空。主命令的普通结果继续流式读取；辅助命令不加入 Execution 摘要。变量替换共用当前 SQL mode 的严格词法/字面量路径；无法安全替换的 SQL 在发送前拒绝。清理失败淘汰物理会话并保留错误。
-- Query/Execute 的输出随最终响应消费或 Close 完成后生效；Exec 在返回前完成该步骤。清理后再次检查操作取消；服务端失败、发布前取消及输出形状错误不写回内置目的。重复逻辑 OUT 的各物理输出必须一致，只写回一次；不同逻辑 OUT 指向同一目的时拒绝。
-- ErrOut 可识别输出验证/转换错误；OutError.Parameter 为 SQL 的逻辑绑定位置，Partial=true 表示自定义 Scanner 已可能产生部分副作用。使用 errors.As 获取详细错误，继续保留底层 Scanner 错误链。多个输出先完成全部内置转换，再按 SQL 中首次出现的顺序写回；自定义 Scanner 失败后停止发布后续目的。
-- 每个目的写回前重新检查操作和事务 context。自定义 Scanner 在回调中取消后，即使 Scan 返回 nil，也停止后续标量及 Scanner，资源仍遵循统一发布前复核；保留 context 错误。Scanner 已发生的副作用和此前已发布的目的不回滚，不承诺回调期间取消的跨目的原子性。[TestOutCancelStopsPublication、TestOutTransactionCancelStopsPublication](../out_context_test.go) 覆盖两模式/三包流的公开调用和事务 context 赋值边界。
+- Type is a closed set of SQL scalar names, ignoring edge whitespace/case; empty infers from destination. Custom Scanners must specify Type and implement driver.Valuer for INOUT. Number/NString/Raw/RowID/temporal/interval/sql.Null[T] preserve identity; ordinary unsigned inputs support full uint64.
+- Length means text characters or binary bytes according to declared type; 0 adds no constraint. Precision/Scale enforce lossless NUMBER/DECIMAL ranges; Precision=0 requires Scale=0. Oracle maximum precision 38, scale -84..127; MySQL precision 65, scale 0..30 and no greater than precision. Overflow errors without truncation/rounding.
+- Type/sizes constrain client mode/values. Pure OUT sends NULL per Java; SQL/routine parameters determine server types. Explicit SQL casts force database types. Later tasks implement handle/LOB/OBJECT/ARRAY binding; scalar entry points reject those targets before sending.
+- Oracle OUT/INOUT/RETURNING requires actual ob_version() >=2.2.76 and COM_STMT_PREPARE_EXECUTE; old/unknown versions return ErrUnsupported before business sends, including PrepareClient. Consume parameter/column descriptors, hidden output, and mandatory trailing OK/ERR; publish after temporary statement close. Explicit server statements may reuse IDs.
+- MySQL uses randomly named per-call private session variables, performing initialization, original SQL, output SELECT, and clearing on one connection. Main ordinary results remain streaming; auxiliary commands add no Execution items. Substitution shares strict current-sql-mode lexical/literal encoding and rejects unsafe SQL before sending. Cleanup failure discards sessions and preserves errors.
+- Query/Execute output becomes available after final response consumption/Close; Exec finishes before return. Recheck cancellation after cleanup. Server failure, pre-publication cancellation, or output-shape errors leave built-in targets untouched. Repeated logical OUT physical values must agree and assign once; different logical OUT targeting the same destination is rejected.
+- ErrOut identifies validation/conversion failures. OutError.Parameter is the logical SQL bind position; Partial=true indicates possible custom Scanner effects. Use errors.As for details, retaining underlying Scanner errors. Finish all built-in conversions first, then assign in first SQL occurrence order; custom Scanner failure stops subsequent publication.
+- Recheck operation/transaction context before each assignment. If custom Scanner cancels within its callback, even successful Scan stops later scalar/Scanner assignments; resources retain unified pre-publication checks and context errors. Already published targets/Scanner effects are not rolled back; no cross-target atomicity is promised during callbacks. [TestOutCancelStopsPublication and TestOutTransactionCancelStopsPublication](../out_context_test.go) cover public and transaction assignment boundaries in both modes/three streams.
 
-上述协议布局已对照固定 Java 源码并用合成对端验证；真实服务端/OBProxy 的例程与 RETURNING 仍须按兼容矩阵联调。
+Layouts have been checked against pinned Java and synthetic peers; live server/OBProxy routine/RETURNING behavior still needs Compatibility Matrix integration.
 
-### 13.2 REF CURSOR 及连接相关输出
+### 13.2 REF CURSOR and Connection-Bound Output
 
-Go 1.26 的驱动不能自行构造 `*sql.Rows` 写入 `sql.Out.Dest`。过程的普通结果集、逐项摘要及一个或多个输出游标统一通过 §11.4 的 Execute 承载：
+Go 1.26 drivers cannot construct `*sql.Rows` for `sql.Out.Dest`. Ordinary procedure results, summaries, and one/multiple output cursors share Execute (§11.4):
 
 ```go
 type CursorOut struct {
@@ -880,39 +880,39 @@ type CursorOut struct {
 }
 ```
 
-例如将 `sql.Named("items", oceanbase.CursorOut{Dest: &cursor})` 与普通 `sql.Out` 一起传入 Execute。规则如下：
+For example, pass `sql.Named("items", oceanbase.CursorOut{Dest: &cursor})` alongside ordinary `sql.Out` into Execute. Rules:
 
-- Execute 只接受非 nil 的 `*sql.Conn` 或 `*sql.Tx`，由标准库构造 Rows；不构造标准库内部对象。
-- 普通过程结果使用 Execution.Rows() 的 Next/Scan/NextResultSet 读取；摘要通过 Snapshot 取得，OUT 控制响应在内部处理，不加入普通结果集。
-- 完整消费普通结果、OUT 和最终响应后，才写回输出值及游标句柄。输出游标目的必须初始为 nil；多个 CursorOut 对应多个独立输出游标。
-- 不需要普通结果时可显式 Execution.Close；驱动有界 drain，成功完成后输出才可用。读取或最终化失败时返回错误，未发布的游标全部清理，不返回可用句柄；检查错误的方式见 §11.4。
-- 过程 Rows 或 Execution 关闭后，已发布 Cursor 仍可用；调用方负责逐个 Close。它们保留固定 Session、资源标识、连接/事务代次；不保留原始 driverConn。
-- 若服务端要求父 statement 与输出游标同寿命，内核为其保留资源租约，最后一个输出游标关闭后才释放。事务结束或会话失效仍立即使所有句柄失效。
-- 过程响应结束就结束该操作的取消回调；后续 Fetch 使用新的 context，不继承已经结束的过程读取 context。
-- CursorOut 只由 Execute 接受。普通 DB/Conn/Tx 的 Exec/Query 遇到该标记在发送前报错；`sql.Out{Dest: &rows}` 不作为输出 REF CURSOR 的替代写法。
-- 流式 LOB 输出同样只能在 Execute 中通过显式类型的 Out 绑定到 `**Blob` / `**Clob`，使用相同的发布、租约和固定会话规则；普通 sql.Out 的 LOB 输出读取受限物化内容。
+- Execute accepts non-nil `*sql.Conn`/`*sql.Tx` only, using standard-library-created Rows rather than internal standard-library objects.
+- Ordinary results use Execution.Rows() Next/Scan/NextResultSet; Snapshot supplies summaries. Internal OUT control responses are not ordinary result sets.
+- Assign outputs/cursor handles only after ordinary results, OUT, and final responses are fully consumed. Cursor destinations must initially be nil; multiple CursorOuts yield independent cursors.
+- Without ordinary results, explicitly Execution.Close for bounded drain. Outputs appear only on successful completion. Read/finalization failure cleans all unpublished cursors and returns no usable handles; see §11.4 error checks.
+- Published Cursors survive procedure Rows/Execution closure and require individual Close. They retain fixed Session, resource IDs, connection/transaction generations, never raw driverConn.
+- If server cursor lifetime requires parent statements, core resource leases retain parents until the final cursor closes. Transaction end/session invalidation immediately invalidates all handles.
+- Procedure response completion ends its cancellation callback; later Fetch receives new contexts, not finished procedure contexts.
+- Only Execute accepts CursorOut. Ordinary DB/Conn/Tx Exec/Query reject it before sending; `sql.Out{Dest: &rows}` is not a REF CURSOR alternative.
+- Streaming LOB output likewise requires Execute with explicitly typed Out to `**Blob`/`**Clob`, sharing publication, lease, and session rules. Ordinary sql.Out LOB reads bounded materialized content.
 
-若查询本身的列是 REF CURSOR，仍可使用标准库支持的子 `driver.Rows` 扫描路径；其子 Rows 随父 Rows 关闭，与上述能够在过程 Rows 关闭后继续使用的显式 Cursor 分别遵守各自寿命契约。
+A queried REF CURSOR column may still use standard child `driver.Rows` scanning. Such child Rows closes with its parent, unlike explicit Cursor handles surviving procedure Rows closure; each follows its lifetime contract.
 
-#### 当前实现与边界（D20）
+#### Current Implementation and Boundaries (D20)
 
-- Oracle 兼容模式且 OceanBase 版本已知 >=2.2.76，使用原生 PrepareExecute 的隐藏 OUT 和最终响应；MySQL 兼容模式、旧/未知版本在业务发送前返回 ErrUnsupported。CursorOut、显式 BLOB/CLOB/NCLOB Out 不支持 INOUT、长度/精度提示或非 nil 初始句柄；SQL NULL 保持 nil。
-- REF CURSOR 使用二进制类型 163、固定小端四字节 cursor ID。Fetch 使用独立 cursor ID 的九字节 COM_STMT_FETCH，首批建立列元数据；关闭先释放 cursor ID，最后一个输出资源再释放父 statement。Blob/Clob 复用原生 locator 与已有流式读写接口，句柄不受普通 LOB 总物化上限约束，单次协议与读取仍有界。
-- 普通输出先完成内置转换和自定义 Scanner，再统一发布全部资源；Scanner 失败可有其自身副作用，但驱动不发布任何句柄。发布前再次检查 context 和资源代次；未发布租约在失败清理时释放。服务端尾错不发布，损坏/无法安全恢复的响应淘汰连接。
-- 资源 OUT 在 prepare、参数编码或上传前记录连接/会话/事务代次，主命令发送前及最终响应后复核；失效时返回 ErrResource，普通 OUT 和资源句柄均不写回，辅助操作错误与代次错误同时保留。完整简单响应仍登记仅供清理的子租约，释放子资源和父 statement 后保留可用会话。混合 OBJECT/ARRAY 的延迟二进制行在代次失效时不继续字典查询或物化；普通资源结果集也在完整缓冲后、字典解析及各物化阶段后检查，失效时淘汰尚含未物化子资源的物理连接。仅有普通 OUT 的过程允许自行结束事务。
-- 普通 REF CURSOR 列要求 Oracle 二进制行。完整消费父响应后，在原会话内有界获取子数据并关闭服务器 cursor ID，再作为标准子 driver.Rows 交给 database/sql。所有层共享 MaxMessageBytes，计入行、完整列元数据及嵌套内容；最多 16 层并拒绝循环 ID，超限报错。标准父 Rows 关闭会关闭已扫描子 Rows；需要跨过程 Rows 寿命和分批获取时使用 CursorOut。
-- 子 Rows 使用父 Rows 的调用方迭代 context，内部网络操作 context 的结束不会提前取消子读取。Static 游标缓存计入全部嵌套快照，每次 Fetch 创建独立子读取状态并使用本次 context；回看不复用上次关闭的子 Rows。
+- Oracle mode and known OceanBase >=2.2.76 use native PrepareExecute hidden OUT/final responses. MySQL/old/unknown versions return ErrUnsupported before business sends. CursorOut and explicit BLOB/CLOB/NCLOB Out reject INOUT, length/precision hints, or non-nil initial handles; SQL NULL stays nil.
+- REF CURSOR uses binary type 163 with four-byte little-endian cursor ID. Nine-byte COM_STMT_FETCH uses separate cursor IDs and establishes metadata on first fetch. Close releases cursor IDs, then parent statements when the last output resource closes. Blob/Clob reuse native locators/streaming APIs; handles are not bound by ordinary total LOB materialization limits, but individual protocol/read operations remain bounded.
+- Finish built-in conversions and custom Scanners before publishing all resources together. Scanner failure may have its own effects, but no handles are published. Recheck context/generations before publication; cleanup releases unpublished leases. Trailing server errors prevent publication; corrupt/unsafely recoverable responses discard connections.
+- Resource OUT captures connection/session/transaction generations before prepare, encoding, or upload and rechecks before main sends/after final responses. Invalidity returns ErrResource without scalar/handle assignment, retaining auxiliary and generation errors. Complete simple responses still register cleanup-only child leases; releasing children/parents preserves usable sessions. Invalid generations stop dictionary queries/materialization of delayed mixed OBJECT/ARRAY binary rows. Ordinary resource results also check after full buffering, dictionary resolution, and each materialization stage; invalidity discards connections with unmaterialized children. Scalar-only OUT procedures may end their own transactions.
+- Ordinary REF CURSOR columns require Oracle binary rows. After complete parent responses, boundedly fetch children on the original session, close server cursor IDs, then pass standard child driver.Rows to database/sql. Every layer shares MaxMessageBytes, counting rows, full metadata, and nested content; maximum depth 16 with cyclic-ID rejection. Excess errors. Standard parent Rows closes scanned children; use CursorOut for lifetimes beyond procedure Rows/batched fetch.
+- Child Rows uses the parent's caller-iteration context; ending internal network contexts does not cancel child reads early. Static cursor caches count complete nested snapshots; each Fetch creates independent child-read state with its own context rather than reusing previously closed children.
 
-本地协议/故障测试与真实服务器验收分开：`TestProcedureResources` 包含两模式的支持/拒绝、多游标和临时 BLOB/CLOB、失败发布及标准子 Rows 场景；当前仅编译，服务器过程语法、locator、版本及 OBProxy 行为仍待联调。
+Local protocol/failure tests remain distinct from live acceptance. `TestProcedureResources` includes both-mode support/rejection, multiple cursors, temporary BLOB/CLOB, failed publication, and standard child Rows. It is compiled only; live procedure syntax, locators, versions, and OBProxy behavior await integration.
 
-### 13.3 RETURNING 和生成键
+### 13.3 RETURNING and Generated Keys
 
-- Oracle 使用 `RETURNING ... INTO ...` 配合输出绑定；Java 对应服务端接口明确要求 PrepareExecute。D14 实现其最低必要协议及版本/能力门禁，普通分离式 prepare/execute 未经取证不能被当作等价替代；不支持时在发送业务前返回能力错误。[J17]
-- 服务端 OK 包中非零的 insert ID 可支持 LastInsertId；零表示未提供可用生成 ID，该标准方法返回 ErrUnsupported，不能把成功的受影响行数当作 ID 已知。不能表示为 int64 时返回溢出错误；RowsAffected 与 LastInsertId 分别判断自身是否溢出，Execute 摘要中的 InsertID 可保留完整十进制值。该规则共用于文本、预处理和多结果执行，不根据 SQL 文字猜测主键。
-- Oracle 不为了凑出 LastInsertId 另查全局序列或猜测主键；调用方通过显式 RETURNING 获得所需列。
-- Java 的指定生成列能力通过明确的 RETURNING 绑定/小型返回列 helper 表达，不要求用户设置 JDBC 风格常量。
+- Oracle uses `RETURNING ... INTO ...` with output binding; corresponding Java server APIs explicitly require PrepareExecute. D14 implements minimum protocol/version/capability gates. Ordinary separate prepare/execute is not equivalent without evidence; unsupported cases fail before business sends.[J17]
+- Nonzero server OK insert IDs support LastInsertId. Zero means no usable generated ID and returns ErrUnsupported, regardless of successful affected counts. Unrepresentable int64 IDs overflow. RowsAffected/LastInsertId check overflow independently; Execute InsertID retains full decimal values. Text/prepared/multiple-result paths share this rule without guessing primary keys from SQL.
+- Oracle does not query global sequences or guess keys merely to supply LastInsertId; callers explicitly RETURNING required columns.
+- Java generated-column selection maps to explicit RETURNING bindings/small returned-column helpers without JDBC constants.
 
-### 13.4 批量接口
+### 13.4 Batch Interface
 
 ```go
 type Execer interface {
@@ -923,17 +923,17 @@ func ExecBatch(ctx context.Context, exec Execer, query string,
     rows [][]any, opts BatchOptions) (BatchResult, error)
 ```
 
-`*sql.DB`、`*sql.Conn`、`*sql.Tx` 均可直接使用。调用方用 Tx 明确控制原子性，helper 不偷偷创建或提交事务。
+`*sql.DB`, `*sql.Conn`, and `*sql.Tx` are accepted directly. Callers control atomicity through Tx; helpers never secretly begin/commit transactions.
 
-BatchResult 按输入索引返回影响行数或不可知状态；BatchError 标明失败项和已确认完成项。继续执行/遇错停止由 BatchOptions 明确指定，默认遇错停止。
+BatchResult returns input-indexed affected counts or unknown states; BatchError identifies failed/confirmed items. BatchOptions explicitly chooses stop/continue, default stop-on-error.
 
-内核根据模式、事务、参数类型和能力选择：逐项服务端执行、多发包、SQL 批量改写、bulk 或 Oracle array binding。限制单包大小、总参数、分块行数；任何策略都不得改变调用方事务边界、输出项顺序或错误统计语义。无法保持逐项计数的协议返回“成功但计数未知”，不编造数字。
+Core strategies depend on mode, transaction, parameter types, and capabilities: sequential server execution, multi-send, SQL rewriting, bulk, Oracle array binding. Bound packet sizes, total parameters, and chunk rows. No strategy changes transaction boundaries, output order, or error statistics. Protocols unable to provide per-item counts report success/count unknown, never fabricated counts.
 
-没有等价执行语义时采用逐项路径。例如自动提交下不能把原本可部分成功的多个 INSERT 改写成一个整体失败的语句；仅把计数改成未知不足以使这种改写等价。逐项路径同样遵守停止/继续策略和结果不确定性规则，不替调用方重放已发送项。
+Use sequential execution without equivalent semantics. For example, autocommit cannot rewrite partially successful separate INSERTs into one wholly failing statement; unknown counts alone do not make it equivalent. Sequential paths retain stop/continue and uncertain-outcome rules, never replaying sent items.
 
-长数据 Reader 属于一次执行；报错后不自动 rewind 和重发。客户端改写需要完整词法验证，不把任意 INSERT 都当成可安全改写 SQL。[J09]
+Long-data Readers belong to one execution and are never automatically rewound/retried. Client rewrites need full lexical validation; arbitrary INSERT is not automatically safe to rewrite.[J09]
 
-D22 已落地的接口与选择规则：
+Implemented D22 interfaces and selection rules:
 
 ```go
 type BatchOptions struct {
@@ -957,8 +957,8 @@ type BatchResult struct {
     Chunks []BatchChunk
 }
 type BatchChunk struct {
-    Start, End int // 输入范围 [Start, End)
-    BatchItem      // 服务端聚合结果
+    Start, End int // Input range [Start, End)
+    BatchItem      // Aggregated server result
 }
 type BatchError struct {
     Index int
@@ -967,46 +967,46 @@ type BatchError struct {
 }
 ```
 
-- Strategy 是偏好：BatchAuto（零值）、BatchSequential、BatchMultiSend、BatchRewrite、BatchBulk、BatchArrayBinding、BatchMultiValues；新枚举追加，不改变旧值。结果报告实际策略；Bulk 及不满足对应门禁的请求回退 BatchSequential。ContinueOnError 默认 false，确保失败后不再发后项；true 也必须在取消、损坏响应、断线或结果不确定时停止。
-- ChunkRows=0 使用 128，ChunkParameters=0 使用 65535；负值和非法策略发送前拒绝。multi-send 同时限制块行数、展开后的物理参数位总数及编码内容总字节数，单命令受 MaxMessageBytes 和既有值上限约束；逐项路径逐行限制输入参数，不聚合数据包。
-- *sql.DB 在整个批次固定一个 *sql.Conn；原生 Conn/Tx 用一次标准 ExecContext 私有分派持有标准库连接锁。没有隐藏事务、提交、辅助会话或整批重试。自定义 Execer 逐项调用，物理会话和事务由其实现负责；未知错误保守记为 BatchUnknown 并停止。
-- Status 为 BatchNotExecuted、BatchSucceeded、BatchFailed、BatchUnknown。Started 只表示业务命令可能开始发送，辅助 prepare/上传/能力探测不算。多语句改写的同一命令已提交后，服务端 ERR 确认未执行的后项为 NotExecuted 且 Started=true；未提交的后续块仍为 NotExecuted/false。BatchFailed 记录已知错误，不保证没有数据库副作用；BatchSucceeded 同样不代表事务已提交。已读完整成功响应后发生清理/取消错误，保留成功状态和已知计数，并通过 Err 返回错误；不将确认成功改成未知。
-- RowsAffectedKnown=false 表示没有可安全表示的计数，含 uint64 超出 int64；不推算各项数字。BatchError.Index 是首个携带错误的输入索引（从 0 开始），没有对应输入的最终化错误为 -1；Completed 是确认成功项数，包含错误后继续执行的成功项。errors.Is/As 保留 SQL、context 和清理错误链。
-- Auto/MultiSend 仅在 ContinueOnError=true、至少两行、PrepareServer、全部显式标量输入和单条 INSERT/UPDATE/DELETE/REPLACE 时启用；共享 prepare 前复用普通参数校验，本地非法项或 Oracle 物理参数位超过单块限制时整批回退逐项；共享 prepare 失败按首项错误处理，后项仍遵循逐项继续策略；SQL 在两种引号解释下均通过词法检查，排除分号、可执行注释、RETURNING、CALL/查询/会话 SQL。OUT、长参数、复杂值、自定义 Valuer 等回退逐项，继续复用既有绑定/输出/一次消费规则；资源句柄输出仍只接受 Execute。
-- multi-send 只 prepare 一次，将独立 COM_STMT_EXECUTE 命令并行写入/按序读响应，双向背压不产生先写完再读的死锁。每条命令独立重置序号；收齐 OK/ERR 才确认该项。服务端 ERR 可继续；断线/取消/损坏或额外结果淘汰连接，保留已确认前缀，仅可能发出且未确认的项标 Unknown，未发的后续块保留 NotExecuted；结束前等待写协程退出。
+- Strategy is a preference: BatchAuto (zero), BatchSequential, BatchMultiSend, BatchRewrite, BatchBulk, BatchArrayBinding, BatchMultiValues. Append enums without changing existing values. Results report actual strategy; Bulk/ineligible requests fall back Sequential. ContinueOnError defaults false, sending no later items after failure. True still stops on cancellation, corruption, disconnect, or uncertain outcomes.
+- ChunkRows=0 uses 128; ChunkParameters=0 uses 65535. Negative limits/invalid strategies fail before sending. Multi-send bounds rows, expanded physical parameter slots, and total encoded content; each command obeys MaxMessageBytes/value limits. Sequential execution limits each row without aggregating packets.
+- *sql.DB pins one *sql.Conn for the entire batch. Native Conn/Tx holds the standard connection lock through one ExecContext private dispatch. No hidden transaction, commit, auxiliary session, or whole-batch retry. Custom Execer runs sequentially and owns physical-session/transaction guarantees; unknown errors conservatively become BatchUnknown and stop.
+- Status: BatchNotExecuted, BatchSucceeded, BatchFailed, BatchUnknown. Started only means business sends may have begun, not prepare/upload/probing. After submitting rewritten multi-statements, server-confirmed unexecuted suffixes have NotExecuted/Started=true; unsent later chunks remain NotExecuted/false. Failed means a known error, not absence of side effects; Succeeded does not mean committed. Cleanup/cancellation after complete success preserves confirmed status/counts and returns Err rather than converting success to unknown.
+- RowsAffectedKnown=false means no safely representable count, including uint64 overflow of int64; do not infer per-item numbers. BatchError.Index is the first errored zero-based input index, or -1 for finalization errors without an input. Completed counts all confirmed successes, including continued items. errors.Is/As retains SQL/context/cleanup chains.
+- Auto/MultiSend requires ContinueOnError=true, at least two rows, PrepareServer, explicit scalar-only inputs, and one INSERT/UPDATE/DELETE/REPLACE. Reuse normal validation before shared prepare; local invalid items or Oracle physical slots exceeding chunk limits fall back the whole batch sequentially. Shared-prepare failure belongs to first item; later items follow sequential continuation. Lex under both quote interpretations, rejecting semicolons/executable comments/RETURNING/CALL/queries/session SQL. OUT, long parameters, complex values, custom Valuers fall back while retaining binding/output/one-consumption rules. Resource outputs remain Execute-only.
+- Multi-send prepares once, concurrently writes independent COM_STMT_EXECUTE commands and reads responses in order, avoiding write-all-before-read deadlock under bidirectional backpressure. Reset sequence per command; confirm only complete OK/ERR. Server ERR may continue. Disconnect/cancellation/corruption/extra results discard connections, retain confirmed prefixes, mark only possibly sent/unconfirmed items Unknown, keep unsent chunks NotExecuted, and wait for writer exit.
 
-原生优化证据与保守选择：固定 Java 基线的 [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) 明确记录 OceanBase 不支持 COM_STMT_BULK_EXECUTE；其中 MariaDB 风格的版本判断不能作为 OceanBase 支持证据，Bulk 仍逐项。多 VALUES 合并改变部分成功、触发器和错误边界，采用下面独立的显式策略。Oracle array binding 的列式布局和保存异常响应已按固定 Java 与 OceanBase 服务端源码补证；源码和本地协议测试不代替真实服务器/代理验收。
+Native optimization evidence and conservative choices: pinned Java [AbstractQueryProtocol](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L1287) explicitly says OceanBase lacks COM_STMT_BULK_EXECUTE; MariaDB version checks do not prove OceanBase support, so Bulk stays sequential. Multi-VALUES changes partial success, triggers, and error boundaries and uses its own explicit policy below. Oracle columnar array layout/save-exception responses have pinned Java/OceanBase source evidence; source/local tests do not replace live acceptance.
 
-生成键与多 VALUES 的公开契约：
+Public generated-key and multi-VALUES contracts:
 
-- BatchItem.InsertID/InsertIDKnown 保留该项完整确认响应中的非零生成 ID，十进制字符串可表示完整 uint64。逐项、多发、多语句和单项 array 块共用结果记录；自定义 Execer 只能保留其 LastInsertId 提供的有效正 int64。未返回 ID、错误项和多项聚合不能推算 ID，更不按自增步长生成区间。
-- BatchMultiValues 仅在 MySQL、至少两行、ChunkRows>=2、标量白名单及足够物理参数预算下，将简单 INSERT INTO [schema.]table [(columns)] VALUES (?,...) 合为单条 SQL。仅支持占位符元组；IGNORE、REPLACE、表达式、已有多元组、ON DUPLICATE KEY、RETURNING、多语句、Oracle、OUT/流/自定义 Valuer 等回退普通逐项。此路径不需要多语句权限，不改 BatchRewrite 或默认策略。
-- 每块按 ChunkRows、ChunkParameters 和编码后的 MaxMessageBytes（含 COM_QUERY、前缀、逗号）限制，复用字符集与字面量安全编码。先确认有效前缀再报告后项本地错误；会话 SQL mode 每块重新解析。不会隐式 Begin/Commit 或重放已发块。
-- Chunks 只为实际提交的 multi-VALUES 命令提供输入区间 [Start,End) 及聚合状态、计数、ID、错误；单项块可同时发布逐项计数和 ID，多项块的各项 Known 均为 false。成功项表示所属命令确认成功，不证明每项影响一行或事务提交。服务端 ERR 将该块各项记 Failed，不能保证无副作用；显式继续只在完整服务器错误且会话健康时执行后块。断线、取消、损坏或额外结果将未确认块记 Unknown 并停止，不自动重试。
+- BatchItem.InsertID/InsertIDKnown preserves nonzero IDs from complete confirmed per-item responses as full uint64 decimal strings. Sequential/multi-send/multi-statement/single-item array chunks share recording. Custom Execer retains only valid positive int64 LastInsertId. Missing IDs, failures, and multi-item aggregates cannot infer IDs or manufacture auto-increment ranges.
+- Explicit BatchMultiValues combines simple INSERT INTO [schema.]table [(columns)] VALUES (?,...) only for MySQL, at least two rows, ChunkRows>=2, scalar whitelist, and enough physical slots. Only placeholder tuples qualify. IGNORE/REPLACE/expressions/existing multiple tuples/ON DUPLICATE KEY/RETURNING/multi-statements/Oracle/OUT/streams/custom Valuers fall back. No multi-statement permission required; defaults/BatchRewrite stay unchanged.
+- ChunkRows, ChunkParameters, and encoded MaxMessageBytes (including COM_QUERY/prefix/commas) bound each chunk using existing safe charset/literal encoding. Confirm valid prefixes before reporting later local errors; reparse session SQL mode per chunk. No implicit Begin/Commit or sent-chunk replay.
+- Chunks records [Start,End), aggregate state/count/ID/errors only for submitted multi-VALUES commands. Single-item chunks may also expose per-item counts/IDs; multi-item Known flags are false. Succeeded means its command succeeded, not one affected row each or commitment. Server ERR marks chunk items Failed without guaranteeing no side effects; explicit continuation requires complete server errors/healthy sessions. Disconnect/cancellation/corruption/extra results mark unconfirmed chunks Unknown and stop without retry.
 
-受限多语句改写已实现：仅显式 BatchRewrite、ContinueOnError=false、至少两行、ChunkRows>=2、MySQL 兼容模式、AllowMultiStatements=true 且实际协商 CLIENT_MULTI_STATEMENTS 时进入。仅接受现有标量白名单和单条 INSERT/UPDATE/DELETE/REPLACE；词法验证拒绝分号、可执行注释及 RETURNING，自定义 Valuer、OUT、流和复杂对象继续逐项。该显式策略使用既有客户端字面量编码，不改变普通 SQL 的 PrepareMode；不隐式开启多语句权限。Oracle 及 ContinueOnError=true 仍逐项。
+Restricted multi-statement rewriting is implemented only for explicit BatchRewrite, ContinueOnError=false, at least two rows, ChunkRows>=2, MySQL, AllowMultiStatements=true, and negotiated CLIENT_MULTI_STATEMENTS. Accept scalar-whitelist single INSERT/UPDATE/DELETE/REPLACE only; lexically reject semicolons/executable comments/RETURNING. Custom Valuers/OUT/streams/complex objects remain sequential. Explicit rewrites use existing client-literal encoding without changing ordinary PrepareMode or implicitly enabling permissions. Oracle/ContinueOnError=true remain sequential.
 
-- 每个合并块前通过同一会话读取 @@SESSION.ob_enable_batched_multi_statement，仅明确 0/OFF 才合并；变量不存在、拒绝读取、NULL 或其他值在首块前回退普通逐项路径。首块已执行后该设置改变，剩余项改为单条文本命令，不重放前缀；探测断线/损坏/取消直接报错，不发送业务。驱动不修改该会话变量，调用方可通过 Session.Variables 显式设置。
-- [固定 Java ComQuery.sendRewriteCmd](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L117) 存在分号拼接路径；[固定 OceanBase ObMPQuery](https://github.com/oceanbase/oceanbase/blob/e78e4568b663baeef5497ce1a69868c59292bf69/src/observer/mysql/obmp_query.cpp#L226) 说明首个解析/执行错误后停止后项，且 [服务端合并优化](https://github.com/oceanbase/oceanbase/blob/e78e4568b663baeef5497ce1a69868c59292bf69/src/observer/mysql/obmp_query.cpp#L401) 可能返回整体响应。这是逐块读取开关而不只检查版本的依据，不能据此声称任意历史版本/代理均已验收。
-- 复用安全插值，字符串/二进制用既有字面量编码；SQL 只按会话字符集编码一次。语句之间加换行、分号、换行，避免尾部行注释吞掉后项。每块探测后按最新 SQL mode 重新验证边界和占位符；任何新增语句边界在业务发送前拒绝。按 ChunkRows、ChunkParameters、MaxResultItems 和编码后的 MaxMessageBytes（包括 COM_QUERY 字节和分隔符）切块。
-- 本地非法参数不会遮蔽前项服务器错误：先发送有效前缀，只有前缀成功才报告后项的本地错误。逐项读取严格 OK/ERR 和 MORE_RESULTS，保持实际影响行数；溢出为计数未知。服务端 ERR 保留成功前缀、失败项和确认未执行尾部；缺失/多余响应、损坏、断线及取消淘汰连接，仅未确认的已提交项为 Unknown。后续块不发送、不重放；清理/取消错误保留已确认结果和完整错误链。
-- 标准/压缩/OB20 复用串行消息流，不用 pipeline；原 sql.Tx 的提交/回滚仍由调用方控制。合并多个独立 DML 不保证所有项原子成功；需要整批原子性时显式使用事务。该路径额外有逐块探测往返，不能把本地编码测试当成吞吐收益。
+- Before each combined chunk, read @@SESSION.ob_enable_batched_multi_statement on the same session; combine only explicit 0/OFF. Missing variables, read rejection, NULL, or other values fall back before the first chunk. If settings change later, send remaining items as single text commands without replaying prefixes. Probe disconnect/corruption/cancellation fails without business sends. Driver never changes this variable; callers may explicitly use Session.Variables.
+- Pinned Java [ComQuery.sendRewriteCmd](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L117) concatenates semicolons. Pinned OceanBase [ObMPQuery](https://github.com/oceanbase/oceanbase/blob/e78e4568b663baeef5497ce1a69868c59292bf69/src/observer/mysql/obmp_query.cpp#L226) stops after the first parse/execution error, and [server aggregation optimization](https://github.com/oceanbase/oceanbase/blob/e78e4568b663baeef5497ce1a69868c59292bf69/src/observer/mysql/obmp_query.cpp#L401) may return aggregate responses. Hence probe per chunk rather than relying only on versions; this does not accept arbitrary historical servers/proxies.
+- Reuse safe interpolation/string/binary literals, encoding SQL once in session charset. Separate statements with newline/semicolon/newline so trailing comments cannot swallow successors. After probing, revalidate boundaries/placeholders using latest SQL mode; reject newly introduced boundaries before sends. Chunk by ChunkRows/ChunkParameters/MaxResultItems/encoded MaxMessageBytes including command/separators.
+- Local invalid parameters never hide earlier server errors: send valid prefixes first, reporting later local errors only after prefix success. Read strict per-item OK/ERR/MORE_RESULTS, retaining actual counts or unknown on overflow. ERR preserves successes/failure/confirmed unexecuted suffix. Missing/extra responses, corruption, disconnect, or cancellation discards sessions, marking only submitted unconfirmed items Unknown. No later chunks/replay; cleanup/cancellation preserves confirmed results/full chains.
+- Standard/compressed/OB20 reuse serial streams without pipelines. Callers retain original sql.Tx commit/rollback. Combining independent DML does not guarantee whole-batch atomicity; explicitly use transactions if needed. Additional per-chunk probe round trips mean local encoding tests cannot establish throughput gains.
 
-Oracle 原生 array binding 已本地实现：
+Oracle native array binding is implemented locally:
 
-- 仅显式 BatchArrayBinding、ContinueOnError=true、至少两行、PrepareServer、Oracle 兼容模式、已知 OceanBase >=4.2.1、已有可写 sql.Tx 且自动提交关闭时进入。沿用单条 DML 词法检查和标量白名单；无参数 SQL、MySQL、只读/事务外、未知/旧版本、自定义 Valuer、OUT、长参数和复杂值继续逐项。uint/uint64 因匿名数组元素头没有 unsigned 标志位也逐项，避免改变其精确值；小位宽无符号整数仍经既有安全标量转换。
-- [固定 Java ComStmtExecute](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtExecute.java#L165) 给出匿名数组的 COMPLEX 类型头、空 schema/name/version、元素类型、列式行数和从 bit0 开始的 NULL bitmap。[OceanBase v4.2.1 固定源码](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L529) 明确标准 COM_STMT_EXECUTE 的 array=8、save-exceptions=16，合并为 flag24；这不是合并 PrepareExecute 的其他批量标志。版本门槛取自已核对实现，不外推更旧版本。
-- 同会话 prepare 一次，每块发送标准 COM_STMT_EXECUTE；始终声明完整类型，不污染普通标量类型复用/statement 缓存。按实际物理参数位、ChunkRows、MaxResultItems、MaxMessageBytes 及65535行上限分块，类型变化（含 NULL 类型）另起一块；标量值继续用既有字符集、精确数值、时间与值大小校验。大小累计为线性计算，每块只编码一次完整消息。checksum 仍用既有 SQL checksum 策略。
-- [服务端前置条件](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L255) 要求可写 DML、自动提交关闭和匿名数组参数；[普通执行的聚合优化门禁](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L1593) 排除这条标准协议路径，因此不探测/修改 ob_enable_batched_multi_statement，也不隐式 Begin/Commit。
-- [保存异常响应](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L369) 是零起点 sql_no、error_code、error_message 三列二进制结果，加 MORE_RESULTS 的原生 legacy EOF，再加最终汇总 OK；原生元数据也发送 legacy EOF，即使普通结果协商了 EOF deprecation。严格校验列类型/名称、禁止 OUT、位置范围/重复、错误码、NULL、字符集、EOF 和最终状态；累计元数据、明细及最终 OK 的整个响应受 MaxMessageBytes 限制。
-- 收到最终 OK 后才发布该块所有逐项成功/失败，可继续下一块。错误明细没有 SQLSTATE，Error.SQLState 为空；多项成功的汇总影响行数不能分摊，RowsAffectedKnown=false，单项块且计数可表示时保留实际计数。ContinueOnError=false 仍逐项，避免第一处错误时丢失成功前缀或发送后项。
-- 顶层 ERR 也不能说明哪些输入完成：保留服务端错误链，已提交整块记 Unknown，淘汰连接，后续块保持 NotExecuted；缺失/损坏/额外结果、断线、取消同样不重发。完整 OK 后才发生取消/清理失败时保留已确认逐项状态。原 statement 有界关闭，原事务由调用方处理。
+- Requires explicit BatchArrayBinding, ContinueOnError=true, at least two rows, PrepareServer, Oracle, known OceanBase >=4.2.1, caller writable sql.Tx, and autocommit off. Retain single-DML lexical/scalar rules. No-parameter SQL/MySQL/read-only/no transaction/old or unknown versions/custom Valuer/OUT/long/complex inputs stay sequential. uint/uint64 also stay sequential because anonymous array headers lack unsigned flags; narrower unsigned values retain safe scalar conversion.
+- Pinned Java [ComStmtExecute](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComStmtExecute.java#L165) defines anonymous COMPLEX headers, empty schema/name/version, element type, columnar row count, and bit-0-based NULL maps. Pinned [OceanBase v4.2.1](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L529) defines standard COM_STMT_EXECUTE array=8/save-exceptions=16, combined flag 24, distinct from combined PrepareExecute batch flags. The gate follows checked implementation, not extrapolated older versions.
+- Prepare once on the same session, then standard COM_STMT_EXECUTE per chunk with full type declarations, without polluting scalar reuse/cache. Chunk by physical slots, ChunkRows, MaxResultItems, MaxMessageBytes, and 65535 rows; type changes including NULL start new chunks. Scalars retain charset/exact-number/temporal/value validation. Size accounting is linear; encode one full message per chunk. Existing SQL-checksum policy applies.
+- [Server prerequisites](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L255) demand writable DML, autocommit off, anonymous arrays. [Ordinary aggregation gates](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L1593) exclude this standard path; never probe/change ob_enable_batched_multi_statement or implicitly Begin/Commit.
+- [Saved-exception responses](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/observer/mysql/obmp_stmt_execute.cpp#L369) contain binary sql_no/error_code/error_message columns, zero-based positions, native legacy EOF with MORE_RESULTS, then aggregate OK. Metadata also uses legacy EOF even with ordinary EOF deprecation. Strictly validate names/types, no OUT, ranges/duplicates/codes/NULL/charset/EOF/final status. Metadata/details/final OK cumulatively obey MaxMessageBytes.
+- Publish all chunk successes/failures only after final OK, then continue. Details lack SQLSTATE, so Error.SQLState is empty. Aggregate multi-success counts cannot be distributed: RowsAffectedKnown=false; representable single-item counts remain actual. ContinueOnError=false remains sequential to retain prefixes and avoid later sends.
+- Top-level ERR cannot establish completed inputs: preserve its chain, mark submitted chunk Unknown, discard connection, retain later NotExecuted. Missing/corrupt/extra results/disconnect/cancellation likewise never replay. Cancellation/cleanup after complete OK preserves confirmed per-item states. Boundedly close original statements; caller controls transaction.
 
-本地故障对端已覆盖状态、计数、原事务、OUT/流、分块、多发包、取消和不重放。`TestBatchExecution` 提供四目标部分成功、策略和原事务回滚源码，本阶段仅编译，真实 SQL/服务器/OBProxy 行为未验收。
+Local failure peers cover states/counts/original transactions/OUT/streams/chunks/multi-send/cancellation/no replay. Four-target `TestBatchExecution` provides partial-success/strategy/original-rollback source compiled only; live SQL/server/OBProxy behavior remains unaccepted.
 
-### 13.5 一次性长参数（D21）
+### 13.5 One-Shot Long Parameters (D21)
 
-公开入口使用 `*LongData`，直接作为标准 `ExecContext` / `QueryContext`、`Execute`、服务端 `Stmt` 或 `OpenCursor` 的 IN 参数；保留同一物理会话和事务。普通显式 PrepareClient 在读取 Reader 前返回 ErrUnsupported；OUT 本来就必须使用原生协议，混合长参数继续走该路径。
+Public `*LongData` is an IN parameter for standard `ExecContext`/`QueryContext`, `Execute`, server `Stmt`, or `OpenCursor`, retaining session/transaction. Ordinary explicit PrepareClient returns ErrUnsupported before Reader consumption. OUT already requires native protocol, and mixed long parameters retain that path.
 
 ```go
 input := &oceanbase.LongData{
@@ -1015,27 +1015,27 @@ input := &oceanbase.LongData{
 _, err := tx.ExecContext(ctx, "INSERT INTO files(id, content) VALUES (?, ?)", id, input)
 ```
 
-- Reader 始终由调用方关闭；nil 及底层为 nil 的指针、函数、map、slice、channel Reader 在预处理/上传前返回 ErrLongData，不消费输入；非 nil 的空 Reader 正常上传空流。Length 是源字节精确长度，-1 表示到 EOF，0 要求空流。已知长度同样探测至多一个额外字节以发现超长；不足返回 io.ErrUnexpectedEOF，不截断冒充成功。
-- MaxBytes 为每个输入的源字节和转换后字节分别设上限；0 采用 Limits.MaxLOBBytes。显式增大允许流超过普通 LOB 物化上限；每块仍受 MaxMessageBytes 限制。Oracle hex 的协议膨胀不计入内容长度，每包仍受限。
-- Text=false 发送二进制；Text=true 接受 UTF-8，按 Session.Charset 增量转换，拒绝非法/不可表示字符，跨块保留不完整码点；不把 NCharset 字节混入普通文本流。目标 CLOB/NCLOB 的服务端类型转换仍须真实环境验证。
-- 首次开始上传即原子消费该对象；成功或中途失败均不能再次使用，也不复制、seek 或 rewind Reader。Oracle 同一具名参数的多个位置逐块分发同一数据，不再次读取来源；调用方重新构造对象不代表驱动拥有重放授权。
-- MySQL 使用 COM_STMT_SEND_LONG_DATA(24)，每段无响应；Oracle 已知版本 >=2.2.76 使用 COM_STMT_SEND_PIECE_DATA(162)，逐段读取 OK。Oracle 二进制先 hex，文本按会话字符集，execute 参数头为 STRING(254)；两种模式均省略 execute 中对应的值体。Oracle 的已知版本下限复用现有能力门禁，不把 Java 选项首次出现的驱动版本当作服务端最低版本。
-- 普通执行、向前/敏感游标、Oracle OUT 的预先 prepare + command161，以及 MySQL OUT 的会话变量 + 带流占位的服务端 CALL，均在同一 gate 内上传并执行。辅助 prepare/上传不冒充已执行业务语句的 Execution 结果。
-- Reader 报错、超限、非法字符、段响应错误、网络部分写或取消使上传连接失效，清除无法确认的服务端长数据；上传后、execute 发送前的取消也淘汰连接。Reader 错误保留 errors.Is，特殊 ErrBadConn 不向 database/sql 暴露为自动重试信号；没有第二次业务执行。
-- 不为任意阻塞 Reader 启动可遗留的后台读取协程。调用方需要让 Reader 在取消时返回，可通过自己的上下文/关闭机制实现；驱动不能代为关闭借用来源。LongData 的字段和 Reader 在执行期间不能被并发修改。
+- Callers always close Readers. Nil and typed-nil pointer/function/map/slice/channel Readers return ErrLongData before prepare/upload without consumption; non-nil empty Readers upload empty streams. Length is exact source bytes, -1 through EOF, 0 empty-only. Known lengths probe at most one extra byte for excess; shortage returns io.ErrUnexpectedEOF, never truncated success.
+- MaxBytes separately caps source/converted bytes per input; 0 uses Limits.MaxLOBBytes. Explicit increases allow streams beyond ordinary materialization limits, while each chunk obeys MaxMessageBytes. Oracle hex expansion does not count as content but packets remain bounded.
+- Text=false sends binary. Text=true incrementally converts UTF-8 through Session.Charset, rejects invalid/unrepresentable characters, and retains incomplete code points across chunks. Never mix NCharset bytes into ordinary text streams. Server CLOB/NCLOB conversions still need live validation.
+- Upload start atomically consumes objects; neither success nor failure permits reuse, copying, seek, or rewind. Repeated Oracle named positions receive the same chunks without rereading sources. Caller reconstruction grants no driver replay authorization.
+- MySQL uses COM_STMT_SEND_LONG_DATA(24), no per-chunk response; Oracle known >=2.2.76 uses COM_STMT_SEND_PIECE_DATA(162) with OK per chunk. Oracle binary is hex-encoded, text uses session charset, execute headers use STRING(254); both omit corresponding execute value bodies. Oracle minimum reuses capability gates, not Java option-introduction versions.
+- Ordinary execution, forward/sensitive cursors, Oracle OUT pre-prepare+command 161, and MySQL OUT session variables/server CALL stream placeholders upload/execute within one gate. Prepare/upload never masquerades as executed business results in Execution.
+- Reader errors/limits/invalid text/chunk errors/partial writes/cancellation invalidate upload sessions and clear uncertain server long data. Cancellation after upload before execute also discards sessions. Reader errors retain errors.Is; special ErrBadConn never reaches database/sql as a retry signal. No second business execution.
+- Never start abandonable background goroutines for arbitrary blocked Readers. Callers must make Readers return on cancellation through their own contexts/closure; drivers cannot close borrowed sources. Do not concurrently mutate LongData fields/Reader during execution.
 
-源码依据为 Java 同一基线的 [二进制流](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBStreamParameter.java)、[字符流](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBReaderParameter.java)、[MySQL 长数据](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/StreamParameter.java) 及 [原生执行](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java)。当前使用有界块，不暴露 Java 分块大小开关，不整流物化；真实大小限制、空流存储语义、LOB 转换和代理行为仍待四目标联调。
+Evidence: pinned Java [binary streams](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBStreamParameter.java), [character streams](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/OBReaderParameter.java), [MySQL long data](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/parameters/StreamParameter.java), and [native execution](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java). Bounded chunks expose no Java chunk-size switches and never materialize whole streams. Actual limits, empty storage semantics, LOB conversion, and proxy behavior await four-target integration.
 
-## 14. LOB 和复杂类型的 Go 1.26 方案
+## 14. Go 1.26 Design for LOBs and Complex Types
 
-### 14.1 普通值与连接句柄分开
+### 14.1 Separate Ordinary Values from Connection Handles
 
-普通 BLOB/CLOB 查询返回数据内容。对 out-row LOB，Oracle 查询使用服务器游标/完整 fetch 响应边界，再在原会话读取内容；受自动物化大小上限约束。文本流式路径无法安全插入 LOB 命令时，要先使用有界完整响应缓冲，或选择游标路径。
+Ordinary BLOB/CLOB queries return contents. Oracle out-row LOB queries use server cursors/complete fetch boundaries, then read on the original session under automatic materialization limits. If text streaming cannot safely insert LOB commands, use bounded full-response buffering or cursor paths.
 
-需要超大对象、随机访问、流式上传下载、空 LOB 或修改 locator 时，使用明确的 Blob/Clob 扩展。Go 1.26 不要求把有连接身份的对象塞进 Scanner。
+Use explicit Blob/Clob extensions for huge objects, random access, streaming upload/download, empty LOBs, or locator modification. Go 1.26 need not place connection-identified objects into Scanner.
 
 ```go
-// Session 只表示标准库已有的固定会话调用面，不创建新的 Session 对象。
+// Session describes existing standard-library fixed-session calls; it creates no new Session object.
 type Session interface {
     ExecContext(context.Context, string, ...any) (sql.Result, error)
     QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -1045,81 +1045,81 @@ func OpenBlob(ctx context.Context, session Session, query string, args ...any) (
 func OpenClob(ctx context.Context, session Session, query string, args ...any) (*Clob, error)
 ```
 
-这些资源函数在入口通过具体类型检查，只接受非 nil 的 `*sql.Conn` 或 `*sql.Tx`；`*sql.DB` 虽在结构上满足 Session，也必须在网络调用前拒绝，其他包装类型同样不在该入口契约内。普通批量等无后续句柄的函数不受该限制。Open 查询应返回恰好一个所需 LOB，否则明确报错并清理所有结果。
+Resource entry points check concrete types, accepting non-nil `*sql.Conn`/`*sql.Tx` only. Structurally compatible `*sql.DB` must fail before networking; wrappers are also outside this contract. Ordinary batching/functions without persistent handles are unrestricted. Open queries must return exactly one required LOB, otherwise explicitly error and clean all results.
 
-Blob/Clob 保存调用方的标准会话引用、原生 locator 或 §14.4 的表/行身份和资源代次；后续操作通过该会话调用，驱动再次校验所属连接，不保存 `Conn.Raw` 回调中取出的原始 driverConn。MySQL 没有原生 locator 时不能把普通 BLOB 字节值假装成 locator；表内分块访问使用 OpenTableBlob。
+Blob/Clob retains caller standard-session references, native locators or table/row identities (§14.4), and generations; later calls go through that session and recheck connection ownership, never storing raw driverConn from `Conn.Raw`. Without native MySQL locators, ordinary BLOB bytes cannot impersonate locators; OpenTableBlob provides table chunk access.
 
-资源拥有 locator，不拥有调用方的 Conn/Tx：关闭资源不关闭会话，调用方应先关闭资源再关闭会话或结束事务。每次操作同时校验物理连接身份、会话代次和事务代次；旧事务产生的句柄不能在同连接的新事务中继续使用。未释放资源随会话关闭或 reset 一并失效；无法可靠清理时淘汰该物理连接。
+Resources own locators, not Conn/Tx. Close resources before closing sessions/ending transactions; resource Close never closes sessions. Validate physical identity/session generation/transaction generation per call. Old transaction handles cannot survive into new transactions on the same connection. Session close/reset invalidates outstanding resources; unreliable cleanup discards physical connections.
 
-失效操作可用 `errors.Is(err, oceanbase.ErrResource)` 判断；结束后的标准 Conn/Tx 也可能先返回标准库的 `sql.ErrConnDone` / `sql.ErrTxDone`。Close 幂等，已失效或已结束会话上的关闭不重新建立连接。发送前取消保留再次关闭的机会。内部记录由物理连接持有，句柄只保存标准 Session 引用与不透明身份/代次；不增加公开资源管理器。尚未发布的记录在外层操作完整结束时清理，内部字典/LOB 辅助响应保留外层资源；服务器观察到的事务状态切换同样使旧代次失效。事务开始、结束及 reset 的资源清理都受 CleanupTimeout 约束。
+Use `errors.Is(err, oceanbase.ErrResource)` for invalid resources; ended Conn/Tx may first return `sql.ErrConnDone`/`sql.ErrTxDone`. Close is idempotent and never reconnects ended/invalid sessions. Pre-send cancellation leaves another close attempt possible. Physical sessions own internal records; handles retain only standard Session/opaque identity/generation, without public resource managers. Clean unpublished records when outer operations fully finish; dictionary/LOB auxiliary responses preserve outer resources. Observed transaction changes also invalidate old generations. Begin/end/reset cleanup obeys CleanupTimeout.
 
-### 14.2 大对象操作
+### 14.2 Large-Object Operations
 
-- Blob 提供按字节定义的 Reader/Writer、ReadAt/WriteAt、长度、截断和释放；网络读写都有 context 入口。
-- Clob/NCLOB 提供字符读写和字符长度；字符偏移与 UTF-8 字节偏移分开定义，不套用 Blob 的字节索引。
-- Locator V1/V2、内联/外联、空 LOB、临时/持久对象在内部类型中区分。
-- 明确“释放服务端临时 LOB”与“关闭本地 reader”两种行为；Close 幂等，不替调用方提交事务。
-- 对原会话、事务和代次失效返回资源失效错误；不能通过重新登录猜测旧 locator 仍有效。
-- PIECE_DATA / LONG_DATA / DBMS_LOB 路径按模式和能力选择，保持原事务语义。
+- Blob provides byte-defined Reader/Writer, ReadAt/WriteAt, length, truncation, and release with context-aware network entry points.
+- Clob/NCLOB provides character reads/writes/lengths, distinguishing character offsets from UTF-8 byte offsets rather than borrowing Blob indexing.
+- Internally distinguish Locator V1/V2, inline/out-row, empty, temporary/persistent objects.
+- Distinguish freeing server temporary LOBs from closing local readers. Close is idempotent and never commits caller transactions.
+- Invalid session/transaction/generation returns resource errors; relogin cannot establish old locator validity.
+- Select PIECE_DATA/LONG_DATA/DBMS_LOB by mode/capability, preserving original transactions.
 
-LONG_DATA/PIECE_DATA 解决参数传输，不能替代 MySQL 表内 BLOB 的随机访问。其模拟 locator 后端见 §14.4。[J14]
+LONG_DATA/PIECE_DATA transport parameters, not MySQL table-BLOB random access. See emulated locators in §14.4.[J14]
 
-### 14.3 活跃结果与 LOB 的调度
+### 14.3 Scheduling Active Results and LOBs
 
-同一个网络响应未读完时，禁止插入 DBMS_LOB 或其他命令。标准游标 fetch 先读完一个受限批次的响应，再 materialize 所需 LOB；剩余批次行保留在受限缓冲中。显式 OpenBlob/OpenClob 则先完整结束 locator 查询，再返回句柄。
+Never insert DBMS_LOB/other commands into unread responses. Cursor fetch first consumes one bounded batch response, then materializes required LOBs while remaining rows stay boundedly buffered. Explicit OpenBlob/OpenClob finishes locator queries before returning handles.
 
-Oracle 的“保持游标并在同连接执行 LOB 操作”需要真实服务端验证。若目标版本不支持该交错方式，使用完成查询后读取 locator 的有界方案；不能改用另一个物理连接来冒充原事务可见性。
+Keeping Oracle cursors open while executing same-session LOB operations needs live verification. Unsupported versions must use bounded post-query locator reads, never another physical connection pretending to preserve original-transaction visibility.
 
-复杂类型描述读取同样只在命令边界执行。需要补充描述时先完成当前响应，并由根包的内部调度执行字典查询/LOB 读取。即使响应已完整，驱动 QueryContext/Rows.Next 仍可能持有 database/sql 的连接锁；禁止从这些调用内部再进入公开 Metadata、Session 或 sql.DB/Conn/Tx 方法。内部直接使用当前物理会话的命令执行器，不重新取得标准库连接锁；调度器只持有一次会话操作所有权，不递归获取自己的操作锁。只共享查询计划、类型描述和缓存，见 §16.1。
+Complex descriptors likewise execute only at command boundaries. Complete current responses before internal root-package dictionary/LOB scheduling. Even then, QueryContext/Rows.Next may hold database/sql connection locks: never reenter public Metadata/Session/sql.DB/Conn/Tx methods. Use the current physical executor directly, without reacquiring standard locks. Scheduler owns one session operation without recursively acquiring its own lock. Share plans/descriptors/cache only; see §16.1.
 
-D16 已实现上述原生入口和 `Blob.Reader(ctx)` / `Blob.Writer(ctx)`，适配器各自持有顺序偏移和本次传入的 context，不借用 Open 的 context，也不拥有 locator。`Blob.Truncate` 只缩短；短读返回已读字节及 io.EOF，分块写失败返回已完成的前缀，失败块不自动重放。普通查询和标量 `sql.Out` / `Out` 中的 LOB 返回内容，默认每值 16 MiB；显式句柄可分块处理超出该上限的对象。
+D16 implements the native entry points above and `Blob.Reader(ctx)` / `Blob.Writer(ctx)`. Each adapter retains its own sequential offset and the context supplied for that adapter, without borrowing Open's context or owning the locator. `Blob.Truncate` only shortens objects. Short reads return bytes read and io.EOF; chunked write failures return the completed prefix without replaying the failed chunk. LOBs from ordinary queries and scalar `sql.Out` / `Out` return content, with a default limit of 16 MiB per value. Explicit handles can process larger objects in chunks.
 
-当前实现使用已有 Oracle COM_STMT_PREPARE_EXECUTE 内核调用 DBMS_LOB.READ/WRITE/TRIM/FREETEMPORARY，要求已确认的实际 ob_version >= 2.2.76。读取数量同时接受原生整数和无损整数 NUMBER，拒绝小数、溢出及数量/内容不匹配。每块受 DBMS_LOB 的 32767 字节和 MaxMessageBytes 双重约束。V2 临时标记驱动服务端释放，V1 通过同会话 ISTEMPORARY 判定；持久 locator 只释放本地记录。清理失败淘汰物理连接，不结束调用方事务。
+Current implementation invokes DBMS_LOB.READ/WRITE/TRIM/FREETEMPORARY through existing Oracle COM_STMT_PREPARE_EXECUTE, requiring confirmed actual ob_version >=2.2.76. Counts accept native integers/lossless integer NUMBER, rejecting fractions/overflow/count-content mismatches. Each block obeys DBMS_LOB 32767 bytes and MaxMessageBytes. V2 temporary flags trigger server freeing; V1 uses same-session ISTEMPORARY. Persistent locators release local records only. Cleanup failure discards connections without ending caller transactions.
 
-每个内部 LOB 命令在发送前取得资源代次，完整响应后再次比较；服务端事务状态或 autocommit 变化导致代次失效时返回 ErrResource，不采纳该响应的内容或新 locator，也不发送后续块。此前完成的读写前缀保留，当前块的服务端副作用不据此判定为回滚。普通查询的自动物化尚无公开句柄时也建立同一代次检查；物化失败沿用结果读取的连接淘汰规则。[事务状态回归](../lob_epoch_test.go)覆盖显式 BLOB/CLOB 分块读写和无公开句柄的普通查询物化。
+Each internal LOB command captures generations before sending and compares after complete responses. Transaction/autocommit changes invalidating generations return ErrResource without adopting content/new locators or sending later blocks. Preserve completed prefixes without inferring rollback of current side effects. Ordinary materialization uses identical checks before public handles exist; failures retain result-reading discard rules. [Transaction regressions](../lob_epoch_test.go) cover explicit BLOB/CLOB chunk reads/writes and ordinary materialization.
 
-D19 的服务器游标到位前，首次遇到原生 LOB 的结果集会有界缓冲本次响应剩余的所有行集、命令结果和隐藏 OUT；读到完整响应边界后才物化内容。累计计入列信息、行容器、字段和物化后内容，受 MaxMessageBytes / MaxResultItems / MaxLOBBytes 限制。内部命令保留现有 gate，不进入公开 Session 或 Metadata，不换辅助连接；已缓冲行使用原调用方 context，与网络操作结束时的内部取消分开。Open 也先结束整个 locator 查询，再原子发布；基数不合要求时清理已取得的临时对象。
+Until D19 server cursors, first native LOB results boundedly buffer all remaining row sets, commands, hidden OUT, materializing only after full boundaries. Count columns/row containers/fields/materialized content against MaxMessageBytes/MaxResultItems/MaxLOBBytes. Internal commands retain gates without public Session/Metadata or auxiliary connections. Buffered rows retain caller context independently of internal network cancellation. Open finishes the entire locator query before atomic publication and cleans temporary objects on wrong cardinality.
 
-字符 API 的 off/count/返回计数均为 Unicode 码点。已知 UTF16 collation 的服务端偏移按 UTF-16 单位转换，其他受支持字符集按码点转换；out-row 路径从起点分块扫描，校验服务端数量和编码长度，不能把 UTF-8 字节当字符。UTF-16 覆盖要求已有位置与新字符的代理对宽度相同，宽度改变时在任何写入前返回 ErrUnsupported；追加和相同宽度覆盖可用。不能表示的文本、非法代理对或不匹配的服务端字符单位明确失败。目标服务端 NCLOB 字符单位和 collation 行为仍须由 TestNativeLOB 取证。
+Character off/count/returned counts are Unicode code points. Known UTF16 collations convert server offsets to UTF-16 units; other supported charsets use code points. Out-row paths scan in chunks from the beginning and validate server quantities/encoding lengths, never UTF-8 bytes as characters. UTF-16 overwrites require matching surrogate-pair widths at existing/new positions; width changes return ErrUnsupported before writes. Append/same-width overwrite work. Unrepresentable text, invalid pairs, and mismatched units fail explicitly. TestNativeLOB must still establish target NCLOB units/collations.
 
-OpenBlob/OpenClob 在任何 prepare/查询前取得资源代次，发送 locator 查询前和完整响应后复核；prepare 已结束原事务时不再执行，元数据、行结束或合并执行最终 OK 导致事务失效时返回 ErrResource，不登记或发布 locator。完整响应上的失效保留可用会话。参数化打开失败时，自动 statement 由持有操作锁的 Rows 清理，不再次调用会重新获取该锁的 Close；完整服务端 ERR 不因二次清理自锁而误淘汰连接。[打开回归](../lob_open_epoch_test.go)覆盖两种 LOB、文本/客户端绑定/服务端预处理/合并执行、三包流和完整错误后的原会话复用。
+OpenBlob/OpenClob captures generations before prepare/query, rechecking before locator queries/after complete responses. If prepare ended the transaction, do not execute. Metadata/end rows/combined final OK invalidity returns ErrResource without registering/publishing locators, preserving sessions at complete boundaries. On parameterized-open failure, Rows owning the operation lock cleans automatic statements rather than recursively locking Close; full ERR must not spuriously discard due to cleanup self-deadlock. [Open regressions](../lob_open_epoch_test.go) cover both LOBs, text/client/server/combined execution, three streams, and original-session reuse after complete errors.
 
-### 14.4 表内 BLOB 与 MySQL 模拟 locator
+### 14.4 Table BLOBs and MySQL Emulated Locators
 
-采用显式目标描述取得可靠行身份，不从任意查询、列别名或 BLOB 内容推测表和主键。这是本方案的 API 选择，返回的仍是同一个 Blob 类型：
+Use explicit target descriptors for reliable row identities, never inferring tables/keys from arbitrary queries, aliases, or contents. This API choice returns the same Blob type:
 
 ```go
 type BlobTarget struct {
     Schema string
     Table  string
     Column string
-    Key    map[string]any // 完整主键：列名到参数值
+    Key    map[string]any // Complete primary key: column names to bound values
 }
 
 func OpenTableBlob(ctx context.Context, session Session,
     target BlobTarget) (*Blob, error)
 ```
 
-- 固定会话条件与 OpenBlob 相同。Schema 为空时在当前会话解析实际 schema，随后固定对象身份；Table/Column 必填，各字段表示一个标识符组成部分，不接收 SQL 片段。Oracle 使用字典中的精确拼写；MySQL 列名按字典忽略大小写解析，schema/table 遵守服务端字典比较规则。
-- 通过实际模式的元数据确认单个基表、可读的二进制 BLOB 列和完整主键。拒绝视图/联表、缺失或多余主键字段、NULL 主键和不支持的类型；作为目标的 BLOB 列不得同时是主键或生成列。列名按字典解析后引用，主键值全部绑定，不拼接成 SQL。
-- 输入在打开时完成参数校验；Valuer 只求值一次，复制 map、切片和可变字节值，保存规范化后的不可变身份。后续修改调用方 Key 不改变句柄目标，不使用全局 token 注册表。
-- Open 只取得所需元数据、存在性、NULL/长度或原生 locator，不读取整个 BLOB。无该行返回 sql.ErrNoRows；该列为 SQL NULL 返回 nil、nil；空的非 NULL BLOB 返回长度为 0 的有效句柄。初始化 NULL 使用普通显式 SQL。
-- MySQL 后端按主键生成受限分块 SQL：长度使用 OCTET_LENGTH，读取使用 SUBSTRING；Oracle 可由相同目标查询取得原生 BLOB locator；调用方传入可写 Tx 时，目标查询使用 FOR UPDATE 取得持久 locator 所需行锁，只读 Tx/Conn 的打开不加该锁。MySQL 后端不是 LONG_DATA，也不承诺查询得到的任意 BLOB 都能转成持久句柄。[J14][J15]
-- Blob 字节偏移采用 Go 的 0 起点；转换为 SQL 的 1 起点和计算 off+len 时检查溢出。每块同时受逻辑消息和 LOB 块大小限制；不得在后端不支持分块时偷偷整体物化超大对象。当前每块最多 32767 字节，按消息预算进一步缩小；配置 MaxLOBBytes 更小时使用更小块，整个句柄内容不受单值物化上限约束。
-- MySQL ReadAt/长度查询在每次调用时重新按主键访问。使用 `*sql.Conn` 时不承诺跨块快照；需要稳定读取时由调用方使用合适隔离级别的 `*sql.Tx`，必要时显式加锁。事务外也不承诺识别同一主键被删除后重新插入的另一行。
-- MySQL 模拟句柄的 WriteAt/Truncate 必须运行在调用方的 `*sql.Tx` 内；否则在修改前返回错误，不隐式 Begin/Commit。每次修改先在该事务中按主键 SELECT ... FOR UPDATE，确认行和非 NULL 内容、锁定后读取当前长度，再执行参数化 UPDATE；只读事务或不支持所需锁语义时拒绝修改；当前仅对字典 ENGINE=InnoDB 的 MySQL 基表开放修改，未知引擎保留读取能力。
-- WriteAt 只允许 `0 <= off <= 当前字节长度`，可在末尾追加，不自动填充稀疏空洞。例如二进制列的替换可使用 `CONCAT(LEFT(col, off), ?, SUBSTRING(col, off+len(p)+1))`；col 安全引用，其余值绑定。Truncate 仅缩短到 `0..当前长度`，不扩展。空写入或写入相同值，在锁定存在性已确认后可以成功；ChangedRows 返回 0 不等于行不存在。
-- MySQL 写入前检查完整写入计划的目标容量：TINYBLOB 255、BLOB 65535、MEDIUMBLOB 16777215、LONGBLOB 4294967295 字节，超出时在首条 UPDATE 前 ErrLOB。UPDATE 的完整响应若带 warning，也返回 ErrLOB，不把该块计入完成前缀；服务器可能已截断或把 CONCAT 结果置为 NULL，调用方应回滚现有事务。不能把非严格 SQL 模式下带 warning 的 OK 当作完整写入成功。
-- 不同块是多条 SQL，原子性和失败后的回滚由已有 Tx 控制。每条完整响应消费后才能发下一条；网络失败后不自动重发。内部查询与 UPDATE 在发送前记录资源代次，完整响应后先检查代次，失效响应不复制到调用方缓冲区、不发布长度或句柄、不计入写入完成前缀，也不将短读 EOF 用作失效结果。打开时的 schema、字典、长度及 Oracle locator 查询沿用相同检查，即使尚未注册公开资源也不能忽略事务状态变化。此前完成的分块保留，当前块的服务端副作用不据错误返回推断为已撤销。完整响应上的代次失效保留可用会话供调用方继续操作及显式回滚。[表内 BLOB 事务回归](../lob_table_epoch_test.go)覆盖首块/中途失效、短读、长度及两模式打开阶段。表 DDL、权限或类型变化返回原错误/资源失效，不重新猜测目标。
-- 表目标句柄遵守相同连接、会话和事务代次；Close 幂等，不关闭 Conn/Tx，也不替调用方提交。模拟后端没有可释放的原生 locator，Close 只清理本地身份与占用；原生后端继续释放相应服务器资源。
+- Fixed-session rules match OpenBlob. Omitted Schema resolves actual schema on-session, then pins identity. Table/Column required; fields are identifier components, never SQL fragments. Oracle uses exact dictionary spelling; MySQL resolves columns case-insensitively, while schema/table follow dictionary comparison.
+- Mode metadata verifies one base table, readable binary BLOB column, complete primary key. Reject views/joins, missing/excess/NULL keys, unsupported types. Target BLOB cannot be a key/generated column. Quote dictionary-resolved names; bind all keys.
+- Validate inputs on open; evaluate Valuer once, copy maps/slices/mutable bytes, and retain normalized immutable identity. Later caller Key changes cannot retarget handles; no global token registry.
+- Open reads metadata/existence/NULL/length or native locator only, never whole BLOBs. Missing row returns sql.ErrNoRows; SQL NULL returns nil,nil; non-NULL empty content yields valid zero-length handles. Initialize NULL with explicit ordinary SQL.
+- MySQL chunks use key-based OCTET_LENGTH/SUBSTRING; Oracle may query native locators from the same descriptor. Writable Tx target queries use FOR UPDATE for required persistent-locator locks; read-only Tx/Conn opens do not. MySQL is not LONG_DATA and does not promise arbitrary queried BLOBs become persistent handles.[J14][J15]
+- Blob offsets are Go zero-based; SQL one-based conversion/off+len arithmetic checks overflow. Each block obeys logical-message/LOB-block limits; no hidden whole-object materialization when chunking is unsupported. Current maximum 32767 bytes shrinks under message budgets or smaller MaxLOBBytes; whole handles exceed individual materialization limits.
+- MySQL ReadAt and length queries access the primary key again on every call. `*sql.Conn` does not guarantee snapshots across chunks; callers requiring stable reads use a `*sql.Tx` with suitable isolation and explicit locking where necessary. Outside transactions, the driver does not guarantee detection of a row deleted and reinserted under the same primary key.
+- Emulated MySQL WriteAt/Truncate requires the caller's `*sql.Tx`; otherwise it fails before mutation without implicit Begin/Commit. Each mutation first executes key-based SELECT ... FOR UPDATE in that transaction, confirms the row and non-NULL content, reads its locked length, then issues a parameterized UPDATE. Read-only transactions or unavailable locking semantics reject modification. Currently only MySQL base tables with dictionary ENGINE=InnoDB allow mutation; unknown engines remain readable.
+- WriteAt allows `0 <= off <= current byte length`, including append, without sparse padding. Binary replacement may use `CONCAT(LEFT(col, off), ?, SUBSTRING(col, off+len(p)+1))`, safely quoting col and binding all other values. Truncate only shortens within `0..current length`. Empty or identical writes may succeed after locked existence is confirmed; ChangedRows=0 does not mean the row is absent.
+- Before writes, validate complete-plan capacity: TINYBLOB 255, BLOB 65535, MEDIUMBLOB 16777215, LONGBLOB 4294967295 bytes. Excess returns ErrLOB before first UPDATE. Complete UPDATE responses with warnings also return ErrLOB without counting that block; server may truncate or make CONCAT NULL, so callers should roll back existing transactions. Non-strict warning OK is not complete success.
+- Blocks are separate SQL; caller Tx controls atomicity/rollback. Consume responses before later sends; never retry network failures. Internal queries/UPDATE capture generations before sends and recheck full responses. Invalid responses do not copy buffers/publish lengths or handles/count completed prefixes/report short-read EOF. Schema/dictionary/length/Oracle locator opens share checks even before public registration. Preserve prior blocks without inferring current side-effect reversal. Complete-boundary invalidity retains usable sessions for further calls/rollback. [Table BLOB transaction regressions](../lob_table_epoch_test.go) cover first/midblock invalidity, short reads, lengths, and both-mode opening. DDL/privilege/type changes retain errors/resource invalidity without retargeting guesses.
+- Targets share connection/session/transaction generations. Close is idempotent without Conn/Tx closure or implicit commit. Emulation has no native locator to free and clears local identity/occupancy only; native backends still release server resources.
 
-这一入口覆盖 Java emulateLocators 的表/主键/列定位及分块读写能力，同时保留 Go 普通 SQL 的直接用法；其额外 SQL 次数和事务要求是公开行为。
+This covers Java emulateLocators table/key/column targeting and chunked I/O while preserving ordinary Go SQL. Extra SQL round trips and transaction requirements are public behavior.
 
-## 15. 游标、滚动和可更新结果
+## 15. Cursors, Scrolling, and Updatable Results
 
-打开游标在发送 prepare 前建立资源代次，prepare 和执行响应完成后均复核；prepare 已结束原事务时不再执行，执行响应失效时不登记句柄、不开始 static 预取。Oracle sensitive 的初始响应还需完整读取最终 OK，再在物化 LOB/复杂值/子游标前复核。完整边界上的失效关闭本次 statement，保留可用会话供调用方继续操作或显式回滚，不重放命令，也不表示服务端副作用已撤销。[打开事务失效回归](../cursor_open_epoch_test.go)覆盖两模式的 forward/static、Oracle sensitive、三种包流及最终 OK 失效。
+Opening cursors establishes generations before prepare and rechecks after prepare/execution. If prepare ended transactions, do not execute; invalid execution responses publish no handle or static prefetch. Oracle sensitive initial responses consume final OK, then recheck before LOB/complex/child materialization. Complete-boundary invalidity closes this statement and preserves usable sessions for further work/rollback, without replay or claims of reversed side effects. [Open invalidation regressions](../cursor_open_epoch_test.go) cover both-mode forward/static, Oracle sensitive, three streams, and final-OK invalidity.
 
-标准 `sql.Rows` 保持向前读取。Java 中 scroll、sensitive、updatable 的能力通过专门 Cursor 提供，不向所有 Rows 添加 Java 风格的 getter/setter。
+Standard `sql.Rows` remains forward-only. Dedicated Cursor supplies Java scroll/sensitive/updatable capabilities without adding Java getters/setters to every Rows.
 
 ```go
 func OpenCursor(ctx context.Context, session Session, query string,
@@ -1135,54 +1135,54 @@ func (c *Cursor) Insert(ctx context.Context, changes ...ColumnChange) error
 func (c *Cursor) Refresh(ctx context.Context, key map[string]any) (*sql.Rows, error)
 ```
 
-设计规则：
+Design rules:
 
-- Cursor 绑定传入的 sql.Conn/Tx；建立游标的控制响应读完后才返回对象。
-- 每次 Fetch 返回一个标准 sql.Rows 批次；关闭批次只结束该批次，不关闭整个服务器游标，下一次 Fetch 前必须关闭前一批次。
-- Position 明确表示 next、absolute、relative 等语义；Oracle 使用可用的 offset fetch。需要缓存的 static scroll 采用有界缓存，超限报错，不无界存储整个结果。
-- Sensitive 读取及 Refresh 使用服务端可用的重新定位/刷新语义；不能用 static 缓存冒充。
-- 可更新游标只接受能明确定位到单表行的结果，按主键或 ROWID 生成模式正确的参数化 DML。
-- Update/Delete/Insert/Refresh 接受明确的列变更和行身份；参数化值，安全引用标识符，不拼接业务值。不对 join、聚合或缺失行标识的结果猜测更新目标。
-- 定位预期为一行，检查匹配语义下的计数及行身份；零或多行时给出明确并发变化/定位错误。ChangedRows 下的 UPDATE=0 不能证明记录不存在：使用同一事务内的锁定存在性检查等可靠条件区分“无变化”和“未匹配”。无法提供该保证时在开放可更新能力/发送修改前报能力错误，不用自动提交之后的另一次查询猜测，也不无条件报告更新成功。
-- 执行失败、关闭、事务结束、会话 reset 都使相应游标状态失效；服务端不支持的游标类型返回能力错误。
+- Cursor binds supplied sql.Conn/Tx and returns only after complete opening control responses.
+- Each Fetch returns a standard sql.Rows batch. Closing batches does not close server cursors; close previous batches before fetching again.
+- Position explicitly expresses next/absolute/relative, using available Oracle offset fetch. Static scroll uses bounded caches and errors on excess, never unbounded full-result storage.
+- Sensitive reads/Refresh use genuine supported server reposition/refresh, never static caches masquerading as sensitivity.
+- Updatable cursors require unambiguous single-table identities, generating mode-correct parameterized DML from keys/ROWID.
+- Update/Delete/Insert/Refresh take explicit changes/identities, binding values and safely quoting identifiers. Never infer targets for joins/aggregates/missing identifiers.
+- Expect exactly one located row and validate matched semantics/identity; zero/multiple matches explicitly report concurrent-change/location errors. ChangedRows UPDATE=0 cannot prove missing rows: use reliable same-transaction locked existence checks to distinguish unchanged/unmatched. Without guarantees, reject capability before mutation, never guess through post-autocommit queries or unconditional success.
+- Execution failure/close/transaction end/reset invalidates corresponding cursor state; unsupported types return capability errors.
 
-D19 当前实现边界：
+Current D19 implementation boundaries:
 
-- `CursorOptions.Mode` 为 CursorForward（默认）、CursorStatic 或 CursorSensitive；`Updatable` 显式开放修改/Refresh。`MaxCacheBytes` 只控制 static 快照，0 使用 MaxMessageBytes。没有第二个连接池或公开资源管理器；所有新文件仍属于根包。
-- `CursorPosition{Origin, Offset}`：Next 要求 offset=0；Absolute 从 1 起，0 返回空批次并回到首行前，负数拒绝；Relative 相对于上一批最后获取的行，提前关闭未扫描完的批次也按已获取行定位。计数要求正数且可用 uint32 表示。越过 static 末尾返回空批次；再 Next 不从头开始。位置加减检查 int64 溢出。
-- Forward 使用原生 COM_STMT_EXECUTE cursor flag=1 / COM_STMT_FETCH；只接受 Next。Oracle 版本已知 >=2.2.5 时使用 19 字节 offset 扩展并消费尾 OK；更旧或未知版本保留 9 字节向前 fetch，不猜测 offset 支持。MySQL fetch 使用保留列描述；Oracle fetch 重新读取列描述。
-- Static 在打开期间通过实际原生 fetch 建立有界快照，缓存包含列、行、值开销；超限报错并释放未发布资源。快照不因 Update/Delete/Insert/Refresh 改变，后续修改可通过 Refresh 显式读取。
-- Sensitive 仅开放 Oracle 且已知 OceanBase >=2.2.76；使用真实合并命令161、cursor flag=1、scrollable executeMode=8，完整消费初次响应。每个非零定位均向服务端发 ABSOLUTE32 fetch，位置受 int32 限制，尾 OK 提供末行位置；重复定位也重新请求服务器。MySQL、未知/旧版本直接 ErrUnsupported。是否看见其他事务的变更仍受服务器游标与隔离语义约束，待真实环境验证。
-- Fetch/Refresh 将一个批次完整接收、解码及物化后返回标准 sql.Rows；整批、单 LOB、复杂值与描述均沿用既有限制。复杂描述和 LOB 辅助命令必须在完整响应之后、原连接 gate 内执行。新批次不继承 Open 的 context；每次公开命令清空描述缓存。
-- 每个原生 fetch 在发送前取得资源代次，完整收包后、物化任何 LOB/复杂值/子游标之前复核；代次失效返回 ErrResource，不发布当前批次、不发后续 fetch 或子资源读取。普通查询中的 REF CURSOR 即使没有公开句柄也遵守同一检查。打开 static 游标失败时按本次资源身份释放父 statement，不能因当前代次已失效而漏清理；完整 fetch 的资源失效不替调用方结束事务。[事务失效回归](../cursor_epoch_test.go)覆盖普通子游标、显式 forward/static、三种包流及原会话后续操作。
-- Updatable 当前要求调用方可写 `*sql.Tx`、单基表简单投影、元数据中一致的 schema/original table/original column、完整主键均在投影中；MySQL 另要求字典 ENGINE=InnoDB。使用 PK 方案，未增加仅 ROWID 方案；缺少完整主键时拒绝。join、子查询、DISTINCT/聚合/集合运算、重复或派生列不猜测目标，生成列可以读取但不能修改。支持范围由可靠行身份决定，不按 SQL 字符串猜字段。
-- `key` 是完整主键值；`ColumnChange.Name` 使用投影基列的字典名，不接受别名或任意 SQL 表达式。标识符按实际模式引用；DML 与 Refresh 使用 COM_STMT_PREPARE/EXECUTE 的真实参数。Insert 必须显式提供全部非 NULL 主键，不隐式取生成键。更新前的同事务 SELECT 1 ... FOR UPDATE 复用既有内部类型化查询路径，完整收完后才执行 DML；Update=0 可成功，Delete/Insert 要求1，超过1或 warning 均返回错误。缺行通过 errors.Is(err, sql.ErrNoRows) 识别。
-- Refresh 按完整主键读取当前基表投影，不重新应用最初 WHERE/ORDER，也不改变 static 快照或游标位置；当前随 Updatable 开放，因此同样要求可写 Tx。修改失败不替调用方提交或回滚；warning/未知执行结果后调用方应回滚。业务执行失败释放游标，位置/参数等发送前校验错误保留句柄。prepare、存在性锁与发送 DML 之间复核资源代次，事务结束后不能继续修改；DML 完整收包后再次复核，不能将已失效的响应报告为修改成功，也不据此声称已回滚服务端副作用。Refresh 完整收包后、物化 LOB/复杂值之前先校验父游标，物化完成后仍复核代次，失效行不发布且不继续读取旧子资源。完整响应上的代次失效和 Refresh 缺行只关闭游标及临时 statement，保留可用会话供调用方继续操作、显式回滚。[修改与刷新回归](../cursor_mutation_epoch_test.go)覆盖两种模式、三种包流及 Oracle LOB。
-- 前一批次未关闭时，Fetch/Refresh/修改/Close 立即 ErrCursorBusy，避免进入 database/sql 后自锁。Close 幂等；事务结束、会话 reset 或物理关闭按既有代次和父 statement 租约释放。普通查询 Rows 的向前读取行为不变。
+- `CursorOptions.Mode` is CursorForward (default), CursorStatic, CursorSensitive. `Updatable` explicitly enables mutation/Refresh. `MaxCacheBytes` limits static snapshots only; zero uses MaxMessageBytes. No second pool/public resource manager; new files stay in root.
+- `CursorPosition{Origin, Offset}`: Next requires offset=0. Absolute is 1-based; 0 returns empty batches/before-first position; negatives reject. Relative is based on the previous batch's last fetched row, even if closed before scanning all fetched rows. Counts must be positive uint32. Past static end yields empty batches; subsequent Next never restarts. Position arithmetic checks int64 overflow.
+- Forward uses COM_STMT_EXECUTE cursor flag=1/COM_STMT_FETCH and Next only. Known Oracle >=2.2.5 uses 19-byte offset extensions/trailing OK; older/unknown uses nine-byte forward fetch without assuming offsets. MySQL retains column descriptors; Oracle rereads them.
+- Static opening builds bounded snapshots via real native fetch, counting columns/rows/value overhead; excess cleans unpublished resources and errors. Update/Delete/Insert/Refresh never changes snapshots; explicit Refresh reads subsequent changes.
+- Sensitive requires Oracle known >=2.2.76, real combined command 161/cursor flag=1/scrollable executeMode=8, fully consuming initial responses. Every nonzero position sends ABSOLUTE32 fetch, limited to int32; final OK supplies last-row positions. Repeated positions still contact servers. MySQL/unknown/old versions ErrUnsupported. Visibility of other transactions depends on server cursors/isolation and remains live-unverified.
+- Fetch/Refresh receives, decodes, and materializes full batches before returning standard Rows. Batch/LOB/complex/descriptor limits remain. Auxiliary descriptors/LOBs execute only after full responses within original gates. Batches get new contexts, not Open's; each public command clears descriptors.
+- Native fetch captures generations before sends and rechecks full responses before any LOB/complex/child materialization. Invalidity returns ErrResource without publishing batches/later fetches/child reads. Ordinary REF CURSOR shares checks without public handles. Failed static opens release parent statements by operation resource identity even when current generations expired. Full-response resource errors do not end transactions. [Invalidation regressions](../cursor_epoch_test.go) cover ordinary children, explicit forward/static, three streams, and later original-session calls.
+- Updatable currently requires a writable caller `*sql.Tx`, a simple single-base-table projection, consistent schema/original-table/original-column metadata, and complete projected primary keys. MySQL additionally requires dictionary ENGINE=InnoDB. This uses primary keys, without an added ROWID-only alternative; missing complete keys reject. Joins, subqueries, DISTINCT, aggregates, set operations, duplicate columns, and derived columns never imply guessed targets. Generated columns can be read but not modified. Reliable row identity determines support, rather than guessed SQL fields.
+- `key` is the complete primary `key`. `ColumnChange.Name` uses dictionary base-column names, never aliases/expressions. Quote by actual mode; DML/Refresh use genuine COM_STMT_PREPARE/EXECUTE parameters. Insert explicitly supplies all non-NULL keys without implicit generated IDs. Same-transaction SELECT 1 ... FOR UPDATE uses existing typed queries and fully finishes before DML. Update=0 may succeed; Delete/Insert require 1; multiple counts/warnings error. Missing rows support errors.Is(sql.ErrNoRows).
+- Refresh reads current projections by full key without original WHERE/ORDER, snapshot or position changes; currently Updatable-only and requires writable Tx. Failed mutations never auto-commit/rollback; callers should roll back warnings/unknown outcomes. Business failures release cursors; pre-send position/argument errors retain handles. Recheck generations between prepare/existence-lock/DML and after full DML responses, preventing mutation after transaction end or reporting invalid responses as success, without implying side-effect rollback. Refresh validates parents before materialization and generations afterward; invalid rows are unpublished without old child reads. Complete-boundary invalidity/Refresh missing rows close cursors/temporary statements only and preserve sessions. [Mutation/refresh regressions](../cursor_mutation_epoch_test.go) cover both modes/three streams/Oracle LOB.
+- Unclosed previous batches immediately make Fetch/Refresh/mutation/Close return ErrCursorBusy, avoiding database/sql self-deadlock. Close is idempotent; transaction end/reset/physical close releases through existing generations/parent leases. Ordinary forward Rows behavior stays unchanged.
 
-以上为本地协议实现，不代表真实 OceanBase/OBProxy 游标、锁与敏感性已验收。`TestCursorModes`、`TestCursorUpdates` 已提供四目标源码，本阶段只编译，不连接数据库。
+This is local protocol implementation, not acceptance of live OceanBase/OBProxy cursors, locks, or sensitivity. Four-target `TestCursorModes`/`TestCursorUpdates` source is compiled only without databases.
 
-这是真正需要的扩展对象：标准库没有相同的滚动操作面。其查询数据仍通过标准 Rows.Scan 读取。[J10]
+This extension object is necessary because the standard library has no equivalent scrolling surface. Query data still uses standard Rows.Scan.[J10]
 
-## 16. 元数据、XA 和会话辅助功能
+## 16. Metadata, XA, and Session Helpers
 
-### 16.1 元数据
+### 16.1 Metadata
 
-`Rows.ColumnTypes()` 提供结果列信息；数据库结构通过函数及明确的 Filter 返回 Go 结构体或普通 Rows。
+`Rows.ColumnTypes()` describes result columns; functions/explicit Filters return database structure as Go structs or ordinary Rows.
 
-覆盖范围包括：catalog/schema、表/视图/同义词、列、主键/外键、索引、权限、过程/函数及参数、类型定义、UDT、数组元素类型、支持能力和数据库版本。与 Java 相同，服务端本身没有的信息返回“未知/不支持”，不伪造完整元数据。
+Coverage includes catalog/schema, tables/views/synonyms, columns, primary/foreign keys, indexes, privileges, routines/parameters, type definitions/UDTs/array elements, capabilities, versions. Like Java, unavailable server information stays unknown/unsupported rather than fabricated.
 
-模式 SQL 分文件维护，过滤值全部参数化；确需动态标识符时使用模式专用引用函数。按固定 sql.Conn 识别模式后执行相应查询，不能从一个自动模式池获取模式、再随机在另一连接上查询。
+Maintain mode SQL separately and parameterize filters; use mode quoting for necessary dynamic identifiers. Identify mode on fixed sql.Conn and query there, never identify on one Auto-pool session then randomly query another.
 
-复杂类型中的 schema、同义词、嵌套对象描述属于此模块与 codec 的共享数据，不重复建两套字典缓存。
+Complex schema/synonym/nested descriptors are shared metadata/codec data, not duplicate dictionary caches.
 
-公开 `Metadata(ctx, session, filter)` 在入口检查固定 *sql.Conn/*sql.Tx，经包私有请求进入标准 QueryContext 内核，返回普通 *sql.Rows。内部类型描述解析器和 LOB 物化器则直接调用根包内的字典/命令执行器，只能在 §14.3 的合法响应边界使用当前物理会话；不能调用公开 Metadata 或标准库会话方法，也不能另开连接读取原事务字典。两条入口复用参数化 SQL 计划、描述类型及按会话权限/模式/schema/类型版本隔离的缓存，不复用高层调用栈。
+Public `Metadata(ctx, session, filter)` validates fixed `*sql.Conn` / `*sql.Tx` inputs, then enters the standard QueryContext core through package-private requests and returns ordinary `*sql.Rows`. Internal type-descriptor resolvers and LOB materializers call the root dictionary/command executor directly on the current physical session, only at legal response boundaries in §14.3. They cannot call public Metadata or standard session methods, or open another connection to read the original transaction's dictionaries. Both paths reuse parameterized plans, descriptor types, and caches isolated by session privileges/mode/schema/type version, without sharing high-level call stacks.
 
-D13 固定内外查询边界；D16/D18 必须用真实 database/sql 入口配合协议故障对端验证缓存未命中路径：在 QueryContext 与 Rows.Next 内需要字典/LOB 读取时均能在限定时间结束，业务和内部命令落在同一物理会话，未发生锁重入或未读响应插入命令。真实服务端另验证未提交事务可见性；模拟对端不能替代该证据。
+D13 fixes public/internal boundaries. D16/D18 must use real database/sql plus fault peers to verify cache misses inside QueryContext/Rows.Next finish boundedly on the same session without lock reentry or commands inserted into unread responses. Live servers separately prove uncommitted visibility; mocks cannot.
 
-### 16.1.1 D13 已实现的 Go 元数据契约
+### 16.1.1 D13 Implemented Go Metadata Contract
 
-公开入口只有 `Metadata(ctx context.Context, session Session, filter MetadataFilter) (*sql.Rows, error)`，接受非 nil 的 `*sql.Conn` / `*sql.Tx`；`*sql.DB`、包装会话及 typed nil 拒绝。`MetadataKind` 是封闭枚举。普通业务结果仍使用 `Rows.ColumnTypes()`，不引入 JDBC 风格的 DatabaseMetaData 对象。
+The only public entry point is `Metadata(ctx context.Context, session Session, filter MetadataFilter) (*sql.Rows, error)`. It accepts non-nil `*sql.Conn` / `*sql.Tx` and rejects `*sql.DB`, wrappers, and typed nil values. `MetadataKind` is a closed enum. Ordinary results retain `Rows.ColumnTypes()` without introducing JDBC-style DatabaseMetaData objects.
 
 ```go
 pinned, err := db.Conn(ctx)
@@ -1193,22 +1193,22 @@ defer pinned.Close()
 rows, err := oceanbase.Metadata(ctx, pinned, oceanbase.MetadataFilter{
     Kind:          oceanbase.MetadataColumns,
     SchemaPattern: "APP",
-    NamePattern:   "ORDER/_%", // '/' 转义 '_'，末尾 '%' 是通配符
+    NamePattern:   "ORDER/_%", // '/' escapes '_'; trailing '%' is a wildcard
 })
 if err != nil {
     return err
 }
 defer rows.Close()
-// 按下表的固定列顺序 Scan；可空值使用 sql.Null[T]。
+// Scan in the fixed order below; use sql.Null[T] for nullable values.
 ```
 
-`MetadataFilter` 字段为 `Kind`、`Catalog`、`SchemaPattern`、`NamePattern`、`ColumnPattern`、`ReferencedSchemaPattern`、`ReferencedNamePattern`、`TableTypes []string`、`Query`。Catalog 为精确匹配；其他 Pattern 保留调用方大小写，使用 LIKE，`/` 为转义符，空值选择所有可访问对象。下划线等普通名字需要调用方按 LIKE 规则转义。SchemaPattern 过滤 schema/owner；NamePattern 过滤表、例程或类型名；ColumnPattern 过滤列、参数或属性名。Referenced 两字段只用于外键，TableTypes 只用于表查询，值限定 `TABLE` / `VIEW` / `SYNONYM` / `MATERIALIZED VIEW`；不适用的非空字段明确拒绝。Query 只供 StatementParameters 使用。
+`MetadataFilter` fields: `Kind`, `Catalog`, `SchemaPattern`, `NamePattern`, ColumnPattern, `ReferencedSchemaPattern`, `ReferencedNamePattern`, `TableTypes []string`, `Query`. `Catalog` matches exactly; other patterns preserve case and use LIKE with '`/`' escaping, empty matching all accessible objects. Callers escape underscores/literal names by LIKE rules. `SchemaPattern` filters schema/owner; `NamePattern` tables/routines/types; ColumnPattern columns/parameters/attributes. Referenced fields apply only to foreign keys; TableTypes only to tables with TABLE/VIEW/SYNONYM/`MATERIALIZED VIEW`. Reject inapplicable nonempty fields. `Query` is StatementParameters-only.
 
-Tables/Columns 固定返回 remarks，保留字典返回的中文、引号、首尾空白、空字符串或 NULL，不增加 remarks 开关。空 Catalog 不自动绑定当前 schema；Oracle 的 catalog 为 NULL，因此非空 Catalog 不能匹配对象。[TestMetadataCatalogAndRemarks](../metadata_contract_test.go) 通过两模式/utf8mb4/GBK/三包流的公开 API 检查这些请求及结果转换，并验证重新查询能返回更新后的备注；本地固定行集不证明服务端字典 SQL 的求值。[TestMetadataCatalog](../tests/integration/metadata_test.go) 已补 DDL 备注与 Catalog 过滤对照，本阶段仅编译。
+Tables/Columns always return dictionary remarks, preserving Chinese text, quotes, edge spaces, empty strings, and NULL without a remarks switch. Empty Catalog does not bind current schema; Oracle catalogs are NULL, so nonempty Catalog matches nothing. [TestMetadataCatalogAndRemarks](../metadata_contract_test.go) checks requests/conversion through public APIs in both modes/utf8mb4/GBK/three streams and rereads changed remarks; fixed local row sets do not evaluate real dictionary SQL. [TestMetadataCatalog](../tests/integration/metadata_test.go) adds DDL remarks/Catalog comparisons and is compiled only.
 
-下表列顺序固定。以 `#` 标记的列为 `int64`，其余为 `string`；`#` 不是列名的一部分。所有列允许 SQL NULL，缺失数据保留 NULL。字典 Rows 的 DatabaseTypeName 统一为 `BIGINT` / `VARCHAR`，ScanType 对应 `int64` / `string`，不暴露两种字典内部 NUMBER/VARCHAR2 的差异。
+The following column order is fixed. '`#`' marks `int64` columns; others are strings, and '`#`' is not part of names. All columns permit SQL NULL and retain missing values. Dictionary Rows uniformly reports BIGINT/`VARCHAR` and `int64`/`string` ScanType, hiding NUMBER/VARCHAR2 dictionary differences.
 
-| MetadataKind 后缀 | 返回列（按顺序） |
+| MetadataKind suffix | Returned columns in order |
 | --- | --- |
 | Catalogs | catalog |
 | Schemas | catalog, schema |
@@ -1228,79 +1228,79 @@ Tables/Columns 固定返回 remarks，保留字典返回的中文、引号、首
 | ServerInfo | oceanbase_version, compatibility_mode, #parameter_dictionary, #type_dictionary |
 | StatementParameters | #physical_ordinal, #logical_ordinal, name, direction, data_type, #nullable, #length, #precision, #scale, #protocol_type, #protocol_direction |
 
-- MySQL 兼容模式使用 information_schema，catalog 为 `def`，database 对应 schema；Synonyms、Types、TypeAttributes、CollectionElements 返回 ErrUnsupported，不合成服务端类型字典。Oracle 使用 ALL_*，catalog 查询为空行集，其余查询的 catalog 为 NULL。视图/物化视图经 Tables 的 TableTypes 选择，同义词另有目标描述；Columns 不隐式展开同义词。
-- 例程与参数的 specific_name 是同一字典身份；Oracle 由 object_id/subprogram_id 组成，保留 package_name、data_level 和返回位置 0。direction 统一 `IN` / `OUT` / `INOUT` / `RETURN`。未知 update_rule、默认属性、grantor 等保持 NULL。主外键及索引的列位置从 1 开始；索引 ordering 为 ASC / DESC 或 NULL。
-- MySQL PARAMETERS 只在建连读取的 `ob_version()` 确认 OceanBase >= 4.1 时启用，不能使用 greeting 中的 MySQL 5.7/8.0 版本。未知或旧版本对精确 schema/例程请求使用 SHOW CREATE 回退；不支持通配符枚举，权限及字典 SQL 错误保留服务端 Error。ServerInfo 的字典能力位描述当前驱动开放的查询路径，不证明当前用户拥有字典权限。
-- StatementParameters 对 Query 执行一次服务端 prepare，保存参数列描述，关闭临时 statement 后返回独立的内存 Rows，绝不执行 Query；即使 Config.PrepareMode=PrepareClient 也遵循此规则。物理位置与逻辑位置均从 1 开始，Oracle 重复命名参数共享逻辑位置，name 为规范化绑定名。protocol_type/protocol_direction 保留协议字节，不能把未取证的 direction 字节猜成 IN/OUT；该入口的 direction 为 NULL，例程方向请查询 RoutineParameters。MySQL 参数可空性未知，参数类型和尺寸仅为 prepare 回报的信息，不承诺推断出的业务列定义。
-- Columns.length：MySQL 为 CHARACTER_MAXIMUM_LENGTH；Oracle 字符语义为 CHAR_LENGTH，其余为 DATA_LENGTH（字节），需结合 data_type 使用。RoutineParameters/TypeAttributes/CollectionElements 的 length 保留字典原始单位；未知不补默认长度。普通结果 ColumnTypes 的长度按协议及已知字符集报告字符数/二进制字节数；未知字符集或不可解释的尺寸返回 ok=false。DECIMAL 的精度去掉符号和小数点，Oracle NUMBER 使用显式 precision 和带符号 scale；未指定/超出合法范围返回 ok=false。Oracle FLOAT 的二进制 precision 与 -127 浮动 scale 不作为十进制精度报告。
-- `metadataLocked` 在已拥有连接 gate 且响应已完整结束时执行，复用同一参数化计划和现有字符集/安全字面量编码；返回 Rows 只关闭自身取消回调，不释放外层 gate。未读响应直接拒绝；内部查询不会经 Metadata/Session 或另开物理连接。公开入口把锁所有权交给返回 Rows。D18 已实现单业务命令内的类型描述缓存，D13 不缓存任意字典行集。
-- UDT 属性与集合元素投影使用 OceanBase 的 NUMBER_PRECISION 字段，输出别名仍为 precision；依据固定 [v4.3.5_CE 属性视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25001_25050.cpp) 与 [集合视图](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25051_25100.cpp)，不套用不一致的字典字段。
+- MySQL uses information_schema, catalog `def`, and databases as schemas. Synonyms/Types/TypeAttributes/CollectionElements return ErrUnsupported without synthesized dictionaries. Oracle uses ALL_*; catalog queries return empty rows, other catalogs NULL. Select views/materialized views through TableTypes; synonyms have separate targets; Columns never implicitly expands them.
+- Routine/parameter specific_name shares dictionary identity; Oracle combines object_id/subprogram_id, retaining package_name/data_level/return position 0. Directions normalize `IN`/`OUT`/`INOUT`/`RETURN`. Unknown update_rule/default properties/grantor remain NULL. Key/index positions are 1-based; ordering ASC/DESC/NULL.
+- MySQL PARAMETERS requires initialization `ob_version()` confirming >=4.1, never greeting MySQL 5.7/8.0. Old/unknown uses SHOW CREATE for exact schema/routine requests, not wildcard enumeration. Preserve privilege/dictionary SQL errors. ServerInfo bits describe driver query paths, not current dictionary privileges.
+- StatementParameters prepares Query once, saves descriptors, closes temporary statements, and returns independent memory Rows without executing Query, including PrepareClient configurations. Physical/logical positions are 1-based; repeated Oracle names share normalized logical positions. protocol_type/protocol_direction retain raw bytes without guessing IN/OUT; direction is NULL, so query RoutineParameters for directions. MySQL nullability is unknown; reported types/sizes reflect prepare metadata, not guaranteed inferred business columns.
+- Columns.length uses MySQL CHARACTER_MAXIMUM_LENGTH; Oracle CHAR_LENGTH for character semantics, otherwise DATA_LENGTH bytes, interpreted with data_type. Routine/type/collection lengths retain dictionary units without invented defaults. Ordinary ColumnTypes lengths use protocol/known-charset character or binary-byte semantics; unknown/uninterpretable gives ok=false. DECIMAL precision excludes sign/point; Oracle NUMBER uses explicit precision/signed scale, invalid/unspecified gives ok=false. Oracle FLOAT binary precision/-127 floating scale is not reported as decimal precision.
+- `metadataLocked` runs with existing gates after complete responses, reusing parameterized plans/charset/safe literals. Returned Rows closes its callback only, not outer gates. Reject unread responses; no public Metadata/Session or new connections. Public entry transfers lock ownership to Rows. D18 caches descriptors within one command; D13 caches no arbitrary dictionary rows.
+- UDT attribute/element projections use OceanBase NUMBER_PRECISION, still aliased precision, based on pinned [v4.3.5_CE attribute views](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25001_25050.cpp) and [collection views](https://github.com/oceanbase/oceanbase/blob/v4.3.5_CE/src/share/inner_table/ob_inner_table_schema.25051_25100.cpp), avoiding incompatible field assumptions.
 
-普通结果与 StatementParameters 的 MySQL 字符串类型名按字符集编号63区分：协议15/253报告 VARBINARY，254报告 BINARY；其他编号继续 VARCHAR/CHAR，即使存在 BINARY_FLAG。ScanType 仍为二进制 []byte、文本 string，长度保持字节/字符语义，空字节值与 NULL 分开。Oracle 仍报告 VARCHAR2/CHAR。依据固定 Java [类型名称](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L425)和[二进制列判定](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L715)。TestBinaryStringColumnTypes/TestBinaryStringParameterMetadata 提供两模式本地证据；TestAllScalarTypes 的 BINARY/VARBINARY 真实列对照仅编译。
+Ordinary/StatementParameters MySQL string names use charset 63: protocol 15/253 VARBINARY, 254 BINARY; other charsets retain VARCHAR/CHAR even with BINARY_FLAG. ScanType stays []byte/string, lengths byte/character-based, empty bytes distinct from NULL. Oracle retains VARCHAR2/CHAR. Pinned Java evidence: [type names](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/ColumnType.java#L425), [binary detection](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/read/resultset/ColumnDefinition.java#L715). TestBinaryStringColumnTypes/TestBinaryStringParameterMetadata provide both-mode local evidence; TestAllScalarTypes BINARY/VARBINARY checks compile only.
 
-以上路径已由协议对端覆盖，真实数据库字典字段、版本差异及权限仍需集成验证；D16/D18 的 Query/Next 缓存未命中场景仍由各自任务验证。
+Protocol peers cover these paths. Live dictionary fields/version differences/privileges need integration; D16/D18 separately verify Query/Next cache misses.
 
-### 16.1.1a Java 元数据与具名过程兼容补齐
+### 16.1.1a Java Metadata and Named Procedure Compatibility
 
-MetadataColumns 保留原13列，末尾追加 auto_increment/generated 数值标志（1/0/NULL）。MySQL 从 EXTRA 明确标记判断；Oracle 使用 ALL_TAB_COLS 的 VIRTUAL_COLUMN 并排除隐藏列，无法可靠判断的自增标志为 NULL。MetadataTypeInfo 是追加枚举，提供 type_name/category/precision/minimum_scale/maximum_scale/radix/literal_prefix/literal_suffix/create_parameters/auto_increment 十列内置类型描述；静态 SQL 类型族不等于目标服务器能力探测，未知上限为 NULL。MetadataTypes 仍是 Oracle 用户定义类型字典。
+MetadataColumns retains its original 13 columns and appends numeric auto_increment/generated flags (1/0/NULL). MySQL uses explicit EXTRA markers; Oracle uses ALL_TAB_COLS VIRTUAL_COLUMN, excludes hidden columns, and leaves uncertain auto-increment NULL. Appended MetadataTypeInfo enumerates ten built-in columns: type_name/category/precision/minimum_scale/maximum_scale/radix/literal_prefix/literal_suffix/create_parameters/auto_increment. Static SQL families are not server-capability probes; unknown maxima remain NULL. MetadataTypes stays Oracle UDT dictionaries.
 
-MySQL 旧版或版本未知时，MetadataRoutineParameters 支持精确 schema/例程模式（LIKE 的 / 转义还原，%/_ 通配符拒绝），同连接安全引用 SHOW CREATE PROCEDURE，只有1305不存在时尝试 FUNCTION；权限/网络/取消错误不吞掉。缺少 schema 时读同连接 DATABASE()，按声明解析参数名/位置/方向/类型，受既有响应/元数据预算限制。定义被隐藏、语法不支持或不完整时拒绝，未知属性保持 NULL。
+Old/unknown MySQL MetadataRoutineParameters accepts exact schema/routine patterns (undo LIKE '/' escapes, reject %/_ wildcards), safely quoting same-session SHOW CREATE PROCEDURE and trying FUNCTION only for nonexistent error 1305. Never swallow privilege/network/cancellation errors. Missing schema reads same-session DATABASE(). Parse declared names/positions/directions/types within response/metadata budgets; hidden/unsupported/incomplete definitions reject and unknown fields remain NULL.
 
-MySQL 简单 CALL 的 sql.Named 通过声明参数名称（忽略大小写）映射到占位符，支持 IN/OUT/INOUT 和保留位置的标量常量；全部占位符必须具名。普通 SQL 继续拒绝具名参数，复杂表达式、会话变量、函数返回等不猜测。server/client、直接/显式预处理、Exec/Query/输出路径共享 gate 内的映射；逐次读精确元数据，不缓存陈旧的 schema/签名，不额外开会话，不在校验时执行 CALL。现有事务、取消与预算仍生效。
+MySQL simple CALL sql.Named maps declared case-insensitive names to placeholders, supporting IN/OUT/INOUT and position-preserving scalar constants; every placeholder must be named. Ordinary SQL still rejects names; no guessing complex expressions/session variables/function returns. Server/client, direct/explicit prepare, Exec/Query/output share in-gate mapping and read exact metadata each time without stale schema/signature caches, extra sessions, or validation-time CALL execution. Existing transaction/cancellation/budgets apply.
 
-MySQL 参数字典按 ROUTINE_TYPE 关联同名例程，具名 CALL 只读取 PROCEDURE；旧版具名 CALL 的 SHOW CREATE PROCEDURE 失败时不改查同名 FUNCTION，公开参数元数据查询仍可回退 FUNCTION。SHOW CREATE 声明解析接受 YEAR 和 YEAR(4)。列与例程参数元数据的 TIME/DATETIME/TIMESTAMP scale 使用 DATETIME_PRECISION，其他类型继续读取 NUMERIC_SCALE。
+MySQL parameter dictionaries join ROUTINE_TYPE for same-name routines; named CALL reads PROCEDURE only. Failed legacy named CALL SHOW CREATE PROCEDURE never switches to same-name FUNCTION; public parameter metadata may. Declaration parsing accepts YEAR/YEAR(4). Column/routine TIME/DATETIME/TIMESTAMP scale uses DATETIME_PRECISION; other types use NUMERIC_SCALE.
 
-### 16.1.2 D32 结果列来源与产品身份
+### 16.1.2 D32 Result Origins and Product Identity
 
-标准 `Rows.Columns()` 和 `Rows.ColumnTypes()[i].Name()` 始终提供服务端的结果标签；需要来源时使用 `Execute(...).Snapshot().Results[i].Columns`，与行集内的投影顺序对应。`ResultColumn.Name` 是标签，`OriginalName` 是服务端提供的原列名；`Table` 是协议表名（可能是别名），`OriginalTable` 是原表名，`Schema`、`Catalog` 保留协议原值。六个字符串按会话字符集严格解码为 UTF-8，不折叠大小写、不把协议 catalog 自动解释为业务数据库。
+`Rows.Columns()`/`Rows.ColumnTypes()[i].Name()` always return server labels. Origins use `Execute(...).Snapshot().Results[i].Columns` in projection order. `ResultColumn.Name` is label; `OriginalName` server base name; `Table` protocol table (possibly alias); `OriginalTable` base table; `Schema`/`Catalog` retain protocol values. Strictly decode all six strings using session charset into UTF-8 without case folding or automatically treating catalog as business database.
 
-来源字段为空表示服务端未提供，表达式、视图或具体版本可能缺少来源；不从 SQL、标签或其他字段推断。每个行集拥有独立的 Columns；快照和执行关闭后仍可读取此前元数据。元数据完整不代表行读取完成，也不证明该列可写、具有权限或能唯一定位基表。完整性、并发和预算见 §11.4。
+Empty origins mean absent server information; expressions/views/versions may omit it. Never infer from SQL/labels/other fields. Every row set has independent Columns available after snapshots/execution close. Complete metadata neither means complete rows nor proves writability/privileges/unique base identity. See §11.4 for completeness/concurrency/budgets.
 
-Java `useOldAliasMetadataBehavior` 默认 false，MySQL getColumnName 优先原名，空值/开关/forceAlias 时使用标签，Oracle 始终使用标签；getTableName 也受该选项和 forceAlias 影响。[源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseResultSetMetaData.java#L270) Go 同时保留标签和来源，由调用方按用途选择，不更改标准库返回的标签。Java `blankTableNameMeta` 默认 false，Go 不增清空表名开关，展示时是否隐藏来源由应用决定。
+Java `useOldAliasMetadataBehavior` defaults false: MySQL getColumnName prefers original names, falling back to labels for empty/switch/forceAlias; Oracle always labels. getTableName also depends on this and forceAlias. [Source](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseResultSetMetaData.java#L270). Go retains both for callers without changing standard labels. Java `blankTableNameMeta` defaults false; Go adds no clearing switch, leaving presentation hiding to applications.
 
-Java `useCompatibleMetadata` 默认 false，只改变 JDBC getDatabaseProductName 返回 OceanBase 或 MySQL/Oracle，不控制结果列或字典查询。[源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/JDBC4DatabaseMetaData.java#L1966) Go 的产品始终为 OceanBase；既有 MetadataServerInfo 分开提供 `oceanbase_version`、`compatibility_mode` 及字典能力，不提供伪装产品名开关。三项 Java 同名 DSN 均拒绝。
+Java `useCompatibleMetadata` defaults false and changes only JDBC getDatabaseProductName OceanBase versus MySQL/Oracle, not columns/dictionaries. [Source](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/JDBC4DatabaseMetaData.java#L1966). Go product is always OceanBase; MetadataServerInfo separately exposes `oceanbase_version`, `compatibility_mode`, dictionary capabilities without product impersonation. All three Java DSN names reject.
 
-TestExecutionColumn* 覆盖两模式文本/二进制、GBK、合并执行、多结果、未完整元数据拒绝、累计预算与快照隔离；TestMetadataServerIdentity 验证两模式的固定投影及模式/版本分离，OUT 测试确认辅助结果不泄露。TestMetadataCatalog 已补公开 API 来源检查，服务端未返回的来源允许为空；本阶段仅编译，真实字段返回和版本/代理差异未验收。
+TestExecutionColumn* covers both modes/text/binary/GBK/combined/multiple results, incomplete metadata rejection, cumulative budgets, snapshot isolation. TestMetadataServerIdentity checks fixed projections/mode-version separation; OUT tests exclude auxiliary leakage. TestMetadataCatalog adds public origin checks permitting server-absent empties; compiled only, without real fields/version/proxy acceptance.
 
 ### 16.2 XA
 
-提供 `XID` 值和 Start/End/Prepare/Commit/Rollback/Recover/Forget 等显式操作，参数包含固定 `*sql.Conn`、XID 和标准 XA flags。XA 入口不接受 `*sql.Tx`；开启 XA 的会话不得同时 BeginTx。
+Provide `XID` values and explicit Start/End/Prepare/Commit/Rollback/Recover/Forget operations taking fixed `*sql.Conn`, `XID`, and standard XA flags. XA does not accept `*sql.Tx`; XA-enabled sessions cannot simultaneously BeginTx.
 
-- MySQL 兼容模式走对应 XA 命令；Oracle 兼容模式走 DBMS_XA 和其复杂 XID 表示。[J11]
-- Start 到 End/Prepare 阶段保持物理会话约束；两阶段事务的外部协调和持久化日志由调用方负责。
-- Recover 返回真实 XID 列表；准备后的分支不因一个 Go 对象 Close 就被误当成本地未提交事务回滚。
-- 分支状态与连接可复用条件明确；异常或无法确认脱离分支的连接不得回池。
-- 一阶段/两阶段提交、join/resume/suspend、服务端支持的超时及返回码逐项适配；不支持的 flags 明确拒绝。
-- XA 失败没有透明业务重放；提交结果不确定时由协调方查询恢复。
+- MySQL uses XA commands; Oracle uses DBMS_XA/complex XIDs.[J11]
+- Start through End/Prepare retains physical-session constraints; callers own external coordination/durable logs.
+- Recover returns actual XIDs; closing Go objects must not treat prepared branches as local uncommitted transactions and roll them back.
+- Define branch states/reuse conditions; abnormal or uncertain disassociation prevents pooling.
+- Adapt 1PC/2PC, join/resume/suspend, supported timeouts/codes individually; reject unsupported flags.
+- No transparent replay after XA failure; coordinators recover uncertain commits.
 
-### 16.2.1 D31 已实现契约与边界
+### 16.2.1 D31 Implemented Contracts and Boundaries
 
-公共根包提供 `XID`、`XAFlags`、`XAVote` 和上述七个显式函数，固定 `*sql.Conn`，复用包私有请求及连接 gate；不新增包、依赖、连接池或事务管理器。XID 的 FormatID 为 int32（-1 保留），GlobalID 为 1–64 字节、BranchID 为 0–64 字节，输入及恢复结果复制切片，二进制身份不经字符集转换。
+The public root package provides `XID`, `XAFlags`, `XAVote`, and these seven explicit functions on fixed `*sql.Conn`, reusing private requests and connection gates without new packages, dependencies, pools, or transaction managers. `XID` FormatID is int32 with -1 reserved; GlobalID is 1–64 bytes and BranchID 0–64 bytes. Copy input/recovery slices; binary identity never undergoes character conversion.
 
-- MySQL 使用十六进制二进制字面量及 32 位 FormatID 位表示，精确传递 JOIN/RESUME；不套用 Java `pinGlobalTxToPhysicalConnection` 将 JOIN 暗改 RESUME。服务端拒绝时保留错误，支持条件由实际版本验收。
-- Oracle 使用固定匿名 PL/SQL 调用 `SYS.DBMS_XA`，首个原生 OUT 返回函数整数码，XID 按 Java `useLocalXID` 路径固定为 SYS.DBMS_XA_XID 的 NUMBER/RAW/RAW；避免逐次字典查找和 SQL 字面量拼接。使用原生 PrepareExecute，实际 ob_version 必须满足既有 >=2.2.76 门禁；旧版/未知版明确 ErrUnsupported。该 PL/SQL 选择的服务端适用性仍待联调。
-- Start 接受 NoFlags/Join/Resume；Oracle 另接受 XAOracleReadOnly(256)、XAOracleSerializable(1024)、XAOracleLoose(65536)。End 接受 Success/Fail/Suspend；Oracle 另接受 Migrate 或 Suspend|Migrate，其余组合发送前拒绝。Oracle Start 先关闭 autocommit，确认 End 后恢复；恢复失败返回 ErrTxCleanup 并淘汰会话。
-- 本地只跟踪本连接已确认的分支阶段；同时最多关联一个活动分支，已知挂起分支用 Resume，已结束分支用 Join，prepare 要求 ended，1PC 要求已知 ended，2PC 要求已知 prepared。新连接可以向服务端 prepare/2PC commit/rollback 未知分支，用于外部恢复；不把本地映射当作 RM 全局真相。映射受 MaxResultItems 限制。
-- End(Fail) 标记本地 rollback-only，随后 prepare/commit 拒绝，必须 rollback；Oracle 发送其支持的 Success 等价解除关联。此标记不跨进程/连接持久化，协调方必须持久记录失败决定并保证不从新连接提交 rollback-only 分支。
-- Prepare 的 0/3 分别为 prepared/read-only；MySQL 成功只给 prepared，不编造 read-only。Oracle 负码以及正的回滚/启发式码均作为 XAError 返回，不把任意正数视为成功。XAError 保留整数 XA Code；MySQL 的 1397–1402 映射对应标准码，1440 映射 DUPID（-8），1613/1614 分别映射 RBTIMEOUT（106）/RBDEADLOCK（102）。固定 OceanBase 的[协议码定义](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L457)及[XA 错误定义](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L1695)是分类依据，不代表已复现对应服务端条件。MySQL 未知错误、Oracle 调用的 SQL 错误保留原 Error 并归 RMERR；不能把同号 ORA 错误套用 MySQL 映射，Oracle DBMS_XA 的返回值仍直接保留。
-- Recover 读取真实四列/原生 OUT 集合。严格校验长度、NULL、FormatID 及元素 SYS/类型/顺序；Oracle 支持命名集合或元数据明确为 SYS.DBMS_XA_XID 元素的匿名集合，NULL BQUAL 视为合法空限定符，NULL GlobalID 拒绝。行数和累计内容受 MaxResultItems/MaxMessageBytes 限制；畸形、超限或额外结果不返回部分列表并淘汰连接。
-- 所有公开 XA 错误均可用 errors.Is(err, ErrXA) 分类，底层服务端/context 错误保留。可能写出的变更命令遇到 IO/取消/畸形或已输出后尾部失败时返回 ErrXAOutcomeUnknown，提交另带 ErrCommitUnknown，淘汰原会话且不返回可重放 ErrBadConn。完整服务端拒绝保留其 XA/服务器码，不推断分支已完成；恢复查询失败不代表业务已回滚。
-- 首次 XA 尝试后会话永久专用；禁止 sql.Tx、ChangeUser 及会话 setter，关闭后退出原池。XA 边界先失效已有 LOB/Cursor；prepared Close 仅关闭 statement/物理会话，不发送本地 ROLLBACK 或重置 autocommit。禁止混入裸 XA/COMMIT/ROLLBACK/改变 autocommit 的 SQL，驱动不解析其全局事务语义。配置的只读服务仅允许恢复查询，XA 变更须使用读写入口。
-- Forget 返回 ErrUnsupported，RM 事务超时设置未提供；Java 相应实现本身也是未支持，不能沿用其无操作成功。调用 context 仅限制客户端 IO，不能替代 RM 超时。XARecover、持久协调日志、决策和未知结果处理归调用方；列表缺少某 XID 不能单独证明其已提交或回滚。
+- MySQL uses hex binary literals/32-bit FormatID bit representation with exact JOIN/RESUME, never Java `pinGlobalTxToPhysicalConnection` silently converting JOIN to RESUME. Preserve rejection errors; actual versions determine support.
+- Oracle calls `SYS.DBMS_XA` through fixed PL/SQL, first native OUT returning integer codes; Java useLocalXID-style SYS.DBMS_XA_XID uses NUMBER/RAW/RAW, avoiding repeated dictionaries/literal concatenation. Native PrepareExecute requires actual >=2.2.76; unknown/old ErrUnsupported. Live applicability of this PL/SQL awaits integration.
+- Start accepts NoFlags/Join/Resume; Oracle also accepts XAOracleReadOnly (256), XAOracleSerializable (1024), and XAOracleLoose (65536). End accepts Success/Fail/Suspend; Oracle additionally accepts Migrate or Suspend|Migrate. Reject all other combinations before sending. Oracle Start disables autocommit and restores it after confirmed End; restoration failure returns ErrTxCleanup and discards the session.
+- Track only locally confirmed phases; one active branch at once. Resume known suspended branches, Join ended branches; prepare requires ended, 1PC known ended, 2PC known prepared. New connections may prepare/2PC-commit/rollback unknown branches for recovery; local maps are not global RM truth. Bound maps by MaxResultItems.
+- End(Fail) marks local rollback-only; prepare/commit reject until rollback. Oracle sends supported Success-equivalent disassociation. Marks are not durable/cross-connection; coordinators must persist failed decisions and prevent new-connection commits.
+- Prepare codes 0/3 mean prepared/read-only; MySQL success reports prepared only. Oracle negative and positive rollback/heuristic codes return XAError, not arbitrary-positive success. Retain integer XA codes. MySQL 1397–1402 maps standard codes, 1440 DUPID(-8), 1613 RBTIMEOUT (106), 1614 RBDEADLOCK (102). Pinned OceanBase [protocol definitions](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/mysql_errno.h#L457)/[XA definitions](https://github.com/oceanbase/oceanbase/blob/7b0f43693565654bb1d7343f728bc2013dfff959/src/share/ob_errno.def#L1695) classify, without reproduced server conditions. Unknown MySQL/Oracle SQL errors retain Error and RMERR. Do not map same-number ORA codes as MySQL; retain DBMS_XA returns directly.
+- Recover reads real four-column/native OUT collections, strictly checking lengths/NULL/FormatID/SYS/type/order. Oracle accepts named or explicitly SYS.DBMS_XA_XID anonymous elements. NULL BQUAL is valid empty, NULL GlobalID invalid. Bound rows/content by MaxResultItems/MaxMessageBytes. Malformed/excess/extra results discard without partial lists.
+- Public errors support errors.Is(ErrXA) and retain server/context causes. Possibly written changes with I/O/cancellation/malformed/trailing failures return ErrXAOutcomeUnknown, additionally ErrCommitUnknown on commits, discarding without replayable ErrBadConn. Full rejections retain XA/server codes without assuming completion; failed recovery does not prove rollback.
+- After first XA attempt sessions become permanently dedicated, rejecting sql.Tx/ChangeUser/setters and exiting original pools on close. XA boundaries invalidate LOB/Cursor. Prepared Close closes statements/physical connections without local ROLLBACK/autocommit reset. Never mix raw XA/COMMIT/ROLLBACK/autocommit-changing SQL; drivers do not parse global transaction semantics. Read-only configured services allow recovery only; mutations need read/write.
+- Forget returns ErrUnsupported; no RM transaction timeout setter. Java also lacks these, so do not copy no-op success. Context limits client I/O, not RM timeouts. Callers own XARecover/durable logs/decisions/unknown outcomes; absence from recovery alone proves neither commit nor rollback.
 
-`xa_test.go` 覆盖两模式、标准/压缩/OB20、1PC/2PC、挂起/恢复、阶段与 flags、rollback-only、原生 XID/OUT、返回码、恢复数据/边界及部分写/丢确认/尾部失败。`TestXATransactions` 和 `TestXARecoveryAfterDisconnect` 已加入四目标手动 CI，验证 DML 可见性及准备后关闭、新物理连接恢复；当前只编译，未连接数据库。示例在 `examples/xa/`，明确不包含持久协调器。D30 的 D28 平台依赖未闭环，D31 本地实现与整体依赖闭环分别记录。
+`xa_test.go` covers both modes, standard/compressed/OB20 streams, 1PC/2PC, suspend/resume, phases/flags, rollback-only, native XID/OUT, return codes, recovery data/bounds, partial writes, lost acknowledgments, and trailing failures. Four-target manual CI includes `TestXATransactions` / `TestXARecoveryAfterDisconnect` for DML visibility, closing prepared sessions, and recovery on new physical connections. They are currently compiled only, without databases. Examples are in `examples/xa/` and explicitly omit a durable coordinator. D30's D28 platform dependency remains open; D31 local implementation and complete dependency closure are recorded separately.
 
-[TestXACommitContextBoundary](../xa_context_test.go) 补充两模式、三种包流下的18个本地场景：调用前已取消的 context 不归未知结果且原会话可用；完整接收提交命令后取消或等待客户端期限，保留 context 原因及双重未知结果分类、确认原传输关闭、禁止额外命令和重拨。测试在清理连接前检查真实 EOF/关闭，不用后续清理代替淘汰证据；不证明真实服务端是否提交或取消了分支，也未覆盖已进入驱动但尚未写出的每个取消位置。
+[TestXACommitContextBoundary](../xa_context_test.go) adds 18 local both-mode/three-stream cases. Pre-canceled contexts are not unknown outcomes and preserve sessions. Cancellation/deadlines after complete commit receipt preserve context and both unknown classifications, close original transport, and forbid extra commands/redial. Tests verify real EOF/closure before cleanup, not cleanup as disposal evidence. They prove neither live commit/cancel nor every cancellation point after driver entry but before writing.
 
-### 16.3 其他会话功能
+### 16.3 Other Session Features
 
-schema/catalog、用户切换、客户端信息、warning、会话变量及版本能力通过固定 sql.Conn 上的函数承载。ChangeUser 必须重新认证、重建基线并使所有旧 statement/locator/cursor 失效；不在普通池连接上隐式切用户。显式 ChangeUser 后将该物理连接标记为不可归还原池，调用方关闭 sql.Conn 时淘汰它，防止另一个调用方取得错误身份的会话。
+Schema/catalog, user switching, client info, warnings, variables, and version/capability helpers operate on fixed sql.Conn. ChangeUser reauthenticates/rebuilds baseline/invalidates all old statements/locators/cursors, never implicitly switching ordinary pool identities. Explicit ChangeUser makes sessions ineligible for their original pool; sql.Conn.Close discards them to prevent wrong-identity reuse.
 
-warnings 作为结构化结果诊断暴露，不能把成功带 warning 的操作改成随意失败；也不能仅因日志未启用就丢失所有可查询 warning 信息。
+Expose warnings as structured diagnostics without arbitrarily failing successful warned operations or losing queryable warning information when logging is disabled.
 
-### 16.3.1 D30 会话辅助与 warning 数量快照（首批实现）
+### 16.3.1 D30 Session Helpers and Warning Count Snapshots (Initial Implementation)
 
-以下函数只接受非 nil 的 `*sql.Conn`，调用方应先消费/关闭 Rows 并串行操作同一连接；没有新的会话包装对象或公开任意协议命令入口：
+These functions accept only non-nil `*sql.Conn`. Callers must consume/close Rows first and serialize calls on the same connection. No new session wrapper or public arbitrary-protocol command entry is introduced:
 
 ```go
 func CurrentSchema(context.Context, *sql.Conn) (string, error)
@@ -1314,35 +1314,35 @@ func SetSessionVariable(context.Context, *sql.Conn, string, string) error
 func Warnings(context.Context, *sql.Conn) (WarningSummary, error)
 ```
 
-- CurrentSchema 在 Oracle 兼容模式查询 SYS_CONTEXT 当前 schema，在 MySQL 兼容模式查询当前数据库；没有选定数据库时返回空字符串。SetSchema 接受确切名称，不自动大小写折叠：Oracle 标识符双引号转义，MySQL 使用 COM_INIT_DB；名称按连接字符集编码，不拼接为多条 SQL。catalog 只适用于 MySQL 兼容模式，Oracle 明确返回 ErrUnsupported。
-- ClientInfo 是 ApplicationName、ClientUser、ClientHostname 三个 string 字段，映射同名会话用户变量；SetClientInfo 一次替换全部字段，空字段发送 NULL，读取 NULL 转为空字符串。变量值复用当前模式和 NO_BACKSLASH_ESCAPES 状态的字符串转义与严格 SQL 编码，不写入全局变量。
-- SessionVariable 只接受 ASCII 系统变量标识符，保留 SQL NULL；SetSessionVariable 的值是字符串，实际变量可写性/值域由服务端校验。time_zone、ncharacter_set_connection、character_set_*、collation_* 由 Config.Session 管理，运行时 setter 拒绝修改，防止解码配置与服务端状态不一致。两模式实际 SQL 支持仍需联调。
-- 读取辅助函数只在完整的一行响应结束后发布值，失败返回零值。首行前或首行后的完整服务端 ERR 保留原 Error，沿用 Rows 状态机的连接复用规则；不因标量形状检查额外关闭连接。空结果、额外行/结果和畸形响应仍拒绝并淘汰，网络及取消错误的淘汰由共享 Rows 路径处理。[TestSessionReadResponseBoundary](../session_ops_failure_test.go) 覆盖读取入口、两模式及三种包流的84个本地错误/形状场景，不代替真实 SQL 行为验收。
-- 批量改写的安全变量探测复用同一读取路径；完整服务端错误允许既有安全回退，已确认执行的前缀不得重放。[TestBatchRewriteGuardRowError](../batch_rewrite_test.go) 覆盖三种包流下初始探测及分块后的探测、首行前/后 ERR，共12个场景，检查逐项结果及原会话复用。
-- setter 只在无托管/服务端事务且 autocommit 开启时执行。发送修改前标记物理会话不可归还原池，成功或完整服务端错误后仍可在原 pinned 连接继续使用，关闭 sql.Conn 后淘汰；校验失败不标记。所有 setter 在发送前清理自动预处理缓存及类型描述缓存，覆盖 sql_mode 等解析语义变更；调用方显式持有的 sql.Stmt 仍遵循服务端原生绑定语义。此策略以重建连接代替不完整的变量恢复，不更改其他普通 SQL 的既有 reset 契约。
-- WarningSummary{Count uint16, Known bool} 保存协议 OK/EOF 数量；Known=false 表示尚无完整响应提供计数。Warnings 只读取最新普通 SQL 命令的最近完整结果快照，新的 SQL 清空并替换它，Ping/本节 helper/内部清理不覆盖；归还池后 reset 清空。Execute 的每项 ResultInfo.Warnings 独立保存各完整结果的数量，未完成结果保持未知。成功带 warning 仍是成功，nil logger 不影响快照。
-- 本节数量快照不编造警告码、SQLSTATE 或消息；详情/清除见 §16.3.3，ChangeUser 见 §16.3.2，显式取消见 §16.3.4。各子项与平台认证/传输的完成状态分别记录。
+- CurrentSchema queries Oracle SYS_CONTEXT current schema or MySQL current database, returning empty if none. SetSchema takes exact names without case folding: Oracle escapes double-quoted identifiers; MySQL COM_INIT_DB. Encode with connection charset without multi-SQL concatenation. Catalog is MySQL-only; Oracle ErrUnsupported.
+- ClientInfo contains ApplicationName/ClientUser/ClientHostname strings mapped to same-name session user variables. Set replaces all fields; empty sends NULL and reads NULL as empty. Values reuse current-mode/NO_BACKSLASH_ESCAPES escaping/strict encoding, never globals.
+- SessionVariable accepts ASCII system-variable identifiers only and preserves NULL. SetSessionVariable takes strings; servers validate mutability/ranges. Config.Session owns time_zone/ncharacter_set_connection/character_set_*/collation_*; runtime setters reject them to prevent codec/state disagreement. Both-mode real SQL support awaits integration.
+- Read helpers publish only after complete one-row responses, returning zero values on failure. Complete server ERR before/after first rows preserves Error and Rows reuse rules, without extra disconnection from scalar shape checks. Empty/extra rows/results/malformed responses reject/discard; shared Rows handles network/cancellation. [TestSessionReadResponseBoundary](../session_ops_failure_test.go) covers 84 local entry/mode/stream error/shape scenarios, not live SQL acceptance.
+- Batch rewrite probes share this reader; complete server errors permit existing safe fallback without replaying confirmed prefixes. [TestBatchRewriteGuardRowError](../batch_rewrite_test.go) covers 12 three-stream initial/post-chunk probes and pre/post-first-row ERR, checking item results/session reuse.
+- Setters require no managed/server transaction and autocommit enabled. Before sending, mark sessions unpoolable; success/full ERR still allows original pinned use, then discard on sql.Conn.Close. Validation failure does not mark. All setters clear automatic statement/descriptors before sends, including sql_mode parsing changes; explicit sql.Stmt retains native server semantics. Reconnection replaces incomplete restoration without changing ordinary SQL reset contracts.
+- WarningSummary{Count uint16, Known bool} captures OK/EOF counts; false means no complete response supplied counts. Warnings reads the latest complete result from latest ordinary SQL. New SQL clears/replaces; Ping/helpers/internal cleanup do not, and pool reset clears. Execute ResultInfo.Warnings independently captures each complete result; incomplete remains unknown. Warned success stays success; nil logger does not affect snapshots.
+- Count snapshots invent no codes/SQLSTATE/messages; see §16.3.3 for detail/clear, §16.3.2 ChangeUser, §16.3.4 explicit cancellation. Track subitems separately from platform authentication/transport completion.
 
-实现继续使用根包现有的封闭请求、操作锁、Rows/错误状态机和 wire 叶包，无新增包或依赖。四目标集成源码 TestSessionOperations 已提供，本阶段仅编译，尚未验证真实模式、代理或版本。
+Implementation reuses closed root requests, operation locks, Rows/error state machines, and wire leaves without new dependencies/packages. Four-target TestSessionOperations exists but is compiled only, without live mode/proxy/version validation.
 
-### 16.3.2 D30 ChangeUser 与会话身份代次
+### 16.3.2 D30 ChangeUser and Session Identity Generations
 
 ```go
 func ChangeUser(ctx context.Context, conn *sql.Conn, credentials Credentials, database string) error
 ```
 
-ChangeUser 在原物理连接、原 TLS 与原标准/压缩/OB20 包流上重新认证，不拨号、不重放业务、不修改原 Connector。调用方传入本次凭据与确切数据库名；ProxyUser 每次显式给出，空值清除旧目标（§6.3）。空数据库表示 MySQL 不选择数据库，Oracle 使用新认证用户名的 @ 前部分作为默认 schema（没有 @ 时使用完整用户名）。不自动折叠显式名称大小写，用户名和数据库严格按连接字符集编码；服务端校验权限/名称。旧 Config.Credentials 回调不参与显式切换，切换凭据密码不保存在连接配置中。
+ChangeUser reauthenticates on original physical/TLS/standard-compressed-OB20 streams without dialing/replay/original Connector mutation. Callers supply current credentials/exact database; ProxyUser is explicit each time, empty clearing old targets (§6.3). Empty database selects none in MySQL; Oracle uses new authenticating username before @ (whole name if absent). No explicit-name case folding; usernames/databases strictly encode connection charset; server validates privileges/names. Original Config.Credentials is not called; switched passwords are not stored in connection config.
 
-- 必须先消费/关闭 Rows，串行使用固定 sql.Conn。活动托管事务、服务端事务或 autocommit 关闭时拒绝切换；不会隐式提交或回滚业务事务。
-- 复用 D28 的插件工厂、初始/多轮/切换认证、密码编码、每轮 TLS 门禁及 io.Closer 生命周期。会话保留最终协商插件和 nonce，下一次切换创建新插件实例；不复用已完成的插件状态。认证全过程仍受调用 context 和 ConnectTimeout 中较早的期限限制，回调和平台同步调用仍须配合取消。
-- wire 使用 OceanBase Connector/J 的 COM_CHANGE_USER 布局：命令17、用户名终止串、按能力编码的认证数据、始终存在的数据库终止串，以及已协商的插件/连接属性；与通用 MySQL 布局不同，不附加两字节 charset。[源码](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L195)
-- 本地校验/认证响应准备通过后，先在旧身份下清理固定资源及自动预处理缓存，再发送切换。发送切换前更新 statement 身份代次并将物理会话标记为不可回原池。旧显式 server/client statement、LOB 和 Cursor 不能跨代次使用；旧 statement.Close 只关闭本地对象，不向新会话发送可能已被复用的旧 ID。
-- 服务端成功后，兼容模式必须保持原模式；重建 Config.Session 的字符集、autocommit、版本、时区、变量和 InitSQL 基线，并清空旧类型/自动 statement 缓存及 warning 快照。初始化共用持锁内核，不通过 database/sql 重入，也不重新协商已启用包流。
-- 发送切换后认证拒绝、超时/取消、畸形响应、模式变化、插件关闭错误或初始化失败，一律淘汰物理会话；成功时原 pinned 连接继续可用，sql.Conn.Close 时退出原池。原连接池之后重新建连仍使用原 Connector 身份。本地校验或初始 TLS 门禁拒绝不更改身份。
+- Consume/close Rows and serialize fixed sql.Conn. Reject active managed/server transactions or autocommit off without implicit commit/rollback.
+- Reuse D28 plugin factories, initial/multiround/switch authentication, password encoding, per-round TLS gates, io.Closer lifetimes. Retain final negotiated plugin/nonce; each switch creates fresh state. Authentication obeys earlier calling context/ConnectTimeout; callbacks/platform synchronous calls must cooperate.
+- wire follows Connector/J COM_CHANGE_USER: command 17, terminated username, capability-dependent auth, always terminated database, negotiated plugin/attributes. Unlike generic MySQL, no two-byte charset. [Source](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/SendHandshakeResponsePacket.java#L195)
+- After validation/auth-response preparation, clean fixed resources/automatic cache under old identity, then send. Before sending, increment statement identity generation/mark unpoolable. Old server/client statements/LOB/Cursors cannot cross generations; old statement.Close is local only, never sending possibly reused IDs into new sessions.
+- After server success, mode must remain unchanged. Rebuild charset/autocommit/version/timezone/variables/InitSQL baseline and clear descriptor/automatic-statement/warning caches. Use held-lock core, not database/sql reentry or renegotiation of active packet streams.
+- After switch sends, any authentication rejection/timeout/cancellation/malformed response/mode change/plugin-close error/initialization failure discards sessions. Success retains pinned usability and exits original pools on sql.Conn.Close. New pool connections still use original Connector identity. Local validation/initial TLS rejection leaves identity unchanged.
 
-TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing 提供本地协议与真实 TLS 对端证据；TestChangeUserSessions 四目标源码检查实际身份、旧 statement 失效及原池身份隔离。集成测试需各 profile 的 CHANGE_USER_DSN 提供同服务上的另一个合法身份，仅使用其用户名/密码/数据库，TLS 和认证策略继承原连接；本阶段仅编译，未连接数据库。真实插件、LOB/游标清理、代理、权限及版本组合仍待联调。
+TestChangeUserIsolation/Failure/Validation/Encoding/Database/PluginLifecycle/Cancel/VerifiedTLS/Framing provide local protocol/real-TLS-peer evidence. Four-target TestChangeUserSessions checks actual identities/old statement invalidation/pool isolation. Each profile needs CHANGE_USER_DSN for another same-service identity; only username/password/database are used, inheriting TLS/auth policy. Compiled only, no databases. Real plugins/LOB-cursor cleanup/proxies/privileges/versions await integration.
 
-### 16.3.3 D30 warning 详情与本地清除
+### 16.3.3 D30 Warning Details and Local Clearing
 
 ```go
 type Warning struct {
@@ -1354,49 +1354,49 @@ func ReadWarnings(context.Context, *sql.Conn) ([]Warning, error)
 func ClearWarnings(context.Context, *sql.Conn) error
 ```
 
-ReadWarnings 在固定连接上发送 MySQL 模式的 SHOW WARNINGS，按列字符集解码级别/码/消息；该 SQL 不提供 SQLSTATE，驱动不推测映射。消息可能包含 SQL 或敏感值，仅按请求返回，不自动写日志。Oracle 模式继续提供协议数量快照，ReadWarnings 明确返回 ErrUnsupported，不猜测 Oracle 详情 SQL。此边界与 [Connector/J getWarnings](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseStatement.java#L1263) 一致：MySQL 查询详情，Oracle 仅给出通用带 warning 提示；Go 以 WarningSummary.Count 表达后者。
+ReadWarnings sends MySQL SHOW WARNINGS on fixed connections, decoding levels/codes/messages by column charset. SQL supplies no SQLSTATE; never infer mappings. Messages may contain sensitive SQL/values and return only on request, without logging. Oracle retains protocol-count snapshots and ReadWarnings ErrUnsupported without guessed detail SQL. This matches [Connector/J getWarnings](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/OceanBaseStatement.java#L1263): MySQL details, Oracle generic warning indication represented in Go by WarningSummary.Count.
 
-- 这是请求时读取的**当前服务端诊断区**，不是历史结果详情快照。应在消费/关闭 Rows 后立即调用，并串行使用 pinned 连接；其他服务端命令（包含 helper 和驱动内部 SQL）可能已替换诊断区。Warnings/ResultInfo 的本地数量快照仍独立保留，不能据此推断当前详情必与数量对应。
-- 不因数量为0而跳过 MySQL 查询；服务端诊断区和计数保留规则可能不同。max_error_count 等服务端限制可能使详情少于数量，驱动不补造缺项。读取不自动查询其他连接、不修改事务、不改变原 SQL 成功/失败语义，也不要求 logger。
-- Limits.MaxResultItems 同时限制一次详情的行数，MaxMessageBytes 限制解码后级别/消息/码的累计内容；超限返回 wire.ErrMessageTooLarge，不返回部分列表并淘汰连接。空结果有效；NULL/非法码/畸形列数/额外结果拒绝并淘汰，完整服务端 ERR 可复用，发送后取消淘汰。标准/压缩/OB20 共用既有包流和 Rows 内核。
-- ClearWarnings 只清除本地数量（Known=true、Count=0），在下一个普通 SQL 命令发送前抑制 MySQL ReadWarnings；不发送 SQL、不清除服务端自身诊断区。helper/Ping 不解除抑制，新普通 SQL（含执行失败的命令）解除；新建、reset 和 ChangeUser 后抑制旧详情。Oracle 可清数量，但详情 API 始终返回 ErrUnsupported。历史 Execution.Snapshot 不被清除函数修改。
+- This reads the **current server diagnostic area on request**, not historical details. Call promptly after consuming/closing Rows, serialized on pinned connections. Other commands/helpers/internal SQL may replace diagnostics. Warnings/ResultInfo local counts remain independent and need not correspond to current details.
+- Do not skip MySQL reads at count 0; server count/detail retention differs. max_error_count/other limits may produce fewer details; never invent missing ones. No other connections, transaction changes, original SQL reinterpretation, or logger requirement.
+- MaxResultItems bounds detail rows; MaxMessageBytes bounds decoded levels/messages/codes cumulatively. Excess returns wire.ErrMessageTooLarge without partial lists and discards. Empty is valid; NULL/invalid codes/wrong columns/extra results reject/discard. Full ERR permits reuse; post-send cancellation discards. Three streams share existing Rows.
+- ClearWarnings only clears local counts (Known=true,Count=0) and suppresses MySQL ReadWarnings until next ordinary SQL send. It sends no SQL or server-area clearing. Helpers/Ping retain suppression; new ordinary SQL, including failures, removes it. New/reset/ChangeUser suppress old details. Oracle clears counts but details remain ErrUnsupported. Historical Execution.Snapshot is unchanged.
 
-TestWarningDetails/Response/Clear/Modes/Validation/Cancel/Framing 和 TestSessionOperationNoRowset 覆盖本地行为。四目标 TestWarningDetails 集成源码需要对应 WARNING_SQL（成功且产生非零警告，MySQL 需实际保留详情）；仅编译，尚未连接真实模式或代理。显式取消见下一节。
+TestWarningDetails/Response/Clear/Modes/Validation/Cancel/Framing and TestSessionOperationNoRowset cover local behavior. Four-target detail integration requires successful nonzero-warning WARNING_SQL (MySQL must retain details). Compiled only without real modes/proxies; explicit cancellation follows.
 
-### 16.3.4 D30 显式取消与单次目标
+### 16.3.4 D30 Explicit Cancellation and One-Shot Targets
 
 ```go
-type CancelTarget struct { /* 不透明，不允许指定连接 ID */ }
+type CancelTarget struct { /* Opaque; callers cannot specify connection IDs */ }
 func QueryTarget(context.Context, *sql.Conn) (CancelTarget, error)
 func CancelQuery(context.Context, driver.Connector, CancelTarget) error
 ```
 
-先在空闲的固定连接上调用 QueryTarget，再启动业务 SQL；在另一 goroutine 中调用 CancelQuery。取目标本身不发送 SQL，不能在原查询/Rows 占用固定连接后再取身份。再次 QueryTarget 会替换旧目标。目标只属于其后的第一个普通 SQL 发送/响应周期；复制目标不增加使用次数，每个目标只接受一次取消尝试（包括拨号失败），不自动重试。尚未发送、已完成、已尝试或已过期时返回 ErrResource，不能取消同一连接的下一操作。Prepare、Ping 和会话 helper 不进入这个业务周期；批量逐项模式仅覆盖首个 SQL，multi-send 仅覆盖首个发送分块，不能据此宣称整批停止或未执行。
+Call QueryTarget on idle pinned connections before starting SQL, then CancelQuery from another goroutine. Target capture sends no SQL and cannot occur while original queries/Rows occupy the connection. QueryTarget replaces earlier targets. Each covers only the next ordinary SQL send/response cycle; copies add no attempts, and each allows one cancellation attempt including dial failures, without retries. Unsent/completed/attempted/expired targets return ErrResource and cannot cancel subsequent operations. Prepare/Ping/helpers do not consume the cycle. Sequential batches cover first SQL only, multi-send first chunk only, proving neither whole-batch cancellation nor nonexecution.
 
-- 目标保存原物理会话、实际兼容模式、用户/租户身份、实际入口和 TLS 状态，不持有新凭据。reset、切用户、关闭及首个 SQL 结束使其失效；独立于协议 gate 的取消状态负责协调。SQL 结束在内部清理/LOB 物化和释放 gate 前等待已发送的 KILL 得到确定结果；尚未发送的辅助拨号会被取消。默认 context 取消仍关闭原连接，不偷偷换成 KILL。
-- Connector 必须来自本驱动 NewConnector。复用其凭据提供方、认证插件、TLS、会话基线及限额，但只向目标记录的同一入口拨一次辅助连接，不重新选址/发现/切换。Network 和模式必须匹配；认证后的用户/租户必须与目标相同，辅助连接 ID 不得等于目标 ID。ChangeUser 后需传入对应新身份的 Connector。原连接使用已验证 TLS 时辅助连接也必须已验证 TLS，不能降级；辅助连接私有，不进入 database/sql 池，各路径均关闭。
-- 辅助拨号、认证、初始化和 KILL 共用调用 context 与 Connector.ConnectTimeout 的较早期限，关闭使用 CleanupTimeout。自定义 DialContext、Credentials 和认证回调必须响应 context，且不得重入正被取消的连接；驱动不创建可遗弃的后台拨号。私有辅助通道不触发 Logger 或 Diagnostics 回调，避免同步观察者重入正在等 KILL 的原会话；原业务连接的日志配置不变。失败完整保留服务端错误（如权限不足），原查询独立继续；KILL 部分写、丢确认、畸形/额外结果均使原连接失效，并禁止业务重放。KILL 写出后即使读取前直接取消，也属于结果未知。
-- 成功只代表服务端确认 KILL，不证明 SQL 未执行，也不替代原操作的最终结果。协议只接受连接 ID，没有服务端会话代次/CAS；本地生命周期协调不能排除远端主动断开后 ID 被重用的窗口，尤其需真实 OBProxy/版本取证，不能宣称跨服务端的绝对原子保证。
+- Targets retain original session/mode/user-tenant identity/actual endpoint/TLS state, not new credentials. Reset/user-switch/close/first SQL completion invalidates them via cancellation state independent of protocol gates. SQL completion waits for sent KILL acknowledgment before cleanup/LOB materialization/gate release; unsent auxiliary dialing is canceled. Default context cancellation still closes original sessions without hidden KILL.
+- Connector must come from this driver's NewConnector. Reuse credential sources/plugins/TLS/baseline/limits but dial the exact recorded endpoint once without routing/discovery/failover. Network/mode and authenticated user/tenant must match; auxiliary IDs must differ. After ChangeUser supply matching new-identity Connector. Verified original TLS requires verified auxiliary TLS without downgrade. Auxiliary channels are private/unpooled/always closed.
+- Dial/auth/init/KILL share earlier call context/ConnectTimeout; close uses CleanupTimeout. Custom dial/credential/auth callbacks must honor context and never reenter the canceled connection; no abandonable dialing goroutines. Private auxiliary channels disable Logger/Diagnostics callbacks to avoid observer reentry while original sessions wait; original logging remains. Preserve complete failures such as permissions while original queries continue independently. Partial KILL writes/lost acknowledgments/malformed-extra responses invalidate originals without replay. Cancellation after KILL write before reading is also unknown.
+- Success proves acknowledged KILL only, not SQL nonexecution or original outcomes. Protocol has connection IDs but no server generation/CAS; local coordination cannot eliminate remote disconnect/ID-reuse windows. Real OBProxy/version evidence is especially needed; no absolute cross-server atomicity claim.
 
-TestCancelQueryIdentity/Failure/CompletionBeforeSend/AckCancellation/Guards/AuxIdentity/FixedEntry/WaitsForAck/VerifiedTLS/ResetAndClose 与 ChangeUserIsolation 覆盖两模式、固定入口、TLS、权限错误、单次令牌、响应竞态和本地生命周期。TestCancelQuerySessions 四目标源码及手动 CI 已补，只编译未联调；每个目标配置 CANCEL_SQL（足够长的只读阻塞查询）和 CANCEL_CODE（已取证的服务端中断码），验证实际中断及原会话复用，不把任意 SQL 错误当取消成功。
+TestCancelQueryIdentity/Failure/CompletionBeforeSend/AckCancellation/Guards/AuxIdentity/FixedEntry/WaitsForAck/VerifiedTLS/ResetAndClose and ChangeUserIsolation cover both modes/endpoints/TLS/permissions/one-shot/races/lifecycles. Four-target TestCancelQuerySessions/manual CI source compiles only; each target needs long read-only CANCEL_SQL and evidenced CANCEL_CODE, verifying interruption/session reuse rather than treating any SQL error as cancellation.
 
-## 17. 选址、HA、认证与导入
+## 17. Routing, HA, Authentication, and Import
 
-### 17.1 地址发现和 HA
+### 17.1 Address Discovery and HA
 
-- 地址源覆盖静态列表、扩展描述、TNS 文件和 OCP API；解析与刷新不依赖每连接线程。
-- 负载策略覆盖随机、轮转、亲和和组选择；主/从角色及只读路由纳入模型，Java 的 replication/aurora 拓扑发现放在明确的拓扑适配器中。
-- 读写角色作为 Connector 的建连约束；需要分别访问主/只读服务时，由调用方持有两个标准 sql.DB，不增设 SQL 级路由池。
-- Go 的 ReadOnly 是事务属性，不把普通 SELECT 自动搬到另一物理连接。BeginTx 在当前物理连接校验并设置事务属性，兼容的主库也可执行只读事务；需要不同角色时调用方从相应 DB 获取连接，不能在 BeginTx 内替换现有 Socket。
-- 黑名单和地址健康信息按 Connector 共享，有界且并发安全；不会把一个租户的错误传播成所有服务的全局黑名单。
-- 地址失败重试共享建连总预算；认证拒绝、模式不匹配和配置错误不做无意义的无限循环。
-- Refresh 使用 Connector 生命周期 context；实现 io.Closer 供 sql.DB.Close 停止共享刷新设施。TNS/OCP 未启用时不启动对应 goroutine。
-- Connector 关闭后仍需允许已获得的活动连接有界完成/关闭；不会因取消发现刷新 context 而直接取消正在执行的业务查询。
-- 成功建立的物理会话内部不故障换线。坏连接退出，由数据库池获取新连接；会话迁移、事务和执行结果未知不能靠恢复几个变量掩盖。
+- Sources include static lists, extended descriptions, TNS files, OCP APIs; parsing/refresh requires no per-connection threads.
+- Strategies include random, round-robin, affinity, groups, primary/replica and read-only roles. Explicit topology adapters carry Java replication/Aurora discovery.
+- Roles constrain Connector establishment. Callers hold two standard DBs for primary/read-only access, not SQL-routing pools.
+- Go ReadOnly is transaction-level; ordinary SELECT never automatically moves sockets. BeginTx validates/sets current sessions; compatible primaries may host read-only transactions. Callers choose proper DBs rather than BeginTx replacing sockets.
+- Bounded concurrency-safe blacklists/health are Connector-shared, never globally spreading tenant errors.
+- Address retries share total budgets; authentication/mode/configuration failures never loop endlessly.
+- Refresh uses Connector lifecycle context; io.Closer lets DB.Close stop shared refresh. Disabled TNS/OCP starts no goroutines.
+- Connector close allows delivered active sessions to finish/close boundedly; discovery cancellation never directly cancels active queries.
+- Established physical sessions never fail over internally. Bad sessions exit; pools acquire new ones. Restoring a few variables cannot hide migration/transaction/unknown-execution semantics.
 
-### 17.1.1 D26 静态多地址实现契约
+### 17.1.1 D26 Static Multi-Address Contract
 
-当前公开 API 为根包 `Config.Routing RoutingOptions`：
+Current root API: `Config.Routing RoutingOptions`:
 
 ```go
 type Endpoint struct {
@@ -1416,34 +1416,34 @@ type RoutingOptions struct {
 }
 ```
 
-| 配置 | 语义、默认值和边界 |
+| Configuration | Semantics, defaults, boundaries |
 | --- | --- |
-| Endpoints | 非空时替代单个 Addr 作为候选；否则由 Addr 生成一个带当前 Role 的候选。最多1024项，按 DNS 小写、IPv6 和十进制端口规范化后拒绝重复/空地址；省略端口为2881。Config.Addr 仍须合法。列表在 NewConnector 时复制 |
-| Role | RoleAny 为零值；RoleReadWrite / RoleReadOnly 只选相同显式标签，不回退到未标记或相反角色；无候选时配置失败。标签是调用方声明的逻辑服务，不能证明实际主从状态或 SQL 权限 |
-| Group / Strategy | Group 从小到大尝试；组内 BalanceOrdered 保持输入顺序，BalanceRandom 随机排列，BalanceRoundRobin 在共享 Connector 内轮转，BalanceAffinity 按 Weight 加权排列且不重复。Weight=0 按1处理；不会在业务 SQL 中重新选址 |
-| MaxAttempts | 零值为可用角色候选数，最多4096；只计实际拨号次数，冷却等待不消耗次数；默认单地址仍只拨一次 |
-| AttemptTimeout | 覆盖一次拨号、TLS、认证和初始化，零值为 ConnectTimeout / min(候选数, MaxAttempts)，至少1ns。每次及重试等待都受同一 ConnectTimeout/context 更早期限约束；初始化超时终止，不能重放 |
-| RetryDelay | 零值50ms；暂时失败后可取消的固定退避，不重新开始总计时；MaxAttempts 限制后不再等待 |
-| BlacklistTimeout | 零值1秒；暂时连接失败才进入冷却，成功完整初始化后清除；全部冷却时等待最早到期或 context 取消。状态只含配置地址，按 Connector 隔离，不使用全局租户黑名单 |
-| ValidationInterval | 零值关闭；从上次完成操作（含 Rows 消费）起，空闲达到间隔才在 ResetSession 持锁发送同 Socket 的 PING14；仍受 CleanupTimeout/context 约束。失败返回 ErrBadConn，由标准连接池申请新会话，驱动不就地换线 |
+| Endpoints | Nonempty replaces Addr candidates; otherwise derive one Addr candidate with current Role. Maximum 1024, rejecting empty/duplicates after lowercase DNS/IPv6/decimal-port normalization; omitted port 2881. Config.Addr must remain valid. NewConnector copies lists |
+| Role | Zero RoleAny; RoleReadWrite/RoleReadOnly select matching explicit labels only, no unknown/opposite fallback. No candidates fails configuration. Labels declare logical services, not actual replication/privilege proof |
+| Group / Strategy | Ascending groups. BalanceOrdered retains input; Random shuffles; RoundRobin rotates per shared Connector; Affinity produces weighted nonrepeating order. Weight=0 means 1. No SQL-time rerouting |
+| MaxAttempts | Zero uses eligible-role candidate count, maximum 4096. Count actual dials only, not cooldown; one default address still dials once |
+| AttemptTimeout | Covers dial/TLS/auth/init. Zero is ConnectTimeout/min(candidate count,MaxAttempts), minimum 1 ns. Attempts/backoff share earlier total/context limits. Initialization timeouts stop, never replay |
+| RetryDelay | Zero means 50 ms, cancelable fixed backoff for temporary failures without restarting totals; no wait after MaxAttempts |
+| BlacklistTimeout | Zero means 1 second; temporary establishment failures cool down, complete initialization clears. All cooling waits earliest expiry/context. State contains configured addresses only, isolated per Connector |
+| ValidationInterval | Zero disabled. Idle since last completed operation including Rows triggers same-socket PING14 under ResetSession lock, CleanupTimeout/context. Failure ErrBadConn lets standard pools reacquire; no in-place rerouting |
 
-仅新建会话中的暂时拨号错误、握手断线/超时允许切换；不可恢复 DNS 错误、自定义拨号器普通错误、认证拒绝、TLS 证书/协议拒绝、模式不符、配置/凭据回调及初始化失败立即返回。错误保留原 errors.Is/As 链。TLS 使用实际选中地址推导 ServerName，显式 ServerName 保持调用方值；即使 TLS alert 被包装进 net.OpError/wire.IOError，也不能按网络故障重试。只收到 TCP 断线而未收到协议拒绝时，驱动只能按传输故障判断。
+Only temporary dialing/handshake disconnects/timeouts on new sessions may switch candidates. Permanent DNS/custom ordinary dial errors/auth rejection/TLS certificate-protocol rejection/mode/configuration/credential callback/initialization failures return immediately with errors.Is/As chains. Derive TLS ServerName from selected endpoints unless explicit. TLS alerts wrapped in net.OpError/wire.IOError still never retry as networking. TCP disconnect without protocol rejection can only be classified as transport failure.
 
-初始化和模式锁定均在当前候选和单次预算内完成；任何初始化失败都不回到候选循环，因为 InitSQL 可能产生副作用。已建立会话的查询、事务、statement、LOB、游标失败不调用选址器，也不重放业务。
+Initialize/lock modes within candidate budgets. Any initialization failure exits candidate loops because InitSQL may have side effects. Existing queries/transactions/statements/LOB/cursor failures never invoke routing/replay.
 
-RoleReadOnly 的 Connector 在发送前拒绝 ReadOnly=false 的 BeginTx；ReadOnly=true 使用现有 Socket。普通 SELECT 不分析/路由，普通写语句权限由服务端负责。读写服务分别使用两个标准 sql.DB，同一个 Connector 固定角色；RoleReadWrite 的会话也能按标准事务接口开启只读事务。
+RoleReadOnly rejects BeginTx ReadOnly=false before sends; true retains sockets. No SELECT analysis/routing; servers enforce ordinary write privileges. Separate standard DBs serve roles; Connector role is fixed. RoleReadWrite still permits standard read-only transactions.
 
-DSN 支持 `addresses`（逗号分隔 DNS/IPv4/带括号 IPv6，端口可省略）、`role=any/readwrite/readonly`、`balance=ordered/random/roundrobin/affinity`、`maxAttempts` 及四个同名 duration 参数 `attemptTimeout/retryDelay/blacklistTimeout/validationInterval`。addresses 中所有条目统一标记 role，参数遍历顺序不影响结果；混合角色、Group 和 Weight 使用 typed Config。未知/重复参数和非法值报错，不透传 Java 参数。
+DSNs support `addresses` (comma DNS/IPv4/bracketed IPv6, optional ports), `role=any/readwrite/readonly`, `balance=ordered/random/roundrobin/affinity`, `maxAttempts`, duration `attemptTimeout/retryDelay/blacklistTimeout/validationInterval`. Every `addresses` entry receives common role regardless of parameter order. Mixed roles/Group/Weight use typed Config. Unknown/duplicate/invalid options reject without Java forwarding.
 
-Java `serverAffinityOrder` 默认 null；非空时在 [ConfigParser.getLoadBalanceInfoByDefault](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/failover/utils/ConfigParser.java#L426) 用逗号分隔的 host:port[:weight] 列表替换 URL 地址，并沿用 loadBalanceStrategy，不是独立“始终按顺序”开关。Go 的对应能力是 Routing.Endpoints 替换 Addr、Endpoint.Weight 与显式 Strategy；BalanceOrdered 按列表，BalanceAffinity 使用权重，Group 另外表达优先级。Java 默认策略 random，Go 零值 Ordered；权重范围按现有 uint16 契约校验。包含 IPv6 时用标准带括号 Addr，不沿用 Java 按冒号拆分的字符串格式；不新增重复列表/策略字段或接受 Java 同名 DSN。
+Java `serverAffinityOrder` defaults null. Nonempty [ConfigParser.getLoadBalanceInfoByDefault](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/failover/utils/ConfigParser.java#L426) replaces URL addresses with host:port[:weight] and retains loadBalanceStrategy; it is not an always-ordered switch. Go equivalents are replacing Routing.Endpoints, Endpoint.Weight, explicit Strategy. Ordered follows lists; Affinity weights; Group adds priorities. Java defaults random, Go Ordered. Validate existing uint16 weights; use bracketed IPv6 rather than Java colon splitting. No duplicate list/policy fields or matching Java DSN.
 
-例如 `oceanbase://app@fallback/?addresses=entry-a:2881,entry-b:2881&role=readwrite&balance=roundrobin`；地址/权重由调用方配置，TNS/OCP 刷新和拓扑证明仍归 D27。Java 的多组 retry/maxReconnects 选项合并成有界 MaxAttempts/总预算，黑名单默认值不照搬 Java 的全局状态和长重试次数；allowMasterDownConnection 不允许跨角色降级；galeraAllowedState 属于外部产品能力，不伪造 OceanBase 状态 SQL。
+Example: `oceanbase://app@fallback/?addresses=entry-a:2881,entry-b:2881&role=readwrite&balance=roundrobin`. Callers configure addresses/weights; D27 owns refresh/topology proof. Java retry/maxReconnects converge into bounded attempts/total budgets without copying global blacklists/long retries. allowMasterDownConnection cannot cross roles; galeraAllowedState is external-product capability, not guessed OceanBase state SQL.
 
-根包 routing.go/failover.go 组合配置、拨号、认证及初始化；internal/routing 只处理自有 Address/Options、排序和健康，依赖标准库，不导入根包或 wire/auth/charset；无新增公共子包、池或后台 goroutine。
+Root routing.go/failover.go composes config/dial/auth/init. internal/routing owns Address/Options/order/health and standard-library dependencies only, never root/wire/auth/charset. No public subpackages/pools/background goroutines.
 
-### 17.1.2 D27 TNS、OCP 与拓扑刷新契约
+### 17.1.2 D27 TNS, OCP, and Topology Refresh Contract
 
-公开 API 仍在唯一根包，发现设施不另建连接池：
+Public APIs stay in one root package; discovery introduces no pool:
 
 ```go
 type Topology struct {
@@ -1458,25 +1458,25 @@ type DiscoveryOptions struct {
 }
 ```
 
-`Config.Discovery` 的 Source 非 nil 时启用；必须显式配置 Service，且不能同时配置 Routing.Endpoints。Addr 仍校验，但不作发现失败的降级地址。未配置发现时没有发现 goroutine；NewConnector 只做校验和快照，首次 Connect 才启动一个串行刷新任务。Source 必须返回独占的 Topology/Endpoints 并遵守 context；同一 Connector 串行调用，同一个函数被多个 Connector 共享时由调用方保证并发安全。
+Enable `Config.Discovery` when Source is non-nil. Service must be explicit and Routing.Endpoints absent. Addr is still validated but never a discovery-failure fallback. Without discovery, no goroutine starts. NewConnector only validates/snapshots; first Connect starts one serial refresher. Source returns exclusively owned Topology/Endpoints and honors context. One Connector invokes it serially; callers ensure concurrency safety when sharing functions across Connectors.
 
-| 规则 | 当前实现 |
+| Rule | Current implementation |
 | --- | --- |
-| 默认时间 | RefreshInterval=30秒、RequestTimeout=5秒、MaxAge=5分钟；禁止负值，MaxAge 不小于 RefreshInterval |
-| 预算 | Connect 等待发现与拨号/认证/初始化共用 ConnectTimeout；发现 HTTP 请求由 Connector 生命周期和 RequestTimeout 约束。取消一个等待者不取消其他等待者共用的刷新请求；等待者立即按自己的 context 返回 |
-| 缓存与发布 | 最多1024个规范化唯一地址；Service 必须精确匹配配置值，Role 严格过滤。失败/非法快照保留仍在 MaxAge 内的上次成功结果；过期后关闭降级通路，已有刷新失败立即报错，否则等待后续受限刷新；失败不触发调用方驱动的请求风暴。刷新不改 User、Database、Credentials、兼容模式或业务会话 |
-| 选址 | 每次 Connect 固定一个成功发现的候选代次；刷新只影响之后取得快照的新 Connect。动态 MaxAttempts=0 按该次符合角色的候选数计算一次遍历；AttemptTimeout=0 按该候选数与总预算计算。各代共享保留地址的冷却状态和轮转计数，旧代迟到的拨号结果仍反馈到新代；共享健康表按最新成员裁剪，删除地址不会无限积累 |
-| 关闭 | Connector 实现 io.Closer，sql.DB.Close 自动调用；Close 幂等、取消发现并最多等待 RequestTimeout。违规不响应取消的自定义 Source 会导致 Close 返回超时，不能强杀用户函数。关闭后 Connect 返回 ErrConnectorClosed，已交付的物理连接不绑定发现 context，可继续执行/关闭。driver.Open 创建的私有 Connector 在成功或失败后立即关闭发现设施 |
-| 错误/隐私 | 发现错误仅返回固定类型/类别，不保留 URL、文件路径、HTTP 内容及 Source 原始错误；业务认证/拨号错误仍按原契约保留 errors.Is/As。无隐式日志、磁盘缓存、全局服务注册表 |
+| Default timing | RefreshInterval=30s, RequestTimeout=5s, MaxAge=5min; reject negatives and MaxAge below RefreshInterval |
+| Budget | Discovery waits/dial/auth/init share ConnectTimeout. HTTP requests obey Connector lifecycle/RequestTimeout. Canceling one waiter does not cancel shared refresh for others; each waiter returns promptly under its context |
+| Cache/publication | At most 1024 normalized unique addresses; exact Service match/strict Role filtering. Invalid/failed refresh retains successful snapshots within MaxAge; expiry closes fallback. Existing refresh errors fail immediately, otherwise wait for bounded refresh. Failures never trigger caller request storms. Refresh never changes User/Database/Credentials/mode/business sessions |
+| Selection | Each Connect pins one successful candidate generation; refresh affects later snapshots only. Dynamic MaxAttempts=0 means one pass through eligible candidates; AttemptTimeout=0 derives from their count/total budget. Generations share retained-address cooldown/rotation; late old dial results feed current state. Trim shared health to current membership to avoid unbounded removed-address accumulation |
+| Closure | Connector io.Closer is called by DB.Close. Idempotent Close cancels discovery and waits at most RequestTimeout; noncooperative custom Sources may cause timeout and cannot be forcibly killed. Later Connect returns ErrConnectorClosed. Delivered sessions have no discovery-context lifetime and remain usable/closable. driver.Open closes its private discovery facilities immediately after success/failure |
+| Errors/privacy | Return fixed discovery types/categories without URLs/file paths/HTTP bodies/raw Source errors. Authentication/dial errors retain existing errors.Is/As. No implicit logs/disk cache/global registry |
 
-内置入口和格式：
+Built-in entry points and formats:
 
-- `ParseAddressDescription(description)`：无 I/O，返回 Topology；接受独立 `(DESCRIPTION=...)`。`NewTNSFileSource(path, alias)`：每次读取显式的本地常规文件，按别名精确匹配（不区分大小写），支持 `alias=(DESCRIPTION=...)`、Java 的 `(alias=(DESCRIPTION=...))`、多个别名和 `#` 注释；文件源不会用无别名 DESCRIPTION 顶替缺失别名。无环境搜索路径、默认文件或全局 watcher。跟随调用方配置的符号链接，目标必须是常规文件；拒绝设备/目录等非常规目标，打开前后检查类型与尺寸；配置文件应由调用方信任和管理，本地文件系统 syscall 无法由 Go context 中断，文件系统卡顿及并发替换不构成可强制中止的 I/O 保证。
-- `NewOCPSource(endpoint, client)`：调用显式 HTTP(S) URL；client 可 nil，构造时复制 Client、共享其调用方管理的 transport/callback。标准 context 覆盖连接/响应读取；可在注入 transport 配置拨号阶段的更短超时。拒绝 URL 内嵌凭据、fragment 和重定向；最多读取1MiB，不落盘。兼容 Java 实际 HTTP 包装 `data.NET_SERVICE_NAME` + `data.DESCRIPTION`，以及直接 DESCRIPTION JSON；包装内显式失败状态被拒绝，元数据有界解析。包装的 NET_SERVICE_NAME 是逻辑服务身份，CONNECT_DATA.SERVICE_NAME 不是自动切库指令；直接 DESCRIPTION 以 SERVICE_NAME 作为逻辑身份。服务端变体需按真实响应联调。
-- TNS/OCP 共同支持 ADDRESS_LIST/ADDRESS、TCP HOST/PORT（默认2881）、WEIGHT、CONNECT_DATA/SERVICE_NAME，以及显式 TYPE=master/slave/readwrite/readonly；组按出现顺序映射 Endpoint.Group。拒绝重复/未知字段、非法端口/角色、重复地址、尾随垃圾、损坏 UTF-8；深度最多16、解析节点有界。JSON 重复键按不区分大小写拒绝。TNS 引号/转义值和非 TCP 描述不猜测执行。
-- Java 的 OBLB/LOAD_BALANCE、策略、重试和黑名单描述字段属于来源提示：识别并校验其格式，**执行策略统一由 Go RoutingOptions 决定，不从服务端覆盖本地重试和安全配置**。组内/组间策略及黑名单附加算法不逐项照搬 Java；需要这些策略时在调用方配置 RoutingOptions/Endpoint.Group/Weight，未知描述明确拒绝。外层包装元数据不参与选址。
+- `ParseAddressDescription(description)` performs no I/O and returns Topology from standalone `(DESCRIPTION=...)`. `NewTNSFileSource(path, alias)` reads explicit regular local files each time, matching aliases exactly case-insensitively. Supports `alias=(DESCRIPTION=...)`, Java `(alias=(DESCRIPTION=...))`, multiple aliases, and `#` comments; standalone DESCRIPTION never replaces missing aliases. No environment paths/default files/global watchers. Follow caller-configured symlinks to regular files only; reject devices/directories and check type/size before/after open. Callers trust/manage files. Go context cannot interrupt filesystem syscalls; stalls/concurrent replacement have no enforceable cancellation guarantee.
+- `NewOCPSource(endpoint, client)` requests explicit HTTP(S) URLs. Nil client allowed; construction copies Client while sharing caller-managed transports/callbacks. Standard context covers connection/response reads; injected transports may shorten dial timeouts. Reject embedded credentials/fragments/redirects. Read at most 1 MiB without disk writes. Accept actual Java `data.NET_SERVICE_NAME` + `data.DESCRIPTION` wrappers and direct DESCRIPTION JSON. Explicit wrapper failure statuses reject; metadata parsing is bounded. Wrapper NET_SERVICE_NAME is logical identity; CONNECT_DATA.SERVICE_NAME never automatically switches databases. Direct DESCRIPTION uses SERVICE_NAME as identity. Actual server variants need integration.
+- TNS/OCP share ADDRESS_LIST/ADDRESS, TCP HOST/PORT(default 2881), WEIGHT, CONNECT_DATA/SERVICE_NAME, explicit TYPE=master/slave/readwrite/readonly; occurrence order maps groups. Reject duplicate/unknown fields, bad ports/roles, duplicate addresses, trailing junk, invalid UTF-8. Depth maximum 16/nodes bounded; JSON duplicate keys reject case-insensitively. Never guess quoted/escaped TNS or non-TCP descriptions.
+- Java OBLB/LOAD_BALANCE/strategy/retry/blacklist fields are source hints: recognize/validate format, but **Go RoutingOptions alone determines execution policy; server descriptions cannot override local retry/security settings**. Do not copy every Java intra/intergroup/blacklist algorithm. Configure RoutingOptions/Endpoint.Group/Weight for required behavior; unknown descriptions reject. Outer wrapper metadata never selects addresses.
 
-使用方式：
+Usage:
 
 ```go
 source, err := oceanbase.NewTNSFileSource("tnsnames.ob", "orders")
@@ -1490,104 +1490,104 @@ db := sql.OpenDB(connector)
 defer db.Close()
 ```
 
-DSN 增加 `tnsFile` + `tnsAlias` 或 `ocpURL`（两类互斥），必须搭配 `discoveryService`；可选 `discoveryRefreshInterval/discoveryTimeout/discoveryMaxAge`。`addressDescription` 为 URL 编码的静态 DESCRIPTION，与上述发现源和 addresses 互斥。动态源、混合角色和复杂分组优先 typed Config。静态 addresses 的显式 role 统一标记行为保持 D26；DESCRIPTION/TNS/OCP 中未标记的地址不自动继承 role，受限 Role 必须由实际来源标记，或调用方在有真实服务依据时显式包装 TopologySource 赋予服务角色。Service 标识不是租户认证证明，租户仍由凭据与服务端身份取证保证。
+DSNs add mutually exclusive `tnsFile`+`tnsAlias` or `ocpURL`, requiring `discoveryService`, optionally `discoveryRefreshInterval/discoveryTimeout/discoveryMaxAge`. URL-encoded static `addressDescription` is exclusive with these sources/addresses. Prefer typed Config for dynamic sources/mixed roles/groups. Static addresses retains D26 common-role tagging. Unlabeled DESCRIPTION/TNS/OCP entries do not inherit role: restricted Role needs source labels or explicitly wrapped TopologySource based on real service evidence. Service identity is not tenant-authentication proof; credentials/server identity evidence still establish tenancy.
 
-Java replication 的主/从地址映射为显式角色快照及两个标准 sql.DB；Java Aurora 的 replica_host_status/innodb_read_only、域名规则属于 Aurora 产品契约，不向 OceanBase 发出这些猜测 SQL。自有控制面、复制服务或 Aurora 服务通过 TopologySource 提供地址、角色和稳定 Service，沿用同一校验/缓存/关闭链路；驱动不内置一个冒充 OceanBase 原生拓扑的 Aurora 探测器。真实产品的查询、权限、角色变化和租户证明逐适配器取证，回调及本地夹具通过不代表服务端兼容通过。
+Java replication maps to explicit role snapshots/two DBs. Aurora replica_host_status/innodb_read_only/domain rules are Aurora contracts and never guessed OceanBase SQL. Custom control planes/replication/Aurora services provide addresses/roles/stable Service through TopologySource and the same validation/cache/close flows. No built-in Aurora detector pretending to be native OceanBase topology. Queries/privileges/role changes/tenant proof require evidence per adapter; callback/local-fixture success is not server compatibility.
 
-依赖仍为 root → internal/routing → 标准库；内部 routing 拥有发现快照、解析、HTTP 和生命周期，不导入根包、wire/auth/charset。Connector 仅组合公开配置与内部类型，不把发现依赖接入单会话命令路径。
+Dependencies remain root → internal/routing → standard library. Routing owns discovery snapshots/parsing/HTTP/lifecycle without root/wire/auth/charset imports. Connector adapts public configuration/internal types; discovery never enters single-session command paths.
 
-### 17.2 认证、TLS 和扩展点
+### 17.2 Authentication, TLS, and Extension Points
 
-- 提供 Java 中已注册认证方式的 Go 适配路径：native、SHA-256、caching SHA-2、clear/old password、Ed25519、GSSAPI、PAM。
-- 实际支持由服务端协商和调用方启用策略共同决定。认证工厂按连接创建可变状态，不能把一个握手对象并发用于所有连接。
-- 插件描述声明算法及各阶段的传输安全要求；共享握手状态机在发送凭据之前统一检查。公开扩展点只得到认证消息、受控发送接口、只读传输状态和 context，不得到原始 Socket 或整个 Conn。插件不能以“服务端要求”绕过该检查。
-- GSSAPI/SSPI、特定操作系统身份和网络传输使用平台适配；不为它们引入 Java 风格的运行时类加载器。
-- TLS 使用调用方 clone 后的 tls.Config；不因兼容模式关闭校验。弱旧算法需要显式启用，不由自动协商悄悄放开。
-- 外部凭据回调在新认证/显式 ChangeUser 时获取凭据；不偷偷重认证正在执行的事务。
+- Provide Go adaptation paths for Java-registered native, SHA-256, caching SHA-2, clear/old password, Ed25519, GSSAPI, and PAM authentication.
+- Actual support combines server negotiation/caller policy. Factories create mutable state per connection, never one concurrently shared handshake object.
+- Plugins declare algorithm/stage transport-security requirements, centrally checked before credentials. Public extensions receive auth messages, controlled sending, read-only transport state, and context, not raw sockets/whole Conn. Server requests cannot bypass gates.
+- Platform adapters carry GSSAPI/SSPI, OS identities, and transport without Java runtime class loaders.
+- TLS uses cloned caller tls.Config without mode-based validation disabling. Weak legacy algorithms require explicit enabling, never silent negotiation.
+- External callbacks obtain credentials for new authentication/explicit ChangeUser; never secretly reauthenticate active transactions.
 
-传输判定和敏感认证按下列统一契约执行，默认策略是本方案的安全选择：
+Transport classification and sensitive authentication share this contract; default policy is this design's security choice:
 
-| 场景 | 必须执行的行为 |
+| Scenario | Required behavior |
 | --- | --- |
-| TLSConfig 为 nil | 驱动不主动发起 TLS；普通 TCP 不满足明文凭据插件要求；仍可使用允许非 TLS 的挑战应答算法 |
-| TLSConfig 非 nil | 必须由驱动完成 TLS 握手、证书链及服务端名称验证；服务端不支持 TLS、证书/主机名失败均终止，不降级为明文连接 |
-| 自定义 DialContext | 返回原始协议传输，由驱动按相同流程升级/验证 TLS；仅返回包装 net.Conn、提供类似 ConnectionState 的方法或声称“已加密”均不构成证明 |
-| 自定义 CA/验证回调 | 私有 CA 和名称通过 RootCAs/ServerName 配置，额外回调可收紧校验。本方案在 NewConnector 拒绝 InsecureSkipVerify=true，不提供用任意回调替代标准链/名称验证的旁路 |
-| clear password、会传输密码的 PAM 阶段 | 仅在上述驱动完成并验证的 TLS 上发送；否则在写入该阶段凭据前失败。配置了 TLS 对象、服务端安全标志或选择了可信插件都不能替代实际握手结果 |
-| SHA-256/caching SHA-2 的 full-auth | 若需要发送明文密码，采用相同 TLS 门禁；无 TLS 时仅允许算法支持且使用显式受信任/固定公钥的加密路径。不把未认证的自动公钥检索当作对端身份验证，不退回明文密码 |
-| IPC/平台传输或外部已加密通道 | 仍需满足相同证明条件；仅凭“本地”或自定义 Dial 的承诺不能允许明文凭据。没有可验证 TLS 的路径可使用其合适的挑战应答/平台认证，不隐式授予明文豁免 |
+| nil TLSConfig | Do not initiate TLS. Ordinary TCP cannot satisfy plaintext-credential requirements; suitable non-TLS challenge-response remains available |
+| Non-nil TLSConfig | Driver must handshake and validate certificate chain/server name. Missing TLS/certificate/hostname failures terminate without plaintext downgrade |
+| Custom DialContext | Returns raw protocol transport; driver performs same TLS upgrade/verification. Wrappers, ConnectionState-like methods, or encryption claims are not proof |
+| Custom CAs/validation callbacks | RootCAs/ServerName configure private trust/names; callbacks may tighten checks. NewConnector rejects InsecureSkipVerify=true; callbacks cannot replace standard chain/name verification |
+| Clear passwords/password-bearing PAM stages | Send only after driver-verified TLS, otherwise fail before stage credentials. Configured TLS objects/server flags/trusted plugins do not replace actual handshakes |
+| SHA-256/caching SHA-2 full-auth | Plaintext passwords share TLS gates; non-TLS allows only supported encryption with explicit trusted/pinned public keys. Unauthenticated key retrieval is not identity proof; never fall back to plaintext |
+| IPC/platform/external encrypted channels | Same proof required; locality/custom Dial promises do not authorize plaintext. Without verifiable TLS use suitable challenge-response/platform authentication, never implicit plaintext exemptions |
 
-门禁覆盖初始认证、每次 auth switch、多阶段认证及 ChangeUser；服务器临时改换算法同样重验。拒绝后不调用敏感阶段的凭据编码/发送，关闭未完成认证的连接；不能先发送密码再检测 TLS。已通过挑战应答发送的摘要不等于允许后续 full-auth 明文。日志和包诊断始终过滤密码、认证内容及相关密钥。[J16]
+Gates cover initial authentication, every switch, multistage authentication, and ChangeUser, rechecking temporary server algorithm changes. Rejection never calls sensitive-stage credential encoding/sending and closes incomplete sessions. Never send passwords before checking TLS. Earlier challenge digests do not authorize later plaintext full-auth. Logs/packet diagnostics always filter passwords/authentication/keys.[J16]
 
-#### D28 认证扩展的当前实现
+#### Current D28 Authentication Extensions
 
-`AuthOptions.AllowOldPassword` 默认为 false，控制 `mysql_old_password`，包括同名自定义工厂；显式开启才允许八字节旧挑战应答及单字节旧式切换。它不降低 TLS 门禁。`client_ed25519` 使用严格 32 字节挑战和密码派生签名；采用纯 Go `filippo.io/edwards25519 v1.1.0` 的标量/曲线运算，标准 `crypto/ed25519.Sign` 的种子再哈希不适用于此协议。算法向量和本地协议对端通过不代表 OceanBase 服务端已安装相应插件。
+`AuthOptions.AllowOldPassword` defaults false and gates `mysql_old_password`, including matching custom factories. Explicit enabling permits eight-byte legacy responses/single-byte old switches without weakening TLS. `client_ed25519` requires 32-byte challenges/password-derived signatures using pure-Go `filippo.io/edwards25519 v1.1.0` scalar/curve operations; standard `crypto/ed25519.Sign` seed rehashing is unsuitable. Algorithm/local-peer success does not prove server plugin installation.
 
-`AuthOptions.PasswordCharset` 默认 `utf8mb4`，通过现有严格字符集编码器转换内置密码及 PAM 回答；DSN 对应 `passwordCharset`。旧密码按编码后的字节计算，不复制 Java 默认系统编码/UTF-16 字符迭代的隐式行为。自定义插件得到原始 Go 字符串，自行决定编码。DSN `allowOldPassword` 只接受 true/false。
+`AuthOptions.PasswordCharset` defaults `utf8mb4` and uses strict existing encoders for built-in passwords/PAM answers; DSN `passwordCharset`. Old-password computation uses encoded bytes, not Java platform encoding/UTF-16 iteration. Custom plugins receive original Go strings and choose encoding. `allowOldPassword` accepts only true/false.
 
-PAM `dialog` 的工厂每次创建独立轮次状态。`AuthOptions.PAM func(context.Context, PAMChallenge) (string, error)` 得到从 1 开始的 Round、UTF-8 Prompt、Echo 和 Last；2/3 表示回显，4/5 表示隐藏，低位为最后问题提示。空初始插件数据按 Java 的首密码流程处理，Prompt 为空；非空提示必须有合法问题类型，提示终止符只剥离一次。原始对话包与普通 auth-more-data 区分，所有回答统一先验证 TLS；回调错误、取消、畸形提示或 NUL 回答均不发送回答。nil 回调只使用一次 Credentials.Password，后续提示明确拒绝，不能把同一个密码自动复用为 OTP。Last 不能代替最终 OK。回调须响应 context，并支持多连接并发；驱动不启动脱离调用的认证回调 goroutine。
+PAM `dialog` factories create independent round state. `AuthOptions.PAM func(context.Context, PAMChallenge) (string, error)` receives a 1-based Round, UTF-8 Prompt, Echo, and Last. Types 2/3 echo and 4/5 hide; the low bit indicates the last question. Empty initial data follows Java's first-password flow with an empty Prompt. Nonempty prompts require valid question types; strip the terminator once only. Distinguish raw `dialog` packets from auth-more-data and verify TLS before every answer. Callback errors, cancellation, malformed prompts, and NUL answers send nothing. A nil callback uses Credentials.Password once only; later prompts reject rather than automatically reusing the password as an OTP. Last never replaces final OK. Callbacks must honor context and concurrent connections; the driver starts no detached authentication goroutines.
 
-`auth_gssapi_client` 在 Windows 使用原生 SSPI 的当前 Windows 身份，不使用数据库密码。`AuthOptions.ServicePrincipalName`（DSN `servicePrincipalName`）可固定目标 SPN，覆盖服务器提供的 SPN；两者均按有界 UTF-8 校验，平台调用转换为 UTF-16。服务端数据为 NUL 结尾的 SPN、机制名称，另允许一个协议终止符；空机制默认为 Kerberos。只接受 Kerberos、Negotiate、NTLM，不把任意名称交给 Windows 选择其他安全包。
+Windows `auth_gssapi_client` uses current native SSPI identity, not database passwords. `AuthOptions.ServicePrincipalName` (DSN `servicePrincipalName`) pins SPN over server SPN. Both require bounded UTF-8 then platform UTF-16 conversion. Server data contains NUL-terminated SPN/mechanism plus optional extra terminator; empty mechanism means Kerberos. Accept Kerberos/Negotiate/NTLM only, never arbitrary Windows security packages.
 
-Kerberos 请求双向认证，并检查 SSPI 最终实际返回的 mutual 标志；未建立双向身份则失败。NTLM 和可能回退 NTLM 的 Negotiate 在每轮 token 生成前要求驱动验证的 TLS，不能把挑战应答等同于服务端身份已验证。凭据、上下文按每次插件使用独立创建并释放；只导入 `github.com/alexbrainman/sspi` 基础包，避免高级 Kerberos 包在全局初始化时查询平台并 panic。Windows 适配留在 internal/auth 的平台文件，不反向依赖根包或 wire。
+Kerberos requests mutual authentication and verifies final actual SSPI mutual flags, failing without it. NTLM/possibly-NTLM Negotiate requires driver-verified TLS before every token generation; challenge-response alone is not server identity. Create/free credentials/contexts per plugin. Import only `github.com/alexbrainman/sspi` base package, avoiding high-level Kerberos global platform queries/panics. Adapter stays in internal/auth platform files without root/wire dependencies.
 
-多轮原始 token 插件可选择实现 `AuthConversation`（AuthPlugin 加 Complete() bool）。在 Complete 为 false 时，完整服务器包（包括 0/1/fe/ff 首字节）交给 Respond；仍逐轮执行 Security 门禁，最多32轮，不把 token 误作 OK、auth-more、切换或 ERR。Complete 为 true 后仅接受最终 OK/ERR；nil 续轮输出不发包，非 nil 空切片显式发空包。初始握手响应仍按协议包含认证字段。自定义工厂的认证策略、复制挑战与 io.Closer 契约继续适用。
+Raw multiround plugins may implement `AuthConversation` (AuthPlugin plus Complete()bool). While incomplete, pass full packets including initial 0/1/fe/ff bytes to Respond, applying Security each round and maximum 32 rounds without confusing tokens with OK/more/switch/ERR. Once complete, accept final OK/ERR only. Nil continuation sends nothing; non-nil empty sends explicit empty packets. Initial response still includes auth fields. Existing factory policy/challenge-copy/io.Closer contracts apply.
 
-Unix 提供方通过 `-tags=gssapi` 显式启用，在 Linux amd64/arm64/386、macOS amd64/arm64 使用系统 GSSAPI，机制限定为与 Java 标准路径一致的 Kerberos。采用 `github.com/ebitengine/purego v0.11.1` 调用 RFC2744 的名称、凭据、上下文和缓冲区 API；构建无需 C 编译器或 GSS 头文件，启用后运行环境须提供原生动态加载器和 C 运行库，GSS 系统库在使用时按固定名称加载。默认构建不导入 purego，保留 CGO_ENABLED=0 的静态部署能力。Linux 尝试 MIT 的 libgssapi_krb5.so.2、Heimdal 的 libgssapi.so.3/libgssapi.so；macOS 使用系统 GSS.framework；不接受服务端提供的库路径。未启用标签、未安装 GSS 系统库、缺失符号及未适配平台明确返回 ErrUnsupported，缺少票据/凭据作为认证错误返回。Windows 构建仍默认使用 SSPI。
+Unix providers explicitly use `-tags=gssapi` on Linux amd64/arm64/386 and macOS amd64/arm64, limited to Java-standard Kerberos. `github.com/ebitengine/purego v0.11.1` calls RFC2744 name/credential/context/buffer APIs without C compilers/headers at build time. Runtime needs native loader/C runtime; load fixed GSS library names on use. Default builds omit purego, retaining CGO_ENABLED=0 static deployment. Linux tries MIT libgssapi_krb5.so.2 then Heimdal libgssapi.so.3/libgssapi.so; macOS GSS.framework. Never accept server library paths. Missing tags/library/symbols/platforms ErrUnsupported; missing tickets/credentials are authentication errors. Windows defaults SSPI.
 
-Unix 每次认证以 GSS_C_INITIATE 获取系统默认缓存身份，按 NT_USER_NAME 导入 SPN，指定 Kerberos OID 和 MUTUAL 标志；不使用数据库密码，不设置进程环境、不写票据、不请求委派。KRB5_CONFIG/KRB5CCNAME 等由部署环境在启动前配置；身份隔离由独立进程/凭据缓存负责，不能用每连接 os.Setenv 切换身份。原始令牌上限16MiB，输入内存只在原生调用期间固定，输出复制后立即释放；即使原生调用报错仍清理已返回的句柄与缓冲区。最终检查实际 mutual 标志；关闭依次删除上下文、释放凭据/名称及系统库引用，删除上下文不发送额外网络令牌。
+Unix acquires default system-cache identity per auth with GSS_C_INITIATE, imports SPN as NT_USER_NAME, requests Kerberos OID/MUTUAL, without database passwords/environment changes/ticket writes/delegation. Deployment sets KRB5_CONFIG/KRB5CCNAME before startup; isolate identities by process/cache, never per-connection os.Setenv. Raw tokens capped at 16 MiB; pin input only during native calls, copy/free output immediately. Clean returned handles/buffers even on native errors. Verify actual mutual flags; close deletes context, releases credentials/names/library references, without extra network tokens.
 
-本机 SSPI NTLM 的原生初始 token 和经过驱动验证 TLS 的完整本机对端交换已运行；TestAuthPluginGSSNativeSessions 进一步覆盖标准包流下两模式完整 database/sql 初始化、连续 ChangeUser、基线重建/Ping、最终拒绝及底层 TCP 关闭/池隔离。沙箱缺失 SSPI 凭据时只跳过对应原生测试，使用当前 Windows 用户进程补取无 skip 正向证据；数据库用户名切换不证明 Windows 身份切换或数据库授权。Unix 状态/清理单测和独立 C 库 ABI 用例已有 Windows amd64 本机运行证据；Linux/macOS 系统 GSSAPI 的运行及真实票据双向交换仍待验证，交叉编译不替代运行。SSPI/GSSAPI 系统调用同步执行，系统票据/KDC 查询可能超出 context 的严格墙钟预算；调用前后检查取消，返回后释放上下文并拒绝交付过期连接，不启动脱离调用的 goroutine。GSS 状态错误仅报告操作和 major/minor 状态码，不拼接可能含身份、路径或票据细节的系统错误字符串。
+Native local SSPI NTLM initial tokens and complete driver-verified-TLS peer exchanges have run. TestAuthPluginGSSNativeSessions adds both-mode standard-stream full database/sql initialization, repeated ChangeUser, baseline/Ping, final rejection, TCP closure/pool isolation. Missing sandbox SSPI credentials skips only relevant native tests; current-user processes provide unskipped positive evidence. Database-user changes prove neither Windows identity switching nor authorization. Unix state/cleanup and independent C ABI fixtures have Windows amd64 runtime evidence; Linux/macOS GSSAPI/real-ticket mutual exchanges remain unverified, not replaced by cross-compilation. Synchronous SSPI/GSSAPI ticket/KDC calls may exceed strict context budgets. Check before/after, free expired contexts/refuse delivery, without detached goroutines. GSS errors expose operation/major/minor codes only, excluding system strings with identities/paths/tickets.
 
-实例级 AuthFactory 禁止返回 nil 或 typed nil。插件可选择实现 `io.Closer`，驱动在切换、成功和失败路径恰好关闭每个已创建实例一次；Close 需及时释放本地上下文，不做网络操作。关闭错误阻止交付连接并与原错误合并，原始连接随后关闭。工厂须返回独立实例，不得复用含可变状态的全局对象。D30 ChangeUser 已复用共享门禁和实例持有机制，见 §16.3.2。
+Per-instance AuthFactory rejects nil/typed nil. Optional `io.Closer` is invoked exactly once per created instance across switch/success/failure. Close must promptly free local state without networking. Close errors prevent delivery, merge original errors, then close transport. Factories return independent state rather than mutable globals. D30 ChangeUser reuses gates/instance ownership (§16.3.2).
 
-当前 D28 已落地上述认证子项、Windows SSPI、上述目标的 Unix GSSAPI、§9.0.1 的 Unix/Named Pipe 及 §9.0.5 的 Windows Shared Memory；§9.0.6 的 OBProxy VC 独立宿主适配已有离线验证，各能力真实验收仍需继续。TCP 与基础 TLS 复用既有实现，IPC 不获得明文凭据豁免。
+D28 locally implements these auth subitems, Windows SSPI, listed Unix GSSAPI targets, Unix/Named Pipe (§9.0.1), Windows Shared Memory (§9.0.5). Separate-host OBProxy VC (§9.0.6) has offline validation; live acceptance remains. TCP/basic TLS reuse existing implementation; IPC grants no plaintext exemption.
 
-### 17.2.1 D32 TLS 配置的 Go 原生承载
+### 17.2.1 D32 Native Go TLS Configuration
 
-Java 的12项 TLS 配置通过现有 `Config.TLSConfig` 与 `crypto/tls`、`crypto/x509` 完成适配；驱动不增加证书文件、store 密码、JVM 类型或 TLS 工厂配置层。两种 OceanBase 兼容模式采用相同的 SSLRequest、驱动内 TLS 握手和认证门禁。TLSConfig=nil 不主动使用 TLS；非 nil 时必须完成标准链/名称验证，服务端不支持、验证失败、版本/套件不匹配或回调报错均终止，不回退明文。
+Twelve Java TLS options map through existing `Config.TLSConfig`/`crypto/tls`/`crypto/x509` without driver certificate-file/store-password/JVM-type/factory layers. Both modes share SSLRequest, driver TLS, auth gates. Nil does not initiate TLS; non-nil demands standard chain/name validation. Missing support/verification/version-suite/callback failure terminates without plaintext fallback.
 
-| Java option | Go 承载与差异 |
+| Java option | Go equivalent and differences |
 | --- | --- |
-| useSsl | 非 nil TLSConfig 显式要求 TLS；仅程序化配置，没有自动安全降级 |
-| serverSslCert / trustStore / trustStoreType | 应用用 x509.NewCertPool/AppendCertsFromPEM 或 AddCert 构建 RootCAs；nil 使用 Go/OS 系统信任源。自定义池替换默认根，若要追加，应先取得 x509.SystemCertPool 并检查错误。DER 先 ParseCertificate；没有 classpath、JVM 系统属性或 Java store 类型解释 |
-| keyStore / keyStoreType | 应用用 tls.LoadX509KeyPair/X509KeyPair 加载 PEM 证书链与私钥，传 Certificates；动态证书使用 GetClientCertificate。证书链按叶证书在前排列；硬件私钥可由实现 crypto.Signer 的对象提供，具体实现由应用负责 |
-| trustStorePassword / keyStorePassword / keyPassword | Java store 的解锁/格式转换由应用或部署侧完成；驱动接收已加载的池/证书/签名器，不获取这些密码。Go 标准加载器不直接解码 JKS/PKCS12 或加密 PEM 私钥；不得将忽略密码、加载失败后空证书连接当作等价支持 |
-| enabledSslProtocolSuites | MinVersion/MaxVersion 控制连续版本范围；Go 1.26 默认最低 TLS1.2、最高当前支持的 TLS1.3，建议应用显式设 MinVersion。Java 未配置时沿用其 JSSE 运行时，不能从旧注释推断实际默认。离散版本集合可额外用 VerifyConnection 拒绝不在集合内的结果，不能关闭标准验证 |
-| enabledSslCipherSuites | CipherSuites 只控制 TLS1.0–1.2，列表顺序由 Go 忽略；TLS1.3 套件不可通过该字段配置。应用可在 VerifyConnection 检查实际协商结果并拒绝，但不能用它改变 ClientHello 的 TLS1.3 套件列表。TLS1.2 及以下无共同可用套件、或无共同版本时由标准 TLS 握手失败；未知套件 ID 不会增加支持能力，TLS1.3 仍忽略该字段 |
-| tlsSocketType | 固定 Java 注册的默认 TLS provider 对应 Go crypto/tls；额外验证及客户端证书选择由 tls.Config 回调承载，不迁移类名/SPI 加载，也不允许 DialContext 声称连接已验证。替换整个 TLS 引擎不属于该回调能力 |
+| useSsl | Non-nil TLSConfig explicitly requires TLS; programmatic only, no automatic security downgrade |
+| serverSslCert / trustStore / trustStoreType | Applications construct RootCAs with x509.NewCertPool/AppendCertsFromPEM/AddCert; nil uses Go/OS trust. Custom pools replace roots; append via SystemCertPool with error checking. DER uses ParseCertificate. No classpath/JVM properties/Java-store interpretation |
+| keyStore / keyStoreType | Applications load PEM chain/private keys with tls.LoadX509KeyPair/X509KeyPair into Certificates or GetClientCertificate. Leaf first; hardware keys may implement crypto.Signer under application responsibility |
+| trustStorePassword / keyStorePassword / keyPassword | Applications/deployment unlock/convert stores; drivers receive loaded pools/certificates/signers, not passwords. Standard Go loaders do not directly decode JKS/PKCS12/encrypted PEM keys. Ignoring passwords/using empty certificates after failures is not equivalent support |
+| enabledSslProtocolSuites | MinVersion/MaxVersion define continuous ranges; Go 1.26 defaults TLS 1.2 minimum/current TLS 1.3 maximum, with explicit minimum recommended. Unconfigured Java follows JSSE, not old comments. VerifyConnection can reject discrete-version omissions without disabling standard checks |
+| enabledSslCipherSuites | CipherSuites controls TLS 1.0–1.2 only; Go ignores order, TLS 1.3 ignores field. VerifyConnection may reject actual suites but cannot change TLS 1.3 ClientHello lists. No shared TLS 1.2-or-earlier suites/versions fails handshake. Unknown IDs add no support |
+| tlsSocketType | Default pinned Java provider maps to crypto/tls. Callbacks provide additional verification/client-certificate selection, not class/SPI loading, DialContext verification claims, or whole-engine replacement |
 
-完整[可编译文件加载示例](../tls_example_test.go)在应用侧读取 CA/客户端证书和私钥，遇到读文件、空信任池、证书或私钥错误立即返回；不会在加载失败后改用无 TLS 配置。示例仅编译，不读取项目外文件、不联网；TestTLSExampleFiles 用临时文件实际执行同一加载函数。真实证书、私钥访问权限及轮换由调用方管理，不把敏感材料或完整配置交给日志。
+The [compilable file-loading example](../tls_example_test.go) reads application CA/client certificate/private key, immediately returning file/empty-trust/certificate/key errors without TLS-less fallback. The example is compiled only, reads no external project files, and stays offline; TestTLSExampleFiles executes the same loader using temporary files. Callers manage real keys/permissions/rotation, excluding sensitive material/full configurations from logs.
 
-NewConnector 快照 TLS 配置的证书字节、证书池及可变切片/map；回调、私钥、已解析 x509.Certificate（包括 Leaf 和通过 AddCert 加入池的证书）、ClientSessionCache 等引用对象由调用方保证不可变或并发安全。证书池 Clone 隔离后续 AddCert，不深复制其中已解析证书对象。每个物理连接再克隆配置；回调不能改写共享配置。GetClientCertificate 应配合其 CertificateRequestInfo.Context 的取消；额外验证回调应及时返回，驱动不能中断应用中无界阻塞的同步回调。VerifyConnection/VerifyPeerCertificate 只在标准验证后收紧策略，错误保留给调用方；TLS 拒绝时不会先取数据库 Credentials。
+NewConnector snapshots certificate bytes/pools/mutable slices/maps. Callers keep referenced callbacks/private keys/parsed x509.Certificate (Leaf/AddCert certificates)/ClientSessionCache immutable or concurrency-safe. Pool Clone isolates later AddCert, not parsed certificate objects deeply. Clone again per session; callbacks cannot mutate shared config. GetClientCertificate honors CertificateRequestInfo.Context; validation callbacks return promptly since drivers cannot interrupt unbounded synchronous application callbacks. VerifyConnection/VerifyPeerCertificate only tighten post-standard validation and retain errors. TLS rejection occurs before database Credentials requests.
 
-TestTLSNativePolicy 覆盖两模式、TLS1.2/1.3、静态/动态客户端证书、服务端验证的完整客户端链及加密认证；TestTLSNativeRejection 覆盖 TLS1.2 的验证/选证书回调错误、无共同版本/套件，均在获取数据库凭据前拒绝。TestTLSNativeSnapshot 经完整初始化/Ping/QUIT 验证原配置后续变更不污染会话；TestTLSNativeCancellation 验证选证书回调的 context 取消。原有 TestTLSVerifiedAuthentication、TestTLSRequired、TestFailoverTLS、TestFailoverClientCertificateReject、TestAuthRejectsForgedTLS 与 ReadTimeout TLS 用例继续覆盖链/名称/降级/路由/缺失客户端身份及读取预算。
+TestTLSNativePolicy covers both modes/TLS 1.2-1.3/static-dynamic client certificates/server-verified full chains/encrypted authentication. TestTLSNativeRejection covers TLS 1.2 validation/certificate callbacks, missing shared versions/suites, before credentials. Snapshot tests full init/Ping/QUIT against later config changes; Cancellation tests certificate-context cancellation. Existing VerifiedAuthentication/Required/Failover/FailoverClientCertificateReject/AuthRejectsForgedTLS/ReadTimeout TLS cases retain chain/name/downgrade/routing/missing-identity/read-budget coverage.
 
-12个同名 Java DSN 参数、禁用校验开关及 DefaultOptions 注释列出的5个历史别名均明确拒绝；不通过 URL 读取证书/私钥文件。固定证据为 DefaultOptions（L188、L263、L385–L434、L682–L693、L740）、AbstractConnectProtocol（L350–L404、L673–L716）、DefaultTlsSocketPlugin 和 OceanBaseX509TrustManager；Java provider 注册清单只有默认实现。这里的本地 TLS 证据不代表真实 OceanBase/OBProxy 的证书部署、双向身份映射、系统信任源或 Java store 转换已经验收。
+Reject all 12 Java DSN names, validation-disable switches, and five DefaultOptions-comment legacy aliases; URLs never load keys/certificates. Pinned evidence: DefaultOptions(L188,L263,L385–L434,L682–L693,L740), AbstractConnectProtocol(L350–L404,L673–L716), DefaultTlsSocketPlugin, OceanBaseX509TrustManager. Registered Java providers contain default only. Local evidence does not accept real certificate deployments/mutual identity mapping/system trust/Java-store conversion.
 
-### 17.2.2 D32 凭据来源与固定 RSA 公钥
+### 17.2.2 D32 Credential Sources and Pinned RSA Keys
 
-Java 的 `credentialType`、`serverRsaPublicKeyFile` 默认均为 null，分别由凭据 SPI 与应用指定的公钥文件承载。Go 使用现有 `Config.Credentials` 和 `Auth.RSAKey`，不增加类名、文件名或全局凭据注册表；两种 OceanBase 兼容模式共用认证状态机。固定 Java 的 [ENV 插件](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/credential/env/EnvCredentialPlugin.java#L59)、[PROPERTY 插件](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/credential/system/PropertiesCredentialPlugin.java#L91)与 [RSA 文件解析](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/authentication/Sha256PasswordPlugin.java#L87)为映射依据。
+Java `credentialType`/`serverRsaPublicKeyFile` both default null, using credential SPI/application public-key files. Go uses `Config.Credentials`/`Auth.RSAKey` without class/file/global registries; both modes share authentication. Pinned [ENV](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/credential/env/EnvCredentialPlugin.java#L59), [PROPERTY](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/credential/system/PropertiesCredentialPlugin.java#L91), and [RSA parsing](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/authentication/Sha256PasswordPlugin.java#L87) establish mapping.
 
-Credentials=nil 时使用静态 User/Password/ProxyUser；非 nil 时返回值完整替换三项，不与静态字段合并。NewConnector 不调用来源回调；每次新物理认证取得新凭据，包括重连/切换候选和显式取消的辅助连接，不缓存为全局身份，普通 SQL/Ping/事务不会主动刷新凭据。ChangeUser 使用其显式 Credentials 参数，忽略原来源回调；之后原 Connector 新建连接仍用原来源，见 §16.3.2。配置 TLS 时先完成握手验证，再读取来源；回调得到的 context 受建连预算约束，必须响应取消并支持多连接并发，不能重入正等待认证/取消的同一受限连接。错误原样返回且不回退静态身份；应用须避免在回调错误中放入密码/token。
+Nil Credentials uses static User/Password/ProxyUser; callbacks fully replace all three without merging. NewConnector never calls sources; every physical authentication gets fresh credentials, including reconnection/candidate switching/cancellation auxiliaries, never global caching or refresh on ordinary SQL/Ping/transactions. ChangeUser takes explicit Credentials, ignoring sources; later original Connector uses originals (§16.3.2). Configured TLS verifies before sources. Callbacks obey budgets/cancellation/concurrency and cannot reenter connections waiting for auth/cancel. Errors propagate unchanged without static fallback; applications exclude password/tokens from error text.
 
-[应用示例](../auth_example_test.go)从 OB_USER、OB_PASSWORD 和可选 OB_PROXY_USER 读取完整身份；前两项必须存在，用户名非空，显式空密码有效。OB_ADDR 由应用选择，未设置则沿用驱动默认地址。示例不隐式读取 MARIADB_USER/MARIADB_PWD，也不按 Java 的 userKey/pwdKey 动态选择变量或回退静态用户名；需要这些策略时由业务回调明确实现。环境变量是进程状态，不能用并发 os.Setenv 为每条连接切换不同身份。其他来源使用相同回调读取应用配置/密钥服务；Java system properties 和 SPI 类名没有 Go 运行时对应物，不解析 PROPERTY 或导入 Java 类。
+The [application example](../auth_example_test.go) reads OB_USER/OB_PASSWORD/optional OB_PROXY_USER as complete identity. First two must exist, username nonempty, explicit empty password valid. Application chooses OB_ADDR or retains driver default. No implicit MARIADB_USER/MARIADB_PWD, Java userKey/pwdKey dynamic names, or static-user fallback; implement such policies explicitly in callbacks. Environment is process state, never concurrent per-connection os.Setenv. Other config/secret services share callbacks. Java properties/SPI classes have no Go runtime equivalent; no PROPERTY parsing/Java imports.
 
-Auth.RSAKey=nil 是默认值，不自动读取文件或向未认证服务端请求密钥。应用通过 os.ReadFile、pem.Decode、x509.ParsePKIXPublicKey 加载受信任渠道预置的公钥，再传入 *rsa.PublicKey；文件加载/格式错误应在调用 NewConnector 前返回，不转成 nil 公钥继续连接。示例只接收单个无 PEM headers 的 PKIX PUBLIC KEY（Java 原格式），拒绝前后垃圾、多块、可被 pem.Decode 跳过的畸形前块、非 RSA、私钥或证书；应用使用 PKCS1 等其他格式时可自行使用对应标准解析器，驱动只接收解析后的公钥，不声称支持任何文件容器。NewConnector 校验模数至少2048位、指数为大于等于3的奇数，并复制 RSAKey 及 N；调用方后续修改原对象不影响 Connector。轮换固定公钥需要建立新 Connector/DB；已有 Connector 不监视文件。
+Auth.RSAKey defaults nil without file reads/unauthenticated retrieval. Applications os.ReadFile/pem.Decode/x509.ParsePKIXPublicKey trusted provisioned keys into rsa.PublicKey; errors precede NewConnector rather than continuing nil. Example accepts one PKIX PUBLIC KEY with no PEM headers (Java format), rejecting leading/trailing junk/multiple blocks/malformed skipped leading blocks/non-RSA/private keys/certificates. Other formats such as PKCS1 may use application standard parsers; driver accepts parsed keys only without container claims. Validate modulus>=2048/exponent odd>=3, copy RSAKey/N. Later mutation does not affect Connector; rotation needs new Connector/DB without file watching.
 
-sha256_password 在无已验证 TLS 时使用固定公钥，caching_sha2_password 的完整认证也使用相同 RSA OAEP-SHA1 与 nonce 掩码路径；后者缓存命中阶段仍使用原生挑战应答。启用且完成验证的 TLS 下仍按插件协议发送受 TLS 保护的密码，RSAKey 不替代证书/名称验证。初始、插件切换和 ChangeUser 复用相同快照与门禁。缺少密钥时需要已验证 TLS；服务端额外提供公钥不能替换固定密钥，不自动请求/采信，也不在失败后重试其他认证方式。RSA 仅保护认证密码，不能证明完整会话加密、服务端身份或后续 SQL/结果保密；部署所需 TLS 必须独立配置。过长密码的 OAEP 错误保留，不能截断密码。
+Without verified TLS, sha256_password uses pinned keys; caching_sha2 full-auth shares RSA OAEP-SHA1/nonce masking, while cache hits retain challenges. Verified TLS sends protocol passwords protected by TLS; RSA never replaces chain/name validation. Initial/switch/ChangeUser share snapshots/gates. Missing keys require verified TLS. Extra server keys cannot replace pinned ones and are neither requested nor trusted; failure never switches auth methods. RSA protects passwords only, proving neither whole-session encryption/server identity/SQL-result confidentiality. Configure required TLS separately; retain OAEP long-password errors without truncation.
 
-TestAuthExampleCredentials/RSAFile、TestAuthNativeRSAPaths、TestAuthNativeCredentialRotation/Failure、TestAuthNativeRSARejection 和 TestAuthJavaDSNRejected 提供本地证据：两模式初始/切换/ChangeUser 对端解密、不同 nonce/显式身份、公钥变更隔离、同 Connector 来源刷新及失败拒绝。只验证本地协议和应用示例；真实服务的插件启用、用户权限、公钥发布/轮换及密钥服务可用性仍待联调，不关闭 D28/D32 的其余范围。
+TestAuthExampleCredentials/RSAFile, TestAuthNativeRSAPaths, CredentialRotation/Failure, RSARejection, AuthJavaDSNRejected provide both-mode initial/switch/ChangeUser peer decryption, nonce/identity, key-mutation isolation, same-Connector refresh/failure evidence. Local protocol/examples only: real plugin enabling/privileges/key distribution-rotation/secret-service availability remain unaccepted and do not close remaining D28/D32 scope.
 
 ### 17.3 LOCAL INFILE
 
-保留本地导入功能，默认不允许服务端按任意文件名读取本机文件。调用方显式传入 Reader 或按请求名解析 Reader 的回调；采用请求级或 Connector 级配置，不使用全局文件白名单。
+Retain local import, default-denying arbitrary server-requested local file reads. Callers explicitly supply Readers/request-name authorization callbacks, scoped per request/Connector without global file whitelists.
 
-导入时有 context、大小/时间约束及明确 Close 所有权；协议拒绝和数据发送中断也要正确结束/丢弃连接。该功能不会因未设计便被删掉，也不会为“全功能”而默认开放任意文件读取。
+Imports have context, size/time limits, explicit Close ownership, and correct completion/discard on protocol rejection/interruption. Do not remove the feature because undesigned, or enable arbitrary reads for completeness.
 
-#### 17.3.1 D29 已实现的受控导入
+#### 17.3.1 D29 Implemented Controlled Import
 
-公开入口是 `Import(ctx, exec, query, input)`，`exec` 接受 `*sql.DB`、`*sql.Conn` 或 `*sql.Tx`，输入为一次性的 `*LocalInfile`。配置与 SQL 分开，SQL 由业务方提供；导入不会开始、提交或重新执行事务。DB 入口先固定物理连接，Conn/Tx 保留调用方原会话；不另建驱动连接池或包。
+The public entry point is `Import(ctx, exec, query, input)`. `exec` accepts `*sql.DB`, `*sql.Conn`, or `*sql.Tx`, and input is a one-shot `*LocalInfile`. Configuration is separate from application-provided SQL. Import never begins, commits, or reexecutes transactions. DB inputs pin a physical connection; Conn/Tx retains the caller's original session. No additional driver pool or package is introduced.
 
 ```go
 input := &oceanbase.LocalInfile{
@@ -1599,188 +1599,188 @@ result, err := oceanbase.Import(ctx, db,
     "LOAD DATA LOCAL INFILE 'input' INTO TABLE target", input)
 ```
 
-- `Reader` 由调用方持有，驱动从不关闭；必须指定精确匹配的 `Name`。也可改用 `Open func(context.Context, string) (io.ReadCloser, error)`，由回调根据本轮请求名授权并返回输入，返回的非 nil Reader 由驱动恰好关闭一次，包括回调同时返回错误的情况。两种来源互斥；回调模式下非空 `Name` 仍须精确匹配。
-- 请求名按会话字符集严格解码为 Go 字符串，校验非空、无 NUL 和长度上限，再匹配/调用回调；文件内容按原始字节发送，不隐式转码。驱动不把名称映射到文件、URL 或全局白名单。
-- 握手在服务端提供时协商 `CLIENT_LOCAL_FILES`，只声明协议能力。普通 Exec/Query、建连初始化和其他内部命令均无输入授权；仅 Import 对应的单条命令可接受一个请求，重复/畸形/不匹配请求直接淘汰连接，不发送任何该请求的数据。
-- `MaxBytes=0` 使用 `Limits.MaxLOBBytes`，分块不超过64 KiB和单消息上限；复用长参数的有界读取、精确上限探测与取消检查。`Timeout=0` 为30秒，覆盖固定连接、等待、发送及最终确认，并受更早的 context 时限约束。Reader/Open/Close 为同步调用，必须配合取消并返回；不会用脱离调用的 goroutine 隐藏阻塞，也不能递归访问同一受限连接。
-- 正常 EOF 后先完成驱动持有 Reader 的关闭，再发送空结束包；随后必须收到最终 OK/ERR，其他响应淘汰连接。延续消息在包序号回绕时仍保持同一请求身份、trace 与诊断记录，复用标准/压缩/OB20 包流。
-- 输入错误、取消、超限或关闭错误不发送成功结束包，立即丢弃物理会话；最终完整服务器 ERR 保留结构化错误且允许会话继续使用。错误以 `ErrLocalInfile` 标识，并屏蔽来源返回的 `driver.ErrBadConn` 重试信号；输入实例不能重复或并发消费。失败可能已有数据库效果，驱动不宣称自动回滚，事务效果须按服务端/存储引擎实际验证。
+- Caller-provided `Reader` remains caller-owned and is never closed by the driver; an exactly matching `Name` is required. Alternatively, `Open func(context.Context, string) (io.ReadCloser, error)` authorizes the current request name and returns input. The driver closes every non-nil returned `Reader` exactly once, including when the callback also returns an error. These sources are mutually exclusive; a nonempty `Name` still requires exact matching in callback mode.
+- Strictly decode names via session charset; require nonempty/no NUL/bounded length before matching/callback. Contents remain raw bytes, not transcoded. Driver maps no names to files/URLs/global lists.
+- Handshake negotiates offered `CLIENT_LOCAL_FILES` as capability only. Ordinary Exec/Query/init/internal commands have no input authorization. Only the single Import command accepts one request; repeated/malformed/mismatched requests discard without sending their data.
+- `MaxBytes=0` uses `Limits.MaxLOBBytes`; chunks are bounded by 64 KiB and the single-message limit, reusing long-parameter bounded reads, exact-limit probes, and cancellation checks. `Timeout=0` means 30 seconds, covering connection pinning, waiting, sending, and final acknowledgment under any earlier context deadline. Reader/Open/Close are synchronous and must cooperate with cancellation and return. The driver does not conceal blocking in detached goroutines, and callbacks cannot recursively access the same constrained connection.
+- After EOF, close driver-owned Readers before sending empty terminators, then require final OK/ERR; other responses discard. Continued messages retain identity/trace/diagnostics across sequence wrap, reusing all streams.
+- Input errors, cancellation, limits, or Close errors send no successful terminator and immediately discard the physical session. Complete final server ERR preserves structured errors and allows reuse. `ErrLocalInfile` identifies errors and suppresses source-provided `driver.ErrBadConn` retry signals. Input instances cannot be reused or consumed concurrently. Failures may already have database effects; the driver claims no automatic rollback. Actual server/storage-engine behavior must establish transaction effects.
 
-本地对端已覆盖两兼容模式及完整压缩/OB20 往返，不代表真实目标已支持 LOAD DATA LOCAL。`TestLocalImport` 保留四目标源码与手动 CI：MySQL 模式提供默认 SQL，Oracle 模式需配置对应 profile 的 `LOCAL_IMPORT_SQL` 模板，包含 `{table}`，请求名固定为 `input`；强制验收时缺失配置失败。数据库联调暂不执行。
+Local peers cover both modes/full compression-OB20 round trips, not real LOAD DATA LOCAL support. Four-target `TestLocalImport`/manual CI has default MySQL SQL; Oracle needs profile `LOCAL_IMPORT_SQL` containing `{table}`, fixed request name `input`. Mandatory acceptance fails missing configuration. Database integration is not run.
 
-## 18. slog、诊断与完整链路追踪
+## 18. slog, Diagnostics, and Full-Link Tracing
 
-### 18.1 日志注入契约
+### 18.1 Logger Injection Contract
 
 ```go
 type Config struct {
-    // 常用连接字段和高级配置省略。
+    // Common connection fields and advanced configuration omitted.
     Logger *slog.Logger
 }
 ```
 
-- `Logger == nil`：完全不输出驱动日志。
-- 使用 `cfg.Logger` 或由其 With 派生的 logger；不调用 `slog.Default()`、`slog.SetDefault()`、包级 `slog.Info/Error`，也不退回 `log.Default()`、fmt.Print 或 stderr。
-- 不提供 `SetLogger` 全局函数；不同 sql.DB/Connector 可以使用不同 logger。
-- 不包装一套自有 Logger 接口，不强制选择 JSON/Text handler，不改变调用方的级别或输出目的地。
-- 使用 Enabled 避免无谓计算，用 LogAttrs 保留结构化字段，并传入当前操作 context。
-- 记录时机和字段由驱动定义，输出、采样、持久化和日志切分由调用方 handler 处理。
+- `Logger == nil` emits no driver logs.
+- Use `cfg.Logger` or derived With loggers. Never call `slog.Default()`, `slog.SetDefault()`, package-level `slog.Info/Error`, or fall back to `log.Default()`, fmt.Print, or stderr.
+- No global `SetLogger`; DBs/Connectors may use different loggers.
+- No custom Logger interface, forced JSON/Text handler, changed caller levels/destinations.
+- Check Enabled to avoid unnecessary work; use LogAttrs/operation contexts for structured data.
+- Driver defines timing/fields; caller handlers own output/sampling/persistence/rotation.
 
-### 18.2 记录内容
+### 18.2 Logged Content
 
-建议字段：driver、operation、mode、server/connection/request 标识、duration、rows_affected、error_code、sql_state、retry_stage。默认不记录密码、认证包、DSN、参数值、LOB 内容、原始 SQL 或完整服务端错误文本。
+Suggested fields: driver, operation, mode, server/connection/request IDs, duration, rows_affected, error_code, sql_state, retry_stage. Default excludes passwords/auth packets/DSNs/parameters/LOB content/raw SQL/full server errors.
 
-SQL profiling 通过时长、命令类别和可选指纹表达。确需 SQL/包诊断时使用独立、显式启用且有大小上限的回调；认证等敏感包仍过滤，不因 Debug 级别自动泄露。
+Profiling uses durations/command categories/optional fingerprints. Explicit independently enabled size-bounded callbacks handle necessary SQL/packet diagnostics, still filtering authentication; Debug never automatically leaks sensitive contents.
 
-驱动日志主要用于内部诊断和慢请求，不能把每个返回给调用方的业务错误再自动记录一遍 Error。网络锁内收集必要字段，释放内部锁后调用外部 handler；handler 不应同步递归访问同一受限连接池。驱动不为“异步日志”另建无界 goroutine/队列。
+Logs primarily diagnose internal/slow requests, not Error-log every returned application failure. Collect fields under network locks and invoke external handlers after unlocking. Handlers avoid synchronous recursion into the same limited pool. No unbounded asynchronous goroutines/queues.
 
-### 18.3 完整链路追踪
+### 18.3 Full-Link Tracing
 
-OB20 Full Link Trace 与 slog 是两项能力：
+OB20 Full Link Trace and slog are distinct capabilities:
 
-- trace/span、ExtraInfo、采样和服务端控制信息遵守 OceanBase 协议；slog 关闭时也可传递已启用的协议追踪。
-- 请求级 trace/app info 使用类型明确的 context helper，包含 module/action/client info 等，不保存为全局可变状态。
-- 对接 OpenTelemetry 采用可选桥接或由调用方提供信息，不让基础驱动强制启动 exporter。
-- query、fetch、LOB piece、批量和建连分别有明确的 span/请求边界；不能借复用连接把上一个请求的 trace 带给下一个请求。[J12]
+- Trace/span/ExtraInfo/sampling/server control follow OceanBase protocol; enabled tracing works without slog.
+- Typed context helpers carry request trace/application module/action/client info, never global mutable state.
+- Optional bridges/caller data integrate OpenTelemetry without mandatory exporters.
+- Query/fetch/LOB pieces/batches/establishment have explicit span/request boundaries, never leaking previous request tracing across pooled connections.[J12]
 
-### 18.3.1 D25 已实现的诊断与追踪契约
+### 18.3.1 D25 Implemented Diagnostics and Tracing Contract
 
-公开入口集中在根包 `DiagnosticOptions`、`RequestDiagnostic`、`PacketDiagnostic`、`TraceInfo` 和 `WithTraceInfo`；wire 叶包只做协议、采样和受限快照，不调用根包或外部 handler。没有新增依赖、全局追踪器、exporter 或后台日志队列。
+Root APIs are `DiagnosticOptions`/RequestDiagnostic/`PacketDiagnostic`/`TraceInfo`/`WithTraceInfo`. wire only handles protocol/sampling/bounded snapshots without root/external handlers. No dependencies/global tracer/exporter/background queues.
 
-- `Config.Diagnostics` 的 Request/Packet 回调显式启用元数据诊断；SQL 只提供 SHA-256 指纹与编码后字节数，包只提供方向、字节数、逻辑消息起始序号及错误标记。始终排除认证包、原始 SQL、参数、LOB 和服务端错误文本。Debug 不会扩大数据范围，也不自动执行额外数据库诊断 SQL。
-- 普通事件为 Debug；`SlowThreshold > 0` 且达到阈值时为 Warn。零阈值不启用慢请求升级。`MaxRequests`/`MaxPackets` 为每次持锁区间的请求上限和每请求消息上限，零各取64，合法范围0–1024；达到上限只丢诊断，事件携带丢弃计数，不中断业务。无 logger/回调时不收集诊断。
-- 请求边界为实际协议命令：prepare、execute/161、fetch、每个长参数片段、LOB 辅助 SQL、批量各项和清理命令独立计时；multi-send 合并各自写/读快照并等待写协程后交付。Rows 持有连接期间包含消费时间；这是连接占用时长，不宣称纯服务端执行时长。建连额外提供一次总耗时事件，覆盖拨号、认证和初始化，认证内容仍不采集。
-- `Enabled`/handler/Request/Packet 均在驱动锁释放后同步调用；调用方须自行处理并发，避免递归访问同一受限 sql 连接池。回调内部可观察其他请求，跨回调的全局顺序没有保证。
-- `Protocol.FullLinkTrace` / DSN `fullLinkTrace=auto|off|required` 默认 auto；请求 OB20 位8、FLT 位14、新 extra 位15、ShowTrace 位18。FLT 必须同时确认 OB20，缺少 required 或非法回显在业务前拒绝。日志关闭不关闭 FLT；未确认时保持普通行为。
-- 新 extra 的 FULL_TRC key=2003；旧 extra 使用 `full_trc` ObObj varchar 对。64KiB 内校验嵌套 TLV、控制字段长度/概率/时间范围，未知新字段按长度跳过；FLT 开启时旧对象仅接受已实现的 null/varchar，其他类型明确拒绝。每命令首个外层帧发送 app/span，续帧不重复，长度预算预留 extra，仍保留 CRC、身份、序号和真实发送字节证据。
-- app 字段 ClientIdentifier/Module/Action/ClientInfo 的 UTF-8 字节上限分别为64/64/64/256；拒绝 NUL、非法 UTF-8 和超长值，不截断。信息来自当前 context，每命令发送四个字段（含空值）清除池化残留；不把 app 内容写进日志。TraceID/ParentSpanID 为16字节 OceanBase 原始线序；调用方桥接其他追踪系统时负责转换其 ID 规范。
-- 服务端控制按物理连接保存，部分更新原子合并；level、sample、record policy（1全量/2慢请求/3采样及慢请求/4关闭）、print sample、slow threshold、ShowTrace 决定采样/输出。首次控制到达前不擅自采样；ShowTrace 可强制采样。每个被采样命令生成新的 span；有调用方 TraceID 则沿用，否则新建；ParentSpanID 仅用于该 span 的 parent。反馈的 query 起止微秒值与诊断 ID 可由 Request 回调对接外部追踪，下一命令清空 query 时间。
-- 完成 span 的 JSON driver log（group1/field1）和 ShowTrace（group2005/field2050）只包含 ID、固定驱动名和时间。每连接最多保留一个完成 span，在下一命令 extra 中发送一次，保留原 ID；不额外发 SQL、不在失败后重放。连接关闭或丢弃前的最后一个完成 span 可能没有后续命令上传，建连认证阶段只有本地总耗时事件，不冒充服务端 span。
+- Explicit `Config.Diagnostics` Request/Packet callbacks enable metadata diagnostics: SQL SHA-256 fingerprints/encoded sizes only; packets expose direction/bytes/logical start sequence/error flags. Always exclude auth/raw SQL/parameters/LOB/server-error text. Debug adds no data/extra diagnostic SQL.
+- Ordinary events use Debug. When `SlowThreshold > 0` and the threshold is reached, use Warn; zero disables slow-request upgrades. `MaxRequests` bounds requests per locked interval and `MaxPackets` bounds messages per request. Each defaults to 64 at zero, with legal range 0–1024. Reaching limits drops diagnostics only, reports drop counts, and never interrupts business operations. Without a logger or callbacks, no diagnostics are collected.
+- Actual protocol commands define requests: prepare,execute/161,fetch,long pieces,LOB SQL,batch items,cleanup timed separately. Multi-send joins write/read snapshots and waits writers before delivery. Rows duration includes caller consumption, measuring connection occupancy rather than pure server execution. One establishment-total event includes dial/auth/init without auth contents.
+- `Enabled`/handlers/Request/Packet run synchronously after driver unlocks. Callers handle concurrency/avoid same-pool recursion. Callbacks may observe other requests; no global cross-callback ordering.
+- `Protocol.FullLinkTrace`/DSN `fullLinkTrace=auto|off|required` defaults auto; request OB20 bit 8/FLT bit 14/new-extra bit 15/ShowTrace bit 18. FLT requires confirmed OB20; missing required/invalid echoes fail before work. Logging-off retains FLT; unconfirmed keeps ordinary behavior.
+- New extra FULL_TRC key 2003; old extras use `full_trc` ObObj varchar pairs. Validate nested TLV/control lengths/probabilities/time ranges within 64 KiB; skip unknown new fields by length. Enabled FLT old objects accept implemented null/varchar only. First outer command frame carries app/span, continuations do not. Reserve extra budget while retaining CRC/identity/sequence/actual byte evidence.
+- UTF-8 byte limits ClientIdentifier/Module/Action/ClientInfo=64/64/64/256; reject NUL/invalid UTF-8/excess, never truncate. Current context provides all four per-command fields, including empties to clear pooled remnants, excluded from logs. TraceID/ParentSpanID are 16-byte OceanBase wire-order IDs; bridges convert external conventions.
+- Server control is per-session with atomic partial merges. Level/sample/record policy(1 all, 2 slow, 3 sampled+slow, 4 off)/print sample/slow threshold/ShowTrace determines sampling/output. No sampling before initial control; ShowTrace can force it. Sampled commands get new spans, retaining caller TraceID or generating one, ParentSpanID only as parent. Request callbacks bridge feedback query-start/end microseconds/diagnostic IDs; next commands clear timing.
+- Completed-span JSON driver logs(group 1/field 1)/ShowTrace(group 2005/field 2050) contain IDs/fixed driver name/timing only. Retain at most one completed span per connection, sent once in next extra with original ID. No extra SQL/replay. Last spans may never upload before close/discard; establishment auth has local total events only, not fabricated server spans.
 
-协议夹具、nil logger、回调/handler 重入、采样更新/关闭、池化清空、片段/CRC、畸形数据及 fuzz 在本地验证；`TestFullLinkTrace` 集成源码对四目标登记直连 off、代理 required，必须另核对服务端 trace 中的 app 清空及 ID，客户端事件不能替代服务端可见性证据。当前没有数据库/代理联调结果，不计为真实兼容验收。
+Local verification covers fixtures/nil loggers/handler-callback reentry/sampling updates-off/pool clearing/fragments-CRC/malformed data/fuzz. Four-target `TestFullLinkTrace` registers direct off/proxy required; server traces must separately prove app clearing/IDs. Client events do not prove server visibility. No database/proxy integration results or real acceptance are claimed.
 
-## 19. Java 全功能到 Go 的覆盖矩阵
+## 19. Java-to-Go Complete Feature Coverage Matrix
 
-下表是交付核对表。工作可以分批完成，但表中的能力不是因为实现顺序靠后就从目标中删除。
+This table is a delivery checklist. Work may proceed in phases, but later implementation order does not remove capabilities from scope.
 
-| Java 模块 | Go 承载方式 | 完成依据 |
+| Java module | Go implementation approach | Completion evidence |
 | --- | --- | --- |
-| M01 Driver/DataSource/JDBC API | 注册名、DriverContext、Connector、标准 sql 对象；扩展具体类型/函数 | 两模式相同入口和标准库契约测试 |
-| M02 URL/Options/地址描述 | 严格 DSN、类型化 Config、TNS/OCP、拓扑配置 | 参数迁移表、转义/错误/刷新测试 |
-| M03 传输/TLS/认证/凭据 | net.Conn、必需时验证 TLS、统一凭据门禁、平台适配、实例级认证工厂与凭据回调 | 初始/切换/多阶段认证、无 TLS 零明文凭据发送、无降级及平台测试 |
-| M04 握手/模式/能力 | 实际模式识别、期望校验、版本及协商能力分离 | 不匹配、缺失能力、OBProxy 路径测试 |
-| M05 连接/会话/本地事务 | sql.Conn/Tx、BeginTx、保存点、schema/catalog、warning、ChangeUser、reset、计数策略 | 事务属性、状态恢复、匹配/修改计数和资源失效测试 |
-| M06 普通/两类预处理 | COM_QUERY、客户端 prepare、服务端 prepare/execute、PrepareExecute、缓存/checksum | 文本/二进制/合并执行等价性与无重复执行测试 |
-| M07 绑定/批量/长数据 | ?/:name、sql.Named、Parameter 编码、批量多种策略、LONG/PIECE_DATA | 词法/参数数/长数据/逐项计数/异常矩阵 |
-| M08 结果/生成键/多结果/游标 | 标准 Rows、Execute/Execution 摘要、OUT/CursorOut、REF CURSOR 列、Cursor、更新/刷新函数 | 混合结果顺序/计数/错误前缀、未读结果清理、滚动和可更新条件测试 |
-| M09 全类型/编码/时间 | 标准值、Scanner/Valuer、显式特殊类型、字符集/时区 | 全类型往返、NULL/空值/精度/区域时区矩阵 |
-| M10 LOB/复杂类型 | Blob/Clob、Locator V1/V2、OpenTableBlob/MySQL 模拟 locator、Object/Array、类型字典 | 同事务读取、表/主键定位、分块读写/截断、嵌套/同义词/失效测试 |
-| M11 数据库/结果/参数元数据 | ColumnTypes、结构查询函数、参数计划与字典查询 | 对照两模式数据库真实字典 |
-| M12 多地址/HA | 地址源、拓扑适配、负载/组/黑名单、连接级故障转移 | 失败注入、地址刷新、无跨会话事务迁移 |
-| M13 池化 | sql.DB 管池；reset/Validator 保证复用契约；DB.Stats 替代自有池 JMX | 池压力、取消、reset 后 sql.Stmt 重用 |
-| M14 XA | XID 与显式 XA 函数、DBMS_XA/原生命令、恢复 | 两阶段、join/resume、进程/网络故障验证 |
-| M15 日志/包诊断/OB20/FLT | 注入 slog、受限诊断回调、OB20/校验、请求级 trace | nil logger 静默、隔离、追踪串扰与校验测试 |
-| M16 构建/SPI/平台/性能测试 | Go module、接口注入、build tags、go test/fuzz/bench | Go 1.26 工具链和目标平台 CI |
-| LOCAL INFILE | 显式 Reader/回调；请求级权限和大小限制 | 拒绝任意文件、传输中断和清理测试 |
-| JDBC scroll/updatable 与旧 API | Cursor/参数化 DML；保留能力而不复制 JDBC 方法名 | 真实支持条件、语义与并发变更测试 |
-| OSGi/JMX/Java 序列化/兼容类名 | Go 模块和接口、DB.Stats/诊断；序列化值由调用方显式处理 | Go 侧能力可观察，不引入 Java 运行时依赖 |
+| M01 Driver/DataSource/JDBC API | Registration, DriverContext, Connector, standard sql objects; concrete extension types/functions | Shared entry points in both modes/standard-library contracts |
+| M02 URL/Options/address descriptions | Strict DSN, typed Config, TNS/OCP, topology | Option migration/escaping/error/refresh tests |
+| M03 Transport/TLS/authentication/credentials | net.Conn, verified TLS where required, unified credential gates, platform adapters, per-instance auth factories/credential callbacks | Initial/switch/multistage auth, zero plaintext credentials without TLS, no downgrade, platform tests |
+| M04 Handshake/mode/capabilities | Identify actual mode, validate expectations, separate versions/negotiated capabilities | Mismatch/missing-capability/OBProxy tests |
+| M05 Connections/sessions/local transactions | sql.Conn/Tx, BeginTx, savepoints, schema/catalog, warnings, ChangeUser, reset, count policy | Transaction attributes/restoration/matched-changed counts/resource invalidation |
+| M06 Ordinary/client-server preparation | COM_QUERY, client prepare, server prepare/execute, PrepareExecute, cache/checksum | Text/binary/combined equivalence/no duplicate execution |
+| M07 Binding/batching/long data | ?/:name, sql.Named, Parameter encoding, batch strategies, LONG/PIECE_DATA | Lexical/count/long-data/per-item-count/failure matrices |
+| M08 Results/keys/multiple results/cursors | Standard Rows, Execute/Execution summaries, OUT/CursorOut, REF CURSOR columns, Cursor, mutation/refresh | Mixed ordering/count/error prefixes, unread cleanup, scroll/update conditions |
+| M09 All types/encoding/time | Standard values, Scanner/Valuer, explicit special types, charsets/timezones | All-type round trips, NULL/empty/precision/region-timezone matrix |
+| M10 LOB/complex types | Blob/Clob, Locator V1/V2, OpenTableBlob/MySQL emulation, Object/Array, dictionaries | Same-transaction reads, key targeting, chunk I/O/truncation, nested/synonym/invalidation tests |
+| M11 Database/result/parameter metadata | ColumnTypes, structure functions, parameter plans/dictionaries | Compare real dictionaries in both modes |
+| M12 Multi-address/HA | Sources/topology/load/groups/blacklists/connection failover | Fault injection/refresh/no transaction migration |
+| M13 Pooling | sql.DB pool; reset/Validator reuse contracts; DB.Stats instead of custom JMX | Pool stress/cancellation/sql.Stmt reuse after reset |
+| M14 XA | XID/explicit functions, DBMS_XA/native commands/recovery | 2PC/join/resume/process-network failures |
+| M15 Logging/packet diagnostics/OB20/FLT | Injected slog, bounded callbacks, OB20/checksums/request tracing | Nil silence/isolation/trace leakage/checksums |
+| M16 Build/SPI/platform/performance | Go modules/interfaces/build tags/test/fuzz/bench | Go 1.26/target-platform CI |
+| LOCAL INFILE | Explicit Reader/callback, request authorization/size limits | Arbitrary-file rejection/interruption/cleanup |
+| JDBC scroll/updatable/legacy APIs | Cursor/parameterized DML, capabilities without copied JDBC names | Real support/semantics/concurrent-change tests |
+| OSGi/JMX/Java serialization/compatibility classes | Go modules/interfaces, DB.Stats/diagnostics; caller-explicit serialization | Observable Go capabilities without Java runtime dependencies |
 
-需要另外维护逐项 option 对照表：每个 Java 选项标明 Go 配置、标准库替代、平台适配或仅 Java API 兼容用途，避免把“没做同名配置”误当作“功能已经覆盖”。不能只凭这个高层矩阵宣布功能实现完成。
+Maintain a separate per-option mapping identifying Go configuration, standard alternatives, platform adaptation, or Java-API-only compatibility. Missing same-named configuration must not be mistaken for feature coverage. This high-level matrix alone cannot establish completed implementation.
 
-## 20. 验证矩阵与实施依赖
+## 20. Verification Matrix and Implementation Dependencies
 
-### 20.1 验证层次
+### 20.1 Verification Layers
 
-1. **标准库契约**：接口断言、参数转换、NumInput、NextResultSet、ErrBadConn、Validator、SessionResetter。
-2. **协议单测及 fuzz**：包边界、压缩、OB20、截断/超长/未知字段、NULL bitmap、类型/嵌套数据。
-3. **两模式真实服务端**：普通/客户端/服务端/合并执行、所有类型、过程、批量、LOB、游标、元数据和 XA。
-4. **直连与 OBProxy**：能力协商、trace、用户格式、会话行为、路由和失败。
-5. **故障注入**：发送前断线、部分写、响应丢失、COMMIT 丢响应、取消与完成竞态、LOB 中断、XA 恢复。
-6. **资源和并发**：Rows 提前关闭、句柄泄漏、池复用、reset 代次、凭据刷新、Logger 隔离、共享地址状态。
-7. **工具链与平台**：Go 1.26；Linux/Windows，支持平台上的 socket/认证适配；重点解析和边界代码在 386 验证。
-8. **性能**：普通 CRUD、prepare 缓存、批量、LOB 流式、游标 fetch；对照结果正确性后再讨论吞吐。本地协议基准已覆盖两模式的基础路径，计时/分配含对端及断言；离线资源测试分别覆盖重建会话和同一物理会话持续混合执行，直接检查原会话所有权、缓存边界及池/物理关闭，记录 GC 后进程堆/goroutine，详见[本地基准](go-driver-benchmarks.md)。真实数据库性能、OS 句柄、完整并发/故障组合和生产长期资源曲线仍待验证。
+1. **Standard-library contracts**: interface assertions, conversion, NumInput, NextResultSet, ErrBadConn, Validator, SessionResetter.
+2. **Protocol tests/fuzz**: packet boundaries, compression, OB20, truncation/oversize/unknown fields, NULL bitmaps, types/nesting.
+3. **Real servers in both modes**: ordinary/client/server/combined execution, all types, procedures, batches, LOB, cursors, metadata, XA.
+4. **Direct/OBProxy**: negotiation, tracing, usernames, session behavior, routing, failures.
+5. **Fault injection**: pre-send disconnect, partial writes, lost responses/COMMIT responses, cancellation-completion races, LOB interruption, XA recovery.
+6. **Resources/concurrency**: early Rows closure, leaks, pool reuse, reset generations, credential refresh, logger isolation, shared addresses.
+7. **Toolchains/platforms**: Go 1.26, Linux/Windows, supported socket/auth adapters, critical parsing/boundaries on 386.
+8. **Performance**: CRUD, prepare caches, batching, streaming LOB, fetch. Verify correctness before throughput. Local protocol benchmarks cover both-mode basics, timing/allocations including peers/assertions. Offline resources cover rebuilt sessions and continuous same-session mixed execution, directly checking ownership/cache boundaries/pools/physical closure, recording post-GC heap/goroutines; see [Local Benchmarks](go-driver-benchmarks.md). Real performance, OS handles, full concurrency/fault combinations, and production long-duration resource trends await verification.
 
-类型矩阵至少交叉模式、文本/二进制协议、NULL/空值、最大/最小/越界、字符编码、时区和精度。复杂类型及 locator 测试不能仅用 mock 声称与服务器兼容。
+Type matrices cross mode, text/binary, NULL/empty, max/min/overflow, encoding, timezone, precision at minimum. Mock-only complex/locator tests cannot claim server compatibility.
 
-CI 在 D01 建立，实际安装 Go 1.26.x，在 Linux/Windows amd64 执行 test/vet 和依赖检查；D02 增加包依赖边检查及协议 fuzz/386，D04 接入显式 require 的集成入口，D06 增加受支持平台的并发资源检查。驱动为纯 Go 且不导入 `C`，而 `-race` 按工具链设计强制 cgo，故 CI 以 `CGO_ENABLED=0` 运行并持续验证零 cgo 构建，竞态检测另在 cgo 环境手动执行。后续能力同步扩展检查，D32 汇总补全矩阵，不到交付末期才建立 CI。每项必需验证集及状态聚合规则固定在[开发进度 §5](go-driver-development-progress.md#5-验证组合与证据)，不能由实现者临时选择一个成功组合验收。
+D01 establishes CI installing actual Go 1.26.x for Linux/Windows amd64 test/vet/dependencies. D02 adds import-edge checks/protocol fuzz/386; D04 requires explicit integration; D06 adds supported-platform concurrent resources. Driver is pure Go without `C` imports, while `-race` requires cgo by toolchain design. CI continuously verifies `CGO_ENABLED=0`; run races manually in cgo environments. Extend checks with capabilities and complete D32 matrix rather than delaying CI until delivery. Required combinations/status aggregation are fixed in [Development Progress §5](go-driver-development-progress.md#5-validation-combinations-and-evidence), not implementer-selected successful subsets.
 
-### 20.2 本次补齐契约的验收场景
+### 20.2 Acceptance Scenarios for These Contracts
 
-| 契约 | 必须有的证据 |
+| Contract | Required evidence |
 | --- | --- |
-| 混合结果与摘要 | UPDATE→SELECT→UPDATE 的顺序及 RowSetIndex；零计数/未知计数；纯命令执行；最终 CALL 汇总与 OUT 控制响应区分；完整 uint64 insert ID；计数溢出 |
-| 错误与最终化 | 中途服务端 ERR、部分响应断线、QueryContext 直接失败仍保留摘要；NextResultSet/Rows.Close/Execution.Close 的一致状态；提前关闭有界 drain；上限、取消、未完成项及错误前缀不冒充未执行 |
-| 连接相关输出 | 正常消费和 Close 后才发布 Cursor/LOB；输出转换失败不泄漏未发布资源；多个句柄、父 statement 租约及后续 Fetch 独立 context；关闭 Execution 后句柄仍能使用 |
-| 计数策略 | 两模式实际行为；MySQL MatchedRows/ChangedRows 的 no-op UPDATE、INSERT/DELETE/upsert；Oracle 拒绝 ChangedRows；游标与模拟 BLOB 不把 0 修改误判为缺行 |
-| 认证门禁 | 初始 clear、native→clear 的 auth switch、PAM/全认证阶段在无 TLS 时无敏感凭据写出；缺 TLS 能力、证书/名称失败无降级；伪装安全状态的 Dial 不被采信；ChangeUser 重验 |
-| MySQL 模拟 BLOB | 完整/复合主键、引号标识符、缺键/NULL/越界/不存在、Key 被调用方修改、NULL 与空 BLOB；超过物化上限仍能分块；首/中/尾 ReadAt/WriteAt、相同值写入、追加、Truncate、断线不重放 |
-| BLOB 事务与资源 | Conn 只读路径与 Tx 修改门禁；同事务未提交可见性、锁定后删除/并发更新、rollback、隔离级别、代次失效；驱动不隐式提交，不以辅助连接读取原事务 |
+| Mixed results/summaries | UPDATE→SELECT→UPDATE order/RowSetIndex; zero/unknown counts; command-only; final CALL versus OUT controls; full uint64 IDs/count overflow |
+| Errors/finalization | Midstream ERR/partial disconnect/direct QueryContext failure retains summaries; NextResultSet/Rows.Close/Execution.Close consistency; bounded early drain; limits/cancellation/incomplete/error prefixes never misreported unexecuted |
+| Connection-bound outputs | Publish Cursor/LOB after full consumption/Close only; no leaks on conversion failure; multiple handles/parent leases/new Fetch contexts; handles survive Execution close |
+| Counts | Real both-mode behavior; MySQL matched/changed no-op UPDATE/INSERT/DELETE/upsert; Oracle ChangedRows rejection; cursor/emulated BLOB zero-change is not missing |
+| Authentication gates | No sensitive clear/switch-native-to-clear/PAM/full-auth writes without TLS; missing support/certificate-name failure never downgrades; forged Dial security rejected; ChangeUser rechecks |
+| MySQL emulated BLOB | Complete/composite keys, quoted identifiers, missing/NULL/excess/nonexistent keys, mutated caller Key, NULL/empty contents; chunk beyond materialization; first/middle/end ReadAt/WriteAt, identical writes, append/truncate, no disconnect replay |
+| BLOB transactions/resources | Conn reads/Tx-only writes; uncommitted visibility, locked deletion/concurrent updates, rollback/isolation/generations; no implicit commit or auxiliary original-transaction reads |
 
-这里列的是实现验收要求，尚未执行。协议模拟验证门禁和边界，真实 OceanBase/OBProxy 验证 SQL、计数、认证及事务行为；两者不可互相替代。
+These are implementation acceptance requirements, not yet executed. Simulation verifies protocol gates/boundaries; real OceanBase/OBProxy verifies SQL/counts/auth/transactions. Neither substitutes for the other.
 
-### 20.3 实施依赖顺序
+### 20.3 Implementation Dependency Order
 
 ```text
-公开契约 + 模式/能力模型
-  → 包流/握手/认证/基础类型
-  → 会话状态 + 普通与预处理执行 + Rows + 本地事务
-  → 精确/扩展类型 + OUT/RETURNING + 元数据
-  → 批量 + LOB + 复杂类型 + Cursor
-  → 完整 HA/平台认证 + XA + FLT
-  → 全矩阵集成、故障与性能验证
+Public contracts + mode/capability model
+  → Packet streams/handshake/authentication/basic types
+  → Session state + ordinary/prepared execution + Rows + local transactions
+  → Exact/extended types + OUT/RETURNING + metadata
+  → Batching + LOB + complex types + Cursor
+  → Complete HA/platform authentication + XA + FLT
+  → Full integration/fault/performance matrix
 ```
 
-这表示开发依赖，不表示只交付最前面几项。日志注入、取消、资源清理、错误边界和真实功能验证随对应模块同步实现，不放到最后补。
+This is dependency order, not permission to deliver early items only. Logger injection, cancellation, cleanup, error boundaries, and real functional validation accompany each module rather than being postponed.
 
-每项功能的完成记录应包含：服务端/OBProxy 版本、兼容模式、使用路径、测试证据及已知限制。没有真实服务端证据的项标记为“实现但待联调”，不得标记为已完成适配。
+Each completion record includes server/OBProxy versions, mode, path, evidence, limitations. Without real-server evidence, mark implemented/pending integration, never completed adaptation.
 
-## 21. 当前仍需取证的协议条件
+## 21. Protocol Conditions Still Requiring Evidence
 
-这些是实施期需要用源码/服务端证据落实的条件，不作为删减功能的理由：
+Implementation must establish these through source/server evidence; they do not justify removing features:
 
-- 各 OceanBase/OBProxy 目标版本对 reset、PrepareExecute、offset fetch、新元数据、LOB V2、array binding 的确切支持组合。
-- Oracle 同连接保留 cursor、执行 LOB/类型字典读取及 DML 的可交错边界。
-- OUT/INOUT 和 REF CURSOR 在两模式、标准/扩展执行路径中的完整响应顺序。
-- 区域时区与 LTZ 的字节/语义、复杂类型版本及同义词描述、Locator 生命周期。
-- 平台认证和特定传输适配的实际目标平台与必要依赖。
-- Java 功能测试中被忽略或服务端不支持的场景；不能把源码类名存在当作已承诺行为。
+- Exact target-version combinations for reset, PrepareExecute, offset fetch, new metadata, LOB V2, array binding.
+- Oracle same-session cursor retention/interleaving with LOB/type dictionaries/DML.
+- Complete OUT/INOUT/REF CURSOR response order across both modes/standard-extended execution.
+- Region/LTZ bytes and semantics, complex versions/synonyms, locator lifetimes.
+- Actual platform targets/necessary dependencies for authentication/special transports.
+- Ignored/unsupported Java test scenarios; source class existence alone is no behavior commitment.
 
-核心及扩展能力已有本地实现；升级前 Go 1.25/1.26 的 Windows 构建、单元测试和 lint 已实际验证，当前 Go 1.26 基线的验证见开发进度；平台运行和真实数据库兼容性仍需独立证据。逐项实现、依赖和验收状态以[开发进度](go-driver-development-progress.md)为准，不能将架构设计或本地对端测试视为服务端验收。
+Core/extensions have local implementations. Pre-upgrade Go 1.25/1.26 Windows builds/tests/lint were run; current Go 1.26 verification is in Development Progress. Platform runs/live compatibility need separate evidence. [Development Progress](go-driver-development-progress.md) governs implementation/dependency/acceptance status; architecture/local peers are not server acceptance.
 
-## 22. 核心证据索引
+## 22. Core Evidence Index
 
-Java 深入阅读：
+Detailed Java references:
 
-- [J01：认证后的实际模式与 OB 能力识别][J01]
-- [J02：标准/扩展命令和查询执行][J02]
-- [J03：按模式解释类型码及未知类型回退][J03]
-- [J04：普通结果、OUT 与 cursor 响应分派][J04]
-- [J05：reset 与预处理缓存清理][J05]
-- [J06：LOB 辅助连接路径][J06]
-- [J07：Java 故障切换中的查询重放判定][J07]
-- [J08：PrepareExecute 与 offset fetch 的条件][J08]
-- [J09：批量与 array binding 分派][J09]
-- [J10：可更新结果集的 DML 和行定位][J10]
-- [J11：两种模式的 XA 实现][J11]
-- [J12：OB20 完整链路追踪字段与控制][J12]
-- [J13：CLIENT_FOUND_ROWS 与 Java 的 useAffectedRows 策略][J13]
-- [J14：MySQL emulateLocators 与原生 BLOB 分支][J14]
-- [J15：模拟 BLOB 的表/主键/列身份及分块 SQL][J15]
-- [J16：明文密码插件的 SSL 要求与握手检查][J16]
-- [J17：Oracle RETURNING 对 PrepareExecute 的明确要求][J17]
+- [J01: Actual authenticated mode and OB capabilities][J01]
+- [J02: Standard/extended commands and execution][J02]
+- [J03: Mode-specific type codes and unknown fallback][J03]
+- [J04: Ordinary/OUT/cursor response dispatch][J04]
+- [J05: Reset and prepared-cache cleanup][J05]
+- [J06: Auxiliary LOB connections][J06]
+- [J07: Java failover query replay decisions][J07]
+- [J08: PrepareExecute/offset fetch conditions][J08]
+- [J09: Batch/array-binding dispatch][J09]
+- [J10: Updatable DML and row identity][J10]
+- [J11: XA in both modes][J11]
+- [J12: OB20 full-link fields/control][J12]
+- [J13: CLIENT_FOUND_ROWS/Java useAffectedRows][J13]
+- [J14: MySQL emulateLocators/native BLOB paths][J14]
+- [J15: Emulated BLOB table/key/column identity and chunk SQL][J15]
+- [J16: Plain-password SSL requirements/handshake gates][J16]
+- [J17: Explicit Oracle RETURNING PrepareExecute requirement][J17]
 
-Go 标准库契约；链接固定到 Go 1.27.2 源码，设计接口范围限定为 Go 1.26 已有 API：
+Go contracts, pinned to Go 1.27.2 source while restricting design to APIs already in Go 1.26:
 
-- [G01：ErrBadConn 的重复执行约束][G01]
-- [G02：database/sql 对 ErrBadConn 的重试][G02]
-- [G03：driver.Value 和子游标][G03]
-- [G04：NamedValueChecker 契约][G04]
-- [G05：Go 1.27 新增 RowsColumnScanner，本设计不依赖][G05]
-- [G06：context.AfterFunc 的停止与竞态规则][G06]
-- [G07：Scanner 和 sql.Out][G07]
-- [G08：ResetSession 与 Validator][G08]
-- [G09：Raw 回调不能向外泄漏 driverConn][G09]
-- [G10：sql.Result 及标准库对 driver.Result 的包装][G10]
+- [G01: ErrBadConn duplicate-execution constraints][G01]
+- [G02: database/sql ErrBadConn retries][G02]
+- [G03: driver.Value and child cursors][G03]
+- [G04: NamedValueChecker contract][G04]
+- [G05: Go 1.27 RowsColumnScanner, not required here][G05]
+- [G06: context.AfterFunc stop/race rules][G06]
+- [G07: Scanner/sql.Out][G07]
+- [G08: ResetSession/Validator][G08]
+- [G09: Raw must not leak driverConn][G09]
+- [G10: sql.Result/driver.Result wrapping][G10]
 
 [J01]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823
 [J02]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L470
@@ -1810,8 +1810,8 @@ Go 标准库契约；链接固定到 Go 1.27.2 源码，设计接口范围限定
 [G09]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L2072
 [G10]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L3581
 
-### 2026-10-19 字符集兼容补充
+### 2026-10-19 Charset Compatibility Addendum
 
-HKSCS/HKSCS31 按 Java Options.getCharacterEncoding 使用 UTF-8 载荷，分别使用 OceanBase 协议编号152/153。GB18030_2022 使用独立2022映射与默认编号217（其余已知2022 collation 216–222按同一编码解析），SET NAMES 保留实际名称；既有 GB18030/x-text 映射不变。Go 继续按配置字符集编码握手身份，不复制 Java 独立的 UTF-8 握手选择策略。
+HKSCS/HKSCS31 use UTF-8 payloads according to Java Options.getCharacterEncoding, with OceanBase protocol IDs 152/153. GB18030_2022 uses its separate 2022 mapping/default ID 217 (other known 2022 collations 216–222 share encoding), retaining actual SET NAMES names. Existing GB18030/x-text mappings stay unchanged. Go still encodes handshake identities by configured charset, not Java's separate UTF-8 handshake-selection policy.
 
-映射来源与固定版本见 internal/charset/gb18030_2022.go：OceanBase 字符集实现和 OpenJDK 21；测试包含独立字节向量、全部 BMP 标量编码摘要、23940个双字节位置和39420个 BMP 四字节位置解码摘要，并覆盖认证、SQL、文本/二进制参数与结果。独立对照及本地协议通过不代表真实数据库/代理支持这些字符集。
+Mapping sources/pinned versions are in internal/charset/gb18030_2022.go: OceanBase charset implementation and OpenJDK 21. Tests include independent byte vectors, all BMP scalar encoding digests, 23940 double-byte positions and 39420 BMP four-byte decode digests, plus auth/SQL/text-binary parameters/results. Independent comparisons/local peers do not prove real database/proxy charset support.

@@ -1,50 +1,50 @@
-# Go 驱动本地性能基准
+# Go driver local performance benchmarks
 
-当前最低 Go 版本为1.26；以下历史样本保留采集时的 Go1.25/1.26 版本及原始指标，Go1.25 不再属于当前支持范围。复现命令使用 Go1.26。
+The current minimum Go version is 1.26. Historical samples below retain the Go 1.25/1.26 versions and raw metrics recorded at collection time; Go 1.25 is no longer supported. Reproduction commands use Go 1.26.
 
-## 1. 范围与读数
+## 1. Scope and interpretation
 
-`BenchmarkDriver` 在单个物理连接上，通过进程内 `net.Pipe` 协议对端运行两种 OceanBase 兼容模式，共18个场景（基础16项，另含 MySQL 批量改写和 Oracle 原生数组绑定）。入口见 [driver_benchmark_test.go](../driver_benchmark_test.go)。没有连接数据库，不执行真实 SQL，也不包含网络往返或服务端执行、存储和锁开销。
+`BenchmarkDriver` runs both OceanBase compatibility modes over one physical connection to an in-process `net.Pipe` protocol peer. It includes 18 scenarios: the original 16 plus MySQL batch rewriting and Oracle native array binding. See [driver_benchmark_test.go](../driver_benchmark_test.go). It connects to no database, executes no real SQL and excludes network round trips and server execution, storage and lock overhead.
 
-计时和分配统计包含 database/sql、驱动、对端响应构造、协议收发、调度及结果断言。因此 B/op 和 allocs/op **不是纯驱动分配量**，ns/op 也不是数据库延迟。当前夹具采用标准包流和单连接；不覆盖 TLS、压缩、OB20、多连接并发或真实代理性能。短样本仅用于后续在相同夹具下复测，不设置性能通过阈值，不据此判断两工具链性能高低。
+Timing and allocation statistics include database/sql, the driver, peer response construction, protocol I/O, scheduling and result assertions. B/op and allocs/op are therefore **not driver-only allocations**, and ns/op is not database latency. The current fixtures use standard packet framing and one connection; they do not cover TLS, compression, OB20, multi-connection concurrency or real proxy performance. Short samples support later comparison using the same fixtures; they define no performance pass threshold and do not establish relative toolchain performance.
 
-## 2. 场景与计时边界
+## 2. Scenarios and timing boundaries
 
-每个场景先完成握手、初始化、Ping 和一轮预热；这些以及最终清理不计时。随后执行 N 轮，检查协议命令、参数、结果及资源关闭。第二次物理拨号立即失败，避免自动换线掩盖夹具错误。
+Each scenario completes handshake, initialization, Ping and one warmup cycle before timing. These steps and final cleanup are excluded. It then runs N cycles, checking protocol commands, parameters, results and resource closure. A second physical dial fails immediately so that automatic reconnection cannot hide fixture errors.
 
-| 场景 | 一次 op 的操作与断言 | 计时说明 |
+| Scenario | Operations and assertions per op | Timing boundary |
 | --- | --- | --- |
-| crud | INSERT、UPDATE、SELECT、DELETE 各一次；修改各影响1行，查询值42 | 四次完整调用及断言 |
-| prepare-per-call | 参数化 INSERT；检查参数和影响1行 | 每轮 prepare/execute/close |
-| prepare-reuse | 显式 sql.Stmt 的 INSERT；检查影响1行 | 仅 execute；prepare/最终 close 在计时外 |
-| cache-hit | 隐式预处理缓存命中，StatementCacheSize=1、ReuseParameterTypes=true | 预热后复用语句/参数类型，检查省略类型头 |
-| batch-sequential | 每轮8项 INSERT，核对策略、逐项状态和影响行数 | 每项 prepare/execute/close，含结果分配与断言 |
-| batch-multisend | 每轮8项 INSERT，核对真实 MultiSend 策略及逐项结果 | 每批共享 prepare；含分块收发和 close |
-| batch-rewrite（MySQL） | 每轮8项独立 INSERT，多语句改写；检查实际策略、guard 查询和8个完整 OK | 含每批服务端合并开关查询、插值与多结果消费 |
-| batch-array-binding（Oracle） | 已有可写 sql.Tx 中每轮8项原生绑定；检查 flag24 整包、statement close 和逐项成功但计数未知 | 每批 prepare/execute/close；事务开启/最终 rollback 在计时外 |
-| lob | 打开、读取并关闭16KiB BLOB，核对所有字节 | MySQL 表内 BLOB 查询字典/长度/分块；Oracle inline locator 物化读取 |
-| fetch | 同一游标每轮返回32个 int64，核对0–31及关闭 Rows | 游标 prepare/execute/最终 close 在计时外；Oracle 含 offset 扩展、元数据和尾 OK |
+| crud | One INSERT, UPDATE, SELECT and DELETE; each write affects one row; query returns 42 | Four complete calls and assertions |
+| prepare-per-call | Parameterized INSERT; verify parameters and one affected row | Prepare/execute/close on every cycle |
+| prepare-reuse | INSERT using an explicit sql.Stmt; verify one affected row | Execute only; prepare/final close excluded |
+| cache-hit | Implicit prepared-statement cache hit, StatementCacheSize=1, ReuseParameterTypes=true | Reuse statement/types after warmup; verify omitted type header |
+| batch-sequential | Eight INSERT items per cycle; verify strategy, per-item status and affected counts | Per-item prepare/execute/close, result allocation and assertions |
+| batch-multisend | Eight INSERT items per cycle; verify actual MultiSend strategy and per-item results | Shared prepare per batch, chunked I/O and close |
+| batch-rewrite (MySQL) | Eight independent INSERTs per cycle using multi-statement rewriting; verify actual strategy, guard query and eight complete OKs | Per-batch server merge-setting query, interpolation and multi-result consumption |
+| batch-array-binding (Oracle) | Eight native bindings in an existing writable sql.Tx; verify complete flag24 packet, statement closure and per-item success with unknown counts | Prepare/execute/close per batch; transaction start/final rollback excluded |
+| lob | Open, read and close a 16 KiB BLOB; compare every byte | MySQL table-BLOB dictionary/length/chunk queries; Oracle inline-locator materialization |
+| fetch | Return 32 int64 values per cycle on the same cursor; verify 0–31 and Rows closure | Cursor prepare/execute/final close excluded; Oracle includes offset extension, metadata and trailing OK |
 
-LOB 两模式后端不同，不能把其差值解释为模式性能优劣；当前也不覆盖远端 locator 流式读取/写入。fetch 对端每次重发同一批数据，只测解码/扫描，不能证明跨批游标位置或数据一致性。batch 的 rows/op=8、fetch 的 rows/op=32 是固定工作量，不是独立测量的吞吐。LOB 的 MB/s 以16KiB有效负载计算；fetch 以32×8字节有效数值计算，均不代表实际协议带宽。
+The LOB backends differ between modes, so their difference does not establish relative mode performance. Remote-locator streaming reads/writes are not covered. The fetch peer resends the same batch each time, measuring decoding/scanning only, not cross-batch cursor position or consistency. Batch rows/op=8 and fetch rows/op=32 are fixed workloads, not independently measured throughput. LOB MB/s uses a 16 KiB useful payload; fetch uses 32×8 bytes of useful values. Neither represents actual protocol bandwidth.
 
-## 3. 重现与正确性检查
+## 3. Reproduction and correctness checks
 
 ```sh
 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverBenchmarkFixtures$' -count=30
 GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -benchtime=100x -count=3
 ```
 
-以上为 POSIX shell 写法；PowerShell 先设置 `$env:GOTOOLCHAIN='go1.26.0'`，再执行对应 go 命令。无需 DSN、凭据或数据库。普通 `go test ./...` 也会运行相同夹具的预热及每项两轮操作，CI 默认检查返回值和清理；普通 push 不默认采集性能结果，PR/手动 CI 则执行独立基准任务并保存 artifact。
+These commands use POSIX shell syntax. In PowerShell, set `$env:GOTOOLCHAIN='go1.26.0'` first, then run the corresponding go commands. No DSN, credentials or database is required. Ordinary `go test ./...` runs warmup and two operations per fixture as well, so CI checks return values and cleanup by default. Ordinary pushes do not collect performance results; PR/manual CI runs a separate benchmark job and saves artifacts.
 
-每个夹具从建连起有2分钟总预算；对端保留到 DB.Close 完成，再关闭传输并等待 goroutine 退出，最后取消 context。testing.TB.Context 在 Cleanup 前取消，因此夹具使用 WithoutCancel 后自行施加预算。长时间 benchtime 必须与该预算匹配；独立资源检查见 §6，不能直接延长这个单连接短基准并宣称完成验收。
+Each fixture has a two-minute total budget starting at connection setup. The peer remains alive through DB.Close; transport closure and waiting for its goroutine follow, with context cancellation last. Because testing.TB.Context is canceled before Cleanup, fixtures use WithoutCancel and impose their own budget. Long benchtime settings must fit this budget. See §6 for separate resource checks; extending this short single-connection benchmark does not establish acceptance.
 
-所有夹具在计时之外、DB.Close 之前直接检查原物理会话：池无借用、事务/响应/LOB/游标资源已释放，statement 缓存索引一致、容量及租约合法，类型描述字节在预算内。检查不重新借连接，避免 ResetSession 清掉残留后掩盖泄漏。关闭后确认池归零、物理连接关闭、缓存和资源登记清空；每个协议对端等待退出。该检查同时用于普通单测、benchmark 和下面的扩展运行。
+Outside timing and before DB.Close, every fixture inspects the original physical session directly: no pool leases, released transaction/response/LOB/cursor resources, consistent statement-cache indexes, valid capacity/leases and type-description bytes within budget. It does not borrow a connection again, preventing ResetSession from hiding leaked state. After closure it checks zero pool counts, physical connection closure and empty cache/resource registries, and waits for each protocol peer to exit. Ordinary tests, benchmarks and the extended runs below share these checks.
 
-## 4. 本地样本
+## 4. Local samples
 
-以下原始16场景样本的采集日期：2026-10-17；新增两项不与旧样本混合，见 §4.1。Windows/amd64，Intel Core i5-9400 CPU @ 2.90GHz，默认 GOMAXPROCS=6；Go1.25.0 和 Go1.26.0。每项100次操作、同进程采样3次；下表各指标分别取3个样本的中位数，未作显著性分析。操作和断言定义以本文件及对应提交中的夹具为准。
+The original 16-scenario samples below were collected on 2026-10-17; the two additions are kept separate in §4.1. Environment: Windows/amd64, Intel Core i5-9400 CPU @ 2.90GHz, default GOMAXPROCS=6, Go 1.25.0 and Go 1.26.0. Each scenario ran 100 operations with three samples in one process. Each metric below is the median of its three samples; no significance analysis was performed. Operation/assertion definitions follow this document and the fixtures in the corresponding commit.
 
-| 模式/场景 | Go | ns/op | B/op | allocs/op |
+| Mode/scenario | Go | ns/op | B/op | allocs/op |
 | --- | --- | --- | --- | --- |
 | mysql-compatible/crud | 1.25.0 | 136,698 | 20,794 | 377 |
 | mysql-compatible/prepare-per-call | 1.25.0 | 85,686 | 11,815 | 218 |
@@ -79,45 +79,45 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -b
 | oracle-compatible/lob | 1.26.0 | 102,149 | 99,270 | 190 |
 | oracle-compatible/fetch | 1.26.0 | 319,728 | 47,362 | 939 |
 
-### 4.1 新增原生批量场景
+### 4.1 Added native batch scenarios
 
-2026-10-18 增加两个受支持模式专用场景，不将回退逐项当作优化路径。批量改写声明多语句能力并逐批确认服务端聚合开关关闭；数组绑定使用已知4.3.5.1版本对端、原可写事务和8项有符号标量，最终聚合计数不分摊到各项。两者复用原物理会话的清理断言，纳入普通功能夹具与8轮资源检查。事务最终 rollback 只用于确认生命周期，不证明真实数据库撤销效果。
+Two supported-mode-specific scenarios were added on 2026-10-18; per-item fallback is not counted as an optimized path. Batch rewriting advertises multi-statement capability and confirms the server aggregation setting is disabled per batch. Array binding uses a known 4.3.5.1 peer, the original writable transaction and eight signed scalar inputs; final aggregate counts are not distributed across items. Both reuse original-session cleanup assertions and participate in ordinary fixtures and eight-round resource checks. Final rollback verifies lifecycle only, not actual database undo behavior.
 
-同日 Windows/amd64、相同 CPU 与 GOMAXPROCS=6，仅运行上述两个场景，各100次操作、3个样本；各指标分别取中位数。每次批量含8行，以下为整次批量开销，包含进程内对端及断言，不代表数据库吞吐或工具链性能差异。
+On the same date, Windows/amd64, the same CPU and GOMAXPROCS=6, only these two scenarios ran with 100 operations and three samples each; each metric is its median. Each batch has eight rows. These are whole-batch costs including the in-process peer/assertions, not database throughput or evidence of toolchain performance differences.
 
-| 模式/场景 | Go | ns/op | B/op | allocs/op |
+| Mode/scenario | Go | ns/op | B/op | allocs/op |
 | --- | --- | --- | --- | --- |
 | mysql-compatible/batch-rewrite | 1.25.0 | 153,689 | 25,936 | 472 |
 | oracle-compatible/batch-array-binding | 1.25.0 | 99,189 | 21,482 | 349 |
 | mysql-compatible/batch-rewrite | 1.26.0 | 157,059 | 25,937 | 472 |
 | oracle-compatible/batch-array-binding | 1.26.0 | 96,715 | 21,483 | 349 |
 
-复现命令：`go test . -run '^$' -bench '^BenchmarkDriver$/.*/batch-(rewrite|array-binding)$' -benchmem -benchtime=100x -count=3 -timeout 2m`，工具链设置见 §3。两个夹具使用相同的42作为8项输入，不独立验证输入次序或不同值；数组期望包复用生产编码器，独立字节格式断言另见 `TestStmtArrayGolden`。
+Reproduce with `go test . -run '^$' -bench '^BenchmarkDriver$/.*/batch-(rewrite|array-binding)$' -benchmem -benchtime=100x -count=3 -timeout 2m`; see §3 for toolchain selection. Both fixtures use 42 for all eight inputs and do not independently verify input order or differing values. The expected array packet reuses the production encoder; independent byte-format assertions are in `TestStmtArrayGolden`.
 
-## 5. 尚待验证
+## 5. Outstanding verification
 
-真实两模式/直连与 OBProxy 的 CRUD、缓存、原生批量优化、LOB 流式和游标性能、网络与多连接负载、长期内存/句柄/goroutine 曲线仍未执行。Linux 实际运行、远程 CI 和成功 race 证据仍缺。D32 不因此完成；实现28/32、验收0/32不变，详见[开发进度](go-driver-development-progress.md)。
+Live CRUD, caching, native batch optimization, streaming LOB/cursor performance in both modes over direct/OBProxy connections, network and multi-connection load, and long-term memory/handle/goroutine curves have not run. Actual Linux execution, remote CI and successful race evidence remain missing. D32 is not complete; implementation remains 28/32 and acceptance 0/32. See [development progress](go-driver-development-progress.md).
 
-## 6. 离线资源稳定性检查
+## 6. Offline resource stability checks
 
-`TestDriverResourceStability` 复用以上18场景，在固定8轮中反复创建、使用并关闭会话。每个场景每轮先预热一次，再执行 N 次；默认 N=2，普通单测和 CI 都运行。通过 `OB_TEST_STABILITY_ITERATIONS` 指定1–10000的 N 可增加负载，不改变样本/测试树大小，也不访问 DSN 或真实数据库。每个场景仍有独立2分钟预算，整个命令需设置足够的 timeout。
+`TestDriverResourceStability` reuses the 18 scenarios, repeatedly creating, using and closing sessions over eight fixed rounds. Each scenario in each round warms up once, then executes N operations; N defaults to 2 in ordinary tests and CI. Set `OB_TEST_STABILITY_ITERATIONS` to N in 1–10000 to increase load without changing the sample/test-tree size or accessing DSNs/databases. Each scenario retains an independent two-minute budget; give the whole command a sufficient timeout.
 
 ```sh
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
 ```
 
-PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOLCHAIN`，再执行 go 命令。手动 CI 的 `stability` 输入可单独开启 Go1.26、Linux/Windows 的同一检查，不依赖 integration 输入或数据库 secrets；远程任务未运行不计通过。
+In PowerShell, set `$env:OB_TEST_STABILITY_ITERATIONS='4096'` and `$env:GOTOOLCHAIN` before the go command. The manual CI stability input independently enables the same Go 1.26 Linux/Windows check without integration or database secrets. An unexecuted remote job is not a pass.
 
-每个场景完整执行 Cleanup 后才进入下一个场景；每轮结束主动 GC，记录 `resource_sample` 的 elapsed_ms、HeapAlloc、HeapObjects 和 NumGoroutine。样本0为空载基线；共9个采样点。资源所有权、缓存容量及池关闭是硬断言；堆和 goroutine 为进程级观测，含 testing 的固定测试树、输出、运行时缓存及对端开销，不设置任意阈值，也不能据此断言无泄漏。此运行覆盖反复建连和基础串行路径，尚未覆盖同一长寿命会话、全部扩展/错误/并发/包流组合。net.Pipe 不提供真实 OS socket/文件句柄曲线，数据库负载和生产长期运行继续待验收。
+Each scenario completes Cleanup before the next begins. After every round, an explicit GC precedes resource_sample records for elapsed_ms, HeapAlloc, HeapObjects and NumGoroutine. Sample 0 is an unloaded baseline; there are nine points total. Resource ownership, cache capacity and pool closure are hard assertions. Heap/goroutine values are process observations including testing's fixed tree, output, runtime caches and peer costs; they have no arbitrary thresholds and do not prove absence of leaks. This run covers repeated connection creation and basic serial paths, not one long-lived session or every extension/error/concurrency/framing combination. net.Pipe provides no real OS socket/file-handle curves. Database load and long production runs remain pending.
 
-同一物理会话持续混合执行的独立检查见 §7；不改变本节重建会话的负载定义或旧样本。
+See §7 for a separate continuous mixed-operation check on the same physical session; it changes neither this section's session-recreation workload nor its historical samples.
 
 
-### 6.1 本地扩展样本
+### 6.1 Extended local samples
 
-2026-10-17，Windows/amd64，Intel Core i5-9400，默认 GOMAXPROCS=6；两工具链顺序运行，各 N=4096、8轮、16场景，未并行运行其他 Go 检查。全部资源断言通过，Go1.25 用时111.101秒，Go1.26 用时114.024秒。每个场景每轮含一次预热，因此每工具链共524416次场景操作；单次场景的 SQL/行数见 §2，不将其称为 SQL 吞吐。
+2026-10-17, Windows/amd64, Intel Core i5-9400, default GOMAXPROCS=6. Toolchains ran sequentially with N=4096, eight rounds and 16 scenarios each, without concurrent Go checks. All resource assertions passed. Go 1.25 took 111.101 seconds and Go 1.26 took 114.024 seconds. Including one warmup per scenario/round, each toolchain executed 524416 scenario operations. See §2 for SQL/rows per scenario; these are not SQL-throughput figures.
 
-| Go | 样本 | 耗时 ms | GC 后堆 bytes | 堆对象数 | goroutine |
+| Go | Sample | Elapsed ms | Post-GC heap bytes | Heap objects | Goroutines |
 | --- | --- | --- | --- | --- | --- |
 | 1.25.0 | 0 | 1 | 229344 | 699 | 2 |
 | 1.25.0 | 1 | 13735 | 373072 | 1289 | 2 |
@@ -138,13 +138,13 @@ PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOL
 | 1.26.0 | 7 | 99199 | 495400 | 1581 | 2 |
 | 1.26.0 | 8 | 113095 | 502216 | 1594 | 2 |
 
-各静止采样点均为2个 goroutine；两版的堆/对象数在热身后仍有增长，不能将结果表述为“零增长”或据此证明无泄漏。样本含测试框架的固定元数据和运行时缓存；上面的资源断言提供的是每次场景清理的直接证据。要判断生产长期稳定性仍需更长时间、长寿命会话、多连接和故障组合，以及真实 socket/OS 句柄与数据库环境。
+Every quiescent sample had two goroutines. Heap/object counts still grew after warmup in both versions, so these results cannot be described as zero growth or proof of no leaks. Samples include fixed test-framework metadata and runtime caches. The resource assertions directly establish cleanup after each scenario. Production stability requires longer runs, long-lived sessions, multiple connections, faults and real socket/OS-handle/database environments.
 
-### 6.2 含原生批量的18场景样本
+### 6.2 Eighteen-scenario samples including native batches
 
-2026-10-18，Windows/amd64、相同 CPU 与 GOMAXPROCS=6；两工具链顺序运行，未并行运行其他 Go 检查。各 N=4096、8轮、18场景，共589968次场景操作（含每场景每轮一次预热）。全部资源断言通过，Go1.25 用时119.070秒，Go1.26 用时121.222秒；不与 §6.1 的16场景负载直接比较。
+2026-10-18, Windows/amd64, the same CPU and GOMAXPROCS=6. Toolchains ran sequentially without other concurrent Go checks. Each used N=4096, eight rounds and 18 scenarios for 589968 scenario operations including warmup. All resource assertions passed. Go 1.25 took 119.070 seconds and Go 1.26 took 121.222 seconds. Do not compare directly with the 16-scenario workload in §6.1.
 
-| Go | 样本 | 耗时 ms | GC 后堆 bytes | 堆对象数 | goroutine |
+| Go | Sample | Elapsed ms | Post-GC heap bytes | Heap objects | Goroutines |
 | --- | --- | --- | --- | --- | --- |
 | 1.25.0 | 0 | 2 | 224352 | 694 | 2 |
 | 1.25.0 | 1 | 14916 | 537736 | 1374 | 2 |
@@ -165,38 +165,38 @@ PowerShell 先设置 `$env:OB_TEST_STABILITY_ITERATIONS='4096'` 和 `$env:GOTOOL
 | 1.26.0 | 7 | 105871 | 620440 | 1476 | 2 |
 | 1.26.0 | 8 | 121129 | 515512 | 1519 | 2 |
 
-采样点均为2个 goroutine，堆/对象数高于空载基线且有波动；这只是有限负载和逐场景清理的证据，不证明无泄漏，也不替代 §5 的真实平台、多连接、故障及长期验收。
+Every sample had two goroutines; heap/object counts exceeded the unloaded baseline and fluctuated. This is evidence of finite load and per-scenario cleanup only, not proof of no leaks or a substitute for §5's live-platform, multi-connection, fault and long-term acceptance.
 
-## 7. 同一物理会话的混合资源检查
+## 7. Mixed resource checks on one physical session
 
-`TestDriverSessionStability` 在两种兼容模式 × 标准/压缩/OB20 共6个组合中分别持续复用一条物理连接。每个组合的独立 sql.DB 最大连接数为1，拨号只允许一次；不会在每轮重新借连接检查状态，以免 reset 掩盖残留。
+`TestDriverSessionStability` continuously reuses one physical connection in each of six combinations: two modes × standard/compression/OB20 framing. Each combination owns a sql.DB with MaxOpenConns=1 and allows only one dial. State checks do not reborrow on every round, preventing reset from hiding residual state.
 
-每轮依次执行：
+Each round executes, in order:
 
-1. 两次缓存预处理 UPDATE，输入为当前轮正数及其负数，精确匹配首次类型头、复用类型头和逐次影响行数。
-2. 文本 SELECT 返回3行，交替在未读行或已读1行时 Close，要求驱动排空剩余响应并关闭原缓存 statement。
-3. 标准 sql.Tx 执行 UPDATE，交替 commit/rollback；Oracle 还必须恢复自动提交，不能借助池 reset 修复。
-4. 新的预处理 UPDATE 返回明确1062/23000 SQL错误，必须关闭失败句柄；随后 Ping 成功，验证同一会话继续可用。
+1. Two cached prepared UPDATEs, with the current positive round number and its negative; exactly match the initial/reused type headers and each affected count.
+2. A text SELECT returning three rows, alternately closed before reading or after one row; require draining the remaining response and closing the original cached statement.
+3. A standard sql.Tx UPDATE, alternating commit/rollback; Oracle must also restore autocommit without relying on pool reset.
+4. A newly prepared UPDATE returning explicit SQL error 1062/23000; close the failed handle, then successfully Ping the same session.
 
-每轮结束直接检查原物理会话的事务、响应、固定资源、statement 缓存及池租约。关闭时检查池归零、物理会话关闭及对端退出；精确协议次序同时约束 statement 释放和错误后不重放。此处的事务和结果是进程内对端反馈，不证明真实 SQL、回滚或锁效果。
+Each round directly checks the original physical session's transaction, response, pinned resources, statement cache and pool leases. Closure checks zero pool counts, physical-session closure and peer exit. Exact protocol ordering also constrains statement release and prevents replay after errors. These transaction/results are in-process peer responses and do not prove real SQL, rollback or locking effects.
 
-默认每组合8轮，普通单测和自动 CI 都执行。`OB_TEST_STABILITY_ITERATIONS` 指定每组合的总轮数（1–10000），与 §6 的每场景每采样轮迭代数含义不同；4096时共24576轮混合循环。每组合有2分钟总预算；若负载或慢机器超过预算应降低迭代数，不能把超时视为性能验收。
+The default is eight rounds per combination in ordinary tests/automatic CI. OB_TEST_STABILITY_ITERATIONS sets the total rounds per combination (1–10000), unlike §6's iterations per scenario per sampling round; 4096 means 24576 mixed cycles total. Each combination has a two-minute budget. Reduce iterations if load or a slow machine exceeds it; timeout is not performance acceptance.
 
 ```sh
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverSessionStability$' -count=1 -v -timeout 10m
 ```
 
-PowerShell 的环境变量写法见 §6。手动 `stability` CI 先以4096次迭代运行 §6、§7，再以每连接1024轮运行 §8，均不使用数据库 secrets。组合内部只建固定测试树，最多9个 GC 后采样点，记录 cycles/iterations、elapsed_ms、HeapAlloc、HeapObjects、NumGoroutine 和拨号次数。样本0已有闲置物理连接和等待命令的对端，不能与 §6 关闭会话后的空载样本直接比较。
+See §6 for PowerShell environment syntax. Manual stability CI runs §6/§7 with 4096 iterations, then §8 with 1024 rounds per connection, without database secrets. Each combination creates only a fixed test tree and at most nine post-GC samples, recording cycles/iterations, elapsed_ms, HeapAlloc, HeapObjects, NumGoroutine and dials. Sample 0 already has an idle physical connection and a peer waiting for commands; it is not directly comparable with §6's unloaded, closed-session baseline.
 
-这些进程级样本不设置任意内存阈值，不能据此声称零泄漏。三连接混合负载见 §8；扩展类型/LOB/游标并发混合、传输故障、真实 OS socket/句柄和生产长期曲线继续待验证；本项不增加18项性能基准的计数。
+These process samples impose no arbitrary memory threshold and cannot establish zero leaks. See §8 for three-connection load. Mixed concurrent complex types/LOBs/cursors, transport faults, real OS sockets/handles and long production curves remain pending. This check does not increase the 18-scenario benchmark count.
 
-### 7.1 本地扩展样本
+### 7.1 Extended local samples
 
-2026-10-18，Windows/amd64，与前述相同本地环境。两工具链顺序执行，没有并行运行其他 Go 检查；每组合4096轮、每版共24576轮，全部断言通过。完整测试用时 Go1.25 为 85.434秒、Go1.26 为 101.237秒；下表为各组合循环与采样的耗时，不含连接初始化和最终关闭，不作工具链或包流性能优劣结论。
+2026-10-18, Windows/amd64, the same local environment. Toolchains ran sequentially without other concurrent Go checks: 4096 rounds per combination, 24576 per version, all assertions passed. Complete test duration was 85.434 seconds on Go 1.25 and 101.237 seconds on Go 1.26. The table records each combination's loop/sampling time, excluding initialization/final closure, and establishes no relative toolchain/framing performance.
 
-每组合9个 GC 后观测点（0、512、…、4096轮），表中“采样最大堆”仅为这9点的最大值，不是进程峰值。基线与末值均保留同一闲置物理连接及等待命令的对端；后续组合还包含同进程测试框架元数据，不能跨行直接判断分配或泄漏。
+Each combination has nine post-GC observations (0, 512, …, 4096 rounds). Sampled maximum heap is only the maximum of these nine points, not the process peak. Baseline/final values retain the same idle physical connection and waiting peer. Later combinations include accumulated framework metadata in the same process; cross-row comparisons do not establish allocation/leak differences.
 
-| Go | 模式/包流 | 循环耗时 ms | 堆起/末 bytes | 采样最大堆 bytes | 对象起/末 | goroutine | 拨号 |
+| Go | Mode/framing | Loop ms | Initial/final heap bytes | Sampled max heap bytes | Initial/final objects | Goroutines | Dials |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1.25.0 | mysql-compatible/standard | 1582 | 242544 / 371648 | 371648 | 811 / 1364 | 5 | 1 |
 | 1.25.0 | mysql-compatible/compression | 32499 | 373576 / 404432 | 414248 | 1391 / 1295 | 5 | 1 |
@@ -211,29 +211,29 @@ PowerShell 的环境变量写法见 §6。手动 `stability` CI 先以4096次迭
 | 1.26.0 | oracle-compatible/compression | 50424 | 474336 / 451984 | 474336 | 1552 / 1295 | 5 | 1 |
 | 1.26.0 | oracle-compatible/ob20 | 2340 | 458400 / 467872 | 477032 | 1341 / 1445 | 5 | 1 |
 
-所有采样点均为5个 goroutine、一次拨号，堆和对象数存在增长与波动；逐轮资源断言及协议收尾是直接证据，有限采样仍不足以证明无泄漏或生产长期稳定性。
+Every sample had five goroutines and one dial. Heap/object counts grew and fluctuated. Per-round resource assertions and protocol teardown are direct evidence; finite samples still do not prove leak freedom or long-term production stability.
 
-## 8. 同池三连接并发混合负载
+## 8. Concurrent mixed load on three pooled connections
 
-`TestDriverConcurrentSessionStability` 在同一个 Connector 和 `sql.DB` 内固定三条物理连接，覆盖 MySQL/Oracle 两种兼容模式及标准、压缩、OB20 三种包流。每条连接持续执行 §7 的缓存预处理、参数类型复用、Rows 提前关闭、事务交替提交/回滚、预期 SQL 错误及 Ping；各连接采用不同的 statement ID 和参数值。每个采样段的首轮由协议对端等待三条连接都收到执行请求，再向任意连接返回首个 OK，以实际验证并发推进。客户端使用普通 goroutine 返回错误并统一等待，不依赖 `go test -parallel` 的并行子测试额度。
+`TestDriverConcurrentSessionStability` pins three physical connections in one Connector/sql.DB across MySQL/Oracle modes and standard/compression/OB20 framing. Each continuously runs §7's cached preparation/type reuse, early Rows closure, alternating commit/rollback, expected SQL errors and Ping, with distinct statement IDs and parameter values. In the first round of every sampling segment, peers wait until all three connections receive execute requests before returning the first OK to any connection, directly verifying concurrent progress. Clients use ordinary goroutines, return errors and wait collectively, independently of go test -parallel subtest limits.
 
-每轮直接锁定原物理连接检查事务、响应、资源、缓存索引/租约及描述预算；每段结束检查真实池计数为 open=3/inUse=3/idle=0。全部循环结束后释放三条租约，检查 idle=3，再同时重借三条连接，确认仍是互不重复的原会话且各自 Ping 成功。关闭池后检查 open/inUse/idle 均为0、三条原物理连接均已关闭，协议对端必须收到 QUIT 和传输关闭（EOF 或 net.Pipe 的 ErrClosedPipe）；主测试在清理前用5秒预算等待全部对端确认，超时或取消不能充当关闭成功。检查在重借/reset 前执行，不让池重置掩盖残留。
+Each round locks and inspects the original physical connections for transaction/response/resources, cache indexes/leases and descriptor budgets. Each segment checks pool counts open=3/inUse=3/idle=0. After all loops, release the leases and check idle=3, then reborrow all three simultaneously, verifying distinct original sessions and successful Pings. After pool closure, check open/inUse/idle=0 and all original connections closed. Peers must receive QUIT and transport closure (EOF or net.Pipe ErrClosedPipe). Before cleanup, the main test waits up to five seconds for every peer confirmation; timeout/cancellation does not count as successful closure. Checks precede reborrow/reset so pool reset cannot hide residual state.
 
-默认每连接8轮，每组合24轮；`OB_TEST_STABILITY_ITERATIONS` 指定每连接轮数（1–10000）。按最多8段分批运行，保留至多9个 GC 后进程采样点，记录已完成的每连接轮数、连接数、耗时、堆/对象、goroutine 和拨号次数；采样时工作 goroutine 已全部退出，三条租约仍固定。每组合总预算2分钟；手动 CI 使用每连接1024轮，避免三倍负载直接沿用单连接的4096轮预算。
+The default is eight rounds per connection, 24 per combination. OB_TEST_STABILITY_ITERATIONS selects rounds per connection (1–10000). Runs split into at most eight segments, retaining at most nine post-GC process samples for completed per-connection rounds, connection count, elapsed time, heap/objects, goroutines and dials. Worker goroutines have exited at sampling time, while all three leases remain pinned. Each combination has a two-minute budget; manual CI uses 1024 rounds per connection rather than applying the single-connection 4096 budget to triple load.
 
 ```sh
 OB_TEST_STABILITY_ITERATIONS=1024 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverConcurrentSessionStability$' -count=1 -v -timeout 5m
 ```
 
-本项提供本地协议对端的三连接并发和回池证据，不替代真实数据库、成功 race、其他目标平台、任意连接数或高级资源/故障组合验证，也不增加18项性能基准计数。进程样本是有限观测，不设置任意堆阈值，不据此宣称无泄漏。
+This provides local protocol-peer evidence of three-connection concurrency and return to the pool. It does not replace real databases, successful race detection, other target platforms, arbitrary connection counts or advanced-resource/fault combinations, and does not increase the 18-scenario benchmark count. Process samples are finite observations without arbitrary heap thresholds and do not establish absence of leaks.
 
-### 8.1 本地扩展样本
+### 8.1 Extended local samples
 
-2026-10-18，Windows/amd64，两工具链顺序执行，采样期间没有并行运行其他 Go 检查。每连接1024轮，每组合3072轮，每工具链18432轮混合循环，全部断言通过；完整测试用时 Go1.25 为31.429秒、Go1.26 为28.884秒。下表为各组合循环及采样耗时，不含初始化和最终关闭，不用于比较工具链或包流性能。
+2026-10-18, Windows/amd64. Toolchains ran sequentially without concurrent Go checks during sampling. Each used 1024 rounds per connection, 3072 per combination and 18432 mixed cycles per toolchain; all assertions passed. Complete tests took 31.429 seconds on Go 1.25 and 28.884 seconds on Go 1.26. The table records loop/sampling time excluding initialization/final closure, not comparative toolchain/framing performance.
 
-每组合9个 GC 后观测点（每连接0、128、…、1024轮），均保留三条租约和等待命令的对端。“采样最大堆”仅为这9点的最大值，不是进程峰值；各组合共享进程，后续组合包含先前测试框架元数据，不能跨行推断分配或泄漏。
+Each combination has nine post-GC observations (0, 128, …, 1024 rounds per connection), retaining three leases and waiting peers. Sampled maximum heap is only the largest of these nine values, not the process peak. Combinations share a process; later ones include earlier framework metadata, so cross-row comparisons cannot establish allocation/leak differences.
 
-| Go | 兼容模式/包流 | 循环耗时 ms | 堆起/末 bytes | 采样最大堆 bytes | 对象起/末 | goroutine | 拨号 |
+| Go | Mode/framing | Loop ms | Initial/final heap bytes | Sampled max heap bytes | Initial/final objects | Goroutines | Dials |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1.25.0 | mysql/standard | 339 | 265376 / 380736 | 389280 | 968 / 1465 | 7 | 3 |
 | 1.25.0 | mysql/compression | 13367 | 385744 / 411632 | 421520 | 1538 / 1543 | 7 | 3 |
@@ -248,4 +248,4 @@ OB_TEST_STABILITY_ITERATIONS=1024 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriv
 | 1.26.0 | oracle/compression | 14728 | 505448 / 488352 | 505448 | 1914 / 1720 | 7 | 3 |
 | 1.26.0 | oracle/ob20 | 474 | 495016 / 505568 | 505568 | 1811 / 1901 | 7 | 3 |
 
-108个采样点均观察到7个 goroutine 和3次拨号；逐轮原会话断言、全部原连接重借及清理前的对端关闭确认是直接证据。这些有限进程样本仍不足以证明生产长期稳定性或无泄漏。
+All 108 samples observed seven goroutines and three dials. Per-round original-session assertions, reborrowing every original connection and peer-close confirmation before cleanup are direct evidence. These finite process samples still do not establish long-term production stability or leak freedom.
