@@ -1,4 +1,4 @@
-package oceanbase
+package oceanbase_test
 
 import (
 	"bytes"
@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	oceanbase "github.com/cocosip/go-oceanbase"
+	publictest "github.com/cocosip/go-oceanbase/internal/publictest"
+	testpeer "github.com/cocosip/go-oceanbase/internal/testpeer"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -26,31 +29,31 @@ type driverBenchmarkCase struct {
 	name  string
 	bytes int64
 	rows  int
-	run   func(testing.TB, Mode, int, func(), func())
+	run   func(testing.TB, oceanbase.Mode, int, func(), func())
 }
 
-func driverBenchmarkCases(mode Mode) []driverBenchmarkCase {
+func driverBenchmarkCases(mode oceanbase.Mode) []driverBenchmarkCase {
 	cases := []driverBenchmarkCase{
 		{name: "crud", run: runDriverCRUD},
-		{name: "prepare-per-call", run: func(t testing.TB, mode Mode, n int, start, stop func()) {
+		{name: "prepare-per-call", run: func(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 			runDriverPrepared(t, mode, n, start, stop, false, false)
 		}},
-		{name: "prepare-reuse", run: func(t testing.TB, mode Mode, n int, start, stop func()) {
+		{name: "prepare-reuse", run: func(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 			runDriverPrepared(t, mode, n, start, stop, true, false)
 		}},
-		{name: "cache-hit", run: func(t testing.TB, mode Mode, n int, start, stop func()) {
+		{name: "cache-hit", run: func(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 			runDriverPrepared(t, mode, n, start, stop, false, true)
 		}},
-		{name: "batch-sequential", rows: benchmarkBatchRows, run: func(t testing.TB, mode Mode, n int, start, stop func()) {
-			runDriverBatch(t, mode, n, start, stop, BatchSequential)
+		{name: "batch-sequential", rows: benchmarkBatchRows, run: func(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
+			runDriverBatch(t, mode, n, start, stop, oceanbase.BatchSequential)
 		}},
-		{name: "batch-multisend", rows: benchmarkBatchRows, run: func(t testing.TB, mode Mode, n int, start, stop func()) {
-			runDriverBatch(t, mode, n, start, stop, BatchMultiSend)
+		{name: "batch-multisend", rows: benchmarkBatchRows, run: func(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
+			runDriverBatch(t, mode, n, start, stop, oceanbase.BatchMultiSend)
 		}},
 		{name: "lob", bytes: benchmarkPayloadBytes, run: runDriverLOB},
 		{name: "fetch", bytes: benchmarkFetchRows * 8, rows: benchmarkFetchRows, run: runDriverFetch},
 	}
-	if mode == ModeMySQL {
+	if mode == oceanbase.ModeMySQL {
 		cases = append(cases, driverBenchmarkCase{name: "batch-rewrite", rows: benchmarkBatchRows, run: runDriverBatchRewrite})
 	} else {
 		cases = append(cases, driverBenchmarkCase{name: "batch-array-binding", rows: benchmarkBatchRows, run: runDriverBatchArray})
@@ -61,9 +64,9 @@ func driverBenchmarkCases(mode Mode) []driverBenchmarkCase {
 // These benchmarks measure database/sql and the driver against an in-process protocol peer.
 // They include peer/scheduler allocations and do not measure real database throughput.
 func BenchmarkDriver(b *testing.B) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
 		for _, scenario := range driverBenchmarkCases(mode) {
-			b.Run(map[Mode]string{ModeMySQL: "mysql-compatible", ModeOracle: "oracle-compatible"}[mode]+"/"+scenario.name, func(b *testing.B) {
+			b.Run(map[oceanbase.Mode]string{oceanbase.ModeMySQL: "mysql-compatible", oceanbase.ModeOracle: "oracle-compatible"}[mode]+"/"+scenario.name, func(b *testing.B) {
 				b.ReportAllocs()
 				b.SetBytes(scenario.bytes)
 				scenario.run(b, mode, b.N, b.ResetTimer, b.StopTimer)
@@ -77,26 +80,27 @@ func BenchmarkDriver(b *testing.B) {
 
 // Run the same workload and result checks in ordinary CI, where benchmarks are not selected.
 func TestDriverBenchmarkFixtures(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
 		for _, scenario := range driverBenchmarkCases(mode) {
-			t.Run(map[Mode]string{ModeMySQL: "mysql-compatible", ModeOracle: "oracle-compatible"}[mode]+"/"+scenario.name, func(t *testing.T) {
+			t.Run(map[oceanbase.Mode]string{oceanbase.ModeMySQL: "mysql-compatible", oceanbase.ModeOracle: "oracle-compatible"}[mode]+"/"+scenario.name, func(t *testing.T) {
 				scenario.run(t, mode, 2, func() {}, func() {})
 			})
 		}
 	}
 }
 
-func driverBenchmarkDB(t testing.TB, mode Mode, cfg Config, serve func(context.Context, *wire.PacketIO, byte) bool) (*sql.DB, context.Context) {
+func driverBenchmarkDB(t testing.TB, mode oceanbase.Mode, cfg oceanbase.Config, serve func(context.Context, *wire.PacketIO, byte) bool) (*sql.DB, context.Context) {
 	t.Helper()
 	// testing cancels TB.Context before Cleanup; the peer must survive DB.Close.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Minute)
 	t.Cleanup(cancel)
 	status := byte(2)
-	if mode == ModeOracle {
+	if mode == oceanbase.ModeOracle {
 		status = 6
 	}
 	var dials atomic.Int32
-	cfg.User, cfg.Mode = testUser, mode
+	var transport *driverTrackedConn
+	cfg.User, cfg.Mode = driverFixtureUser, mode
 	cfg.DialContext = func(context.Context, string, string) (net.Conn, error) {
 		if dials.Add(1) != 1 {
 			return nil, errors.New("benchmark unexpectedly replaced its physical connection")
@@ -112,21 +116,22 @@ func driverBenchmarkDB(t testing.TB, mode Mode, cfg Config, serve func(context.C
 		go func() {
 			defer close(done)
 			defer func() { _ = server.Close() }()
-			p := wire.NewPacketIO(authPeerConn{server}, 64<<20)
+			p := wire.NewPacketIO(testpeer.AuthPeerConn{Conn: server}, 64<<20)
 			offer := uint64(0)
 			if cfg.AllowMultiStatements {
 				offer = wire.ClientMultiStatements
 			}
-			if !serveConnect(ctx, t, p, status, offer) || !serveBaseline(ctx, t, p, status) || !serveOK(ctx, t, p, []byte{14}, status) || !serve(ctx, p, status) {
+			if !testpeer.ServeConnect(ctx, t, p, status, offer) || !testpeer.ServeBaseline(ctx, t, p, status) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) || !serve(ctx, p, status) {
 				return
 			}
 			p.ResetSequence()
-			serveQuit(t, p)
+			testpeer.ServeQuit(t, p)
 		}()
 		t.Cleanup(func() { _ = client.Close(); _ = server.Close(); <-done })
-		return client, nil
+		transport = &driverTrackedConn{Conn: client}
+		return transport, nil
 	}
-	configured, err := NewConnector(cfg)
+	configured, err := oceanbase.NewConnector(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +146,8 @@ func driverBenchmarkDB(t testing.TB, mode Mode, cfg Config, serve func(context.C
 		_ = db.Close()
 		t.Fatal(err)
 	}
-	var physical *conn
-	err = pinned.Raw(func(raw any) error { physical = raw.(*conn); return nil })
+	var physical driverPhysical
+	err = pinned.Raw(func(raw any) error { physical = raw.(driverPhysical); return nil })
 	err = errors.Join(err, pinned.Close())
 	if err != nil {
 		_ = db.Close()
@@ -157,34 +162,27 @@ func driverBenchmarkDB(t testing.TB, mode Mode, cfg Config, serve func(context.C
 		if stats := db.Stats(); stats.OpenConnections != 0 || stats.InUse != 0 {
 			t.Error("benchmark pool retained connections after Close:", stats)
 		}
-		checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer checkCancel()
-		if err := physical.lock(checkCtx); err != nil {
-			t.Error(err)
-			return
-		}
-		defer physical.unlock()
-		if !physical.closed.Load() || len(physical.resources.records) != 0 || physical.statements.order.Len() != 0 || len(physical.statements.entries) != 0 {
-			t.Error("benchmark physical connection retained resources after Close")
+		if physical.IsValid() || !transport.closed.Load() {
+			t.Error("benchmark physical connection remained open after Close")
 		}
 	})
 	return db, ctx
 }
 
-func runDriverCRUD(t testing.TB, mode Mode, n int, start, stop func()) {
+func runDriverCRUD(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 	t.Helper()
 	queries := []string{"INSERT INTO benchmark_fixture VALUES (42)", "UPDATE benchmark_fixture SET id=42", "SELECT id FROM benchmark_fixture", "DELETE FROM benchmark_fixture"}
-	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
 			for j, query := range queries {
-				if !readQuery(ctx, t, p, query) {
+				if !testpeer.ReadQuery(ctx, t, p, query) {
 					return false
 				}
 				if j == 2 {
-					if !sendPackets(ctx, t, p, []byte{1}, textColumn("id", 8, 63, 0), []byte{254, 0, 0, status, 0}, []byte{2, '4', '2'}, []byte{254, 0, 0, status, 0}) {
+					if !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, status, 0}, []byte{2, '4', '2'}, []byte{254, 0, 0, status, 0}) {
 						return false
 					}
-				} else if !sendPackets(ctx, t, p, commandPacket(1, 0, status)) {
+				} else if !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) {
 					return false
 				}
 			}
@@ -215,25 +213,25 @@ func runDriverCRUD(t testing.TB, mode Mode, n int, start, stop func()) {
 	stop()
 }
 
-func runDriverPrepared(t testing.TB, mode Mode, n int, start, stop func(), explicit, cached bool) {
+func runDriverPrepared(t testing.TB, mode oceanbase.Mode, n int, start, stop func(), explicit, cached bool) {
 	t.Helper()
-	options := ExecutionOptions{}
+	options := oceanbase.ExecutionOptions{}
 	if cached {
 		options.StatementCacheSize, options.ReuseParameterTypes = 1, true
 	}
-	db, ctx := driverBenchmarkDB(t, mode, Config{Execution: options}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{Execution: options}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
-			if (i == 0 || !explicit && !cached) && !servePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, status) {
+			if (i == 0 || !explicit && !cached) && !publictest.ServePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, status) {
 				return false
 			}
-			if !readCommand(ctx, t, p, optimizationExecute(7, 42, cached && i > 0)) || !sendPackets(ctx, t, p, commandPacket(1, 0, status)) {
+			if !testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(7, 42, cached && i > 0)) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) {
 				return false
 			}
-			if !explicit && !cached && !readCommand(ctx, t, p, stmtPacket(25, 7)) {
+			if !explicit && !cached && !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7)) {
 				return false
 			}
 		}
-		return (!explicit && !cached) || readCommand(ctx, t, p, stmtPacket(25, 7))
+		return (!explicit && !cached) || testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7))
 	})
 	exec := func() (sql.Result, error) { return db.ExecContext(ctx, benchmarkPreparedSQL, int64(42)) }
 	var prepared *sql.Stmt
@@ -265,18 +263,18 @@ func runDriverPrepared(t testing.TB, mode Mode, n int, start, stop func(), expli
 	}
 }
 
-func runDriverBatch(t testing.TB, mode Mode, n int, start, stop func(), strategy BatchStrategy) {
+func runDriverBatch(t testing.TB, mode oceanbase.Mode, n int, start, stop func(), strategy oceanbase.BatchStrategy) {
 	t.Helper()
-	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
 			for j := 0; j < benchmarkBatchRows; j++ {
-				if (j == 0 || strategy == BatchSequential) && !servePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, status) {
+				if (j == 0 || strategy == oceanbase.BatchSequential) && !publictest.ServePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, status) {
 					return false
 				}
-				if !readCommand(ctx, t, p, optimizationExecute(7, 42, false)) || !sendPackets(ctx, t, p, commandPacket(1, 0, status)) {
+				if !testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(7, 42, false)) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) {
 					return false
 				}
-				if (j == benchmarkBatchRows-1 || strategy == BatchSequential) && !readCommand(ctx, t, p, stmtPacket(25, 7)) {
+				if (j == benchmarkBatchRows-1 || strategy == oceanbase.BatchSequential) && !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7)) {
 					return false
 				}
 			}
@@ -291,12 +289,12 @@ func runDriverBatch(t testing.TB, mode Mode, n int, start, stop func(), strategy
 		if i == 1 {
 			start()
 		}
-		result, err := ExecBatch(ctx, db, benchmarkPreparedSQL, rows, BatchOptions{Strategy: strategy, ContinueOnError: true})
+		result, err := oceanbase.ExecBatch(ctx, db, benchmarkPreparedSQL, rows, oceanbase.BatchOptions{Strategy: strategy, ContinueOnError: true})
 		if err != nil || len(result.Items) != benchmarkBatchRows || result.Strategy != strategy {
 			t.Fatal("batch shape/strategy", result, err)
 		}
 		for _, item := range result.Items {
-			if item.Status != BatchSucceeded || !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 {
+			if item.Status != oceanbase.BatchSucceeded || !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 {
 				t.Fatal("batch outcome", item)
 			}
 		}
@@ -304,12 +302,12 @@ func runDriverBatch(t testing.TB, mode Mode, n int, start, stop func(), strategy
 	stop()
 }
 
-func runDriverBatchRewrite(t testing.TB, mode Mode, n int, start, stop func()) {
+func runDriverBatchRewrite(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 	t.Helper()
 	query := strings.TrimSuffix(strings.Repeat("INSERT INTO benchmark_fixture VALUES ( 42 )\n;\n", benchmarkBatchRows), "\n;\n")
-	db, ctx := driverBenchmarkDB(t, mode, Config{AllowMultiStatements: true}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{AllowMultiStatements: true}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
-			if !serveBatchRewriteGuard(ctx, t, p, "0", status) || !readQuery(ctx, t, p, query) {
+			if !driverFixtureServeBatchRewriteGuard(ctx, t, p, "0", status) || !testpeer.ReadQuery(ctx, t, p, query) {
 				return false
 			}
 			for j := 0; j < benchmarkBatchRows; j++ {
@@ -317,7 +315,7 @@ func runDriverBatchRewrite(t testing.TB, mode Mode, n int, start, stop func()) {
 				if j < benchmarkBatchRows-1 {
 					flags |= 8
 				}
-				if !sendPackets(ctx, t, p, commandPacket(1, 0, flags)) {
+				if !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, flags)) {
 					return false
 				}
 			}
@@ -332,12 +330,12 @@ func runDriverBatchRewrite(t testing.TB, mode Mode, n int, start, stop func()) {
 		if i == 1 {
 			start()
 		}
-		result, err := ExecBatch(ctx, db, benchmarkPreparedSQL, rows, BatchOptions{Strategy: BatchRewrite})
-		if err != nil || result.Strategy != BatchRewrite || len(result.Items) != benchmarkBatchRows {
+		result, err := oceanbase.ExecBatch(ctx, db, benchmarkPreparedSQL, rows, oceanbase.BatchOptions{Strategy: oceanbase.BatchRewrite})
+		if err != nil || result.Strategy != oceanbase.BatchRewrite || len(result.Items) != benchmarkBatchRows {
 			t.Fatal("rewritten batch shape/strategy", result, err)
 		}
 		for _, item := range result.Items {
-			if item.Status != BatchSucceeded || !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 {
+			if item.Status != oceanbase.BatchSucceeded || !item.Started || !item.RowsAffectedKnown || item.RowsAffected != 1 {
 				t.Fatal("rewritten batch outcome", item)
 			}
 		}
@@ -345,7 +343,7 @@ func runDriverBatchRewrite(t testing.TB, mode Mode, n int, start, stop func()) {
 	stop()
 }
 
-func runDriverBatchArray(t testing.TB, mode Mode, n int, start, stop func()) {
+func runDriverBatchArray(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 	t.Helper()
 	values := make([]any, benchmarkBatchRows)
 	rows := make([][]any, benchmarkBatchRows)
@@ -353,18 +351,18 @@ func runDriverBatchArray(t testing.TB, mode Mode, n int, start, stop func()) {
 		values[i] = int64(42)
 		rows[i] = []any{values[i]}
 	}
-	expected := batchArrayPacket(t, values, wire.ExecuteOptions{})
-	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, _ byte) bool {
-		if !serveOK(ctx, t, p, []byte("\x03"+testAutocommitOff), 4) || !serveOK(ctx, t, p, []byte("\x03"+testOracleReadWrite), 5) {
+	expected := driverFixtureBatchArrayPacket(t, values, wire.ExecuteOptions{})
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{}, func(ctx context.Context, p *wire.PacketIO, _ byte) bool {
+		if !testpeer.ServeOK(ctx, t, p, []byte("\x03"+driverFixtureAutocommitOff), 4) || !testpeer.ServeOK(ctx, t, p, []byte("\x03"+driverFixtureOracleReadWrite), 5) {
 			return false
 		}
 		for i := 0; i <= n; i++ {
-			if !servePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, 5) || !readCommand(ctx, t, p, expected) ||
-				!sendPackets(ctx, t, p, commandPacket(benchmarkBatchRows, 0, 5)) || !readCommand(ctx, t, p, stmtPacket(25, 7)) {
+			if !publictest.ServePrepareStatus(ctx, t, p, benchmarkPreparedSQL, 7, 1, nil, 5) || !testpeer.ReadCommand(ctx, t, p, expected) ||
+				!testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(benchmarkBatchRows, 0, 5)) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7)) {
 				return false
 			}
 		}
-		return serveOK(ctx, t, p, []byte("\x03"+testRollbackSQL), 4) && serveOK(ctx, t, p, []byte("\x03"+testAutocommitOn), 6)
+		return testpeer.ServeOK(ctx, t, p, []byte("\x03"+driverFixtureRollbackSQL), 4) && testpeer.ServeOK(ctx, t, p, []byte("\x03"+driverFixtureAutocommitOn), 6)
 	})
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -375,12 +373,12 @@ func runDriverBatchArray(t testing.TB, mode Mode, n int, start, stop func()) {
 		if i == 1 {
 			start()
 		}
-		result, err := ExecBatch(ctx, tx, benchmarkPreparedSQL, rows, BatchOptions{Strategy: BatchArrayBinding, ContinueOnError: true})
-		if err != nil || result.Strategy != BatchArrayBinding || len(result.Items) != benchmarkBatchRows {
+		result, err := oceanbase.ExecBatch(ctx, tx, benchmarkPreparedSQL, rows, oceanbase.BatchOptions{Strategy: oceanbase.BatchArrayBinding, ContinueOnError: true})
+		if err != nil || result.Strategy != oceanbase.BatchArrayBinding || len(result.Items) != benchmarkBatchRows {
 			t.Fatal("array batch shape/strategy", result, err)
 		}
 		for _, item := range result.Items {
-			if item.Status != BatchSucceeded || !item.Started || item.RowsAffectedKnown {
+			if item.Status != oceanbase.BatchSucceeded || !item.Started || item.RowsAffectedKnown {
 				t.Fatal("array batch outcome", item)
 			}
 		}
@@ -391,18 +389,18 @@ func runDriverBatchArray(t testing.TB, mode Mode, n int, start, stop func()) {
 	}
 }
 
-func runDriverLOB(t testing.TB, mode Mode, n int, start, stop func()) {
+func runDriverLOB(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 	t.Helper()
 	payload := bytes.Repeat([]byte{'x'}, benchmarkPayloadBytes)
-	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
 		for i := 0; i <= n; i++ {
-			if mode == ModeOracle {
-				if !serveLOBQueryStatus(ctx, t, p, "SELECT b FROM benchmark_fixture", 210, status, lobInlineFixture(string(payload))) {
+			if mode == oceanbase.ModeOracle {
+				if !publictest.ServeLOBQueryStatus(ctx, t, p, "SELECT b FROM benchmark_fixture", 210, status, publictest.LobInlineFixture(string(payload))) {
 					return false
 				}
-			} else if !serveTableDictionary(ctx, t, p, status, tableDictionary()...) ||
-				!serveTableRows(ctx, t, p, status, []string{testOctetLength}, []byte{8}, []any{strconv.Itoa(len(payload))}) ||
-				!serveTableRows(ctx, t, p, status, []string{"SUBSTRING(`b`, 1 , 16384 )", "FROM `s`.`t` WHERE"}, []byte{252}, []any{payload}) {
+			} else if !publictest.ServeTableDictionary(ctx, t, p, status, publictest.TableDictionary()...) ||
+				!publictest.ServeTableRows(ctx, t, p, status, []string{driverFixtureOctetLength}, []byte{8}, []any{strconv.Itoa(len(payload))}) ||
+				!publictest.ServeTableRows(ctx, t, p, status, []string{"SUBSTRING(`b`, 1 , 16384 )", "FROM `s`.`t` WHERE"}, []byte{252}, []any{payload}) {
 				return false
 			}
 		}
@@ -418,11 +416,11 @@ func runDriverLOB(t testing.TB, mode Mode, n int, start, stop func()) {
 		if i == 1 {
 			start()
 		}
-		var blob *Blob
-		if mode == ModeOracle {
-			blob, err = OpenBlob(ctx, session, "SELECT b FROM benchmark_fixture")
+		var blob *oceanbase.Blob
+		if mode == oceanbase.ModeOracle {
+			blob, err = oceanbase.OpenBlob(ctx, session, "SELECT b FROM benchmark_fixture")
 		} else {
-			blob, err = OpenTableBlob(ctx, session, tableTarget())
+			blob, err = oceanbase.OpenTableBlob(ctx, session, publictest.TableTarget())
 		}
 		if err != nil || blob == nil {
 			t.Fatal("open benchmark LOB", err)
@@ -437,16 +435,16 @@ func runDriverLOB(t testing.TB, mode Mode, n int, start, stop func()) {
 	stop()
 }
 
-func runDriverFetch(t testing.TB, mode Mode, n int, start, stop func()) {
+func runDriverFetch(t testing.TB, mode oceanbase.Mode, n int, start, stop func()) {
 	t.Helper()
-	db, ctx := driverBenchmarkDB(t, mode, Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
-		column := textColumn("id", 8, 63, 0)
-		if !servePrepareStatus(ctx, t, p, benchmarkCursorSQL, 7, 0, nil, status) || !readCommand(ctx, t, p, cursorExecuteFixture(7)) ||
-			!sendPackets(ctx, t, p, []byte{1}, column, []byte{254, 0, 0, status | 64, 0}) {
+	db, ctx := driverBenchmarkDB(t, mode, oceanbase.Config{}, func(ctx context.Context, p *wire.PacketIO, status byte) bool {
+		column := testpeer.TextColumn("id", 8, 63, 0)
+		if !publictest.ServePrepareStatus(ctx, t, p, benchmarkCursorSQL, 7, 0, nil, status) || !testpeer.ReadCommand(ctx, t, p, driverFixtureCursorExecuteFixture(7)) ||
+			!testpeer.SendPackets(ctx, t, p, []byte{1}, column, []byte{254, 0, 0, status | 64, 0}) {
 			return false
 		}
-		fetch := cursorFetchFixture(7, benchmarkFetchRows)
-		if mode == ModeOracle {
+		fetch := publictest.CursorFetchFixture(7, benchmarkFetchRows)
+		if mode == oceanbase.ModeOracle {
 			fetch = append(fetch, 2, 0, 0, 0, 0, 0, 1, 0, 0, 0)
 		}
 		packets := make([][]byte, benchmarkFetchRows)
@@ -454,27 +452,27 @@ func runDriverFetch(t testing.TB, mode Mode, n int, start, stop func()) {
 			packets[i] = binary.LittleEndian.AppendUint64([]byte{0, 0}, uint64(i))
 		}
 		for i := 0; i <= n; i++ {
-			if !readCommand(ctx, t, p, fetch) {
+			if !testpeer.ReadCommand(ctx, t, p, fetch) {
 				return false
 			}
-			if mode == ModeOracle && !sendPackets(ctx, t, p, []byte{1}, column, []byte{254, 0, 0, status, 0}) {
+			if mode == oceanbase.ModeOracle && !testpeer.SendPackets(ctx, t, p, []byte{1}, column, []byte{254, 0, 0, status, 0}) {
 				return false
 			}
-			if !sendPackets(ctx, t, p, packets...) || !sendPackets(ctx, t, p, []byte{254, 0, 0, status | 64, 0}) {
+			if !testpeer.SendPackets(ctx, t, p, packets...) || !testpeer.SendPackets(ctx, t, p, []byte{254, 0, 0, status | 64, 0}) {
 				return false
 			}
-			if mode == ModeOracle && !sendPackets(ctx, t, p, protocolOK(status, nil)) {
+			if mode == oceanbase.ModeOracle && !testpeer.SendPackets(ctx, t, p, testpeer.ProtocolOK(status, nil)) {
 				return false
 			}
 		}
-		return readCommand(ctx, t, p, stmtPacket(25, 7))
+		return testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7))
 	})
 	session, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = session.Close() })
-	cursor, err := OpenCursor(ctx, session, benchmarkCursorSQL, CursorOptions{})
+	cursor, err := oceanbase.OpenCursor(ctx, session, benchmarkCursorSQL, oceanbase.CursorOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,7 +480,7 @@ func runDriverFetch(t testing.TB, mode Mode, n int, start, stop func()) {
 		if i == 1 {
 			start()
 		}
-		rows, err := cursor.Fetch(ctx, CursorPosition{}, benchmarkFetchRows)
+		rows, err := cursor.Fetch(ctx, oceanbase.CursorPosition{}, benchmarkFetchRows)
 		if err != nil {
 			t.Fatal(err)
 		}

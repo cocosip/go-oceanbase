@@ -1,128 +1,45 @@
 package oceanbase
 
 import (
-	"database/sql/driver"
-	"errors"
-	"slices"
-	"unicode/utf8"
+	dberrors "github.com/cocosip/go-oceanbase/dberrors"
+	types "github.com/cocosip/go-oceanbase/types"
 )
 
 // ErrType indicates an invalid scalar representation or conversion.
-var ErrType = errors.New("oceanbase: invalid scalar value")
+var ErrType = dberrors.ErrType
 
 // NString binds an Oracle national character string.
-type NString string
+type NString = types.NString
 
 // Raw binds Oracle RAW data; nil and empty have distinct values.
-type Raw []byte
+type Raw = types.Raw
 
 // RowID binds an Oracle row identifier.
-type RowID string
+type RowID = types.RowID
 
-// Scan reads UTF-8 text.
-func (n *NString) Scan(src any) error {
-	if n == nil {
-		return ErrType
-	}
-	text, err := scalarText(src)
-	if err != nil {
-		return err
-	}
-	*n = NString(text)
-	return nil
-}
+// ErrComplex identifies invalid complex values, descriptions or representations.
+var ErrComplex = dberrors.ErrComplex
 
-// Value implements driver.Valuer.
-func (n NString) Value() (driver.Value, error) { return scalarText(string(n)) }
+// Attribute is an ordered object field.
+type Attribute = types.Attribute
 
-// Scan copies binary data.
-func (r *Raw) Scan(src any) error {
-	if r == nil {
-		return ErrType
-	}
-	switch value := src.(type) {
-	case nil:
-		*r = nil
-	case []byte:
-		*r = slices.Clone(value)
-	case string:
-		*r = []byte(value)
-	default:
-		return ErrType
-	}
-	return nil
-}
+// Object is an explicitly named Oracle compatibility type.
+type Object = types.Object
 
-// Value implements driver.Valuer.
-func (r Raw) Value() (driver.Value, error) { return []byte(r), nil }
+// Array is a named Oracle compatibility collection.
+type Array = types.Array
 
-// Scan reads a row identifier.
-func (r *RowID) Scan(src any) error {
-	if r == nil {
-		return ErrType
-	}
-	text, err := scalarText(src)
-	if err != nil {
-		return err
-	}
-	if _, err = RowID(text).Value(); err != nil {
-		return err
-	}
-	*r = RowID(text)
-	return nil
-}
+// Number preserves decimal text without floating point conversion.
+type Number = types.Number
 
-// Value implements driver.Valuer.
-func (r RowID) Value() (driver.Value, error) {
-	if r == "" {
-		return nil, ErrType
-	}
-	text := r
-	if text[0] == '*' {
-		text = text[1:]
-		if text == "" {
-			return nil, ErrType
-		}
-	}
-	for _, c := range text {
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '=' {
-			continue
-		}
-		return nil, ErrType
-	}
-	return string(r), nil
-}
+// TimestampTZ retains the public value type.
+type TimestampTZ = types.TimestampTZ
 
-func scalarText(src any) (string, error) {
-	var text string
-	switch value := src.(type) {
-	case string:
-		text = value
-	case []byte:
-		if value == nil {
-			return "", ErrType
-		}
-		text = string(value)
-	default:
-		return "", ErrType
-	}
-	if !utf8.ValidString(text) {
-		return "", ErrType
-	}
-	return text, nil
-}
+// TimestampLTZ retains the public value type.
+type TimestampLTZ = types.TimestampLTZ
 
-func scanTyped[T ~string](dest *T, src any, validate func(T) (driver.Value, error)) error {
-	if dest == nil {
-		return ErrType
-	}
-	text, err := scalarText(src)
-	if err != nil {
-		return err
-	}
-	if _, err = validate(T(text)); err != nil {
-		return err
-	}
-	*dest = T(text)
-	return nil
-}
+// IntervalYM retains the public value type.
+type IntervalYM = types.IntervalYM
+
+// IntervalDS retains the public value type.
+type IntervalDS = types.IntervalDS

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cocosip/go-oceanbase/internal/testpeer"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -347,25 +348,4 @@ func TestPoolModeIsolation(t *testing.T) {
 	}
 }
 
-func TestPoolJavaDSNRejected(t *testing.T) {
-	for _, key := range []string{"pool", "poolName", "maxPoolSize", "minPoolSize", "maxIdleTime", "poolValidMinDelay", "staticGlobal", "registerJmxPool"} {
-		if _, err := ParseDSN("oceanbase://app@localhost/?" + key + "=1"); err == nil {
-			t.Fatal("Java pool option silently accepted:", key)
-		}
-	}
-}
-
-func poolAwait(t *testing.T, ready func() bool) {
-	t.Helper()
-	timer := time.NewTimer(2 * time.Second)
-	defer timer.Stop()
-	tick := time.NewTicker(time.Millisecond)
-	defer tick.Stop()
-	for !ready() {
-		select {
-		case <-timer.C:
-			t.Fatal("pool lifecycle did not settle within budget")
-		case <-tick.C:
-		}
-	}
-}
+var poolAwait = testpeer.Await

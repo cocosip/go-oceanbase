@@ -192,11 +192,11 @@ For complete database workflows, use the [standalone acceptance tool](go-driver-
 go test ./... -count=1
 go vet ./...
 golangci-lint run
-go test -tags=integration -run '^$' ./tests/integration
+go test -tags=integration -run '^$' ./...
 go test -run '^Example' .
 ```
 
-The full suite compiles both main examples without running main. Example functions run only when they have an Output comment; the others are compiled only. ExampleNewConnector_proxyUser and ExampleSessionOptions_collation demonstrate configuration without networking. The integration -run '^$' command also compiles only.
+The full suite compiles both main examples without running main. Example functions run only when they have an Output comment; the others are compiled only. ExampleNewConnector_proxyUser and ExampleSessionOptions_collation demonstrate configuration without networking. The integration -run '^$' command also compiles only. Live integration tests reside beside their concrete owners; connect, control and batch use `internal/{connect,control,batch}/integration` subpackages, with public smoke/query/pool scenarios at the repository root. Shared profile helpers live in `internal/integrationtest` and open no database during package initialization.
 
 Local performance sampling uses offline protocol peers; see [benchmarks](go-driver-benchmarks.md). Ordinary unit tests check the same operations and results.
 

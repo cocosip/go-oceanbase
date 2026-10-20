@@ -66,6 +66,8 @@ func main() {
 
 `NewConnector` validates and snapshots configuration; `PingContext` establishes a connection. A named import registers the `oceanbase` driver, so no additional blank import is needed. Reuse the `*sql.DB` pool and configure its connection limits for your deployment. A nil `Logger` keeps the driver silent.
 
+Applications can also import [`config`](config), [`types`](types), [`dberrors`](dberrors), [`metadata`](metadata), and [`obproxy`](obproxy) directly for their public models and helpers. The root package retains aliases for those contracts, so existing `oceanbase.Config`, value, error, and metadata names remain usable. Driver registration and connection-bound operations stay in the root package; `internal` packages are implementation details.
+
 For Oracle compatibility mode, use `ModeOracle` and `SELECT ? FROM dual`. `ModeAuto` detects and pins the mode on each authenticated physical connection; it does not translate SQL dialects.
 
 ### DSN configuration

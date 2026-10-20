@@ -54,7 +54,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Compile integration tests without a database
-        run: go test -tags=integration ./tests/integration -run '^$' -timeout 1m
+        run: go test -tags=integration ./... -run '^$' -timeout 1m
       - name: Unit tests with coverage
         # The driver is pure Go and must build without cgo, so -race is not used:
         # it requires cgo by toolchain design. CGO_ENABLED=0 keeps that promise
@@ -173,14 +173,16 @@ jobs:
             targets: >-
               ./internal/wire:FuzzText ./internal/wire:FuzzStmt
               ./internal/wire:FuzzStmtArray ./internal/wire:FuzzPrepareExecute
-              ./internal/wire:FuzzLOBLocator .:FuzzScalars
+              ./internal/wire:FuzzLOBLocator ./internal/valuecodec:FuzzScalars
           - group: sql-bind
             targets: >-
-              .:FuzzBindPlan .:FuzzClientPrepare .:FuzzJDBCEscapes
-              .:FuzzMetadataFilters .:FuzzCursorPosition
+              ./internal/sqltext:FuzzBindPlan ./internal/statement:FuzzClientPrepare
+              ./internal/sqltext:FuzzJDBCEscapes ./internal/catalog:FuzzMetadataFilters
+              ./internal/cursor:FuzzCursorPosition
           - group: resources-routing
             targets: >-
-              .:FuzzComplex .:FuzzBlobIdentifiers .:FuzzLongTextBoundary
+              ./types:FuzzComplex ./internal/wire:FuzzComplex
+              ./internal/sqltext:FuzzBlobIdentifiers ./internal/streaminput:FuzzLongTextBoundary
               ./internal/charset:FuzzCharset
               ./internal/routing:FuzzAddressParsing ./internal/routing:FuzzTNSParser
     steps:
@@ -333,4 +335,11 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
           cache: true
-      - run: go test -tags=integration ./tests/integration -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|SensitiveCursorRefresh|ConcurrentPoolTransactions|ProcedureResources|LongParameters|BatchExecution|BatchRewriteExecution|BatchArrayBindingExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|ReadTimeoutSessions|VersionProbeSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$' -count=1 -timeout 20m
+      - run: >-
+          go test -tags=integration
+          . ./internal/connect/integration ./internal/control/integration
+          ./internal/statement ./internal/valuecodec ./internal/catalog ./internal/call
+          ./internal/lob ./internal/cursor ./internal/execution ./internal/batch/integration
+          ./internal/diagnostic ./internal/xa
+          -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|SensitiveCursorRefresh|ConcurrentPoolTransactions|ProcedureResources|LongParameters|BatchExecution|BatchRewriteExecution|BatchArrayBindingExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|ReadTimeoutSessions|VersionProbeSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$'
+          -count=1 -timeout 20m

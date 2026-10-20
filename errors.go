@@ -1,38 +1,17 @@
 package oceanbase
 
 import (
-	"encoding/binary"
-	"fmt"
-
-	"github.com/cocosip/go-oceanbase/internal/wire"
+	dberrors "github.com/cocosip/go-oceanbase/dberrors"
 )
 
-// Error preserves the server's error code, SQLSTATE and message in either mode.
-// Message may contain SQL or sensitive values; the driver does not log it.
-type Error struct {
-	Code     uint32
-	SQLState string
-	Message  string
-}
+// Error preserves the server error code, SQLSTATE and message.
+type Error = dberrors.Error
 
-func (e *Error) Error() string {
-	return fmt.Sprintf("oceanbase: server error %d (%s): %s", e.Code, e.SQLState, e.Message)
-}
+// UnsupportedTypeError identifies a type unsupported in this compatibility mode.
+type UnsupportedTypeError = dberrors.UnsupportedTypeError
 
-func decodeServerError(data []byte) error {
-	if len(data) < 3 || data[0] != 0xff {
-		return wire.ErrMalformed
-	}
-	result := &Error{Code: uint32(binary.LittleEndian.Uint16(data[1:])), SQLState: "HY000"}
-	message := data[3:]
-	// Connection-limit errors may use the legacy format before capability negotiation.
-	if len(message) > 0 && message[0] == '#' {
-		if len(message) < 6 {
-			return wire.ErrMalformed
-		}
-		result.SQLState = string(message[1:6])
-		message = message[6:]
-	}
-	result.Message = string(message)
-	return result
-}
+// ErrBind identifies SQL placeholder or argument validation failures before sending.
+var ErrBind = dberrors.ErrBind
+
+// ErrResource identifies a closed resource or a handle whose owning session has ended.
+var ErrResource = dberrors.ErrResource

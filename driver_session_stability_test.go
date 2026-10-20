@@ -1,4 +1,4 @@
-package oceanbase
+package oceanbase_test
 
 import (
 	"context"
@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	oceanbase "github.com/cocosip/go-oceanbase"
+	publictest "github.com/cocosip/go-oceanbase/internal/publictest"
+	testpeer "github.com/cocosip/go-oceanbase/internal/testpeer"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -23,18 +26,18 @@ const (
 )
 
 type stabilitySession interface {
-	Session
+	oceanbase.Session
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	PingContext(context.Context) error
 }
 
-func sessionStabilityProtocol(framing string) ProtocolOptions {
-	protocol := ProtocolOptions{Compression: FeatureOff, OB20: FeatureOff}
-	if framing == testCompression {
-		protocol.Compression = FeatureRequired
+func sessionStabilityProtocol(framing string) oceanbase.ProtocolOptions {
+	protocol := oceanbase.ProtocolOptions{Compression: oceanbase.FeatureOff, OB20: oceanbase.FeatureOff}
+	if framing == driverFixtureCompression {
+		protocol.Compression = oceanbase.FeatureRequired
 	}
-	if framing == testOB20 {
-		protocol.OB20 = FeatureRequired
+	if framing == driverFixtureOB20 {
+		protocol.OB20 = oceanbase.FeatureRequired
 	}
 	return protocol
 }
@@ -55,8 +58,8 @@ func sessionStabilityIterations(t *testing.T) int {
 // Keep the original physical session across mixed operations, including recoverable SQL errors.
 func TestDriverSessionStability(t *testing.T) {
 	iterations := sessionStabilityIterations(t)
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		for _, framing := range []string{testStandard, testCompression, testOB20} {
+	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+		for _, framing := range []string{driverFixtureStandard, driverFixtureCompression, driverFixtureOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				runDriverSessionStability(t, mode, framing, iterations)
 			})
@@ -64,16 +67,16 @@ func TestDriverSessionStability(t *testing.T) {
 	}
 }
 
-func runDriverSessionStability(t *testing.T, mode Mode, framing string, iterations int) {
+func runDriverSessionStability(t *testing.T, mode oceanbase.Mode, framing string, iterations int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Minute)
 	t.Cleanup(cancel)
 	status := byte(2)
-	if mode == ModeOracle {
+	if mode == oceanbase.ModeOracle {
 		status = 6
 	}
-	peer := peerDial(t, func(_ context.Context, p *wire.PacketIO) {
-		if !serveCreateDatabaseAuth(ctx, t, p, framing, status) || !serveBaseline(ctx, t, p, status) || !serveOK(ctx, t, p, []byte{14}, status) {
+	peer := testpeer.PeerDial(t, func(_ context.Context, p *wire.PacketIO) {
+		if !testpeer.ServeCreateDatabaseAuth(ctx, t, p, framing, status) || !testpeer.ServeBaseline(ctx, t, p, status) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 			return
 		}
 		for i := 0; i < iterations; i++ {
@@ -82,18 +85,24 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 			}
 		}
 		p.ResetSequence()
-		serveQuit(t, p)
+		testpeer.ServeQuit(t, p)
 	}, 2*time.Minute)
 	var dials atomic.Int32
-	cfg := Config{User: testUser, Mode: mode, Execution: ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
+	var transport *driverTrackedConn
+	cfg := oceanbase.Config{User: driverFixtureUser, Mode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
 	cfg.Protocol = sessionStabilityProtocol(framing)
 	cfg.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if dials.Add(1) != 1 {
 			return nil, errors.New("mixed workload replaced its physical session")
 		}
-		return peer(ctx, network, addr)
+		raw, err := peer(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		transport = &driverTrackedConn{Conn: raw}
+		return transport, nil
 	}
-	configured, err := NewConnector(cfg)
+	configured, err := oceanbase.NewConnector(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,10 +112,10 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 		_ = db.Close()
 		t.Fatal(err)
 	}
-	var physical *conn
+	var physical driverPhysical
 	pinned, err := db.Conn(ctx)
 	if err == nil {
-		err = pinned.Raw(func(raw any) error { physical = raw.(*conn); return nil })
+		err = pinned.Raw(func(raw any) error { physical = raw.(driverPhysical); return nil })
 		err = errors.Join(err, pinned.Close())
 	}
 	if err != nil {
@@ -118,7 +127,7 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 		if err := db.Close(); err != nil {
 			t.Error(err)
 		}
-		if stats := db.Stats(); stats.OpenConnections != 0 || stats.InUse != 0 || !physical.closed.Load() {
+		if stats := db.Stats(); stats.OpenConnections != 0 || stats.InUse != 0 || physical.IsValid() || !transport.closed.Load() {
 			t.Error("mixed workload did not close its pool and physical session", stats)
 		}
 	})
@@ -143,56 +152,61 @@ func runDriverSessionStability(t *testing.T, mode Mode, framing string, iteratio
 	}
 }
 
-func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode Mode, i int, barrier func() bool) bool {
+func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.Mode, i int, barrier func() bool) bool {
 	t.Helper()
 	status, active := byte(2), byte(3)
-	begin := []txStep{{testMySQLReadWrite, active}}
-	if mode == ModeOracle {
+	begin := []publictest.TxStep{{Query: driverFixtureMySQLReadWrite, Status: active}}
+	if mode == oceanbase.ModeOracle {
 		status, active = 6, 5
-		begin = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, active}}
+		begin = []publictest.TxStep{{Query: driverFixtureAutocommitOff, Status: 4}, {Query: driverFixtureOracleReadWrite, Status: active}}
 	}
 	id, value := uint32(2*i+1), int64(i+1)
-	if !servePrepareStatus(ctx, t, p, sessionStabilityUpdate, id, 1, nil, status) ||
-		!readCommand(ctx, t, p, optimizationExecute(id, value, false)) {
+	if !publictest.ServePrepareStatus(ctx, t, p, sessionStabilityUpdate, id, 1, nil, status) ||
+		!testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(id, value, false)) {
 		return false
 	}
 	if barrier != nil && !barrier() {
 		return false
 	}
-	if !sendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
-		!readCommand(ctx, t, p, optimizationExecute(id, -value, true)) || !sendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
-		!readCommand(ctx, t, p, stmtPacket(25, id)) || !readQuery(ctx, t, p, sessionStabilitySelect) ||
-		!sendPackets(ctx, t, p, []byte{1}, textColumn("v", 8, 63, 0), []byte{254, 0, 0, status, 0}) {
+	if !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) ||
+		!testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(id, -value, true)) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) ||
+		!testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, id)) || !testpeer.ReadQuery(ctx, t, p, sessionStabilitySelect) ||
+		!testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("v", 8, 63, 0), []byte{254, 0, 0, status, 0}) {
 		return false
 	}
 	for row := 0; row < 3; row++ {
 		text := strconv.Itoa(i + row + 1)
-		if !sendPackets(ctx, t, p, append([]byte{byte(len(text))}, text...)) {
+		if !testpeer.SendPackets(ctx, t, p, append([]byte{byte(len(text))}, text...)) {
 			return false
 		}
 	}
-	if !sendPackets(ctx, t, p, []byte{254, 0, 0, status, 0}) || !serveTxSteps(ctx, t, p, begin) ||
-		!readQuery(ctx, t, p, sessionStabilityMutation) || !sendPackets(ctx, t, p, commandPacket(1, 0, active)) {
+	if !testpeer.SendPackets(ctx, t, p, []byte{254, 0, 0, status, 0}) || !publictest.ServeTxSteps(ctx, t, p, begin) ||
+		!testpeer.ReadQuery(ctx, t, p, sessionStabilityMutation) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, active)) {
 		return false
 	}
-	finish := testCommitSQL
+	finish := driverFixtureCommitSQL
 	if i%2 == 0 {
-		finish = testRollbackSQL
+		finish = driverFixtureRollbackSQL
 	}
-	end := []txStep{{finish, status}}
-	if mode == ModeOracle {
-		end = []txStep{{finish, 4}, {testAutocommitOn, status}}
+	end := []publictest.TxStep{{Query: finish, Status: status}}
+	if mode == oceanbase.ModeOracle {
+		end = []publictest.TxStep{{Query: finish, Status: 4}, {Query: driverFixtureAutocommitOn, Status: status}}
 	}
-	if !serveTxSteps(ctx, t, p, end) || !servePrepareStatus(ctx, t, p, sessionStabilityUpdate, id+1, 1, nil, status) ||
-		!readCommand(ctx, t, p, optimizationExecute(id+1, value, false)) ||
-		!sendPackets(ctx, t, p, []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'x'}) ||
-		!readCommand(ctx, t, p, stmtPacket(25, id+1)) || !serveOK(ctx, t, p, []byte{14}, status) {
+	probeEnd := []publictest.TxStep{{Query: driverFixtureRollbackSQL, Status: status}}
+	if mode == oceanbase.ModeOracle {
+		probeEnd = []publictest.TxStep{{Query: driverFixtureRollbackSQL, Status: 4}, {Query: driverFixtureAutocommitOn, Status: status}}
+	}
+	if !publictest.ServeTxSteps(ctx, t, p, end) || !publictest.ServeTxSteps(ctx, t, p, begin) || !publictest.ServeTxSteps(ctx, t, p, probeEnd) ||
+		!publictest.ServePrepareStatus(ctx, t, p, sessionStabilityUpdate, id+1, 1, nil, status) ||
+		!testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(id+1, value, false)) ||
+		!testpeer.SendPackets(ctx, t, p, []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'x'}) ||
+		!testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, id+1)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 		return false
 	}
 	return true
 }
 
-func runDriverSessionCycle(ctx context.Context, db stabilitySession, physical *conn, i int) error {
+func runDriverSessionCycle(ctx context.Context, db stabilitySession, physical driverPhysical, i int) error {
 	for _, value := range []int64{int64(i + 1), -int64(i + 1)} {
 		result, err := db.ExecContext(ctx, sessionStabilityUpdate, value)
 		if err != nil {
@@ -237,16 +251,18 @@ func runDriverSessionCycle(ctx context.Context, db stabilitySession, physical *c
 	if err != nil {
 		return err
 	}
-	if err = physical.lock(ctx); err != nil {
-		return err
+	probe, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("transaction state was not restored: %w", err)
 	}
-	restored := physical.activeTx == nil && physical.session.ok.Status&3 == 2
-	physical.unlock()
-	if !restored {
-		return errors.New("transaction returned without restoring the original session")
+	if err = probe.Rollback(); err != nil {
+		return fmt.Errorf("restored transaction could not roll back: %w", err)
+	}
+	if !physical.IsValid() {
+		return errors.New("transaction invalidated the original session")
 	}
 	_, err = db.ExecContext(ctx, sessionStabilityUpdate, i+1)
-	var server *Error
+	var server *oceanbase.Error
 	if !errors.As(err, &server) || server.Code != 1062 || server.SQLState != "23000" {
 		return fmt.Errorf("recoverable prepared error: %v", err)
 	}

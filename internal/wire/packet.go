@@ -252,10 +252,16 @@ func (p *PacketIO) prepareIO(ctx context.Context) (func(), error) {
 		}
 		close(done)
 	})
-	return func() {
+	finish := func() {
 		// Preserve complete responses and stop old callbacks before the next operation.
 		if !stop() {
 			<-done
 		}
-	}, nil
+	}
+	// Cancellation can happen while its I/O callback is being registered.
+	if err := ctx.Err(); err != nil {
+		finish()
+		return nil, err
+	}
+	return finish, nil
 }

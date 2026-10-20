@@ -3,18 +3,11 @@ package oceanbase
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
-	"errors"
-	"fmt"
+	"github.com/cocosip/go-oceanbase/dberrors"
+	"github.com/cocosip/go-oceanbase/internal/streaminput"
 	"io"
-	"reflect"
-	"strings"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
-
-	"github.com/cocosip/go-oceanbase/internal/charset"
-	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 // LocalInfile authorizes one Import. Pass a pointer; do not copy after use.
@@ -36,7 +29,7 @@ type LocalInfile struct {
 }
 
 // ErrLocalInfile identifies refused, consumed or failed LOCAL INFILE input.
-var ErrLocalInfile = errors.New("oceanbase: refused or failed local infile")
+var ErrLocalInfile = dberrors.ErrLocalInfile
 
 // Import runs a caller-supplied LOAD DATA command on the supplied DB, Conn or Tx.
 // Only this command can read input; ordinary Exec/Query never authorize uploads.
@@ -81,149 +74,22 @@ func Import(ctx context.Context, exec Execer, query string, input *LocalInfile) 
 	return result, localInfileError(err)
 }
 
-func validInfileName(name string) bool {
-	return len(name) > 0 && len(name) <= 4096 && utf8.ValidString(name) && !strings.ContainsRune(name, 0)
-}
-
-func nilReader(reader io.Reader) bool {
-	if reader == nil {
-		return true
-	}
-	v := reflect.ValueOf(reader)
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Func, reflect.Map, reflect.Slice, reflect.Chan, reflect.Interface:
-		return v.IsNil()
-	default:
-		return false
-	}
-}
-
 func (v *LocalInfile) validate() error {
-	if v == nil || v.MaxBytes < 0 || v.Timeout < 0 || v.used.Load() || (v.Name != "" && !validInfileName(v.Name)) {
-		return ErrLocalInfile
-	}
-	if v.Open != nil {
-		if v.Reader != nil {
-			return ErrLocalInfile
-		}
-	} else if !validInfileName(v.Name) || nilReader(v.Reader) {
-		return ErrLocalInfile
-	}
-	return nil
+	return v.source().Validate()
 }
 
 func localInfileError(err error) error {
-	if err == nil {
+	return streaminput.InfileError(err)
+}
+
+func (v *LocalInfile) source() *streaminput.Infile {
+	if v == nil {
 		return nil
 	}
-	// database/sql must not replay a command after a callback or source failed.
-	if errors.Is(err, driver.ErrBadConn) {
-		return fmt.Errorf("%w: %v", ErrLocalInfile, err)
-	}
-	return errors.Join(ErrLocalInfile, err)
+	return &streaminput.Infile{Name: v.Name, Reader: v.Reader, Open: v.Open, MaxBytes: v.MaxBytes, Timeout: v.Timeout, State: &v.used}
 }
 
 type localInfileRequest struct {
 	query string
 	input *LocalInfile
-}
-
-type localInfileContextKey struct{}
-
-func localImportStatement(query string, mode Mode, noBackslash bool) error {
-	bad := fmt.Errorf("%w: Import requires a single LOAD DATA statement", ErrUnsupported)
-	// A double-quoted backslash must not hide a separator under ANSI_QUOTES.
-	for _, ansiQuotes := range []bool{false, true} {
-		tokens, err := lexSQL(query, mode, noBackslash, ansiQuotes)
-		if err != nil {
-			return errors.Join(bad, err)
-		}
-		if len(tokens) < 2 || tokens[0].kind != 'w' || tokens[1].kind != 'w' || !strings.EqualFold(query[tokens[0].start:tokens[0].end], "LOAD") || !strings.EqualFold(query[tokens[1].start:tokens[1].end], "DATA") {
-			return bad
-		}
-		for i, token := range tokens {
-			if token.kind == ';' && i != len(tokens)-1 {
-				return bad
-			}
-		}
-	}
-	return nil
-}
-
-func (c *conn) execLocalInfile(ctx context.Context, request localInfileRequest) (driver.Result, error) {
-	ctx = context.WithValue(ctx, localInfileContextKey{}, request.input)
-	rows, err := c.queryText(ctx, request.query)
-	if err != nil {
-		return nil, localInfileError(err)
-	}
-	if err = rows.drainAll(ctx); err != nil {
-		return nil, localInfileError(err)
-	}
-	return rows.last, nil
-}
-
-func (r *textRows) uploadLocalInfile(ctx context.Context, request []byte) (err error) {
-	v := r.localInfile
-	r.localInfile = nil // A command may authorize only one server request.
-	if v == nil || r.conn.session.capabilities&wire.ClientLocalFiles == 0 || len(request) < 2 || len(request) > 4097 {
-		return ErrLocalInfile
-	}
-	encoding := r.conn.cfg.Session.Charset
-	if encoding == "" {
-		encoding = charsetUTF8MB4
-	}
-	name, err := charset.Decode(encoding, request[1:])
-	if err != nil || !validInfileName(name) || v.Name != "" && v.Name != name {
-		return ErrLocalInfile
-	}
-	if err = ctx.Err(); err != nil {
-		return err
-	}
-	source := v.Reader
-	var owned io.ReadCloser
-	defer func() {
-		if owned != nil {
-			err = errors.Join(err, owned.Close())
-		}
-		err = localInfileError(err)
-	}()
-	if v.Open != nil {
-		owned, err = v.Open(ctx, name)
-		if nilReader(owned) {
-			owned = nil
-			return errors.Join(ErrLocalInfile, err)
-		}
-		if err != nil {
-			return err
-		}
-		source = owned
-	}
-	limit := v.MaxBytes
-	if limit == 0 {
-		limit = r.conn.cfg.Limits.MaxLOBBytes
-	}
-	stream := &longSource{ctx: ctx, value: &LongData{Reader: source, Length: -1}, limit: limit}
-	buf := make([]byte, int(min(int64(65536), r.conn.cfg.Limits.MaxMessageBytes)))
-	for {
-		n, readErr := readLongChunk(stream, buf)
-		if readErr != nil && readErr != io.EOF {
-			return readErr
-		}
-		if n > 0 {
-			if err = r.conn.session.packets.WriteContinuation(ctx, buf[:n]); err != nil {
-				return err
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-	}
-	if owned != nil {
-		err = owned.Close()
-		owned = nil
-		if err != nil {
-			return err
-		}
-	}
-	return r.conn.session.packets.WriteContinuation(ctx, nil)
 }

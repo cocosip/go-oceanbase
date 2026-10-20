@@ -4,15 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
-	"math"
-	"slices"
-	"strconv"
+	"github.com/cocosip/go-oceanbase/internal/execution"
+	"github.com/cocosip/go-oceanbase/internal/parameters"
+	coresession "github.com/cocosip/go-oceanbase/internal/session"
 	"sync"
-	"unicode"
-	"unicode/utf8"
-
-	"github.com/cocosip/go-oceanbase/internal/wire"
+	"sync/atomic"
 )
 
 // Session is a standard SQL session. Resource operations require a non-nil *sql.Conn or *sql.Tx.
@@ -63,13 +61,10 @@ type ExecutionSnapshot struct {
 // Execution owns standard Rows and records command and row results as they are consumed.
 // Snapshot may be called concurrently; row iteration follows database/sql's contract.
 type Execution struct {
-	session       Session
-	mu            sync.RWMutex
-	rows          *sql.Rows
-	snapshot      ExecutionSnapshot
-	started       bool
-	rowsets       int
-	metadataBytes int64
+	session  Session
+	mu       sync.RWMutex
+	rows     *sql.Rows
+	recorder execution.Recorder
 }
 
 type executionRequest struct {
@@ -77,7 +72,36 @@ type executionRequest struct {
 	args      []driver.NamedValue
 	execution *Execution
 }
-type executionContextKey struct{}
+type resourceHandle struct {
+	session Session
+	ref     coresession.ResourceRef
+	closed  atomic.Bool
+}
+
+type resourceRequest struct{ handle *resourceHandle }
+
+func (h *resourceHandle) close(ctx context.Context) error {
+	if h == nil {
+		return nil
+	}
+	if !validSession(h.session) {
+		return ErrResource
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if h.closed.Swap(true) {
+		return nil
+	}
+	_, err := h.session.ExecContext(ctx, "", resourceRequest{handle: h})
+	if errors.Is(err, ErrResource) || errors.Is(err, sql.ErrConnDone) || errors.Is(err, sql.ErrTxDone) {
+		return nil
+	}
+	if err != nil {
+		h.closed.Store(false)
+	}
+	return err
+}
 
 // Execute runs SQL on a pinned session and retains partial results after a sent operation fails.
 // Callers must consume or close its Rows, including command-only executions.
@@ -96,9 +120,8 @@ func Execute(ctx context.Context, session Session, query string, args ...any) (*
 	rows, err := session.QueryContext(ctx, "", executionRequest{query: query, args: values, execution: e})
 	e.mu.Lock()
 	e.rows = rows
-	started := e.started
 	e.mu.Unlock()
-	if err != nil && !started {
+	if err != nil && !e.recorder.Started() {
 		return nil, err
 	}
 	return e, err
@@ -115,21 +138,7 @@ func validSession(session Session) bool {
 	}
 }
 func executionArguments(args []any) ([]driver.NamedValue, error) {
-	values := make([]driver.NamedValue, len(args))
-	for i, arg := range args {
-		value := driver.NamedValue{Ordinal: i + 1, Value: arg}
-		if named, ok := arg.(sql.NamedArg); ok {
-			if named.Name != "" {
-				r, _ := utf8.DecodeRuneInString(named.Name)
-				if !unicode.IsLetter(r) {
-					return nil, fmt.Errorf("%w: argument name", ErrBind)
-				}
-			}
-			value.Name, value.Value = named.Name, named.Value
-		}
-		values[i] = value
-	}
-	return values, nil
+	return parameters.NamedArguments(args)
 }
 
 // Rows returns the same standard Rows on every call; it is nil after an initial query error.
@@ -137,14 +146,22 @@ func (e *Execution) Rows() *sql.Rows { e.mu.RLock(); defer e.mu.RUnlock(); retur
 
 // Snapshot observes progress without reading the network or returning mutable internal storage.
 func (e *Execution) Snapshot() ExecutionSnapshot {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	s := e.snapshot
-	s.Results = slices.Clone(s.Results)
-	for i := range s.Results {
-		s.Results[i].Columns = slices.Clone(s.Results[i].Columns)
+	s := e.recorder.Snapshot()
+	result := ExecutionSnapshot{Done: s.Done, Err: s.Err, Results: make([]ResultInfo, len(s.Results))}
+	for i, item := range s.Results {
+		info := ResultInfo{Kind: ResultKind(item.Kind), RowSetIndex: item.RowSetIndex, RowsAffected: item.RowsAffected, RowsAffectedKnown: item.RowsAffectedKnown, InsertID: item.InsertID, InsertIDKnown: item.InsertIDKnown, Complete: item.Complete, Err: item.Err, Warnings: WarningSummary{Count: item.Warnings.Count, Known: item.Warnings.Known}, Columns: make([]ResultColumn, len(item.Columns))}
+		for j, column := range item.Columns {
+			info.Columns[j] = ResultColumn{Catalog: column.Catalog, Schema: column.Schema, Table: column.Table, OriginalTable: column.OriginalTable, Name: column.Name, OriginalName: column.OriginalName}
+		}
+		if item.Columns == nil {
+			info.Columns = nil
+		}
+		result.Results[i] = info
 	}
-	return s
+	if s.Results == nil {
+		result.Results = nil
+	}
+	return result
 }
 
 // Close drains unread results within the connection's cleanup budget and preserves prior errors.
@@ -157,90 +174,6 @@ func (e *Execution) Close() error {
 			closeErr = rows.Err()
 		}
 	}
-	e.finish(closeErr)
+	e.recorder.Finish(closeErr)
 	return e.Snapshot().Err
-}
-
-func (e *Execution) begin() {
-	if e != nil {
-		e.mu.Lock()
-		e.started = true
-		e.mu.Unlock()
-	}
-}
-func (e *Execution) add(info ResultInfo) {
-	if e == nil {
-		return
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	info.RowSetIndex = -1
-	e.snapshot.Results = append(e.snapshot.Results, info)
-}
-
-func (e *Execution) rowset(columns []wire.Column, limit int64) error {
-	if e == nil {
-		return nil
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	size := rowsetMetadataSize(columns)
-	if size > limit-e.metadataBytes {
-		return wire.ErrMessageTooLarge
-	}
-	info := ResultInfo{Kind: ResultRows, RowSetIndex: e.rowsets, Columns: make([]ResultColumn, len(columns))}
-	for i, column := range columns {
-		info.Columns[i] = ResultColumn{
-			Catalog: column.Catalog, Schema: column.Schema,
-			Table: column.Table, OriginalTable: column.OriginalTable,
-			Name: column.Name, OriginalName: column.OriginalName,
-		}
-	}
-	e.metadataBytes += size
-	e.rowsets++
-	e.snapshot.Results = append(e.snapshot.Results, info)
-	return nil
-}
-func (e *Execution) command(ok wire.OK) error {
-	if e == nil {
-		return nil
-	}
-	info := ResultInfo{Kind: ResultCommand, RowsAffectedKnown: true, Complete: true, Warnings: WarningSummary{Count: ok.Warnings, Known: true}}
-	if ok.InsertID != 0 {
-		info.InsertID = strconv.FormatUint(ok.InsertID, 10)
-		info.InsertIDKnown = true
-	}
-	if ok.AffectedRows > math.MaxInt64 {
-		info.RowsAffectedKnown = false
-		info.Err = errCountOverflow
-	} else {
-		info.RowsAffected = int64(ok.AffectedRows)
-	}
-	e.add(info)
-	return info.Err
-}
-func (e *Execution) rowDone(warnings uint16) {
-	if e == nil {
-		return
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if n := len(e.snapshot.Results); n > 0 && e.snapshot.Results[n-1].Kind == ResultRows {
-		e.snapshot.Results[n-1].Complete = true
-		e.snapshot.Results[n-1].Warnings = WarningSummary{Count: warnings, Known: true}
-	}
-}
-func (e *Execution) finish(err error) {
-	if e == nil {
-		return
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if err != nil && e.snapshot.Err == nil {
-		e.snapshot.Err = err
-	}
-	if n := len(e.snapshot.Results); err != nil && n > 0 && !e.snapshot.Results[n-1].Complete && e.snapshot.Results[n-1].Err == nil {
-		e.snapshot.Results[n-1].Err = err
-	}
-	e.snapshot.Done = true
 }

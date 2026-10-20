@@ -3,217 +3,78 @@ package oceanbase
 import (
 	"context"
 	"database/sql/driver"
-	"encoding/binary"
-	"fmt"
-	"unicode/utf8"
 
-	"github.com/cocosip/go-oceanbase/internal/wire"
+	"github.com/cocosip/go-oceanbase/internal/execution"
+	"github.com/cocosip/go-oceanbase/internal/statement"
 )
 
 type stmt struct {
-	conn                    *conn
-	id                      uint32
-	plan                    bindPlan
-	closed                  bool // guarded by the owning connection's gate
-	closeRequested          bool
-	leases                  int
-	parameters              []wire.Column
-	automatic               bool
-	cacheNoBackslash        bool
-	lastTypes, pendingTypes []wire.Parameter
-	epoch                   *resourceEpoch
+	conn   *conn
+	server *statement.Statement
+}
+type clientStmt struct {
+	conn   *conn
+	client *statement.Client
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	return c.PrepareContext(context.Background(), query)
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	if c.cfg.PrepareMode == PrepareClient {
-		return c.prepareClient(ctx, query)
-	}
-	return c.prepareServer(ctx, query)
-}
-
-func (c *conn) prepareServer(ctx context.Context, query string) (*stmt, error) {
-	if err := c.lock(ctx); err != nil {
-		return nil, err
-	}
-	defer c.unlock()
-	return c.prepareServerLocked(ctx, query)
-}
-
-func (c *conn) prepareServerLocked(ctx context.Context, query string) (*stmt, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if int64(utf8.RuneCountInString(query)) >= c.cfg.Limits.MaxMessageBytes {
-		return nil, wire.ErrMessageTooLarge
-	}
-	plan := bindPlan{query: query, sql: query, mode: c.session.mode}
-	if plan.mode == ModeOracle {
-		var err error
-		plan, err = buildBindPlan(query, plan.mode)
+	if c.engine.Config().PrepareMode == PrepareClient {
+		s, err := c.engine.PrepareClient(ctx, query)
 		if err != nil {
 			return nil, err
 		}
+		return &clientStmt{conn: c, client: s}, nil
 	}
-	encoded, err := c.encodeSQL(plan.sql)
+	s, err := c.engine.Prepare(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	if c.closed.Load() {
-		return nil, driver.ErrBadConn
-	}
-	r := c.startRows(ctx, false, nil)
-	r.keepGate = true
-	ctx = r.ctx
-	defer r.release()
-	p := c.session.packets
-	p.ResetSequence()
-	if err := p.WriteMessage(ctx, append([]byte{22}, encoded...)); err != nil {
-		return nil, r.fail(err, !errorsPreSend(err))
-	}
-	data, err := p.ReadMessage(ctx)
-	if err != nil {
-		return nil, r.fail(err, true)
-	}
-	if len(data) > 0 && data[0] == 255 {
-		err = decodeServerError(data)
-		return nil, r.fail(err, err == wire.ErrMalformed)
-	}
-	header, err := wire.DecodePrepareOK(data)
-	if err != nil {
-		return nil, r.fail(err, true)
-	}
-	if header.Columns > maxTextColumns {
-		return nil, r.fail(wire.ErrMessageTooLarge, true)
-	}
-	budget := int64(len(data))
-	parameters, err := c.prepareMetadata(ctx, int(header.Parameters), &budget)
-	if err == nil {
-		_, err = c.prepareMetadata(ctx, int(header.Columns), &budget)
-	}
-	if err != nil {
-		return nil, r.fail(err, true)
-	}
-	if plan.mode == ModeMySQL {
-		// Native server metadata is authoritative, including session quoting and executable comments.
-		plan.numInput = int(header.Parameters)
-		plan.slots = make([]bindSlot, plan.numInput)
-		for i := range plan.slots {
-			plan.slots[i].index = i
-		}
-	} else if int(header.Parameters) != len(plan.slots) {
-		return nil, r.fail(fmt.Errorf("%w: server parameter count", ErrBind), true)
-	}
-	prepared := &stmt{conn: c, id: header.ID, plan: plan, parameters: parameters, epoch: c.statementEpoch}
-	err = ctx.Err()
-	r.release()
-	if err == nil {
-		err = r.err
-	}
-	if err != nil {
-		cleanup, cancel := context.WithTimeout(context.Background(), c.cfg.Limits.CleanupTimeout)
-		_ = prepared.closeLocked(cleanup)
-		cancel()
-		return nil, err
-	}
-	return prepared, nil
+	return &stmt{conn: c, server: s}, nil
 }
-
-func (c *conn) prepareMetadata(ctx context.Context, count int, budget *int64) ([]wire.Column, error) {
-	return c.readMetadata(ctx, count, budget, false)
-}
-
-func (c *conn) readMetadata(ctx context.Context, count int, budget *int64, validate bool) ([]wire.Column, error) {
-	columns := make([]wire.Column, 0, min(count, 64))
-	for i := 0; i < count; i++ {
-		data, err := c.session.packets.ReadMessage(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if int64(len(data)) > c.cfg.Limits.MaxMessageBytes-*budget {
-			return nil, wire.ErrMessageTooLarge
-		}
-		*budget += int64(len(data))
-		column, err := c.decodeColumn(data)
-		if err != nil {
-			return nil, err
-		}
-		if validate && textTypeName(column, c.session.mode) == "" {
-			return nil, &UnsupportedTypeError{Type: column.Type, Mode: c.session.mode}
-		}
-		columns = append(columns, column)
-	}
-	if count > 0 && c.session.capabilities&wire.ClientDeprecateEOF == 0 {
-		data, err := c.session.packets.ReadMessage(ctx)
-		if err != nil {
-			return nil, err
-		}
-		eof, err := wire.DecodeEOF(data)
-		if err != nil {
-			return nil, err
-		}
-		if c.session.mode == ModeOracle && !validate && eof.Status&3 == 3 {
-			// PREPARE uses static transaction flags; it has not executed the SQL.
-			eof.Status = eof.Status&^3 | c.session.ok.Status&3
-		}
-		c.observeResourceStatus(eof.Status)
-		c.session.ok.Status, c.session.ok.Warnings = eof.Status, eof.Warnings
-	}
-	return columns, nil
-}
-
-func (s *stmt) NumInput() int { return s.plan.numInput }
-
-func (s *stmt) checkOpenLocked() error {
-	if s.epoch != s.conn.statementEpoch {
-		return ErrResource
-	}
-	if s.closed || s.closeRequested {
-		return fmt.Errorf("oceanbase: statement closed")
-	}
-	return nil
-}
-
-func (s *stmt) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), s.conn.cfg.Limits.CleanupTimeout)
-	defer cancel()
-	if err := s.conn.lock(ctx); err != nil {
-		s.conn.discard()
-		return err
-	}
-	defer s.conn.unlock()
-	return s.closeLocked(ctx)
-}
-func (s *stmt) closeLocked(ctx context.Context) error {
-	if s.epoch != s.conn.statementEpoch {
-		s.closed, s.closeRequested = true, true
-		return nil // The server may already have reused the old statement ID for the new identity.
-	}
-	s.closeRequested = true
-	if s.leases != 0 {
-		return nil
-	}
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	if s.conn.closed.Load() || s.id == 0 {
-		return nil
-	}
-	s.conn.session.packets.ResetSequence()
-	err := s.conn.session.packets.WriteMessage(ctx, binary.LittleEndian.AppendUint32([]byte{25}, s.id))
-	if err != nil {
-		s.conn.discard()
-	}
-	return err
-}
+func (s *stmt) NumInput() int { return s.server.Plan().NumInput }
+func (s *stmt) Close() error  { return s.conn.engine.CloseStatement(s.server) }
 func (s *stmt) Exec(args []driver.Value) (driver.Result, error) {
 	return s.ExecContext(context.Background(), namedValues(args))
 }
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error) {
 	return s.QueryContext(context.Background(), namedValues(args))
+}
+func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	return s.conn.engine.QueryPrepared(ctx, s.server, args, execution.Options{Outputs: hasOutputArguments(args)})
+}
+func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	rows, err := s.conn.engine.QueryPrepared(ctx, s.server, args, execution.Options{Outputs: hasOutputArguments(args)})
+	if err != nil {
+		return nil, err
+	}
+	if err = rows.Drain(ctx); err != nil {
+		return nil, err
+	}
+	return rows.Last(), nil
+}
+func (s *clientStmt) NumInput() int { return -1 }
+func (s *clientStmt) Close() error  { s.client.Close(); return nil }
+func (s *clientStmt) Exec(args []driver.Value) (driver.Result, error) {
+	return s.ExecContext(context.Background(), namedValues(args))
+}
+func (s *clientStmt) Query(args []driver.Value) (driver.Rows, error) {
+	return s.QueryContext(context.Background(), namedValues(args))
+}
+func (s *clientStmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	return s.conn.engine.QueryClient(ctx, s.client, args, execution.Options{Outputs: hasOutputArguments(args)})
+}
+func (s *clientStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	rows, err := s.conn.engine.QueryClient(ctx, s.client, args, execution.Options{Outputs: hasOutputArguments(args)})
+	if err != nil {
+		return nil, err
+	}
+	if err = rows.Drain(ctx); err != nil {
+		return nil, err
+	}
+	return rows.Last(), nil
 }
 func namedValues(args []driver.Value) []driver.NamedValue {
 	values := make([]driver.NamedValue, len(args))
@@ -222,108 +83,13 @@ func namedValues(args []driver.Value) []driver.NamedValue {
 	}
 	return values
 }
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	return s.exec(ctx, args, false)
-}
-func (s *stmt) exec(ctx context.Context, args []driver.NamedValue, auto bool) (driver.Result, error) {
-	rows, err := s.query(ctx, args, auto)
-	if err != nil {
-		return nil, err
-	}
-	if err = rows.drainAll(ctx); err != nil {
-		return nil, err
-	}
-	return rows.last, nil
-}
-func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	return s.query(ctx, args, false)
-}
-func (s *stmt) query(ctx context.Context, args []driver.NamedValue, auto bool) (*textRows, error) {
-	if hasOutputArguments(args) {
-		return s.conn.queryOutputs(ctx, s.plan.query, args, s)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := s.conn.lock(ctx); err != nil {
-		return nil, err
-	}
-	gateOwned := true
-	defer func() {
-		if gateOwned {
-			s.conn.unlock()
-		}
-	}()
-	s.conn.clearDescriptors()
-	if err := s.checkOpenLocked(); err != nil {
-		return nil, err
-	}
-	if s.conn.closed.Load() {
-		return nil, driver.ErrBadConn
-	}
-	values, err := s.conn.bindCommandArgumentsLocked(ctx, s.plan, args)
-	if err != nil {
-		return nil, err
-	}
-	if !s.conn.cacheableSQL(s.plan.query) {
-		if err = s.conn.clearStatementsLocked(ctx); err != nil {
-			return nil, err
-		}
-	}
-	if s.conn.usePrepareExecute() && !longValues(values) {
-		payload, encodeErr := s.conn.outputPrepareExecute(ctx, s.plan, values, s)
-		if encodeErr != nil {
-			return nil, encodeErr
-		}
-		gateOwned = false
-		return s.conn.queryPrepareExecuteLocked(ctx, payload, s.plan, nil, s)
-	}
-	params := make([]wire.Parameter, len(values))
-	budget := s.conn.cfg.Limits.MaxMessageBytes - 10
-	if len(values) > 0 {
-		budget -= int64((len(values)+7)/8 + 1 + 2*len(values))
-	}
-	if budget < 0 {
-		return nil, wire.ErrMessageTooLarge
-	}
-	for i, v := range values {
-		limit := budget
-		switch v.value.(type) {
-		case Raw, []byte:
-			limit = min(limit, s.conn.cfg.Limits.MaxLOBBytes)
-		}
-		params[i], err = s.conn.encodeParameterLocked(ctx, v.value, limit)
-		if err != nil {
-			return nil, err
-		}
-		if (params[i].EncodedSize() + int64(len(params[i].TypeMetadata))) > budget {
-			return nil, wire.ErrMessageTooLarge
-		}
-		budget -= (params[i].EncodedSize() + int64(len(params[i].TypeMetadata)))
-	}
-	queryBytes, err := s.conn.encodeSQL(s.plan.sql)
-	if err != nil {
-		return nil, err
-	}
-	options := s.parameterOptions(queryBytes, params, false)
-	payload, err := wire.EncodeStmtExecuteOptions(s.id, params, s.conn.cfg.Limits.MaxMessageBytes, options)
-	if err != nil {
-		return nil, err
-	}
-	if err = s.conn.uploadLongDataLocked(ctx, s.id, values); err != nil {
-		return nil, err
-	}
-	gateOwned = false
-	var owned *stmt
-	if auto {
-		owned = s
-	}
-	return s.conn.queryCommandStateLocked(ctx, payload, true, owned, false, nil, s)
-}
 
 var (
 	_ driver.ConnPrepareContext = (*conn)(nil)
 	_ driver.Stmt               = (*stmt)(nil)
 	_ driver.StmtExecContext    = (*stmt)(nil)
 	_ driver.StmtQueryContext   = (*stmt)(nil)
+	_ driver.Stmt               = (*clientStmt)(nil)
+	_ driver.StmtExecContext    = (*clientStmt)(nil)
+	_ driver.StmtQueryContext   = (*clientStmt)(nil)
 )

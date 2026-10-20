@@ -10,7 +10,7 @@ import (
 )
 
 func TestTCPDialContext(t *testing.T) {
-	listener, err := net.Listen(networkTCP, "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestTCPDialContext(t *testing.T) {
 }
 
 func TestTCPDialContextTLSGate(t *testing.T) {
-	listener, err := net.Listen(networkTCP, "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,14 +51,14 @@ func TestTCPDialContextTLSGate(t *testing.T) {
 
 func TestTCPDialContextPreflight(t *testing.T) {
 	dial := tcpExampleDialer(&net.Dialer{}, false)
-	for _, network := range []string{networkUnix, networkPipe} {
+	for _, network := range []string{"unix", "pipe"} {
 		if raw, err := dial(context.Background(), network, "unused"); raw != nil || !errors.Is(err, ErrUnsupported) {
 			t.Fatal("TCP factory silently accepted a different transport", err)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if raw, err := dial(ctx, networkTCP, "127.0.0.1:2881"); raw != nil || !errors.Is(err, context.Canceled) {
+	if raw, err := dial(ctx, "tcp", "127.0.0.1:2881"); raw != nil || !errors.Is(err, context.Canceled) {
 		t.Fatal("TCP factory ignored canceled context", err)
 	}
 	for _, name := range []string{"tcpNoDelay", "tcpAbortiveClose", "localSocketAddress", "tcpKeepAlive", "tcpRcvBuf", "tcpSndBuf", "socketFactory"} {
@@ -71,14 +71,14 @@ func TestTCPDialContextPreflight(t *testing.T) {
 }
 
 func TestTCPDialContextAbortiveClose(t *testing.T) {
-	listener, err := net.Listen(networkTCP, "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = listener.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	client, err := tcpExampleDialer(&net.Dialer{KeepAlive: -1}, true)(ctx, networkTCP, listener.Addr().String())
+	client, err := tcpExampleDialer(&net.Dialer{KeepAlive: -1}, true)(ctx, "tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}

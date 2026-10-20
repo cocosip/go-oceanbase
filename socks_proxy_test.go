@@ -15,9 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/proxy"
-
 	"github.com/cocosip/go-oceanbase/internal/wire"
+	"golang.org/x/net/proxy"
 )
 
 const socksTarget = "oceanbase.invalid:2881"
@@ -35,7 +34,7 @@ func TestSOCKSDialContextSessions(t *testing.T) {
 						return
 					}
 					ctx := context.Background()
-					p := wire.NewPacketIO(authPeerConn{raw}, 64<<20)
+					p := wire.NewPacketIO(authPeerConn{Conn: raw}, 64<<20)
 					if !serveCreateDatabaseAuth(ctx, t, p, framing, status) || !serveBaseline(ctx, t, p, status) || !serveOK(ctx, t, p, []byte{14}, status) {
 						return
 					}
@@ -84,7 +83,7 @@ func TestSOCKSDialContextRouting(t *testing.T) {
 			return
 		}
 		ctx := context.Background()
-		p := wire.NewPacketIO(authPeerConn{raw}, 64<<20)
+		p := wire.NewPacketIO(authPeerConn{Conn: raw}, 64<<20)
 		if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) || !serveOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -175,8 +174,8 @@ func TestSOCKSDialContextTLSGate(t *testing.T) {
 			return
 		}
 		ctx := context.Background()
-		p := wire.NewPacketIO(authPeerConn{raw}, 64<<20)
-		if !sendPackets(ctx, t, p, authGreeting(authClear, false)) {
+		p := wire.NewPacketIO(authPeerConn{Conn: raw}, 64<<20)
+		if !sendPackets(ctx, t, p, authGreeting("mysql_clear_password", false)) {
 			return
 		}
 		if data, err := p.ReadMessage(ctx); err == nil || len(data) != 0 {
@@ -215,8 +214,8 @@ func TestSOCKSDialContextVerifiedTLS(t *testing.T) {
 					return
 				}
 				ctx := context.Background()
-				p := wire.NewPacketIO(authPeerConn{raw}, 64<<20)
-				if !sendPackets(ctx, t, p, authGreeting(authClear, true)) || !readAuthResponse(ctx, t, p) {
+				p := wire.NewPacketIO(authPeerConn{Conn: raw}, 64<<20)
+				if !sendPackets(ctx, t, p, authGreeting("mysql_clear_password", true)) || !readAuthResponse(ctx, t, p) {
 					return
 				}
 				secure := tls.Server(raw, server)
@@ -226,7 +225,7 @@ func TestSOCKSDialContextVerifiedTLS(t *testing.T) {
 					}
 					return
 				}
-				if err := p.ReplaceConn(authPeerConn{secure}); err != nil {
+				if err := p.ReplaceConn(authPeerConn{Conn: secure}); err != nil {
 					t.Error(err)
 					return
 				}
@@ -341,17 +340,9 @@ func TestSOCKSDialContextFailure(t *testing.T) {
 	}
 }
 
-func TestSOCKSJavaDSNRejected(t *testing.T) {
-	for _, option := range []string{"socksProxyHost", "socksProxyPort"} {
-		if _, err := ParseDSN("oceanbase://app@localhost/?" + option + "=1080"); err == nil {
-			t.Fatal("Java proxy option accepted", option)
-		}
-	}
-}
-
 func startSOCKSPeers(t *testing.T, peers ...func(net.Conn)) string {
 	t.Helper()
-	listener, err := net.Listen(networkTCP, "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

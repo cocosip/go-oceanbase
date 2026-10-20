@@ -2,15 +2,23 @@ package oceanbase
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
-	"errors"
+	"github.com/cocosip/go-oceanbase/dberrors"
+	"github.com/cocosip/go-oceanbase/internal/call"
+	"github.com/cocosip/go-oceanbase/internal/catalog"
+	"github.com/cocosip/go-oceanbase/internal/command"
+	"github.com/cocosip/go-oceanbase/internal/lob"
+	"github.com/cocosip/go-oceanbase/internal/parameters"
+	"github.com/cocosip/go-oceanbase/internal/session"
+	"github.com/cocosip/go-oceanbase/internal/valueformat"
 	"io"
 	"math"
 	"unicode/utf8"
 )
 
 // ErrLOB identifies an invalid LOB operation, offset or result shape.
-var ErrLOB = errors.New("oceanbase: invalid LOB operation")
+var ErrLOB = dberrors.ErrLOB
 
 // Blob is a binary LOB owned by the caller's pinned SQL session.
 type Blob struct{ handle *resourceHandle }
@@ -84,11 +92,11 @@ func openLOB(ctx context.Context, session Session, query string, typ byte, args 
 		return nil, err
 	}
 	for i := range values {
-		values[i].Value, err = convertArgument(values[i].Value)
+		values[i].Value, err = normalizeArgument(values[i].Value)
 		if err != nil {
 			return nil, err
 		}
-		if _, output := values[i].Value.(*outBinding); output {
+		if _, output := values[i].Value.(*call.Binding); output {
 			return nil, ErrLOB
 		}
 	}
@@ -225,19 +233,104 @@ func (c *Clob) Close() error {
 	return c.handle.close(context.Background())
 }
 
-func lobRuneSlice(text string, off, count int64) (string, int64) {
-	var index int64
-	start, end := len(text), len(text)
-	for pos := range text {
-		if index == off {
-			start = pos
-		}
-		if index == off+count {
-			end = pos
-			break
-		}
-		index++
+// BlobTarget identifies one BLOB column by its complete primary key.
+// Names are individual dictionary identifiers, without SQL quoting or qualification.
+type BlobTarget struct {
+	Schema string
+	Table  string
+	Column string
+	Key    map[string]any
+}
+
+type tableBlobOpenRequest struct {
+	session Session
+	target  BlobTarget
+	result  **resourceHandle
+}
+
+// OpenTableBlob opens a BLOB without materializing its contents. SQL NULL returns nil, nil.
+// MySQL writes require a caller-owned, writable *sql.Tx. Reads on *sql.Conn have no cross-call snapshot.
+// Oracle names must match dictionary spelling; MySQL column names are resolved without case sensitivity.
+func OpenTableBlob(ctx context.Context, pinned Session, target BlobTarget) (*Blob, error) {
+	if !validSession(pinned) {
+		return nil, ErrResource
 	}
-	part := text[start:end]
-	return part, int64(utf8.RuneCountInString(part))
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	target, err := normalizeBlobTarget(target)
+	if err != nil {
+		return nil, err
+	}
+	var handle *resourceHandle
+	_, err = pinned.ExecContext(ctx, "", tableBlobOpenRequest{session: pinned, target: target, result: &handle})
+	if err != nil || handle == nil {
+		return nil, err
+	}
+	return &Blob{handle: handle}, nil
+}
+
+func normalizeBlobTarget(target BlobTarget) (BlobTarget, error) {
+	if !valueformat.Identifier(target.Table) || !valueformat.Identifier(target.Column) || target.Schema != "" && !valueformat.Identifier(target.Schema) || len(target.Key) == 0 || len(target.Key) > command.MaxColumns {
+		return target, ErrLOB
+	}
+	key := make(map[string]any, len(target.Key))
+	for name, value := range target.Key {
+		if !valueformat.Identifier(name) {
+			return target, ErrLOB
+		}
+		normalized, err := normalizeArgument(value)
+		if err != nil {
+			return target, err
+		}
+		key[name], err = parameters.CloneKey(normalized)
+		if err != nil {
+			return target, err
+		}
+	}
+	target.Key = key
+	return target, nil
+}
+
+func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (driver.Result, error) {
+	if !validSession(request.session) || request.result == nil {
+		return nil, ErrLOB
+	}
+	_, transaction := request.session.(*sql.Tx)
+	ref, err := c.engine.OpenLOB(ctx, request.query, request.args, request.typ, transaction)
+	if err != nil {
+		return nil, err
+	}
+	if ref != (session.ResourceRef{}) {
+		*request.result = &resourceHandle{session: request.session, ref: ref}
+	}
+	return command.Result{Known: true}, nil
+}
+
+func (c *conn) execOpenTableBlob(ctx context.Context, request tableBlobOpenRequest) (driver.Result, error) {
+	if !validSession(request.session) || request.result == nil {
+		return nil, ErrResource
+	}
+	_, transaction := request.session.(*sql.Tx)
+	ref, err := c.engine.OpenTableBlob(ctx, catalog.Target{Schema: request.target.Schema, Table: request.target.Table, Column: request.target.Column, Key: request.target.Key}, transaction)
+	if err != nil {
+		return nil, err
+	}
+	if ref != (session.ResourceRef{}) {
+		*request.result = &resourceHandle{session: request.session, ref: ref}
+	}
+	return command.Result{Known: true}, nil
+}
+
+func (c *conn) execLOB(ctx context.Context, request lobRequest) (driver.Result, error) {
+	if request.result == nil {
+		return nil, ErrLOB
+	}
+	if request.handle == nil || request.handle.closed.Load() {
+		return nil, ErrResource
+	}
+	_, transaction := request.handle.session.(*sql.Tx)
+	result, err := c.engine.LOB(ctx, request.handle.ref, lob.Operation(request.operation), request.offset, request.count, request.data, request.text, transaction)
+	*request.result = lobOperationResult{n: result.Count(), size: result.Size(), text: result.Text()}
+	return command.Result{Known: true}, err
 }

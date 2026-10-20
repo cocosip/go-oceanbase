@@ -1,5 +1,7 @@
 package wire
 
+import "encoding/binary"
+
 // ComplexShape frames binary complex fields. A nil child denotes a length-encoded scalar.
 // Arrays have exactly one child shape; objects have one per declared attribute.
 type ComplexShape struct {
@@ -74,4 +76,23 @@ func (r *decoder) complex(shape *ComplexShape, depth int, nodes *int, collect bo
 		}
 	}
 	return v, nil
+}
+
+// AppendComplexLenEnc appends a complex protocol length-encoded integer.
+func AppendComplexLenEnc(data []byte, n uint64) []byte {
+	switch {
+	case n < 251:
+		return append(data, byte(n))
+	case n <= 65535:
+		return append(data, 252, byte(n), byte(n>>8))
+	case n <= 16777215:
+		return append(data, 253, byte(n), byte(n>>8), byte(n>>16))
+	default:
+		return binary.LittleEndian.AppendUint64(append(data, 254), n)
+	}
+}
+
+// AppendComplexLenBytes appends a complex protocol length-prefixed byte sequence.
+func AppendComplexLenBytes(data, value []byte) []byte {
+	return append(AppendComplexLenEnc(data, uint64(len(value))), value...)
 }

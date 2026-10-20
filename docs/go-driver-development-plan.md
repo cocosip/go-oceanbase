@@ -138,7 +138,7 @@ The required verification set for each Dxx appears in [Development progress §5.
 
 ### 5.2 Real-Server Tests
 
-D04 establishes the `tests/integration` package with `//go:build integration`. It receives external configuration as follows; test output must not contain DSNs:
+D04 established integration-tag database tests. They now reside beside concrete owners, with connect/control/batch integration subpackages and root public smoke/query/pool scenarios. Shared configuration helpers live in `internal/integrationtest`. Test output must not contain DSNs; the external configuration remains:
 
 | Environment variable | Meaning |
 | --- | --- |
@@ -152,8 +152,8 @@ D04 establishes the `tests/integration` package with `//go:build integration`. I
 Configure those variables before running integration tests, then execute:
 
 ```text
-go test -tags=integration ./tests/integration -run TestSmoke -count=1
-go test -tags=integration ./tests/integration -count=1
+go test -tags=integration . -run TestSmoke -count=1
+go test -tags=integration ./... -count=1
 ```
 
 For every acceptance run, record actual Go/OS/architecture, OceanBase/OBProxy versions, mode, execution/packet-stream paths, commands, and results. If Oracle compatibility mode is unavailable, record the gap; MySQL or ordinary Oracle results cannot substitute.
@@ -351,7 +351,7 @@ Number budget supplement: TestNumberNormalizedBudget, TestComplexNumberNormalize
 
 LTZ preparation equivalence supplement: TestLTZPrepareEquivalence and TestLTZSQLPrepareEquivalence provide 56 scenarios covering cross-region session conversion in client/server preparation, nanoseconds, same-region wall-time preservation, source DST gaps/overlaps and target overlap rejection, session year boundaries, public preparation across three packet streams, and reuse of the original session after local rejection. Client and binary paths share session wall-time validation; offset SQL literals cannot bypass binary-path ambiguity/range restrictions. FuzzScalars adds LTZ cross-region, source-gap, and year-boundary seeds and verifies matching acceptance/rejection with a fixed UTC session and sufficient budget. Fixed-offset sessions convert using the offset actually set at initialization even when their names match the source region; additional cases cover date carry, unresolvable source regions, DST ambiguity, and out-of-range years. Real timezone conversion/server type semantics remain pending integration.
 
-NString national-charset supplement: [TestNStringPrepareCharsets/TestNStringSQLPrepareCharsets](../national_charset_paths_test.go) provide 62 offline scenarios covering explicit national character sets for both preparation strategies, connection-charset fallback, default utf8mb4, empty values, invalid UTF-8, unrepresentable input, and separate SQL latin1/ASCII versus national UTF16. Public database/sql execution across three packet streams verifies statement/original-session reuse before and after rejection without invalid execution commands. With at most 512 source bytes and a separate sufficient 8192-byte budget, FuzzScalars compares acceptance/rejection for eight national configurations including fallback, without treating binary content and UNISTR expansion budgets as equal. Real NCHAR round trips remain pending integration.
+NString national-charset supplement: [TestNStringPrepareCharsets](../internal/valuecodec/national_test.go) and [TestNStringSQLPrepareCharsets](../internal/valuecodec/public_national_charset_paths_test.go) provide 62 offline scenarios covering explicit national character sets for both preparation strategies, connection-charset fallback, default utf8mb4, empty values, invalid UTF-8, unrepresentable input, and separate SQL latin1/ASCII versus national UTF16. Public database/sql execution across three packet streams verifies statement/original-session reuse before and after rejection without invalid execution commands. With at most 512 source bytes and a separate sufficient 8192-byte budget, FuzzScalars compares acceptance/rejection for eight national configurations including fallback, without treating binary content and UNISTR expansion budgets as equal. Real NCHAR round trips remain pending integration.
 
 ### D13 Database, Result, and Parameter Metadata
 

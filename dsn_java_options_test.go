@@ -10,7 +10,7 @@ import (
 
 const testConnectTimeoutOption = "connectTimeout"
 
-func TestDSNJavaCanonicalOptions(t *testing.T) {
+func TestDSNJavaDriverOpen(t *testing.T) {
 	// Fixed Connector/J 2.4.14 names; changing this boundary requires an explicit migration decision.
 	rejected := strings.Fields(`
         user

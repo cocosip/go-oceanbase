@@ -1,4 +1,4 @@
-package oceanbase
+package oceanbase_test
 
 import (
 	"context"
@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	oceanbase "github.com/cocosip/go-oceanbase"
+	testpeer "github.com/cocosip/go-oceanbase/internal/testpeer"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -21,8 +23,8 @@ const concurrentStabilityConnections = 3
 
 func TestDriverConcurrentSessionStability(t *testing.T) {
 	iterations := sessionStabilityIterations(t)
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		for _, framing := range []string{testStandard, testCompression, testOB20} {
+	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+		for _, framing := range []string{driverFixtureStandard, driverFixtureCompression, driverFixtureOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				runConcurrentSessionStability(t, mode, framing, iterations)
 			})
@@ -30,21 +32,19 @@ func TestDriverConcurrentSessionStability(t *testing.T) {
 	}
 }
 
-func runConcurrentSessionStability(t *testing.T, mode Mode, framing string, iterations int) {
+func runConcurrentSessionStability(t *testing.T, mode oceanbase.Mode, framing string, iterations int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Minute)
 	defer cancel()
 	step := max(1, (iterations+stabilitySamples-1)/stabilitySamples)
 	barriers := concurrentSessionBarriers(ctx, iterations, step)
-	db, dials, finished := newConcurrentStabilityDB(ctx, t, mode, framing, iterations, barriers)
+	db, dials, finished, closeTransports := newConcurrentStabilityDB(ctx, t, mode, framing, iterations, barriers)
 	var pinned []*sql.Conn
-	var physical []*conn
+	var physical []driverPhysical
 	defer func() {
 		cancel()
 		if t.Failed() {
-			for _, c := range physical {
-				c.discard()
-			}
+			closeTransports()
 		}
 		for _, c := range pinned {
 			if err := c.Close(); err != nil && !errors.Is(err, sql.ErrConnDone) {
@@ -61,7 +61,7 @@ func runConcurrentSessionStability(t *testing.T, mode Mode, framing string, iter
 			t.Fatal(err)
 		}
 		pinned = append(pinned, c)
-		if err = c.Raw(func(raw any) error { physical = append(physical, raw.(*conn)); return nil }); err != nil {
+		if err = c.Raw(func(raw any) error { physical = append(physical, raw.(driverPhysical)); return nil }); err != nil {
 			t.Fatal(err)
 		}
 		if err = c.PingContext(ctx); err != nil {
@@ -100,7 +100,7 @@ func runConcurrentSessionStability(t *testing.T, mode Mode, framing string, iter
 		t.Fatal("concurrent workload did not close its pool", stats)
 	}
 	for _, c := range physical {
-		if !c.closed.Load() {
+		if c.IsValid() {
 			t.Fatal("concurrent workload left a physical session open")
 		}
 	}
@@ -136,18 +136,18 @@ func concurrentSessionBarriers(ctx context.Context, iterations, step int) map[in
 	return barriers
 }
 
-func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode Mode, framing string, iterations int, barriers map[int]func() bool) (*sql.DB, *atomic.Int32, <-chan struct{}) {
+func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode oceanbase.Mode, framing string, iterations int, barriers map[int]func() bool) (*sql.DB, *atomic.Int32, <-chan struct{}, func()) {
 	t.Helper()
 	status := byte(2)
-	if mode == ModeOracle {
+	if mode == oceanbase.ModeOracle {
 		status = 6
 	}
 	peers := make([]func(context.Context, string, string) (net.Conn, error), concurrentStabilityConnections)
 	finished := make(chan struct{}, concurrentStabilityConnections)
 	for worker := range peers {
-		peers[worker] = peerDial(t, func(_ context.Context, p *wire.PacketIO) {
+		peers[worker] = testpeer.PeerDial(t, func(_ context.Context, p *wire.PacketIO) {
 			defer func() { finished <- struct{}{} }()
-			if !serveCreateDatabaseAuth(ctx, t, p, framing, status) || !serveBaseline(ctx, t, p, status) || !serveOK(ctx, t, p, []byte{14}, status) {
+			if !testpeer.ServeCreateDatabaseAuth(ctx, t, p, framing, status) || !testpeer.ServeBaseline(ctx, t, p, status) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 				return
 			}
 			for cycle := 0; cycle < iterations; cycle++ {
@@ -157,7 +157,7 @@ func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode Mode, fram
 					return
 				}
 			}
-			if !serveOK(ctx, t, p, []byte{14}, status) || !readCommand(ctx, t, p, []byte{1}) {
+			if !testpeer.ServeOK(ctx, t, p, []byte{14}, status) || !testpeer.ReadCommand(ctx, t, p, []byte{1}) {
 				return
 			}
 			// net.Pipe may report ErrClosedPipe when setting a deadline after the peer closes.
@@ -167,26 +167,37 @@ func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode Mode, fram
 		}, 2*time.Minute)
 	}
 	dials := new(atomic.Int32)
-	cfg := Config{User: testUser, Mode: mode, Execution: ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
+	transports := make([]net.Conn, concurrentStabilityConnections)
+	cfg := oceanbase.Config{User: driverFixtureUser, Mode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
 	cfg.Protocol = sessionStabilityProtocol(framing)
 	cfg.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		i := int(dials.Add(1)) - 1
 		if i >= len(peers) {
 			return nil, errors.New("concurrent workload replaced a physical session")
 		}
-		return peers[i](ctx, network, addr)
+		raw, err := peers[i](ctx, network, addr)
+		if err == nil {
+			transports[i] = raw
+		}
+		return raw, err
 	}
-	configured, err := NewConnector(cfg)
+	configured, err := oceanbase.NewConnector(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	db := sql.OpenDB(configured)
 	db.SetMaxOpenConns(concurrentStabilityConnections)
 	db.SetMaxIdleConns(concurrentStabilityConnections)
-	return db, dials, finished
+	return db, dials, finished, func() {
+		for _, raw := range transports {
+			if raw != nil {
+				_ = raw.Close()
+			}
+		}
+	}
 }
 
-func runConcurrentSessionBatch(ctx context.Context, cancel context.CancelFunc, pinned []*sql.Conn, physical []*conn, iterations, start, end int) error {
+func runConcurrentSessionBatch(ctx context.Context, cancel context.CancelFunc, pinned []*sql.Conn, physical []driverPhysical, iterations, start, end int) error {
 	results := make([]error, len(pinned))
 	var workers sync.WaitGroup
 	for worker, session := range pinned {
@@ -194,11 +205,7 @@ func runConcurrentSessionBatch(ctx context.Context, cancel context.CancelFunc, p
 			for cycle := start; cycle < end; cycle++ {
 				err := runDriverSessionCycle(ctx, session, physical[worker], worker*(iterations+1)+cycle)
 				if err == nil {
-					err = physical[worker].lock(ctx)
-					if err == nil {
-						err = benchmarkSessionError(physical[worker])
-						physical[worker].unlock()
-					}
+					err = benchmarkSessionError(physical[worker])
 				}
 				if err != nil {
 					cancel()
@@ -212,7 +219,7 @@ func runConcurrentSessionBatch(ctx context.Context, cancel context.CancelFunc, p
 	return errors.Join(results...)
 }
 
-func checkConcurrentStability(t *testing.T, db *sql.DB, physical []*conn, dials int32, inUse int) {
+func checkConcurrentStability(t *testing.T, db *sql.DB, physical []driverPhysical, dials int32, inUse int) {
 	t.Helper()
 	stats := db.Stats()
 	if stats.OpenConnections != concurrentStabilityConnections || stats.InUse != inUse ||
@@ -220,22 +227,15 @@ func checkConcurrentStability(t *testing.T, db *sql.DB, physical []*conn, dials 
 		t.Fatal("concurrent workload leaked or replaced a pool session", stats, dials)
 	}
 	for _, c := range physical {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := c.lock(ctx)
-		if err == nil {
-			err = benchmarkSessionError(c)
-			c.unlock()
-		}
-		cancel()
-		if err != nil {
+		if err := benchmarkSessionError(c); err != nil {
 			t.Fatal(err)
 		}
 	}
 }
 
-func reborrowConcurrentSessions(ctx context.Context, t *testing.T, db *sql.DB, physical []*conn) {
+func reborrowConcurrentSessions(ctx context.Context, t *testing.T, db *sql.DB, physical []driverPhysical) {
 	t.Helper()
-	seen := make(map[*conn]bool)
+	seen := make(map[driverPhysical]bool)
 	for range physical {
 		c, err := db.Conn(ctx)
 		if err != nil {
@@ -248,7 +248,7 @@ func reborrowConcurrentSessions(ctx context.Context, t *testing.T, db *sql.DB, p
 			}
 		}()
 		if err = c.Raw(func(raw any) error {
-			original := raw.(*conn)
+			original := raw.(driverPhysical)
 			if !slices.Contains(physical, original) || seen[original] {
 				return errors.New("pool reuse did not preserve distinct original physical sessions")
 			}

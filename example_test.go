@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/cocosip/go-oceanbase"
+	oceanbase "github.com/cocosip/go-oceanbase"
 )
 
 func ExampleNewConnector() {

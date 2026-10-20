@@ -2,286 +2,251 @@ package oceanbase
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"io"
-	"maps"
-	"slices"
-	"strconv"
-	"strings"
-	"time"
-
-	"github.com/cocosip/go-oceanbase/internal/charset"
+	"github.com/cocosip/go-oceanbase/internal/command"
+	"github.com/cocosip/go-oceanbase/internal/control"
+	"github.com/cocosip/go-oceanbase/internal/session"
 )
+
+// ClientInfo holds the three Connector/J-compatible session attributes.
+// SetClientInfo replaces all three; an empty field is sent as SQL NULL.
+type ClientInfo struct {
+	ApplicationName string
+	ClientUser      string
+	ClientHostname  string
+}
+
+// WarningSummary preserves the server count without requiring a logger.
+// Known is false when no complete OK/EOF supplied a count. Details are not included.
+type WarningSummary struct {
+	Count uint16
+	Known bool
+}
+
+type sessionOperation uint8
 
 const (
-	sessionReadDualSuffix = " FROM dual"
-	charsetUTF8           = "utf8"
-	charsetUTF8MB4        = "utf8mb4"
-	charsetBinary         = "binary"
-	fieldNCharset         = "Session.NCharset"
-	charsetUTF8MB3Alias   = "utf8mb3"
+	sessionSchema sessionOperation = iota
+	sessionCatalog
+	sessionSetSchema
+	sessionSetCatalog
+	sessionClientInfo
+	sessionSetClientInfo
+	sessionVariable
+	sessionSetVariable
+	sessionWarnings
+	sessionWarningDetails
+	sessionClearWarnings
+	sessionQueryTarget
 )
 
-func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
-	if options.Charset == "" {
-		options.Charset = charsetUTF8MB4
-	}
-	if options.Location == nil {
-		options.Location = time.UTC
-	}
-	if strings.ContainsRune(options.NCharset, 0) {
-		return SessionOptions{}, &ConfigError{Field: fieldNCharset}
-	}
-	options.Charset = strings.ToLower(options.Charset)
-	if options.Collation != "" && (len(options.Collation) > 128 || !sessionVariableName(options.Collation)) {
-		return SessionOptions{}, &ConfigError{Field: "Session.Collation"}
-	}
-	options.Collation = strings.ToLower(options.Collation)
-	options.NCharset = strings.ToLower(options.NCharset)
-	if options.NCharset != "" {
-		if _, err := charset.Encode(options.NCharset, ""); err != nil || options.NCharset == charsetBinary {
-			return SessionOptions{}, &ConfigError{Field: fieldNCharset}
-		}
-	}
-	if _, err := sessionTimeZone(options.Location); err != nil {
-		return SessionOptions{}, err
-	}
-	options.Variables = maps.Clone(options.Variables)
-	options.InitSQL = slices.Clone(options.InitSQL)
-	for name, value := range options.Variables {
-		if !sessionVariableName(name) || strings.ContainsRune(value, 0) {
-			return SessionOptions{}, &ConfigError{Field: "Session.Variables"}
-		}
-	}
-	for _, query := range options.InitSQL {
-		if strings.TrimSpace(query) == "" || strings.ContainsRune(query, 0) {
-			return SessionOptions{}, &ConfigError{Field: "Session.InitSQL"}
-		}
-	}
-	return options, nil
+type sessionOperationRequest struct {
+	op       sessionOperation
+	name     string
+	value    string
+	info     ClientInfo
+	values   []sql.NullString
+	warnings WarningSummary
+	details  []Warning
+	target   CancelTarget
 }
 
-func (c *conn) initialize(ctx context.Context) error {
-	if err := c.lock(ctx); err != nil {
-		return err
-	}
-	defer c.unlock()
-	return c.initializeLocked(ctx)
+// CurrentSchema reads the Oracle current schema or MySQL current database.
+// An empty string represents no selected MySQL database.
+func CurrentSchema(ctx context.Context, pinned *sql.Conn) (string, error) {
+	r := &sessionOperationRequest{op: sessionSchema}
+	err := runSessionOperation(ctx, pinned, r)
+	return sessionOperationText(r), err
 }
 
-func (c *conn) initializeLocked(ctx context.Context) error {
-	if c.cfg.CreateDatabaseIfMissing && c.session.mode != ModeMySQL {
-		return fmt.Errorf("%w: database creation requires MySQL compatibility mode", ErrUnsupported)
+// CurrentCatalog reads the current MySQL database; Oracle has no catalog equivalent.
+func CurrentCatalog(ctx context.Context, pinned *sql.Conn) (string, error) {
+	r := &sessionOperationRequest{op: sessionCatalog}
+	err := runSessionOperation(ctx, pinned, r)
+	return sessionOperationText(r), err
+}
+
+func sessionOperationText(r *sessionOperationRequest) string {
+	if len(r.values) == 0 {
+		return ""
 	}
-	charset := strings.ToLower(c.cfg.Session.Charset)
-	if charset == charsetUTF8MB3Alias {
-		charset = charsetUTF8
+	return r.values[0].String
+}
+
+// SetSchema selects an exact schema name (MySQL: database), without normalizing case.
+// Mutations require an idle session; closing pinned discards its physical connection.
+func SetSchema(ctx context.Context, pinned *sql.Conn, name string) error {
+	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionSetSchema, name: name})
+}
+
+// SetCatalog selects a MySQL database. Oracle returns ErrUnsupported.
+func SetCatalog(ctx context.Context, pinned *sql.Conn, name string) error {
+	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionSetCatalog, name: name})
+}
+
+// GetClientInfo reads the three session attributes; SQL NULL becomes an empty field.
+func GetClientInfo(ctx context.Context, pinned *sql.Conn) (ClientInfo, error) {
+	r := &sessionOperationRequest{op: sessionClientInfo}
+	err := runSessionOperation(ctx, pinned, r)
+	if len(r.values) != 3 {
+		return ClientInfo{}, err
 	}
-	names := "SET NAMES " + charset
-	if collation := c.cfg.Session.Collation; collation != "" {
-		if c.session.mode != ModeMySQL {
-			return fmt.Errorf("%w: connection collation requires MySQL compatibility mode", ErrUnsupported)
-		}
-		names += " COLLATE " + collation
+	return ClientInfo{r.values[0].String, r.values[1].String, r.values[2].String}, err
+}
+
+// SetClientInfo replaces the session attributes. Closing pinned discards the session.
+func SetClientInfo(ctx context.Context, pinned *sql.Conn, info ClientInfo) error {
+	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionSetClientInfo, info: info})
+}
+
+// SessionVariable reads one validated session system variable, preserving SQL NULL.
+func SessionVariable(ctx context.Context, pinned *sql.Conn, name string) (sql.NullString, error) {
+	r := &sessionOperationRequest{op: sessionVariable, name: name}
+	err := runSessionOperation(ctx, pinned, r)
+	if len(r.values) == 0 {
+		return sql.NullString{}, err
 	}
-	if err := c.initSQL(ctx, names); err != nil {
+	return r.values[0], err
+}
+
+// SetSessionVariable sets a session system variable. Decimal integer strings
+// within int64/uint64 range use integer literals only for numeric server variables.
+// String variables retain quoted values, including leading zeros.
+// Encoding and time-zone variables are reserved by Config.Session. Closing pinned discards it.
+func SetSessionVariable(ctx context.Context, pinned *sql.Conn, name, value string) error {
+	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionSetVariable, name: name, value: value})
+}
+
+// Warnings returns the last completed result count from the latest ordinary SQL command.
+// Helpers and Ping preserve this snapshot; a new SQL command replaces it.
+// Consume or close Rows first, and serialize operations on the pinned connection.
+func Warnings(ctx context.Context, pinned *sql.Conn) (WarningSummary, error) {
+	r := &sessionOperationRequest{op: sessionWarnings}
+	err := runSessionOperation(ctx, pinned, r)
+	return r.warnings, err
+}
+
+func runSessionOperation(ctx context.Context, pinned *sql.Conn, r *sessionOperationRequest) error {
+	if pinned == nil {
+		return fmt.Errorf("oceanbase: a non-nil *sql.Conn is required")
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := c.initSQL(ctx, "SET autocommit=1"); err != nil {
+	_, err := pinned.ExecContext(ctx, "", r)
+	return err
+}
+
+// Warning is one MySQL compatibility-mode SHOW WARNINGS row.
+// Message can contain SQL or sensitive values. SQLSTATE is not supplied by this command.
+type Warning struct {
+	Level   string
+	Code    uint32
+	Message string
+}
+
+// ReadWarnings reads the current server diagnostic area on a pinned MySQL-mode connection.
+// Read it immediately after consuming Rows: intervening server commands (including helpers
+// and internal SQL) may replace the area independently of the Warnings count snapshot.
+// The server may retain fewer details than its warning count. Oracle returns ErrUnsupported.
+// MaxResultItems bounds the row count and MaxMessageBytes bounds the decoded content;
+// exceeding either returns an error without partial details and discards the session.
+func ReadWarnings(ctx context.Context, pinned *sql.Conn) ([]Warning, error) {
+	r := &sessionOperationRequest{op: sessionWarningDetails}
+	err := runSessionOperation(ctx, pinned, r)
+	return r.details, err
+}
+
+// ClearWarnings clears the local count and suppresses ReadWarnings until the next ordinary
+// SQL command. It sends no SQL and does not clear the server's own diagnostic area.
+func ClearWarnings(ctx context.Context, pinned *sql.Conn) error {
+	return runSessionOperation(ctx, pinned, &sessionOperationRequest{op: sessionClearWarnings})
+}
+
+type changeUserRequest struct {
+	credentials Credentials
+	database    string
+}
+
+// ChangeUser reauthenticates a pinned connection and reruns Config.Session initialization.
+// It requires autocommit without a transaction. Old statements and resource handles expire.
+// An empty database selects no MySQL database or the new Oracle user's default schema.
+// After sending the change, failure closes the session; success remains usable until
+// pinned.Close discards it. The original Connector and its credentials are not changed.
+// Credentials.ProxyUser explicitly selects the proxy target; empty clears proxy login.
+func ChangeUser(ctx context.Context, pinned *sql.Conn, credentials Credentials, database string) error {
+	if pinned == nil {
+		return fmt.Errorf("oceanbase: a non-nil *sql.Conn is required")
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if c.cfg.Session.SkipVersionProbe {
-		c.session.obVersion = ""
-	} else if err := c.readOceanBaseVersion(ctx); err != nil {
+	_, err := pinned.ExecContext(ctx, "", changeUserRequest{credentials: credentials, database: database})
+	return err
+}
+
+// CancelTarget identifies the first ordinary SQL command following QueryTarget.
+// Copies share one cancellation attempt; completion, reset and identity changes expire it.
+type CancelTarget struct{ target session.Target }
+
+// QueryTarget arms a one-shot target before starting SQL on pinned.
+// Do not call it while Rows or another operation owns the pinned connection.
+func QueryTarget(ctx context.Context, pinned *sql.Conn) (CancelTarget, error) {
+	r := &sessionOperationRequest{op: sessionQueryTarget}
+	err := runSessionOperation(ctx, pinned, r)
+	return r.target, err
+}
+
+// CancelQuery sends KILL QUERY through a new, private connection to the original entry.
+// configured must come from NewConnector and authenticate as the target user/tenant.
+// A verified TLS target requires verified TLS here too. No discovery or failover runs.
+// Success acknowledges KILL only; read the original operation's result independently.
+// Server-side ID reuse after a remote disconnect cannot be excluded by this protocol.
+func CancelQuery(ctx context.Context, configured driver.Connector, target CancelTarget) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	zone, err := sessionTimeZone(c.cfg.Session.Location)
-	if err != nil {
-		return err
+	if _, ok := target.target.Info(); !ok {
+		return fmt.Errorf("%w: invalid cancel target", ErrResource)
 	}
-	if err = c.initSQL(ctx, "SET SESSION time_zone = "+c.quoteSessionValue(zone)); err != nil {
-		return err
+	c, ok := configured.(*connector)
+	if !ok || c == nil {
+		return fmt.Errorf("%w: CancelQuery requires this driver's Connector", ErrUnsupported)
 	}
-	if name := c.cfg.Session.NCharset; name != "" {
-		if c.session.mode != ModeOracle {
-			return &ConfigError{Field: fieldNCharset}
-		}
-		if err := c.initSQL(ctx, "SET NCHARACTER_SET_CONNECTION = "+c.quoteSessionValue(name)); err != nil {
-			return err
-		}
+	return control.CancelQuery(ctx, c.runtime, target.target)
+}
+
+func (c *conn) execChangeUser(ctx context.Context, r changeUserRequest) (driver.Result, error) {
+	return command.Result{Known: true}, c.engine.ChangeUser(ctx, r.credentials, r.database)
+}
+
+func (c *conn) execSessionOperation(ctx context.Context, r *sessionOperationRequest) (driver.Result, error) {
+	if r == nil {
+		return nil, ErrBind
 	}
-	if err := c.createInitialDatabase(ctx); err != nil {
-		return err
-	}
-	variables := slices.Sorted(maps.Keys(c.cfg.Session.Variables))
-	for _, name := range variables {
-		if !sessionVariableName(name) {
-			return &ConfigError{Field: "Session.Variables"}
-		}
-		literal, err := c.systemVariableLiteral(ctx, name, c.cfg.Session.Variables[name])
-		if err != nil {
-			return err
-		}
-		query := "SET SESSION " + name + " = " + literal
-		if err := c.initSQL(ctx, query); err != nil {
-			return err
-		}
-	}
-	for _, query := range c.cfg.Session.InitSQL {
-		if err := c.initSQL(ctx, query); err != nil {
-			return err
-		}
-	}
-	if len(variables) != 0 || len(c.cfg.Session.InitSQL) != 0 {
-		// Decoding must use the same encoding and zone as the published session.
-		for _, query := range []string{names, "SET SESSION time_zone = " + c.quoteSessionValue(zone)} {
-			if err := c.initSQL(ctx, query); err != nil {
-				return err
+	var err error
+	switch r.op {
+	case sessionQueryTarget:
+		r.target.target, err = c.engine.QueryTarget(ctx)
+	case sessionWarnings:
+		var summary control.Summary
+		summary, err = c.engine.Warnings(ctx)
+		r.warnings = WarningSummary{Count: summary.Count, Known: summary.Known}
+	case sessionClearWarnings:
+		err = c.engine.ClearWarnings(ctx)
+	case sessionWarningDetails:
+		var details []control.Warning
+		details, err = c.engine.ReadWarnings(ctx)
+		if details != nil {
+			r.details = make([]Warning, len(details))
+			for i, w := range details {
+				r.details[i] = Warning{Level: w.Level, Code: w.Code, Message: w.Message}
 			}
 		}
-		if name := c.cfg.Session.NCharset; name != "" {
-			if err := c.initSQL(ctx, "SET NCHARACTER_SET_CONNECTION = "+c.quoteSessionValue(name)); err != nil {
-				return err
-			}
-		}
+	default:
+		r.values, err = c.engine.Session(ctx, control.SessionRequest{Kind: control.SessionKind(r.op), Name: r.name, Value: r.value, Info: [3]string{r.info.ApplicationName, r.info.ClientUser, r.info.ClientHostname}})
 	}
-	if c.session.ok.Status&1 != 0 || c.session.ok.Status&2 == 0 {
-		return &ConfigError{Field: "Session.InitSQL transaction state"}
-	}
-	return nil
-}
-
-func (c *conn) createInitialDatabase(ctx context.Context) error {
-	if !c.cfg.CreateDatabaseIfMissing {
-		return nil
-	}
-	database, err := c.encodeSQL(c.cfg.Database)
-	if err != nil {
-		return err
-	}
-	if err = c.initSQL(ctx, "CREATE DATABASE IF NOT EXISTS "+quoteBlobIdentifier(ModeMySQL, c.cfg.Database)); err != nil {
-		return err
-	}
-	return c.commandOK(ctx, append([]byte{2}, database...))
-}
-
-func sessionTimeZone(loc *time.Location) (string, error) {
-	if loc == nil {
-		loc = time.UTC
-	}
-	t := time.Unix(0, 0).In(loc)
-	start, end := t.ZoneBounds()
-	if start.IsZero() && end.IsZero() {
-		_, offset := t.Zone()
-		if offset%60 != 0 || offset < -12*3600 || offset > 14*3600 {
-			return "", &ConfigError{Field: "Session.Location"}
-		}
-		sign := "+"
-		if offset < 0 {
-			sign = "-"
-			offset = -offset
-		}
-		return fmt.Sprintf("%s%02d:%02d", sign, offset/3600, offset%3600/60), nil
-	}
-	if loc == time.Local || !zoneToken(loc.String(), 128) {
-		return "", &ConfigError{Field: "Session.Location"}
-	}
-	return loc.String(), nil
-}
-
-func (c *conn) readOceanBaseVersion(ctx context.Context) error {
-	const responseField = "server version response"
-	query := "SELECT ob_version()"
-	if c.session.mode == ModeOracle {
-		query += sessionReadDualSuffix
-	}
-	encoded, err := c.encodeSQL(query)
-	if err != nil {
-		return err
-	}
-	rows, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, encoded...), false, nil, true)
-	if err != nil {
-		return err
-	}
-	if len(rows.columns) != 1 {
-		return rows.fail(&ConfigError{Field: responseField}, true)
-	}
-	values := make([]driver.Value, 1)
-	if err = rows.Next(values); err != nil {
-		return rows.fail(err, true)
-	}
-	version, ok := values[0].(string)
-	if !ok || len(version) == 0 || len(version) > 256 {
-		return rows.fail(&ConfigError{Field: responseField}, true)
-	}
-	if err = rows.Next(values); err != io.EOF {
-		if err == nil {
-			err = &ConfigError{Field: responseField}
-		}
-		return rows.fail(err, true)
-	}
-	if rows.more {
-		return rows.fail(&ConfigError{Field: responseField}, true)
-	}
-	c.session.obVersion = version
-	return nil
-}
-
-func (c *conn) initSQL(ctx context.Context, query string) error {
-	encoded, err := c.encodeSQL(query)
-	if err != nil {
-		return err
-	}
-	rows, err := c.queryCommandOwnedLocked(ctx, append([]byte{3}, encoded...), false, nil, true)
-	if err != nil {
-		return err
-	}
-	return rows.drainAll(ctx)
-}
-
-func sessionVariableName(name string) bool {
-	if name == "" {
-		return false
-	}
-	for i, ch := range []byte(name) {
-		if ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (i > 0 && ch >= '0' && ch <= '9') {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-func (c *conn) quoteSessionValue(value string) string {
-	if c.session.mode == ModeMySQL && c.session.ok.Status&512 == 0 {
-		value = strings.ReplaceAll(value, "\\", "\\\\")
-	}
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
-func (c *conn) systemVariableLiteral(ctx context.Context, name, value string) (string, error) {
-	quoted := c.quoteSessionValue(value)
-	var integer string
-	if n, err := strconv.ParseInt(value, 10, 64); err == nil {
-		integer = strconv.FormatInt(n, 10)
-	} else if n, err := strconv.ParseUint(value, 10, 64); err == nil {
-		integer = strconv.FormatUint(n, 10)
-	}
-	if integer != "" {
-		// The current variable's wire type distinguishes numeric values from numeric-looking strings.
-		query := "SELECT @@SESSION." + name
-		if c.session.mode == ModeOracle {
-			query += sessionReadDualSuffix
-		}
-		_, columns, err := c.sessionValuesLocked(ctx, []byte(query), 1)
-		if err != nil {
-			return "", err
-		}
-		switch columns[0].Type {
-		case 0, 1, 2, 3, 4, 5, 8, 9, 13, 246:
-			return integer, nil
-		}
-	}
-	return quoted, nil
+	return command.Result{Known: true}, err
 }
