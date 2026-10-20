@@ -56,14 +56,18 @@ func TestPacketNegotiation(t *testing.T) {
 		name        string
 		options     ProtocolOptions
 		compression bool
+		offered     bool
 		vars        map[string]string
 		framed      bool
 		metadata    bool
 		unsupported bool
 	}{
 		{name: testStandard, options: ProtocolOptions{Compression: FeatureOff, OB20: FeatureOff}},
-		{name: "auto-no-offer"},
-		{name: "compressed", compression: true, framed: true},
+		{name: "default-with-offer", compression: true},
+		{name: "auto-no-offer", options: ProtocolOptions{Compression: FeatureAuto}},
+		{name: "compressed", options: ProtocolOptions{Compression: FeatureAuto}, compression: true, offered: true, framed: true},
+		{name: "compression-required", options: ProtocolOptions{Compression: FeatureRequired}, compression: true, offered: true, framed: true},
+		{name: "ob20-with-optional-compression", options: ProtocolOptions{Compression: FeatureAuto}, compression: true, offered: true, vars: map[string]string{testProxyCapability: "33024"}, framed: true},
 		{name: testOB20, vars: map[string]string{testProxyCapability: "33024"}, framed: true},
 		{name: "ob20-required", options: ProtocolOptions{OB20: FeatureRequired}, vars: map[string]string{testProxyCapability: "256"}, framed: true},
 		{name: "ob20-missing", options: ProtocolOptions{OB20: FeatureRequired}, unsupported: true},
@@ -90,7 +94,7 @@ func TestPacketNegotiation(t *testing.T) {
 					return
 				}
 				offered := binary.LittleEndian.Uint32(request)&32 != 0
-				if offered != (tc.compression && tc.options.Compression != FeatureOff) {
+				if offered != tc.offered {
 					t.Error("compression handshake flag")
 				}
 				_ = p.WriteMessage(ctx, protocolOK(2, tc.vars))
@@ -108,8 +112,31 @@ func TestPacketNegotiation(t *testing.T) {
 	}
 }
 
+func TestCompressionDefaults(t *testing.T) {
+	if FeatureDefault != 0 || FeatureOff != 1 || FeatureRequired != 2 {
+		t.Fatal("default/off/required numeric policy compatibility changed")
+	}
+	for _, tc := range []struct {
+		query string
+		want  FeatureMode
+	}{
+		{"", FeatureOff},
+		{"compression=off", FeatureOff},
+		{"compression=auto", FeatureAuto},
+		{"compression=required", FeatureRequired},
+	} {
+		cfg, err := ParseDSN("oceanbase://u@localhost/?" + tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Protocol.Compression != tc.want || cfg.Protocol.OB20 != FeatureAuto || cfg.Protocol.NewMetadata != FeatureAuto || cfg.Protocol.Checksum != FeatureAuto || cfg.Protocol.ProxyChecksum != FeatureAuto || cfg.Protocol.FullLinkTrace != FeatureAuto {
+			t.Fatalf("unexpected defaults for %s: %+v", tc.query, cfg.Protocol)
+		}
+	}
+}
+
 func TestPacketOptions(t *testing.T) {
-	for _, opts := range []ProtocolOptions{{Compression: 255}, {OB20: 255}, {Checksum: 255}, {NewMetadata: 255}, {Compression: FeatureRequired, OB20: FeatureRequired}, {OB20: FeatureOff, Checksum: FeatureRequired}} {
+	for _, opts := range []ProtocolOptions{{Compression: 4}, {Compression: 255}, {OB20: 255}, {Checksum: 255}, {NewMetadata: 255}, {Compression: FeatureRequired, OB20: FeatureRequired}, {OB20: FeatureOff, Checksum: FeatureRequired}} {
 		if _, err := NewConnector(Config{User: testUser, Protocol: opts}); err == nil {
 			t.Fatal(opts)
 		}

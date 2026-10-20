@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"net"
 	"testing"
 	"time"
@@ -67,6 +68,41 @@ func TestCompressedPackets(t *testing.T) {
 		if _, err := p.ReadMessage(context.Background()); !errors.Is(err, ErrDesynchronized) {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestCompressionJavaThreshold(t *testing.T) {
+	limitedSaving := make([]byte, 1024)
+	random := rand.New(rand.NewPCG(1, 2))
+	for i := range limitedSaving {
+		limitedSaving[i] = byte(random.UintN(256))
+	}
+	copy(limitedSaving[944:], limitedSaving[:80])
+	for _, tc := range []struct {
+		name       string
+		payload    []byte
+		compressed bool
+	}{
+		{"zero-length", nil, false},
+		{"100-byte-boundary", bytes.Repeat([]byte{'a'}, 100), false},
+		{"101-byte-boundary", bytes.Repeat([]byte{'a'}, 101), true},
+		{"less-than-ten-percent-saving", limitedSaving, false},
+		{"large-compressible", bytes.Repeat([]byte{'a'}, 4096), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := newBufferConn(nil)
+			p := NewPacketIO(transport, 8192)
+			if err := p.EnableCompression(); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.WriteMessage(context.Background(), tc.payload); err != nil {
+				t.Fatal(err)
+			}
+			frame := transport.out.Bytes()
+			if got := int3(frame[4:7]) != 0; got != tc.compressed {
+				t.Fatalf("compressed=%v, want %v (frame bytes=%d)", got, tc.compressed, len(frame))
+			}
+		})
 	}
 }
 

@@ -15,14 +15,18 @@ type FeatureMode uint8
 
 // Feature policies never trigger a change of protocol after business commands have started.
 const (
-	FeatureAuto FeatureMode = iota
+	// FeatureDefault uses the option's default: compression off, other features auto.
+	FeatureDefault FeatureMode = iota
 	FeatureOff
 	FeatureRequired
+	FeatureAuto
 )
 
 // ProtocolOptions controls framing and result metadata at connection establishment.
 // OB20 takes precedence over optional compression; requiring both is invalid.
 type ProtocolOptions struct {
+	// Compression defaults off, matching Connector/J. Auto opts in with fallback;
+	// Required opts in without fallback and is a Go-specific extension.
 	Compression FeatureMode
 	OB20        FeatureMode
 	Checksum    FeatureMode
@@ -33,8 +37,19 @@ type ProtocolOptions struct {
 	FullLinkTrace FeatureMode
 }
 
+func (p *ProtocolOptions) normalize() {
+	if p.Compression == FeatureDefault {
+		p.Compression = FeatureOff
+	}
+	for _, feature := range []*FeatureMode{&p.OB20, &p.Checksum, &p.NewMetadata, &p.ProxyChecksum, &p.FullLinkTrace} {
+		if *feature == FeatureDefault {
+			*feature = FeatureAuto
+		}
+	}
+}
+
 func validateProtocolOptions(p ProtocolOptions) error {
-	if p.Compression > FeatureRequired || p.OB20 > FeatureRequired || p.Checksum > FeatureRequired || p.NewMetadata > FeatureRequired || p.ProxyChecksum > FeatureRequired || p.FullLinkTrace > FeatureRequired ||
+	if p.Compression > FeatureAuto || p.OB20 > FeatureAuto || p.Checksum > FeatureAuto || p.NewMetadata > FeatureAuto || p.ProxyChecksum > FeatureAuto || p.FullLinkTrace > FeatureAuto ||
 		p.Compression == FeatureRequired && (p.OB20 == FeatureRequired || p.Checksum == FeatureRequired || p.FullLinkTrace == FeatureRequired) || p.OB20 == FeatureOff && (p.Checksum == FeatureRequired || p.FullLinkTrace == FeatureRequired) {
 		return &ConfigError{Field: "Protocol"}
 	}

@@ -201,7 +201,7 @@ Keep common `Config` fields at the top level: `Addr`, `User`, `Password`, `Datab
 | Mode | `ModeAuto` is the zero value; `ModeMySQL` / `ModeOracle` constrain actual mode validation |
 | Transport | `TLSConfig *tls.Config`, `DialContext`; TCP is the default. nil does not proactively enable TLS; non-nil requires successfully verified TLS and forbids downgrade. See §17.2 for plaintext credential restrictions |
 | Credentials/authentication | External Credentials callback and per-Connector authentication plugin factories; use static User/Password/ProxyUser without a callback. See §6.3 for proxy login |
-| Protocol | `Config.Protocol`: Compression, OB20, Checksum, ProxyChecksum, NewMetadata; the zero value is FeatureAuto, with FeatureOff/FeatureRequired also available; connection negotiation determines the outcome |
+| Protocol | `Config.Protocol`: Compression, OB20, Checksum, ProxyChecksum, NewMetadata, FullLinkTrace; zero `FeatureDefault` resolves to compression off and all other policies auto; explicit FeatureAuto/FeatureOff/FeatureRequired select negotiation behavior |
 | Execution | Automatically select server-side preparation; explicitly support client-side preparation, combined execution, caching, and batch policies; `AllowMultiStatements` defaults to false; `RowsAffectedMode` defaults to `MatchedRows`, see §11.4 |
 | Session | Charset, NCHAR charset, Location, session initialization settings, Managed/Full reset policies |
 | Resources | Maximum logical message size, LOB materialization limit, FetchSize, `MaxResultItems`, close/cleanup timeout, cache capacity |
@@ -449,9 +449,11 @@ Every physical session reuses standard TLS, authentication, mode identification,
 
 All six `ProtocolOptions` policies and DSN `compression`, `ob20`, `checksum`, `proxyChecksum`, `newMetadata`, `fullLinkTrace` accept only `auto|off|required`. Invalid/conflicting configuration fails before Dial. Selection happens only during establishment; execution never changes protocols or replays business operations.
 
+Zero `FeatureDefault` resolves to compression off, matching Connector/J 2.4.14's `useCompression=false`; the other five options default to auto. Explicit `FeatureAuto` / `compression=auto` enables optional compression with fallback when the server does not advertise CLIENT_COMPRESS. `FeatureRequired` is a Go extension that refuses missing support. Off=1 and Required=2 retain their numeric values. Auto moves from 0 to 3; zero now means the per-option default. Use named constants or string policies, and migrate persisted numeric Auto=0 to Auto=3 when explicit compression opt-in is intended.
+
 | Capability | Selection and behavior |
 | --- | --- |
-| Compression | Intersection of greeting CLIENT_COMPRESS and client policy; after final authentication OK, use zlib with a seven-byte outer header; send uncompressed frames when compression saves nothing |
+| Compression | Intersection of greeting CLIENT_COMPRESS and explicit client opt-in; after final authentication OK, use seven-byte zlib/raw framing. Match Java's native payload >100-byte threshold and compressed length < `int(0.9f * payload length)` decision; otherwise send raw. Zlib input includes the four-byte native header |
 | OB20 | CONNECT_ATTRS declares proxy bits 8/15; final authentication OK session-tracking `ob_capability_flag` bit 8 confirms it. Preferred over optional compression; CompressionRequired does not request OB20 |
 | Checksum | OB20 CRC16 headers and zero-initialized, uncomplemented CRC32C payloads. auto sends checksums and validates received nonzero checksums; off sends none but still validates nonzero received checksums; required demands OB20 and compares actual values even against zero checksums |
 | ProxyChecksum | Java `useObChecksum` proxy capability bits 3/6, independent of OB20 CRC. auto requests, required demands both confirmed bits, off omits declaration and rejects nonzero echoes. This does not prove proxy-to-backend checksums were verified |

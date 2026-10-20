@@ -105,19 +105,22 @@ func (f *frameIO) readCompressed() error {
 	return nil
 }
 
-func (f *frameIO) encodeCompressed(data []byte) ([]byte, error) {
-	var out bytes.Buffer
-	z := zlib.NewWriter(&out)
-	if _, err := z.Write(data); err != nil {
-		return nil, err
-	}
-	if err := z.Close(); err != nil {
-		return nil, err
-	}
+func (f *frameIO) encodeCompressed(data []byte, payloadSize int) ([]byte, error) {
 	expanded := 0
-	if out.Len() < len(data) {
-		expanded = len(data)
-		data = out.Bytes()
+	// Connector/J tests native payload size, excluding the four-byte packet header.
+	if payloadSize > 100 {
+		var out bytes.Buffer
+		z := zlib.NewWriter(&out)
+		if _, err := z.Write(data); err != nil {
+			return nil, err
+		}
+		if err := z.Close(); err != nil {
+			return nil, err
+		}
+		if out.Len() < int(float32(0.9)*float32(payloadSize)) {
+			expanded = len(data)
+			data = out.Bytes()
+		}
 	}
 	n := len(data)
 	h := []byte{byte(n), byte(n >> 8), byte(n >> 16), f.sequence, byte(expanded), byte(expanded >> 8), byte(expanded >> 16)}
@@ -138,6 +141,7 @@ func (p *PacketIO) writeFramed(payload []byte) (int64, error) {
 		if p.frames.ob != nil {
 			frameLimit = min(frameLimit, maxFrame-28)
 		}
+		payloadSize := n
 		for len(raw) > 0 {
 			limit := frameLimit
 			if len(p.frames.outExtra) > 0 {
@@ -152,7 +156,7 @@ func (p *PacketIO) writeFramed(payload []byte) (int64, error) {
 			if p.frames.ob != nil {
 				frame, err = p.frames.encodeOB20(raw[:width], last && width == len(raw))
 			} else {
-				frame, err = p.frames.encodeCompressed(raw[:width])
+				frame, err = p.frames.encodeCompressed(raw[:width], payloadSize)
 			}
 			if err != nil {
 				return transferred, err
@@ -172,6 +176,7 @@ func (p *PacketIO) writeFramed(payload []byte) (int64, error) {
 				}
 			}
 			raw = raw[width:]
+			payloadSize = 0
 		}
 		p.sequence++
 		if last {

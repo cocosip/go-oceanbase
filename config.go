@@ -240,6 +240,7 @@ func (cfg *Config) validateDriverOptions() error {
 	if err := cfg.Diagnostics.validate(); err != nil {
 		return err
 	}
+	cfg.Protocol.normalize()
 	if err := validateProtocolOptions(cfg.Protocol); err != nil {
 		return err
 	}
