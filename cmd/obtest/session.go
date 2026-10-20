@@ -324,9 +324,6 @@ func runChangeUser(ctx context.Context, s *scenario) error {
 func runLocalImport(ctx context.Context, s *scenario) (err error) {
 	command := s.target.LocalImportSQL
 	if command == "" {
-		if s.mode == oceanbase.ModeOracle {
-			return skipped("Oracle LOCAL import requires local_import_sql with {table}")
-		}
 		command = "LOAD DATA LOCAL INFILE 'input' INTO TABLE {table} FIELDS TERMINATED BY '\\t' LINES TERMINATED BY '\\n' (ID,V)"
 	}
 	if !strings.Contains(command, "{table}") {
@@ -337,18 +334,10 @@ func runLocalImport(ctx context.Context, s *scenario) (err error) {
 		return err
 	}
 	command = strings.ReplaceAll(command, "{table}", table)
-	if s.mode == oceanbase.ModeMySQL {
-		return importMySQLAutocommit(ctx, s, table, command)
-	}
-	for _, commit := range []bool{false, true} {
-		if err = importTransaction(ctx, s, table, command, commit); err != nil {
-			return err
-		}
-	}
-	return nil
+	return importAutocommit(ctx, s, table, command)
 }
 
-func importMySQLAutocommit(ctx context.Context, s *scenario, table, command string) (err error) {
+func importAutocommit(ctx context.Context, s *scenario, table, command string) (err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -360,7 +349,7 @@ func importMySQLAutocommit(ctx context.Context, s *scenario, table, command stri
 	data := "1\tone\n2\ttwo\n"
 	reader := strings.NewReader(data)
 	_, refusal := oceanbase.Import(ctx, tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: reader})
-	if err = expect(errors.Is(refusal, oceanbase.ErrUnsupported) && reader.Len() == len(data), "transactional MySQL import was not refused before consuming input"); err != nil {
+	if err = expect(errors.Is(refusal, oceanbase.ErrUnsupported) && reader.Len() == len(data), "transactional import was not refused before consuming input"); err != nil {
 		return err
 	}
 	var count int
@@ -389,37 +378,8 @@ func importMySQLAutocommit(ctx context.Context, s *scenario, table, command stri
 			return err
 		}
 	}
-	s.observe("transaction_policy", "MySQL transaction refused before upload; earlier DML rolled back; autocommit import verified")
+	s.observe("transaction_policy", "Transaction refused before upload; earlier DML rolled back; autocommit import verified")
 	return countRows(ctx, s.db, table, 2)
-}
-
-func importTransaction(ctx context.Context, s *scenario, table, command string, commit bool) (err error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollbackInto(tx, &err)
-	r, err := oceanbase.Import(ctx, tx, command, &oceanbase.LocalInfile{Name: localImportName, Reader: strings.NewReader("1\tone\n2\ttwo\n")})
-	if err = affected(r, err, 2); err != nil {
-		return err
-	}
-	var value string
-	if err = tx.QueryRowContext(ctx, "SELECT V FROM "+table+" WHERE ID=2").Scan(&value); err != nil {
-		return err
-	}
-	if err = expect(value == seedTwo, "import content mismatch"); err != nil {
-		return err
-	}
-	want := 0
-	if commit {
-		err, want = tx.Commit(), 2
-	} else {
-		err = tx.Rollback()
-	}
-	if err != nil {
-		return err
-	}
-	return countRows(ctx, s.db, table, want)
 }
 
 const localImportName = "input"

@@ -45,7 +45,7 @@ func TestMySQLImportStatementSyntax(t *testing.T) {
 		{localImportSQL + " /* unterminated", false, false},
 		{"SELECT 'LOAD DATA'", false, false},
 	} {
-		err := mysqlImportStatement(tc.query, tc.noBackslash)
+		err := localImportStatement(tc.query, ModeMySQL, tc.noBackslash)
 		if (err == nil) != tc.valid || err != nil && !errors.Is(err, ErrUnsupported) {
 			t.Errorf("query=%q noBackslash=%v: %v", tc.query, tc.noBackslash, err)
 		}
@@ -74,6 +74,66 @@ func TestLocalInfileMySQLCommandBoundary(t *testing.T) {
 				t.Fatal("unsafe command sent or input consumed", err, reader.Len())
 			}
 			if err = db.PingContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestLocalInfileOracleCommandBoundary(t *testing.T) {
+	for _, query := range []string{
+		"SET TRANSACTION READ WRITE; " + localImportSQL,
+		localImportSQL + "; SET TRANSACTION READ WRITE",
+		"BEGIN unsafe_import; END;",
+	} {
+		t.Run(query, func(t *testing.T) {
+			db := localInfileDB(t, ModeOracle, true, func(ctx context.Context, p *wire.PacketIO) {
+				if !serveOK(ctx, t, p, []byte{14}, 6) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			reader := strings.NewReader("x")
+			_, err := Import(context.Background(), db, query, &LocalInfile{Name: localInputName, Reader: reader})
+			if !errors.Is(err, ErrUnsupported) || reader.Len() != 1 {
+				t.Fatal("unsafe Oracle command sent or input consumed", err, reader.Len())
+			}
+			if err = db.PingContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestLocalInfileOracleManualTransactionRefused(t *testing.T) {
+	for _, state := range []struct {
+		command string
+		status  byte
+	}{{testAutocommitOff, 4}, {testOracleReadWrite, 7}} {
+		t.Run(state.command, func(t *testing.T) {
+			db := localInfileDB(t, ModeOracle, true, func(ctx context.Context, p *wire.PacketIO) {
+				if !serveOK(ctx, t, p, []byte("\x03"+state.command), state.status) || !serveOK(ctx, t, p, []byte("\x03ROLLBACK"), 6) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			c, err := db.Conn(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = c.Close() }()
+			if _, err = c.ExecContext(context.Background(), state.command); err != nil {
+				t.Fatal(err)
+			}
+			reader := strings.NewReader("x")
+			if _, err = Import(context.Background(), c, localImportSQL, &LocalInfile{Name: localInputName, Reader: reader}); !errors.Is(err, ErrUnsupported) || reader.Len() != 1 {
+				t.Fatal("manual Oracle transaction allowed import", err, reader.Len())
+			}
+			if _, err = c.ExecContext(context.Background(), "ROLLBACK"); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -457,15 +517,9 @@ func TestLocalInfileServerResponse(t *testing.T) {
 	}
 }
 
-func TestLocalInfileTransaction(t *testing.T) {
+func TestLocalInfileOracleTransactionRefused(t *testing.T) {
 	db := localInfileDB(t, ModeOracle, true, func(ctx context.Context, p *wire.PacketIO) {
-		if !serveTxSteps(ctx, t, p, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}) || !localRequest(ctx, t, p, localInputName) {
-			return
-		}
-		if string(readLocalUpload(ctx, t, p)) != "1\tx\n" {
-			t.Error("transaction import data")
-		}
-		if !sendPackets(ctx, t, p, []byte{0, 1, 0, 5, 0, 0, 0}) || !serveTxSteps(ctx, t, p, []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}) {
+		if !serveTxSteps(ctx, t, p, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}, {testRollbackSQL, 4}, {testAutocommitOn, 6}}) || !serveOK(ctx, t, p, []byte{14}, 6) {
 			return
 		}
 		p.ResetSequence()
@@ -477,11 +531,15 @@ func TestLocalInfileTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err = Import(context.Background(), tx, localImportSQL, &LocalInfile{Name: localInputName, Reader: strings.NewReader("1\tx\n")}); err != nil {
-		t.Fatal(err)
+	reader := strings.NewReader("1\tx\n")
+	if _, err = Import(context.Background(), tx, localImportSQL, &LocalInfile{Name: localInputName, Reader: reader}); !errors.Is(err, ErrUnsupported) || reader.Len() != 4 {
+		t.Fatal("Oracle transactional import sent SQL or consumed input", err, reader.Len())
 	}
 	if err = tx.Rollback(); err != nil {
 		t.Fatal(err)
+	}
+	if err = db.PingContext(context.Background()); err != nil {
+		t.Fatal("refused Oracle import damaged the session", err)
 	}
 }
 

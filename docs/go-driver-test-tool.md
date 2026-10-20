@@ -64,7 +64,7 @@ Each target supports:
 | `name` | Unique 1–64-character ASCII letter/digit/underscore/hyphen label, starting with a letter/digit |
 | `dsn_env` / `dsn` | Exactly one: DSN environment-variable name or inline DSN; prefer environment sources for credentials |
 | `change_user_dsn_env` | Optional second-identity DSN environment name; only identity/default schema are read, not address/protocol. Must use the same endpoint, tenant and mode, and differ from the primary identity |
-| `local_import_sql` | Deployment-specific Oracle LOCAL import SQL containing {table}, requesting filename input; MySQL generates LOAD DATA LOCAL INFILE by default |
+| `local_import_sql` | Optional deployment-specific LOCAL import SQL containing {table}, requesting filename input; both modes generate LOAD DATA LOCAL INFILE by default |
 | `warning_sql` | Optional successful SQL producing nonzero warnings; MySQL defaults to a nonnumeric CAST; Oracle skips the positive warning case if absent |
 | `cancel_sql` | Optional long-running SQL; by default, create a table and hold a row lock, then cancel another session's waiting UPDATE |
 | `cancel_code` | Optional expected explicit-cancellation server code; defaults to MySQL 1317 / Oracle 1013, also recognizing the exact Oracle 600/70100/-5065 interruption envelope through the complete error chain; other mappings require an explicit override |
@@ -130,7 +130,7 @@ Each scenario uses an independent pool and random uppercase OBT_ object names to
 | `cancel-context` | Owned table/transaction lock, another connection's lock wait until context timeout; unchanged original value and usable replacement connection |
 | `cancel-query` | Separate helper cancels a lock-waiting command; explicit code across the complete error chain, reusable original session, one-shot token and no persisted side effects. Expected cancellation mixed with other failures must fail |
 | `change-user` | Configured second identity, identity switch, old-statement invalidation and standard-pool restoration of original identity |
-| `local-import` | MySQL: refuse import before SQL/upload inside a transaction, verify earlier DML still rolls back, then import in autocommit and compare every value/count. Oracle: import inside transactions and verify rollback/commit. No local data file |
+| `local-import` | Both modes: refuse import before SQL/upload inside a transaction, verify earlier DML still rolls back, then import in autocommit and compare every value/count. No local data file |
 
 Creation, assertion, privilege and protocol errors fail explicitly; ErrUnsupported never becomes success automatically. Exact MySQL 1398 rejection of XA SUSPEND/JOIN and Oracle 902 rejection of NCLOB are reported as unavailable (skip); other or mixed errors still fail, and cleanup failure overrides skip. Strict require_all also fails skips. The tool does not cover every scalar, metadata filter, platform authentication, HA fault or stress combination. This table is the actual scope; see the [plan](go-driver-development-plan.md) and [matrix](go-driver-compatibility-matrix.md) for other acceptance requirements.
 

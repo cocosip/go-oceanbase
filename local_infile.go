@@ -41,10 +41,10 @@ var ErrLocalInfile = errors.New("oceanbase: refused or failed local infile")
 // Import runs a caller-supplied LOAD DATA command on the supplied DB, Conn or Tx.
 // Only this command can read input; ordinary Exec/Query never authorize uploads.
 // Import neither starts nor commits a transaction and never retries consumed input.
-// Failure may leave database effects; use a transaction where the server supports it.
-// OceanBase MySQL-mode imports require autocommit outside local transactions and
+// Failure may leave partial or committed database effects; Import is not atomic.
+// OceanBase imports in both modes require autocommit outside local transactions and
 // XA sessions; otherwise Import returns ErrUnsupported before sending SQL/input.
-// MySQL accepts one LOAD DATA statement, with an optional trailing semicolon.
+// Import accepts one LOAD DATA statement, with an optional trailing semicolon.
 func Import(ctx context.Context, exec Execer, query string, input *LocalInfile) (sql.Result, error) {
 	if err := input.validate(); err != nil {
 		return nil, err
@@ -130,11 +130,11 @@ type localInfileRequest struct {
 
 type localInfileContextKey struct{}
 
-func mysqlImportStatement(query string, noBackslash bool) error {
-	bad := fmt.Errorf("%w: MySQL Import requires a single LOAD DATA statement", ErrUnsupported)
+func localImportStatement(query string, mode Mode, noBackslash bool) error {
+	bad := fmt.Errorf("%w: Import requires a single LOAD DATA statement", ErrUnsupported)
 	// A double-quoted backslash must not hide a separator under ANSI_QUOTES.
 	for _, ansiQuotes := range []bool{false, true} {
-		tokens, err := lexSQL(query, ModeMySQL, noBackslash, ansiQuotes)
+		tokens, err := lexSQL(query, mode, noBackslash, ansiQuotes)
 		if err != nil {
 			return errors.Join(bad, err)
 		}
