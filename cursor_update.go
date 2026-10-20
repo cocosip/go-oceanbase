@@ -207,6 +207,9 @@ func resolveCursorIdentity(mode Mode, cols []wire.Column, sets []lobRowset) (*cu
 	}
 	projected := make(map[string]bool)
 	for _, name := range id.columns {
+		if projected[name] {
+			return nil, ErrCursor
+		}
 		projected[name] = true
 	}
 	type key struct {
@@ -257,10 +260,14 @@ func resolveCursorIdentity(mode Mode, cols []wire.Column, sets []lobRowset) (*cu
 }
 
 func (c *conn) cursorIdentityLocked(ctx context.Context, cur *cursorResource) error {
-	if len(cur.columns) == 0 {
+	columns := cur.columns
+	if cur.options.Mode == CursorSensitive && len(columns) > 0 {
+		columns = columns[:len(columns)-1]
+	}
+	if len(columns) == 0 {
 		return ErrCursor
 	}
-	col := cur.columns[0]
+	col := columns[0]
 	query := mysqlBlobDictionarySQL
 	if c.session.mode == ModeOracle {
 		query = oracleBlobDictionarySQL
@@ -269,7 +276,7 @@ func (c *conn) cursorIdentityLocked(ctx context.Context, cur *cursorResource) er
 	if err != nil {
 		return err
 	}
-	cur.identity, err = resolveCursorIdentity(c.session.mode, cur.columns, sets)
+	cur.identity, err = resolveCursorIdentity(c.session.mode, columns, sets)
 	return err
 }
 
@@ -524,12 +531,10 @@ func cursorProjectedIdentity(mode Mode, cols []wire.Column) (*cursorIdentity, er
 		return nil, ErrCursor
 	}
 	id.table = quoteBlobIdentifier(mode, id.schema) + "." + quoteBlobIdentifier(mode, id.name)
-	projected := make(map[string]bool)
 	for _, col := range cols {
-		if col.Schema != id.schema || col.OriginalTable != id.name || !validBlobIdentifier(col.OriginalName) || projected[col.OriginalName] {
+		if col.Schema != id.schema || col.OriginalTable != id.name || !validBlobIdentifier(col.OriginalName) {
 			return nil, ErrCursor
 		}
-		projected[col.OriginalName] = true
 		id.columns = append(id.columns, col.OriginalName)
 	}
 	return id, nil

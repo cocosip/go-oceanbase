@@ -22,6 +22,10 @@ type CursorMode uint8
 const (
 	CursorForward CursorMode = iota
 	CursorStatic
+	// CursorSensitive retains native Oracle cursor membership/order and refreshes
+	// fetched base-table columns by ROWID under the session's current isolation.
+	// It requires a simple single-table SELECT. A deleted row invalidates the
+	// cursor with ErrCursor and sql.ErrNoRows; the caller's session remains usable.
 	CursorSensitive
 )
 

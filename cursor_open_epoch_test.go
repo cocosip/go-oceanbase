@@ -35,17 +35,21 @@ func TestCursorOpenTransactionInvalidation(t *testing.T) {
 							finish = []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}
 						}
 						db := batchRewriteDB(t, Config{Mode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
+							native := query
+							if cursorMode == CursorSensitive {
+								native = "SELECT payload, ROWID FROM cursor_open_epoch"
+							}
 							prepareStatus := active
 							if stage == prepareStage {
 								prepareStatus = ended
 								// No execute command may follow this metadata response.
 							}
-							if !serveTxSteps(ctx, t, p, begin) || !servePrepareStatus(ctx, t, p, query, 94, 0, [][]byte{textColumn("payload", 8, 63, 0)}, prepareStatus) {
+							if !serveTxSteps(ctx, t, p, begin) || !servePrepareStatus(ctx, t, p, native, 94, 0, [][]byte{textColumn("payload", 8, 63, 0)}, prepareStatus) {
 								return
 							}
 							if stage != prepareStage {
 								if cursorMode == CursorSensitive {
-									payload, err := wire.EncodePrepareExecute(94, []byte(query), nil, 4096)
+									payload, err := wire.EncodePrepareExecute(94, []byte(native), nil, 4096)
 									if err != nil {
 										t.Error(err)
 										return

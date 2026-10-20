@@ -66,6 +66,12 @@ func (c *conn) execOpenCursor(ctx context.Context, request cursorOpenRequest) (_
 		return nil, err
 	}
 	key := c.resourceKeyLocked()
+	if request.options.Mode == CursorSensitive {
+		request.query, err = sensitiveCursorQuery(request.query)
+		if err != nil {
+			return nil, err
+		}
+	}
 	prepared, err := c.prepareServerLocked(ctx, request.query)
 	if err != nil {
 		return nil, err
@@ -223,13 +229,21 @@ func (c *conn) queryCursorFetch(ctx context.Context, request cursorFetchRequest)
 	if err != nil {
 		return nil, err
 	}
+	columns := cur.columns
+	if cur.options.Mode == CursorSensitive {
+		rows, err = c.refreshSensitiveRowsLocked(ctx, request.cursor.handle, cur, rows)
+		if err != nil {
+			return nil, c.invalidateCursorLocked(request.cursor, err)
+		}
+		columns = columns[:len(columns)-1]
+	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 	if _, err = c.resourceLocked(request.cursor.handle); err != nil {
 		return nil, c.invalidateCursorLocked(request.cursor, err)
 	}
-	r := &textRows{conn: c, ctx: ctx, iterationCtx: ctx, columns: cur.columns, released: true, buffered: []lobRowset{{columns: cur.columns, rows: rows}}}
+	r := &textRows{conn: c, ctx: ctx, iterationCtx: ctx, columns: columns, released: true, buffered: []lobRowset{{columns: columns, rows: rows}}}
 	return &cursorBatchRows{textRows: r, cursor: request.cursor}, nil
 }
 

@@ -21,6 +21,7 @@ const (
 func TestCursorSensitiveInitialChildren(t *testing.T) {
 	const (
 		query      = "SELECT child FROM cursor_fixture"
+		native     = "SELECT child, ROWID FROM cursor_fixture"
 		nullChild  = "null-child"
 		parent     = "parent"
 		fetchError = "fetch-error"
@@ -28,24 +29,24 @@ func TestCursorSensitiveInitialChildren(t *testing.T) {
 	for _, kind := range []string{"child", nullChild, parent, fetchError} {
 		t.Run(kind, func(t *testing.T) {
 			db := txDB(t, ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
-				if !servePrepare(ctx, t, p, query, 54, 0, nil) {
+				if !servePrepare(ctx, t, p, native, 54, 0, nil) {
 					return
 				}
-				payload, err := wire.EncodePrepareExecute(54, []byte(query), nil, 4096)
+				payload, err := wire.EncodePrepareExecute(54, []byte(native), nil, 4096)
 				if err != nil {
 					t.Error(err)
 					return
 				}
 				payload[5] = 1
 				binary.LittleEndian.PutUint32(payload[len(payload)-16:], 8)
-				row := binary.LittleEndian.AppendUint32([]byte{0, 0}, 92)
+				row := append(binary.LittleEndian.AppendUint32([]byte{0, 0}, 92), 4, 'A', 'A', 'A', 'A')
 				switch kind {
 				case nullChild:
-					row = []byte{0, 4}
+					row = []byte{0, 4, 4, 'A', 'A', 'A', 'A'}
 				case parent:
-					row = binary.LittleEndian.AppendUint32([]byte{0, 0}, 54)
+					row = append(binary.LittleEndian.AppendUint32([]byte{0, 0}, 54), 4, 'A', 'A', 'A', 'A')
 				}
-				if !readCommand(ctx, t, p, payload) || !sendPackets(ctx, t, p, combinedHeader(54, 1, 0, 0), textColumn("child", 163, 63, 0), []byte{254, 0, 0, 70, 0}, row, []byte{254, 0, 0, 70, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
+				if !readCommand(ctx, t, p, payload) || !sendPackets(ctx, t, p, combinedHeader(54, 2, 0, 0), textColumn("child", 163, 63, 0), textColumn("ROWID", 253, 63, 0), []byte{254, 0, 0, 70, 0}, row, []byte{254, 0, 0, 70, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
 					return
 				}
 				if kind == parent {

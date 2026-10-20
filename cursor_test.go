@@ -210,24 +210,30 @@ func TestCursorOracleFetchLOB(t *testing.T) {
 
 func TestCursorSensitive(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
+	const native = "SELECT id, ROWID FROM cursor_fixture"
+	const refresh = `SELECT "id" FROM "s"."t" WHERE ROWID = ?`
 	db := txDB(t, ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
-		if !servePrepare(ctx, t, p, query, 54, 0, nil) {
+		if !servePrepare(ctx, t, p, native, 54, 0, nil) {
 			return
 		}
-		payload, err := wire.EncodePrepareExecute(54, []byte(query), nil, 4096)
+		payload, err := wire.EncodePrepareExecute(54, []byte(native), nil, 4096)
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		payload[5] = 1
 		binary.LittleEndian.PutUint32(payload[len(payload)-16:], 8)
-		if !readCommand(ctx, t, p, payload) || !sendPackets(ctx, t, p, combinedHeader(54, 1, 0, 0), textColumn("id", 8, 63, 0), []byte{254, 0, 0, 70, 0}, binary.LittleEndian.AppendUint64([]byte{0, 0}, 1), []byte{254, 0, 0, 70, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
+		old := append(binary.LittleEndian.AppendUint64([]byte{0, 0}, 1), 4, 'A', 'A', 'A', 'A')
+		if !readCommand(ctx, t, p, payload) || !sendPackets(ctx, t, p, combinedHeader(54, 2, 0, 0), cursorBaseColumn("id", 8), textColumn("ROWID", 253, 63, 0), []byte{254, 0, 0, 70, 0}, old, []byte{254, 0, 0, 70, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
 			return
 		}
 		for i, value := range []uint64{7, 9} {
 			fetch := append(cursorFetchFixture(54, 1), 32, 0, 1, 0, 0, 0, 1, 0, 0, 0)
-			if !readCommand(ctx, t, p, fetch) || !sendPackets(ctx, t, p, []byte{1}, textColumn("id", 8, 63, 0), []byte{254, 0, 0, 70, 0}, binary.LittleEndian.AppendUint64([]byte{0, 0}, value), []byte{254, 0, 0, 134, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
+			if !readCommand(ctx, t, p, fetch) || !sendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), textColumn("ROWID", 253, 63, 0), []byte{254, 0, 0, 70, 0}, old, []byte{254, 0, 0, 134, 0}, []byte{0, 1, 0, 6, 0, 0, 0}) {
 				t.Errorf("sensitive fetch %d", i)
+				return
+			}
+			if !servePrepare(ctx, t, p, refresh, 55, 1, nil) || !readCommand(ctx, t, p, append(executeHeader(55), 0, 1, 253, 0, 4, 'A', 'A', 'A', 'A')) || !sendPackets(ctx, t, p, []byte{1}, cursorBaseColumn("id", 8), []byte{254, 0, 0, 6, 0}, binary.LittleEndian.AppendUint64([]byte{0, 0}, value), []byte{254, 0, 0, 6, 0}) || !readCommand(ctx, t, p, stmtPacket(25, 55)) {
 				return
 			}
 		}

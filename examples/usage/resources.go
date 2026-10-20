@@ -114,7 +114,7 @@ func complexTypes(ctx context.Context, c *sql.Conn, prefix string) (err error) {
 		return err
 	}
 	defer cleanup(c, "DROP TYPE "+arrayName, &err)
-	if _, err = c.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V "+objectName+",A "+arrayName+")"); err != nil {
+	if _, err = c.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V "+objectName+")"); err != nil {
 		return err
 	}
 	defer cleanup(c, "DROP TABLE "+table, &err)
@@ -127,26 +127,43 @@ func complexTypes(ctx context.Context, c *sql.Conn, prefix string) (err error) {
 	value := oceanbase.Object{Type: objectName, Fields: []oceanbase.Attribute{
 		{Name: "N", Value: oceanbase.Number(exact)},
 	}}
-	array := oceanbase.Array{Type: arrayName, Elements: []any{value, nil, value}}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES(?,?,?)", 1, value, array); err != nil {
+	array := oceanbase.Array{Type: arrayName, Elements: []any{value, value}}
+	if _, err = tx.ExecContext(ctx, "INSERT INTO "+table+" VALUES(?,?)", 1, value); err != nil {
 		return err
 	}
 	var got oceanbase.Object
 	var items oceanbase.Array
-	if err = tx.QueryRowContext(ctx, "SELECT V,A FROM "+table+" WHERE ID=?", 1).Scan(&got, &items); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT V FROM "+table+" WHERE ID=?", 1).Scan(&got); err != nil {
 		return err
 	}
-	if len(got.Fields) != 1 || len(items.Elements) != 3 || items.Elements[1] != nil {
-		return errors.New("OBJECT/ARRAY shape or NULL element mismatch")
+	// PL/SQL collection binding does not require nested-table column storage.
+	if _, err = tx.ExecContext(ctx, "DECLARE a "+arrayName+" := ?; BEGIN ? := a; END;", array, sql.Out{Dest: &items}); err != nil {
+		return err
 	}
-	number, ok := got.Fields[0].Value.(oceanbase.Number)
-	if !ok {
-		return errors.New("OBJECT field lost its NUMBER representation")
+	if len(items.Elements) != 2 || items.Type != arrayName {
+		return errors.New("ARRAY identity or shape mismatch")
+	}
+	objects := []oceanbase.Object{got}
+	for _, item := range items.Elements {
+		object, ok := item.(oceanbase.Object)
+		if !ok {
+			return errors.New("ARRAY element lost its OBJECT representation")
+		}
+		objects = append(objects, object)
 	}
 	want, _ := new(big.Rat).SetString(exact)
-	actual, ok := new(big.Rat).SetString(string(number))
-	if !ok || actual.Cmp(want) != 0 {
-		return errors.New("OBJECT NUMBER precision mismatch")
+	for _, object := range objects {
+		if object.Type != objectName || len(object.Fields) != 1 || object.Fields[0].Name != "N" {
+			return errors.New("OBJECT identity or shape mismatch")
+		}
+		number, ok := object.Fields[0].Value.(oceanbase.Number)
+		if !ok {
+			return errors.New("OBJECT field lost its NUMBER representation")
+		}
+		actual, ok := new(big.Rat).SetString(string(number))
+		if !ok || actual.Cmp(want) != 0 {
+			return errors.New("OBJECT NUMBER precision mismatch")
+		}
 	}
 	fmt.Printf("OBJECT type=%s, NUMBER=%v; ARRAY elements=%d\n", got.Type, got.Fields[0].Value, len(items.Elements))
 	// This example discards its data; DDL cleanup still runs outside the transaction.

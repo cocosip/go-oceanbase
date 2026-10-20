@@ -147,7 +147,7 @@ Standard Rows.Columns() / ColumnTypes().Name() return result labels. For origina
 
 Close resources in this order: each batch's Rows → Cursor/Blob/Clob/Execution → commit or roll back Tx → close pinned Conn → close DB at application shutdown. Blob offsets are bytes; Clob offsets are Unicode code points; both are zero-based. End-of-file may return io.EOF. Handle SQL NULL before dereferencing a nil LOB.
 
-LOB/complex values from ordinary QueryContext have different ownership from explicit locators. Configure bounds such as Limits.MaxLOBBytes for materialization; do not read large objects without limits. CursorStatic needs a bounded cache. See the compatibility matrix for CursorSensitive, updatable-cursor and native-locator version gates. The example uses Forward and does not establish live acceptance for other modes.
+LOB/complex values from ordinary QueryContext have different ownership from explicit locators. Configure bounds such as Limits.MaxLOBBytes for materialization; do not read large objects without limits. CursorStatic needs a bounded cache. CursorSensitive requires a simple Oracle base-table SELECT: native cursor positions retain the original membership/order, while each Fetch refreshes columns by hidden ROWID under current isolation. It preserves aliases and ordinal ORDER BY, including repeated read-only columns. A deleted row returns ErrCursor and sql.ErrNoRows, invalidates the cursor and preserves the synchronized session. Joins, DISTINCT, aggregates and derived projections reject. See the compatibility matrix for version gates and the [current live evidence](release-validation-2026-10-20.md).
 
 ## 5. Runnable examples
 
@@ -160,7 +160,7 @@ The comprehensive example requires:
 - Server-side preparation, enforced by the example. The MySQL branch enables AllowMultiStatements for fixed SQL; this is not a reason to enable it globally in an application.
 - Random uppercase object names. The program creates tables/procedures/types, writes sample data, checks results and attempts cleanup in reverse dependency order. DDL may commit implicitly and cannot be undone by rollback.
 
-After setting OB_DSN, run from the repository root. These commands connect to a database and were not executed during this stage:
+After setting OB_DSN, run from the repository root. Both programs passed against the supplied direct MySQL/Oracle 4.4.2.2 tenants on 2026-10-20:
 
 ```sh
 go run ./examples/usage

@@ -24,6 +24,100 @@ func TestCursorModes(t *testing.T) {
 	}
 }
 
+func TestSensitiveCursorRefresh(t *testing.T) {
+	selected, err := profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range selected {
+		if p.mode != oceanbase.ModeOracle {
+			continue
+		}
+		t.Run(p.name, func(t *testing.T) {
+			db, table := cursorFixture(t, p)
+			c, err := db.Conn(testContext(t))
+			if err != nil {
+				failOperation(t, "pin sensitive session", err)
+			}
+			defer func() { _ = c.Close() }()
+			t.Run("ordinal-order-and-duplicates", func(t *testing.T) { testSensitiveOrdinalProjection(t, c, table) })
+			for _, projection := range []string{"ID,V,B", "*", "x.*", "ID AS RENAMED,V,B"} {
+				t.Run(projection, func(t *testing.T) {
+					query := "SELECT " + projection + " FROM " + table + " x WHERE ID=:id ORDER BY ID"
+					cur, err := oceanbase.OpenCursor(testContext(t), c, query, oceanbase.CursorOptions{Mode: oceanbase.CursorSensitive}, sql.Named("id", 1))
+					if err != nil {
+						failOperation(t, "open sensitive projection", err)
+					}
+					defer func() { _ = cur.Close() }()
+					for _, value := range []string{"fresh-one", "fresh-two"} {
+						if _, err = db.ExecContext(testContext(t), "UPDATE "+table+" SET V=? WHERE ID=1", value); err != nil {
+							failOperation(t, "update from another session", err)
+						}
+						rows, err := cur.Fetch(testContext(t), oceanbase.CursorPosition{Origin: oceanbase.CursorAbsolute, Offset: 1}, 1)
+						if err != nil {
+							failOperation(t, "refresh sensitive projection", err)
+						}
+						checkCursorRow(t, rows, 1, value, true)
+						if columns, e := rows.Columns(); e != nil || len(columns) != 3 {
+							t.Fatal("hidden ROWID leaked", columns, e)
+						}
+						if err = rows.Close(); err != nil {
+							failOperation(t, "close sensitive projection", err)
+						}
+					}
+				})
+			}
+			cur, err := oceanbase.OpenCursor(testContext(t), c, "SELECT V FROM "+table+" WHERE ID=1", oceanbase.CursorOptions{Mode: oceanbase.CursorSensitive})
+			if err != nil {
+				failOperation(t, "open sensitive projection without primary key", err)
+			}
+			defer func() { _ = cur.Close() }()
+			if _, err = db.ExecContext(testContext(t), "DELETE FROM "+table+" WHERE ID=1"); err != nil {
+				failOperation(t, "delete sensitive row", err)
+			}
+			if rows, err := cur.Fetch(testContext(t), oceanbase.CursorPosition{Origin: oceanbase.CursorAbsolute, Offset: 1}, 1); !errors.Is(err, sql.ErrNoRows) {
+				if rows != nil {
+					_ = rows.Close()
+				}
+				t.Fatal("deleted sensitive row returned stale data", err)
+			}
+			if _, err = cur.Fetch(testContext(t), oceanbase.CursorPosition{}, 1); !errors.Is(err, oceanbase.ErrResource) {
+				t.Fatal("failed refresh left cursor usable", err)
+			}
+			if err = c.PingContext(testContext(t)); err != nil {
+				failOperation(t, "reuse session after missing row", err)
+			}
+		})
+	}
+}
+
+func testSensitiveOrdinalProjection(t *testing.T, c *sql.Conn, table string) {
+	t.Helper()
+	cur, err := oceanbase.OpenCursor(testContext(t), c, "SELECT /*+ FULL(x) */ ID AS A,ID AS B FROM "+table+" x ORDER BY 2 DESC,1", oceanbase.CursorOptions{Mode: oceanbase.CursorSensitive})
+	if err != nil {
+		failOperation(t, "open repeated projection with ordinal ordering", err)
+	}
+	defer func() { _ = cur.Close() }()
+	rows, err := cur.Fetch(testContext(t), oceanbase.CursorPosition{Origin: oceanbase.CursorAbsolute, Offset: 1}, 2)
+	if err != nil {
+		failOperation(t, "fetch repeated projection", err)
+	}
+	defer func() { _ = rows.Close() }()
+	columns, err := rows.Columns()
+	if err != nil || len(columns) != 2 || columns[0] != "A" || columns[1] != "B" {
+		t.Fatal("projection aliases changed", columns, err)
+	}
+	for _, want := range []int{2, 1} {
+		var a, b int
+		if !rows.Next() || rows.Scan(&a, &b) != nil || a != want || b != want {
+			t.Fatal("ordinal ordering or repeated projection changed", a, b, want, rows.Err())
+		}
+	}
+	if rows.Next() || rows.Err() != nil {
+		t.Fatal("unexpected repeated-projection tail", rows.Err())
+	}
+}
+
 func cursorFixture(t *testing.T, p profile) (*sql.DB, string) {
 	t.Helper()
 	cfg := profileConfig(t, p)
@@ -154,18 +248,21 @@ func TestCursorUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		t.Run(p.name, func(t *testing.T) { testCursorUpdates(t, p) })
+		t.Run(p.name, func(t *testing.T) { testCursorUpdates(t, p, oceanbase.CursorForward) })
+		if p.mode == oceanbase.ModeOracle {
+			t.Run(p.name+"-sensitive", func(t *testing.T) { testCursorUpdates(t, p, oceanbase.CursorSensitive) })
+		}
 	}
 }
 
-func testCursorUpdates(t *testing.T, p profile) {
+func testCursorUpdates(t *testing.T, p profile, mode oceanbase.CursorMode) {
 	db, table := cursorFixture(t, p)
 	tr, err := db.BeginTx(testContext(t), nil)
 	if err != nil {
 		failOperation(t, "begin cursor transaction", err)
 	}
 	defer func() { _ = tr.Rollback() }()
-	cursor, err := oceanbase.OpenCursor(testContext(t), tr, "SELECT ID,V FROM "+table, oceanbase.CursorOptions{Updatable: true})
+	cursor, err := oceanbase.OpenCursor(testContext(t), tr, "SELECT ID,V FROM "+table+" ORDER BY ID", oceanbase.CursorOptions{Mode: mode, Updatable: true})
 	if err != nil {
 		failOperation(t, "open updatable cursor", err)
 	}
@@ -183,6 +280,18 @@ func testCursorUpdates(t *testing.T, p profile) {
 	checkCursorRow(t, rows, 1, "updated", false)
 	if err = rows.Close(); err != nil {
 		failOperation(t, "close refresh", err)
+	}
+	rows, err = cursor.Fetch(testContext(t), oceanbase.CursorPosition{}, 1)
+	if err != nil {
+		failOperation(t, "fetch updated cursor", err)
+	}
+	want := "v1"
+	if mode == oceanbase.CursorSensitive {
+		want = "updated"
+	}
+	checkCursorRow(t, rows, 1, want, false)
+	if err = rows.Close(); err != nil {
+		failOperation(t, "close updated cursor fetch", err)
 	}
 	if err = cursor.Insert(testContext(t), oceanbase.ColumnChange{Name: "ID", Value: 3}, oceanbase.ColumnChange{Name: "V", Value: "new"}); err != nil {
 		failOperation(t, "insert cursor row", err)
@@ -204,7 +313,7 @@ func testCursorUpdates(t *testing.T, p profile) {
 	if _, err = oceanbase.OpenCursor(testContext(t), tr, "SELECT a.ID FROM "+table+" a JOIN "+table+" b ON a.ID=b.ID", oceanbase.CursorOptions{Updatable: true}); !errors.Is(err, oceanbase.ErrCursor) {
 		t.Fatal("joined cursor accepted updates", err)
 	}
-	cursor, err = oceanbase.OpenCursor(testContext(t), tr, "SELECT ID,V FROM "+table, oceanbase.CursorOptions{Updatable: true})
+	cursor, err = oceanbase.OpenCursor(testContext(t), tr, "SELECT ID,V FROM "+table, oceanbase.CursorOptions{Mode: mode, Updatable: true})
 	if err != nil {
 		failOperation(t, "open missing-row cursor", err)
 	}
