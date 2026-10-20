@@ -4,7 +4,7 @@ A Go `database/sql` driver for OceanBase in MySQL and Oracle compatibility modes
 
 **Status: under development.** Live database compatibility acceptance is not complete. See the [compatibility matrix](docs/go-driver-compatibility-matrix.md) and [development progress](docs/go-driver-development-progress.md) for implemented behavior, verification evidence and remaining work.
 
-The [2026-10-20 release validation](docs/release-validation-2026-10-20.md) records passing direct MySQL/Oracle 4.4.2.2 scenarios and the remaining deployment gaps. Licensed under [MIT](LICENSE).
+The [2026-10-20 release validation](docs/release-validation-2026-10-20.md) records passing direct MySQL/Oracle 4.4.2.2 scenarios, official Connector/J 2.4.14 source alignment, and deployment validation boundaries. Licensed under [MIT](LICENSE).
 
 ## Requirements
 
