@@ -7,12 +7,6 @@ import (
 	testing "testing"
 )
 
-const testUser = "app"
-
-const testPassword = "secret"
-
-const testServerName = "db.example"
-
 func TestDriverRegistration(t *testing.T) {
 	db, err := sql.Open("oceanbase", "oceanbase://app:secret@localhost/demo")
 	if err != nil {

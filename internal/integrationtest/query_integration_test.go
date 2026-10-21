@@ -1,6 +1,6 @@
 //go:build integration
 
-package oceanbase_test
+package integrationtest_test
 
 import (
 	sql "database/sql"

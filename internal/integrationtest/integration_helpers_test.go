@@ -1,5 +1,5 @@
 //go:build integration
 
-package oceanbase_test
+package integrationtest_test
 
 const integrationIntegrationInnoDBSuffix = " ENGINE=InnoDB"
