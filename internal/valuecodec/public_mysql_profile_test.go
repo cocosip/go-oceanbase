@@ -10,6 +10,7 @@ import (
 	oceanbase "github.com/cocosip/go-oceanbase"
 	"github.com/cocosip/go-oceanbase/internal/publictest"
 	"github.com/cocosip/go-oceanbase/internal/testpeer"
+	"github.com/cocosip/go-oceanbase/internal/valueformat"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -104,7 +105,7 @@ func assertMySQLClientProfileRows(t *testing.T, rows *sql.Rows, version int, new
 	if version == 8 && newMetadata {
 		wantBody = "TEXT"
 	}
-	for i, name := range []string{wantBody, "TIME", "DATETIME", "DATETIME"} {
+	for i, name := range []string{wantBody, "TIME", valueformat.TypeNameDateTime, valueformat.TypeNameDateTime} {
 		if types[i].DatabaseTypeName() != name || types[i].ScanType() != reflect.TypeFor[string]() {
 			t.Errorf("column %d: type=%q scan=%v, want %q/string", i, types[i].DatabaseTypeName(), types[i].ScanType(), name)
 		}
