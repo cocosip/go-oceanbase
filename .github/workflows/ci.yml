@@ -338,7 +338,7 @@ jobs:
           cache: true
       - run: >-
           go test -tags=integration
-          . ./internal/connect/integration ./internal/control/integration
+          . ./internal/integrationtest ./internal/connect/integration ./internal/control/integration
           ./internal/statement ./internal/valuecodec ./internal/catalog ./internal/call
           ./internal/lob ./internal/cursor ./internal/execution ./internal/batch/integration
           ./internal/diagnostic ./internal/xa

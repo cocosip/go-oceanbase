@@ -4,12 +4,11 @@ package catalog
 import (
 	"database/sql/driver"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/cocosip/go-oceanbase/config"
 	"github.com/cocosip/go-oceanbase/dberrors"
+	"github.com/cocosip/go-oceanbase/internal/configspec"
 	"github.com/cocosip/go-oceanbase/metadata"
 )
 
@@ -184,18 +183,7 @@ func buildMetadataQuery(mode config.Mode, f metadata.MetadataFilter, s metadataS
 	return p, nil
 }
 
-var obMetadataVersion = regexp.MustCompile(`(?:^|[^0-9.])([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+(?:[^0-9.]|$)`)
-
 // HasParameterDictionary reports whether the server version has a reliable parameter dictionary.
 func HasParameterDictionary(version string) bool {
-	match := obMetadataVersion.FindStringSubmatch(version)
-	if match == nil {
-		return false
-	}
-	major, err := strconv.ParseUint(match[1], 10, 32)
-	if err != nil {
-		return false
-	}
-	minor, err := strconv.ParseUint(match[2], 10, 32)
-	return err == nil && (major > 4 || major == 4 && minor >= 1)
+	return configspec.SupportsVersion(version, 4, 1, 0)
 }

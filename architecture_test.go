@@ -106,7 +106,7 @@ func allowedProjectDependencies() map[string][]string {
 		"internal/valueformat":         {"internal/configspec", "internal/wire", "dberrors"},
 		"internal/valuecodec":          {"config", "types", "internal/valueformat", "internal/wire", "internal/charset", "dberrors", "internal/configspec"},
 		"internal/rowset":              {"config", "internal/wire", "internal/valuecodec", "dberrors"},
-		"internal/catalog":             {"internal/rowset", "metadata", "config", "internal/sqltext", "internal/command", "internal/session", "internal/valuecodec", "internal/valueformat", "internal/wire", "dberrors"},
+		"internal/catalog":             {"internal/rowset", "metadata", "config", "internal/configspec", "internal/sqltext", "internal/command", "internal/session", "internal/valuecodec", "internal/valueformat", "internal/wire", "dberrors"},
 		"internal/streaminput":         {"config", "internal/charset", "internal/wire", "dberrors"},
 		"internal/parameters":          {"internal/session", "internal/catalog", "internal/configspec", "internal/valueformat", "internal/valuecodec", "internal/streaminput", "internal/sqltext", "config", "types", "internal/charset", "internal/wire", "dberrors"},
 		"internal/statement":           {"internal/session", "internal/command", "internal/sqltext", "internal/valuecodec", "internal/streaminput", "internal/wire", "config", "internal/configspec", "dberrors"},

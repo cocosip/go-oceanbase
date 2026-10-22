@@ -44,10 +44,47 @@ func TestMetadataFilters(t *testing.T) {
 			t.Fatal("unbounded table-type list accepted")
 		}
 	}
-	for _, version := range []string{"", "5.7.25", "OceanBase 3.2.4.0", "OceanBase_CE 4.0.0.0"} {
+	for _, version := range []string{"", "5.7.25-OceanBase_CE", "OceanBase 3.2.4.0", "OceanBase_CE 4.0.0.0"} {
 		if _, err := Plan(config.ModeMySQL, version, metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters}); !errors.Is(err, dberrors.ErrUnsupported) {
 			t.Fatalf("unreliable parameter dictionary accepted %q: %v", version, err)
 		}
+	}
+}
+
+func TestMySQLParameterDictionaryVersions(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		want    bool
+	}{
+		{"4.0.9.0", false},
+		{"4.1.0", true},
+		{"4.1.0.0", true},
+		{"5.0.0", true},
+		{"5.7.25", true},
+		{"5.7.25-OceanBase_CE-v4.1.0", true},
+		{"5.7.25.0-OceanBase_CE-v3.2.4.0", false},
+		{"5.7.25.0-OceanBase_CE-unknown", false},
+		{"", false},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			filter := metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters}
+			plan, err := Plan(config.ModeMySQL, tc.version, filter)
+			if tc.want {
+				if err != nil || !strings.Contains(plan.SQL, "information_schema.PARAMETERS") {
+					t.Fatalf("parameter dictionary unavailable: %v, SQL=%q", err, plan.SQL)
+				}
+			} else if !errors.Is(err, dberrors.ErrUnsupported) {
+				t.Fatalf("old or unknown version accepted: %v", err)
+			}
+			plan, err = Plan(config.ModeMySQL, tc.version, metadata.MetadataFilter{Kind: metadata.MetadataServerInfo})
+			flag := `0 AS "parameter_dictionary"`
+			if tc.want {
+				flag = `1 AS "parameter_dictionary"`
+			}
+			if err != nil || !strings.Contains(plan.SQL, flag) {
+				t.Fatalf("incorrect parameter dictionary capability: %v, SQL=%q", err, plan.SQL)
+			}
+		})
 	}
 }
 

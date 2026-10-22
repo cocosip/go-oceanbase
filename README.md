@@ -126,7 +126,7 @@ go build ./...
 go test ./... -count=1
 go vet ./...
 golangci-lint run
-go test -tags=integration -run '^$' ./tests/integration
+go test -tags=integration ./... -run '^$' -timeout 1m
 go run ./cmd/obtest -list
 ```
 
