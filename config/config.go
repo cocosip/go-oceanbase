@@ -66,6 +66,8 @@ type SessionOptions struct {
 	SkipVersionProbe bool
 	// ParseTime converts unzoned dates and timestamps using Location; invalid or ambiguous times fail.
 	ParseTime bool
+	// CompatibleMysqlVersion selects MySQL 5 or 8 client result and conversion semantics; zero defaults to 5.
+	CompatibleMysqlVersion int
 	// Charset encodes SQL and handshake user/database names; default utf8mb4.
 	Charset string
 	// Collation optionally selects a MySQL-mode collation for Charset; empty uses its default.

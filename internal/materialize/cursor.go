@@ -76,5 +76,5 @@ func (c *Decoder) refCursor(ctx, iterationCtx context.Context, id RefCursorID, d
 			break
 		}
 	}
-	return rowset.New(iterationCtx, c.op.Protocol().Mode, c.op.Config().Session.ParseTime, []rowset.Set{{Columns: set.Columns, Rows: set.Rows}}), nil
+	return rowset.NewWithSession(iterationCtx, c.op.Protocol().Mode, c.op.Config().Session, []rowset.Set{{Columns: set.Columns, Rows: set.Rows}}), nil
 }

@@ -14,14 +14,18 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/session"
 )
 
-// Connector owns shared selection, discovery and automatic mode pinning.
+// Connector owns shared selection, discovery, mode pinning and login identity pinning.
 type Connector struct {
-	cfg       config.Config
-	modeMu    sync.Mutex
-	mode      config.Mode
-	routes    *routing.Selector
-	discovery *routing.Discovery
-	closed    atomic.Bool
+	cfg         config.Config
+	modeMu      sync.Mutex
+	mode        config.Mode
+	identityMu  sync.Mutex
+	identitySet bool
+	user        string
+	proxyUser   string
+	routes      *routing.Selector
+	discovery   *routing.Discovery
+	closed      atomic.Bool
 }
 
 // New adopts an already normalized and snapshotted configuration without dialing.
@@ -125,6 +129,21 @@ func (c *Connector) checkMode(actual config.Mode, pin bool) error {
 	}
 	if pin {
 		c.mode = actual
+	}
+	return nil
+}
+
+// checkIdentity pins the logical login identity for all physical sessions in this Connector.
+// Passwords are intentionally excluded so credential rotation can continue without mixing users.
+func (c *Connector) checkIdentity(protocol *session.Negotiated) error {
+	c.identityMu.Lock()
+	defer c.identityMu.Unlock()
+	if !c.identitySet {
+		c.user, c.proxyUser, c.identitySet = protocol.User, protocol.ProxyUser, true
+		return nil
+	}
+	if c.user != protocol.User || c.proxyUser != protocol.ProxyUser {
+		return dberrors.ErrIdentityMismatch
 	}
 	return nil
 }

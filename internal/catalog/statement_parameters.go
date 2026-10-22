@@ -10,7 +10,7 @@ import (
 )
 
 // StatementParameters projects authoritative preparation metadata without inferring directions.
-func StatementParameters(mode config.Mode, plan sqltext.Plan, parameters []wire.Column) [][]driver.Value {
+func StatementParameters(mode config.Mode, plan sqltext.Plan, parameters []wire.Column, session ...config.SessionOptions) [][]driver.Value {
 	values := make([][]driver.Value, len(parameters))
 	for i, column := range parameters {
 		slot := plan.Slots[i]
@@ -19,7 +19,7 @@ func StatementParameters(mode config.Mode, plan sqltext.Plan, parameters []wire.
 			row[2] = slot.Name
 		}
 		if column.Type != 6 {
-			if name := valuecodec.TextTypeName(column, mode); name != "" {
+			if name := valuecodec.TextTypeName(column, mode, session...); name != "" {
 				row[4] = name
 			}
 		}

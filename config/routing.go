@@ -37,6 +37,9 @@ type Endpoint struct {
 
 // RoutingOptions selects new connections and optionally validates idle pooled sessions.
 // Endpoints replaces Addr; zero MaxAttempts makes one pass over eligible endpoints.
+// All endpoints used by one Connector must be deployment-verified members of the
+// same logical OceanBase service and tenant. The driver does not infer tenant
+// identity from an address or username.
 type RoutingOptions struct {
 	Endpoints          []Endpoint
 	Role               EndpointRole

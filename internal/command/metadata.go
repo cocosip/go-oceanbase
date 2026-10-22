@@ -27,7 +27,7 @@ func ReadMetadata(ctx context.Context, op *session.Operation, count int, budget 
 		if err != nil {
 			return nil, err
 		}
-		if validate && valuecodec.TextTypeName(column, p.Mode) == "" {
+		if validate && valuecodec.TextTypeName(column, p.Mode, cfg.Session) == "" {
 			return nil, &dberrors.UnsupportedTypeError{Type: column.Type, Mode: p.Mode}
 		}
 		columns = append(columns, column)

@@ -63,6 +63,7 @@ func TestPrepareExecuteGate(t *testing.T) {
 		enabled, want bool
 	}{
 		{config.ModeOracle, "2.2.76", true, true}, {config.ModeOracle, "2.2.74", true, false},
+		{config.ModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", true, true},
 		{config.ModeOracle, "", true, false}, {config.ModeMySQL, testNativeVersion, true, false}, {config.ModeOracle, testNativeVersion, false, false},
 	} {
 		op := testOperation(t, config.Config{Execution: config.ExecutionOptions{PrepareExecute: tc.enabled}}, tc.mode, tc.version)
@@ -88,6 +89,7 @@ func TestStatementChecksumGate(t *testing.T) {
 		combined, want bool
 	}{
 		{config.ModeOracle, "4.1.1", false, false}, {config.ModeOracle, "4.1.2", false, true},
+		{config.ModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", false, true},
 		{config.ModeOracle, "", false, false}, {config.ModeMySQL, testNativeVersion, false, false}, {config.ModeOracle, "2.2.76", true, true},
 	} {
 		op := testOperation(t, config.Config{Execution: config.ExecutionOptions{StatementChecksum: true}}, tc.mode, tc.version)

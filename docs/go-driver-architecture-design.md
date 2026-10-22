@@ -315,7 +315,22 @@ On mode mismatch, close the new connection and return expected/actual modes in t
 
 Not every capability follows one handshake bit. PrepareExecute, offset fetch, and similar features require source-based version gates and real-server verification. Unparseable versions use confirmed conservative paths, not an assumed latest version.
 
-A pool keeps one mode. ModeAuto atomically locks the Connector to its first successfully initialized connection's mode; reject later candidates returning another mode. Address sources must represent the same logical OceanBase service, never mixing tenants/database services. Checks do not log passwords.
+Version gates use the raw value returned by `ob_version()`, stored as
+`obVersion`; the MySQL-compatible handshake `ServerVersion` is retained for
+diagnostics and is never used as an OceanBase capability version. The parser
+accepts any complete numeric OceanBase version, including future major versions
+and a leading `v`. When a build prefixes a MySQL version, for example
+`5.7.25-OceanBase_CE-v4.2.1.0`, the version after the OceanBase marker is used.
+This follows Connector/J's `getObVersion()` plus generic numeric
+`Version.compare` policy rather than branching on 4.x or 5.x. Missing or
+malformed values disable gated features and select the ordinary compatible path.
+There is deliberately no user-supplied server-version override: a configured
+value could enable a feature that the selected endpoint does not support. Java's
+`compatibleOjdbcVersion` and `compatibleMysqlVersion` select client behavior,
+not the OceanBase server version. If `ob_version()` is unavailable, use
+`SkipVersionProbe` and keep version-gated features on conservative paths.
+
+A pool keeps one compatibility mode and one logical login identity. ModeAuto atomically locks the Connector to its first successfully initialized connection's mode; reject later candidates returning another mode. After authentication, the Connector pins `User` and `ProxyUser` for subsequent physical sessions and returns `ErrIdentityMismatch` if a credentials callback changes either field. Password changes remain allowed for rotation. Address sources must represent the same logical OceanBase service, never mixing tenants/database services. This identity lock prevents one pool from silently mixing configured logins; it does not prove that different endpoints resolve to the same server-side tenant. Deployment acceptance must verify tenant identity on every candidate with a service-specific SQL check. Checks do not log passwords.
 
 ## 9. Connection Establishment, Transport, and Protocol Layer
 
@@ -1483,6 +1498,18 @@ defer db.Close()
 ```
 
 DSNs add mutually exclusive `tnsFile`+`tnsAlias` or `ocpURL`, requiring `discoveryService`, optionally `discoveryRefreshInterval/discoveryTimeout/discoveryMaxAge`. URL-encoded static `addressDescription` is exclusive with these sources/addresses. Prefer typed Config for dynamic sources/mixed roles/groups. Static addresses retains D26 common-role tagging. Unlabeled DESCRIPTION/TNS/OCP entries do not inherit role: restricted Role needs source labels or explicitly wrapped TopologySource based on real service evidence. Service identity is not tenant-authentication proof; credentials/server identity evidence still establish tenancy.
+
+Discovery and failover do not run a default tenant probe or prove that every
+candidate belongs to one tenant. They select endpoints for a configured
+logical service and mode; deployment acceptance must query a server-side tenant
+identity on each candidate and compare the result. The driver does enforce the
+identities it owns: the authenticating user is sent as configured, Oracle proxy
+targets are explicit `ProxyUser` values, ChangeUser replaces that identity, and
+CancelQuery refuses an auxiliary connection whose recorded user/proxy identity
+does not match. Connector/J can derive a proxy target from its optional
+`authUser[proxyUser]` syntax; the Go API intentionally keeps this as a separate
+field and treats ordinary user/tenant text as opaque, so wire semantics match
+without silently rewriting application credentials.
 
 Java replication maps to explicit role snapshots/two DBs. Aurora replica_host_status/innodb_read_only/domain rules are Aurora contracts and never guessed OceanBase SQL. Custom control planes/replication/Aurora services provide addresses/roles/stable Service through TopologySource and the same validation/cache/close flows. No built-in Aurora detector pretending to be native OceanBase topology. Queries/privileges/role changes/tenant proof require evidence per adapter; callback/local-fixture success is not server compatibility.
 

@@ -37,6 +37,15 @@ func TestDSNScalarOptions(t *testing.T) {
 	if err != nil || cfg.Session.ParseTime {
 		t.Fatal("cannot retain textual time", err)
 	}
+	cfg, err = ParseDSN("oceanbase://app@localhost/db?compatibleMysqlVersion=8")
+	if err != nil || cfg.Session.CompatibleMysqlVersion != 8 {
+		t.Fatalf("MySQL compatibility option ignored: %d %v", cfg.Session.CompatibleMysqlVersion, err)
+	}
+	for _, value := range []string{"0", "7"} {
+		if _, err = ParseDSN("oceanbase://app@localhost/db?compatibleMysqlVersion=" + value); err == nil {
+			t.Fatalf("invalid MySQL compatibility accepted: %s", value)
+		}
+	}
 }
 
 func TestDSNInteractive(t *testing.T) {

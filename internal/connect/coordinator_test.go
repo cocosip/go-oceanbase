@@ -241,6 +241,67 @@ func TestConnectorConcurrentModes(t *testing.T) {
 	}
 }
 
+func TestConnectorIdentityPinning(t *testing.T) {
+	const user = "app@tenant"
+	const proxyUser = "client"
+	c := &Connector{}
+	if err := c.checkIdentity(&session.Negotiated{User: user, ProxyUser: proxyUser}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.checkIdentity(&session.Negotiated{User: user, ProxyUser: proxyUser}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.checkIdentity(&session.Negotiated{User: "other@tenant", ProxyUser: proxyUser}); !errors.Is(err, dberrors.ErrIdentityMismatch) {
+		t.Fatalf("user change was accepted: %v", err)
+	}
+	if err := c.checkIdentity(&session.Negotiated{User: user, ProxyUser: "other-client"}); !errors.Is(err, dberrors.ErrIdentityMismatch) {
+		t.Fatalf("proxy-user change was accepted: %v", err)
+	}
+}
+
+func TestConnectorRejectsIdentityChangeOnNewSession(t *testing.T) {
+	var dials atomic.Int32
+	var credentials atomic.Int32
+	c, err := newConnector(config.Config{
+		Mode: config.ModeMySQL,
+		Credentials: func(context.Context) (config.Credentials, error) {
+			if credentials.Add(1) == 1 {
+				return config.Credentials{User: testUser, Password: "first"}, nil
+			}
+			return config.Credentials{User: "other-user", Password: "second"}, nil
+		},
+		DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+			if dials.Add(1) == 1 {
+				if !serveConnect(ctx, t, p, 2) || !serveBaseline(ctx, t, p, 2) {
+					return
+				}
+				p.ResetSequence()
+				serveQuit(t, p)
+				return
+			}
+			if !serveConnect(ctx, t, p, 2) {
+				return
+			}
+			if _, err := p.ReadMessage(ctx); err == nil {
+				t.Error("identity-mismatched candidate was initialized")
+			}
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical, err := c.Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closePhysical(physical); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Connect(context.Background()); !errors.Is(err, dberrors.ErrIdentityMismatch) {
+		t.Fatalf("identity change was accepted: %v", err)
+	}
+}
+
 func TestConnectConfigValidation(t *testing.T) {
 	for _, session := range []config.SessionOptions{
 		{Variables: map[string]string{"a; SELECT 1": "value"}},

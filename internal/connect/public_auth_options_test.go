@@ -57,7 +57,7 @@ func TestAuthNativeCredentialRotation(t *testing.T) {
 					index := dials.Add(1)
 					user, password := testUser, testPassword
 					if index == 2 {
-						user, password = changeUserName, changeUserPassword
+						password = changeUserPassword
 					} else if index != 1 {
 						t.Error("unexpected replacement connection")
 						return
@@ -100,7 +100,7 @@ func TestAuthNativeCredentialRotation(t *testing.T) {
 					_ = pinned.Close()
 					t.Fatal(err)
 				}
-				t.Setenv("OB_USER", changeUserName)
+				t.Setenv("OB_USER", testUser)
 				t.Setenv("OB_PASSWORD", changeUserPassword)
 				if err = pinned.PingContext(context.Background()); err != nil || calls.Load() != int32(i+1) {
 					_ = pinned.Close()

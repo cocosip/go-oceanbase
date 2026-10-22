@@ -143,7 +143,7 @@ func (m *Manager) Fetch(ctx context.Context, op *session.Operation, resolver *ca
 	if err = o.check(); err != nil {
 		return nil, true, err
 	}
-	r := rowset.New(ctx, op.Protocol().Mode, op.Config().Session.ParseTime, []rowset.Set{{Columns: columns, Rows: rows}})
+	r := rowset.NewWithSession(ctx, op.Protocol().Mode, op.Config().Session, []rowset.Set{{Columns: columns, Rows: rows}})
 	return &batchRows{Rows: r, busy: busy}, false, nil
 }
 

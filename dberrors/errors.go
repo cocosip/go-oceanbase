@@ -13,6 +13,7 @@ import (
 var (
 	ErrTLSRequired      = errors.New("oceanbase: authentication requires verified TLS")
 	ErrModeMismatch     = errors.New("oceanbase: compatibility mode mismatch")
+	ErrIdentityMismatch = errors.New("oceanbase: authenticated identity mismatch")
 	ErrUnsupported      = errors.New("oceanbase: unsupported capability")
 	ErrBind             = errors.New("oceanbase: invalid SQL binding")
 	ErrOut              = errors.New("oceanbase: invalid output binding")

@@ -405,7 +405,7 @@ func (r *Rows) bufferResources(ctx context.Context) error {
 	for i, set := range sets {
 		snapshots[i] = rowset.Set{Columns: set.Columns, Rows: set.Rows}
 	}
-	r.snapshot = rowset.New(r.iterationCtx, r.mode, r.sessionConfig.ParseTime, snapshots)
+	r.snapshot = rowset.NewWithSession(r.iterationCtx, r.mode, r.sessionConfig, snapshots)
 	if len(sets) > 0 {
 		r.columns = sets[0].Columns
 	}
@@ -565,7 +565,7 @@ func (r *Rows) ColumnTypeDatabaseTypeName(i int) string {
 	if r.snapshot != nil {
 		return r.snapshot.ColumnTypeDatabaseTypeName(i)
 	}
-	return valuecodec.TextTypeName(r.columns[i], r.mode)
+	return valuecodec.TextTypeName(r.columns[i], r.mode, r.sessionConfig)
 }
 
 // ColumnTypeNullable reports the current column's nullability.

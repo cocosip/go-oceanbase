@@ -56,6 +56,15 @@ func TestRowsIterationAndMetadata(t *testing.T) {
 	}
 }
 
+func TestRowsPreserveMySQLCompatibilityProfile(t *testing.T) {
+	column := wire.Column{Name: "body", Type: 250, Charset: 45, NewMetadata: true}
+	old := NewWithSession(context.Background(), config.ModeMySQL, config.SessionOptions{CompatibleMysqlVersion: 5}, []Set{{Columns: []wire.Column{column}}})
+	modern := NewWithSession(context.Background(), config.ModeMySQL, config.SessionOptions{CompatibleMysqlVersion: 8}, []Set{{Columns: []wire.Column{column}}})
+	if old.ColumnTypeDatabaseTypeName(0) != "VARCHAR" || modern.ColumnTypeDatabaseTypeName(0) != "TEXT" {
+		t.Fatalf("compatibility profile lost: old=%q modern=%q", old.ColumnTypeDatabaseTypeName(0), modern.ColumnTypeDatabaseTypeName(0))
+	}
+}
+
 func TestSnapshotCloneIsolation(t *testing.T) {
 	columns := []wire.Column{{Name: "bytes", Type: 203, Charset: 63}}
 	child := New(context.Background(), config.ModeOracle, false, []Set{{Columns: columns, Rows: [][]driver.Value{{[]byte("child")}}}})

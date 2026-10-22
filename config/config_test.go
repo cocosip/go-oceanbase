@@ -25,6 +25,9 @@ func TestConfigDefaults(t *testing.T) {
 	if cfg.Session.Charset != testUTF8MB4 || cfg.Session.Location != time.UTC {
 		t.Fatal("unstable charset/time defaults")
 	}
+	if cfg.Session.CompatibleMysqlVersion != 5 {
+		t.Fatalf("unexpected MySQL compatibility default: %d", cfg.Session.CompatibleMysqlVersion)
+	}
 }
 
 func TestConfigValidation(t *testing.T) {
@@ -46,6 +49,7 @@ func TestConfigValidation(t *testing.T) {
 		{"invalid reset", Config{User: testUser, ResetMode: 99}},
 		{"invalid address", Config{User: testUser, Addr: "host:0"}},
 		{"invalid port", Config{User: testUser, Addr: "host:65536"}},
+		{"invalid MySQL compatibility", Config{User: testUser, Session: SessionOptions{CompatibleMysqlVersion: 7}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Normalize(tc.cfg)

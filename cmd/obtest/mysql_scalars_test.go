@@ -81,8 +81,8 @@ func TestMySQLScalarsWorkflow(t *testing.T) {
 				s.mode = oceanbase.ModeMySQL
 				s.cfg.Session.ParseTime = true
 				definition.configure(&s.cfg)
-				if s.cfg.PrepareMode != oceanbase.PrepareServer || s.cfg.Session.ParseTime {
-					t.Fatal("scalar scenario did not select binary prepare and text time values")
+				if s.cfg.PrepareMode != oceanbase.PrepareServer || s.cfg.Session.ParseTime || s.cfg.Session.CompatibleMysqlVersion != 8 {
+					t.Fatal("scalar scenario did not select binary prepare and MySQL 8 temporal precision")
 				}
 				result := runScenario(context.Background(), s, definition.run)
 				want := statusFail

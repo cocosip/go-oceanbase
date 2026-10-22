@@ -149,7 +149,6 @@ func TestDSNJavaCanonicalOptions(t *testing.T) {
         httpReadTimeout
         loadBalanceHandleFailover
         compatibleOjdbcVersion
-        compatibleMysqlVersion
         useInformationSchema
         nCharacterEncoding
         emptyStringsConvertToZero
@@ -170,7 +169,7 @@ func TestDSNJavaCanonicalOptions(t *testing.T) {
         maxReconnects
     `)
 	shared := []struct{ name, value string }{
-		{testConnectTimeoutOption, "30s"}, {"servicePrincipalName", "oceanbase/db.example@EXAMPLE.COM"},
+		{testConnectTimeoutOption, "30s"}, {"servicePrincipalName", "oceanbase/db.example@EXAMPLE.COM"}, {"compatibleMysqlVersion", "8"},
 	}
 	names := make(map[string]bool)
 	for _, name := range rejected {
@@ -191,7 +190,7 @@ func TestDSNJavaCanonicalOptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.name == testConnectTimeoutOption && cfg.ConnectTimeout != 30*time.Second || tc.name == "servicePrincipalName" && cfg.Auth.ServicePrincipalName != tc.value {
+			if tc.name == testConnectTimeoutOption && cfg.ConnectTimeout != 30*time.Second || tc.name == "servicePrincipalName" && cfg.Auth.ServicePrincipalName != tc.value || tc.name == "compatibleMysqlVersion" && cfg.Session.CompatibleMysqlVersion != 8 {
 				t.Fatal("shared name lost Go semantics")
 			}
 		})

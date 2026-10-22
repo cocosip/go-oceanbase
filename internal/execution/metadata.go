@@ -38,7 +38,7 @@ func (e *Engine) Metadata(ctx context.Context, filter metadata.MetadataFilter) (
 		if err = s.Close(ctx, op); err != nil {
 			return nil, err
 		}
-		values := catalog.StatementParameters(op.Protocol().Mode, s.Plan(), s.Parameters())
+		values := catalog.StatementParameters(op.Protocol().Mode, s.Plan(), s.Parameters(), op.Config().Session)
 		return rowset.NewMetadata(ctx, []rowset.Set{{Columns: catalog.MetadataColumns(filter.Kind), Rows: values}}), nil
 	}
 	p := op.Protocol()

@@ -67,7 +67,7 @@ func applyDSNOption(cfg *Config, name, value string) error {
 		}
 		cfg.CreateDatabaseIfMissing = value == dsnTrue
 		return nil
-	case "charset", "collation", "ncharset", "location", "parseTime", "skipVersionProbe":
+	case "charset", "collation", "ncharset", "location", "parseTime", "skipVersionProbe", "compatibleMysqlVersion":
 		return cfg.Session.applyDSNOption(name, value)
 	case "allowOldPassword", "passwordCharset", "servicePrincipalName":
 		return cfg.Auth.applyDSNOption(name, value)
@@ -176,6 +176,11 @@ func (o *SessionOptions) applyDSNOption(name, value string) error {
 			return &ConfigError{Field: name}
 		}
 		o.SkipVersionProbe = value == dsnTrue
+	case "compatibleMysqlVersion":
+		o.CompatibleMysqlVersion, err = strconv.Atoi(value)
+		if err == nil && o.CompatibleMysqlVersion != 5 && o.CompatibleMysqlVersion != 8 {
+			return &ConfigError{Field: name}
+		}
 	default:
 		return &ConfigError{Field: name}
 	}

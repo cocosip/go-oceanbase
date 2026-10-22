@@ -287,7 +287,7 @@ func (m *Manager) Refresh(ctx context.Context, op *session.Operation, resolver *
 	if err = o.check(); err != nil {
 		return nil, false, err
 	}
-	buffered := rowset.New(ctx, op.Protocol().Mode, op.Config().Session.ParseTime, []rowset.Set{{Columns: sets[0].Columns, Rows: sets[0].Rows}})
+	buffered := rowset.NewWithSession(ctx, op.Protocol().Mode, op.Config().Session, []rowset.Set{{Columns: sets[0].Columns, Rows: sets[0].Rows}})
 	return &batchRows{Rows: buffered, busy: busy}, false, nil
 }
 

@@ -17,6 +17,12 @@ const (
 )
 
 func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
+	if options.CompatibleMysqlVersion == 0 {
+		options.CompatibleMysqlVersion = 5
+	}
+	if options.CompatibleMysqlVersion != 5 && options.CompatibleMysqlVersion != 8 {
+		return SessionOptions{}, &ConfigError{Field: "Session.CompatibleMysqlVersion"}
+	}
 	if options.Charset == "" {
 		options.Charset = charsetUTF8MB4
 	}

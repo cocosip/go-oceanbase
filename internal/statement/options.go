@@ -2,32 +2,18 @@ package statement
 
 import (
 	"bytes"
-	"regexp"
 	"slices"
-	"strconv"
 
 	"github.com/cocosip/go-oceanbase/config"
+	"github.com/cocosip/go-oceanbase/internal/configspec"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-var prepareExecuteVersion = regexp.MustCompile(`(?:^|[^0-9.])([0-9]+)\.([0-9]+)\.([0-9]+)(?:\.[0-9]+)*(?:[^0-9.]|$)`)
-
-// SupportsVersion checks the first complete server version triplet.
+// SupportsVersion keeps the statement package gate compatible while sharing
+// OceanBase version parsing with the rest of the driver.
 func SupportsVersion(version string, major, minor, patch uint32) bool {
-	parts := prepareExecuteVersion.FindStringSubmatch(version)
-	if parts == nil {
-		return false
-	}
-	var numbers [3]uint32
-	for i := range numbers {
-		n, err := strconv.ParseUint(parts[i+1], 10, 32)
-		if err != nil {
-			return false
-		}
-		numbers[i] = uint32(n)
-	}
-	return slices.Compare(numbers[:], []uint32{major, minor, patch}) >= 0
+	return configspec.SupportsVersion(version, major, minor, patch)
 }
 
 // SupportsPrepareExecute identifies the first native prepare-execute protocol version.

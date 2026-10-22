@@ -87,12 +87,15 @@ func (c *Connector) dialCandidate(ctx context.Context, addr string) (established
 	}
 	physical := session.New(cfg, protocol)
 	if err = c.checkMode(protocol.Mode, false); err == nil {
-		var op *session.Operation
-		op, err = physical.Acquire(ctx)
+		err = c.checkIdentity(protocol)
 		if err == nil {
-			err = Initialize(ctx, op, cfg)
-			records, dropped := op.Release()
-			diagnostic.EmitRecords(cfg, protocol.Mode, protocol.Hello.ConnectionID, records, dropped)
+			var op *session.Operation
+			op, err = physical.Acquire(ctx)
+			if err == nil {
+				err = Initialize(ctx, op, cfg)
+				records, dropped := op.Release()
+				diagnostic.EmitRecords(cfg, protocol.Mode, protocol.Hello.ConnectionID, records, dropped)
+			}
 		}
 	}
 	if err == nil {

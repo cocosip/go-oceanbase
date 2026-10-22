@@ -6,6 +6,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/config"
@@ -16,7 +17,7 @@ import (
 )
 
 // TextTypeName maps wire metadata to the compatibility mode type name.
-func TextTypeName(c wire.Column, mode config.Mode) string {
+func TextTypeName(c wire.Column, mode config.Mode, session ...config.SessionOptions) string {
 	if mode == config.ModeOracle {
 		switch c.Type {
 		case 163:
@@ -68,10 +69,10 @@ func TextTypeName(c wire.Column, mode config.Mode) string {
 			return ""
 		}
 	}
-	return mysqlTextTypeName(c)
+	return mysqlTextTypeName(c, session...)
 }
 
-func mysqlTextTypeName(c wire.Column) string {
+func mysqlTextTypeName(c wire.Column, session ...config.SessionOptions) string {
 	switch c.Type {
 	case 0, 246:
 		return valueformat.TypeNameDecimal
@@ -118,6 +119,9 @@ func mysqlTextTypeName(c wire.Column) string {
 		if c.Charset == 63 {
 			return valueformat.TypeNameBlob
 		}
+		if len(session) > 0 && (session[0].CompatibleMysqlVersion == 5 || session[0].CompatibleMysqlVersion == 8 && !c.NewMetadata) {
+			return valueformat.TypeNameVarchar
+		}
 		return "TEXT"
 	case 254:
 		if c.Charset == 63 {
@@ -131,11 +135,11 @@ func mysqlTextTypeName(c wire.Column) string {
 }
 
 // DecodeTextValue decodes one buffered text row field without retaining packet bytes.
-func DecodeTextValue(c wire.Column, mode config.Mode, data []byte) (driver.Value, error) {
+func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
 	if data == nil {
 		return nil, nil
 	}
-	if TextTypeName(c, mode) == "" {
+	if TextTypeName(c, mode, session...) == "" {
 		return nil, &dberrors.UnsupportedTypeError{Type: c.Type, Mode: mode}
 	}
 	switch c.Type {
@@ -178,7 +182,7 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte) (driver.Value
 	case 6:
 		return nil, nil
 	case 7, 10, 11, 12, 14:
-		return string(data), nil
+		return mysqlTemporalText(mode, c.Type, string(data), session...), nil
 	case 16, 203, 255:
 		return slices.Clone(data), nil
 	case 245:
@@ -195,4 +199,25 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte) (driver.Value
 		return nil, fmt.Errorf("%w: result character set", dberrors.ErrUnsupported)
 	}
 	return charset.Decode(name, data)
+}
+
+func mysqlTemporalText(mode config.Mode, typ byte, text string, session ...config.SessionOptions) string {
+	if mode != config.ModeMySQL || len(session) == 0 {
+		return text
+	}
+	version := session[0].CompatibleMysqlVersion
+	if typ != 7 && typ != 10 && typ != 11 && typ != 12 && typ != 14 {
+		return text
+	}
+	dot := strings.LastIndexByte(text, '.')
+	if dot < 0 || dot+1 == len(text) || strings.IndexByte(text[:dot], '.') >= 0 {
+		return text
+	}
+	if typ == 11 && version == 5 {
+		return text[:dot]
+	}
+	if version != 8 || strings.Trim(text[dot+1:], "0") != "" {
+		return text
+	}
+	return text[:dot]
 }

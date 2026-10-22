@@ -28,6 +28,8 @@ type TopologySource func(context.Context) (Topology, error)
 
 // DiscoveryOptions refreshes candidates for new connections, never active sessions.
 // Service is required; zero durations use 30s refresh, 5s request and 5m maximum age.
+// Service is a caller-provided logical-service label, not proof of server-side
+// tenant identity; the source must return only endpoints for the same tenant.
 type DiscoveryOptions struct {
 	Source                                  TopologySource
 	Service                                 string

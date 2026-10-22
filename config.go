@@ -57,8 +57,9 @@ type ConfigError = config.ConfigError
 
 // Authentication and mode errors are safe to inspect with errors.Is.
 var (
-	ErrTLSRequired  = dberrors.ErrTLSRequired
-	ErrModeMismatch = dberrors.ErrModeMismatch
+	ErrTLSRequired      = dberrors.ErrTLSRequired
+	ErrModeMismatch     = dberrors.ErrModeMismatch
+	ErrIdentityMismatch = dberrors.ErrIdentityMismatch
 )
 
 // Credentials are obtained for each new authentication, never during a transaction.

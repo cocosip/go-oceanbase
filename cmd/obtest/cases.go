@@ -64,6 +64,7 @@ func clientPrepare(cfg *oceanbase.Config) { cfg.PrepareMode = oceanbase.PrepareC
 
 func scalarConfig(cfg *oceanbase.Config) {
 	cfg.Session.ParseTime = false
+	cfg.Session.CompatibleMysqlVersion = 8
 	serverPrepare(cfg)
 }
 

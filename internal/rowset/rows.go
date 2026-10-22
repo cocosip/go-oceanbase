@@ -20,17 +20,22 @@ type Set struct {
 
 // Rows iterates a materialized snapshot without retaining a connection or operation gate.
 type Rows struct {
-	ctx       context.Context
-	mode      config.Mode
-	parseTime bool
-	columns   []wire.Column
-	sets      []Set
-	row       int
+	ctx     context.Context
+	mode    config.Mode
+	options config.SessionOptions
+	columns []wire.Column
+	sets    []Set
+	row     int
 }
 
 // New takes ownership of the sets and preserves the caller's iteration context.
 func New(ctx context.Context, mode config.Mode, parseTime bool, sets []Set) *Rows {
-	r := &Rows{ctx: ctx, mode: mode, parseTime: parseTime, sets: sets}
+	return NewWithSession(ctx, mode, config.SessionOptions{ParseTime: parseTime}, sets)
+}
+
+// NewWithSession takes ownership of the complete immutable session profile.
+func NewWithSession(ctx context.Context, mode config.Mode, options config.SessionOptions, sets []Set) *Rows {
+	r := &Rows{ctx: ctx, mode: mode, options: options, sets: sets}
 	if len(sets) > 0 {
 		r.columns = sets[0].Columns
 	}
@@ -84,7 +89,7 @@ func (r *Rows) NextResultSet() error {
 
 // ColumnTypeDatabaseTypeName returns the compatibility mode's type name.
 func (r *Rows) ColumnTypeDatabaseTypeName(index int) string {
-	return valuecodec.TextTypeName(r.columns[index], r.mode)
+	return valuecodec.TextTypeName(r.columns[index], r.mode, r.options)
 }
 
 // ColumnTypeNullable reports the protocol's nullability flag.
@@ -104,7 +109,7 @@ func (r *Rows) ColumnTypePrecisionScale(index int) (int64, int64, bool) {
 
 // ColumnTypeScanType reports the standard destination type for the current column.
 func (r *Rows) ColumnTypeScanType(index int) reflect.Type {
-	return valuecodec.ColumnScanType(r.columns[index], r.mode, config.SessionOptions{ParseTime: r.parseTime})
+	return valuecodec.ColumnScanType(r.columns[index], r.mode, r.options)
 }
 
 var (

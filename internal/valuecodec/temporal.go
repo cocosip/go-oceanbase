@@ -47,9 +47,9 @@ func DecodeRowValue(column wire.Column, binaryRows bool, data []byte, mode confi
 	var value driver.Value
 	var err error
 	if binaryRows {
-		value, err = DecodeBinaryValue(column, mode, data)
+		value, err = DecodeBinaryValue(column, mode, data, options)
 	} else {
-		value, err = DecodeTextValue(column, mode, data)
+		value, err = DecodeTextValue(column, mode, data, options)
 	}
 	if err != nil || !options.ParseTime {
 		return value, err

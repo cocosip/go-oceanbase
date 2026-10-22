@@ -7,6 +7,8 @@ import (
 
 // Credentials are obtained for each new authentication, never during a transaction.
 // ProxyUser selects an Oracle proxy-login target; empty authenticates as User alone.
+// A Connector keeps the first successful User and ProxyUser for later sessions;
+// Password may change between authentications.
 type Credentials struct{ User, Password, ProxyUser string }
 
 // AuthSecurity describes the transport needed before a plugin sees credentials.

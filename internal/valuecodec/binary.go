@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -161,7 +162,7 @@ func encodeScalarParameter(v any, mode config.Mode, options config.SessionOption
 }
 
 // DecodeBinaryValue decodes one buffered binary row field.
-func DecodeBinaryValue(c wire.Column, mode config.Mode, data []byte) (driver.Value, error) {
+func DecodeBinaryValue(c wire.Column, mode config.Mode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
 	if data == nil {
 		return nil, nil
 	}
@@ -207,10 +208,35 @@ func DecodeBinaryValue(c wire.Column, mode config.Mode, data []byte) (driver.Val
 		}
 		return binaryFloatValue(math.Float64frombits(binary.LittleEndian.Uint64(data)), mode)
 	case 7, 10, 11, 12, 14:
-		return binaryTimeText(c.Type, data)
+		text, err := binaryTimeText(c.Type, data)
+		if err != nil {
+			return nil, err
+		}
+		return mysqlBinaryTemporalText(c, mode, text, session...), nil
 	default:
-		return DecodeTextValue(c, mode, data)
+		return DecodeTextValue(c, mode, data, session...)
 	}
+}
+
+func mysqlBinaryTemporalText(c wire.Column, mode config.Mode, text string, session ...config.SessionOptions) string {
+	text = mysqlTemporalText(mode, c.Type, text, session...)
+	if mode != config.ModeMySQL || len(session) == 0 || session[0].CompatibleMysqlVersion != 8 {
+		return text
+	}
+	dot := strings.LastIndexByte(text, '.')
+	if dot < 0 || dot+1 == len(text) || c.Decimals == 0 {
+		return text
+	}
+	fraction := text[dot+1:]
+	precision := int(c.Decimals)
+	if len(fraction) <= precision {
+		return text
+	}
+	trimmed := strings.TrimRight(fraction, "0")
+	if len(trimmed) > precision {
+		return text
+	}
+	return text[:dot+1] + trimmed + strings.Repeat("0", precision-len(trimmed))
 }
 
 func binaryTimeText(typ byte, data []byte) (string, error) {

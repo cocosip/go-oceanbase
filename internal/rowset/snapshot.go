@@ -60,7 +60,7 @@ func CloneSnapshot(ctx context.Context, rows [][]driver.Value) [][]driver.Value 
 				for k, set := range v.sets {
 					sets[k] = Set{Columns: set.Columns, Rows: CloneSnapshot(ctx, set.Rows)}
 				}
-				cloned[i][j] = &Rows{ctx: ctx, mode: v.mode, parseTime: v.parseTime, columns: v.columns, sets: sets}
+				cloned[i][j] = &Rows{ctx: ctx, mode: v.mode, options: v.options, columns: v.columns, sets: sets}
 			}
 		}
 	}
