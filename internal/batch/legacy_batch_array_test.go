@@ -76,6 +76,39 @@ func serveBatchArrayEnd(ctx context.Context, t *testing.T, p *wire.PacketIO) {
 	testpeer.ServeQuit(t, p)
 }
 
+func TestBatchArrayBinaryDoubleRange(t *testing.T) {
+	db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeOracle}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+		if !serveBatchArrayBegin(ctx, t, p) {
+			return
+		}
+		packet := []byte{23, 7, 0, 0, 0, 24, 1, 0, 0, 0, 0, 1,
+			160, 0, 0, 0, 0, 5, 3, 0,
+			255, 255, 255, 255, 255, 255, 239, 127,
+			255, 255, 255, 255, 255, 255, 239, 255,
+			1, 0, 0, 0, 0, 0, 0, 0}
+		if !testpeer.ReadCommand(ctx, t, p, packet) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(3, 0, 5)) {
+			return
+		}
+		serveBatchArrayEnd(ctx, t, p)
+	})
+	defer func() { _ = db.Close() }()
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := oceanbase.ExecBatch(t.Context(), tx, testBatchSQL, [][]any{{math.MaxFloat64}, {-math.MaxFloat64}, {math.SmallestNonzeroFloat64}}, oceanbase.BatchOptions{Strategy: oceanbase.BatchArrayBinding, ContinueOnError: true})
+	if err != nil || result.Strategy != oceanbase.BatchArrayBinding || batchSucceeded(&result) != 3 {
+		t.Fatalf("binary double array outcomes: %+v %v", result, err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.PingContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBatchArrayResults(t *testing.T) {
 	for _, variant := range []string{testpeer.Standard, testpeer.Compression, testpeer.OB20} {
 		for _, failed := range []bool{false, true} {

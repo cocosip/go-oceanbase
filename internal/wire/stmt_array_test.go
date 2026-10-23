@@ -32,6 +32,28 @@ func TestStmtArrayGolden(t *testing.T) {
 	}
 }
 
+func TestStmtArrayOracleBinaryDouble(t *testing.T) {
+	rows := [][]Parameter{
+		{{Type: 257, Data: []byte{255, 255, 255, 255, 255, 255, 239, 127}}},
+		{{Type: 257, Data: []byte{255, 255, 255, 255, 255, 255, 239, 255}}},
+		{{Type: 6}},
+	}
+	want := []byte{23, 9, 0, 0, 0, 24, 1, 0, 0, 0, 0, 1,
+		160, 0, 0, 0, 0, 5, 3, 4,
+		255, 255, 255, 255, 255, 255, 239, 127,
+		255, 255, 255, 255, 255, 255, 239, 255}
+	got, err := EncodeStmtExecuteArray(9, rows, int64(len(want)), ExecuteOptions{})
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("binary double array: %x, want %x: %v", got, want, err)
+	}
+	if rows[0][0].Type != 257 {
+		t.Fatal("array encoding changed the scalar parameter type")
+	}
+	if _, err = EncodeStmtExecuteArray(9, rows, int64(len(want)-1), ExecuteOptions{}); !errors.Is(err, ErrMessageTooLarge) {
+		t.Fatal("binary double array size boundary", err)
+	}
+}
+
 func TestStmtArrayNullBitmapAndLengths(t *testing.T) {
 	for _, count := range []int{1, 8, 9, 250, 251, 65535} {
 		rows := make([][]Parameter, count)
