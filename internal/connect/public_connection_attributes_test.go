@@ -73,7 +73,7 @@ func TestConnectionAttributesChangeUser(t *testing.T) {
 					if variant.charset == localFilenameCharset {
 						key, value = "\xd3\xa6\xd3\xc3", testAttributeGBKValue
 					}
-					attrs, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: testAttributeValue, key: value, testClientAttributeCapability: "3", testProxyRequestCapability: map[bool]string{false: "1048648", true: "1360200"}[framing == testOB20]}})
+					attrs, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: testAttributeValue, key: value, testClientAttributeCapability: "7", testProxyRequestCapability: map[bool]string{false: "1048648", true: "1360200"}[framing == testOB20]}})
 					if err != nil {
 						t.Error(err)
 						return

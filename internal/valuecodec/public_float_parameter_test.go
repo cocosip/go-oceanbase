@@ -37,7 +37,7 @@ func TestFloat64SQLParameterTypes(t *testing.T) {
 				const query = "INSERT INTO t (v) VALUES (?)"
 				status, typ := byte(2), []byte{5, 0}
 				if mode == oceanbase.ModeOracle {
-					status, typ = 6, []byte{1, 1}
+					status = 6
 				}
 				cfg := oceanbase.Config{Mode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
 				db := publictest.ConfiguredDB(t, cfg, func(ctx context.Context, p *wire.PacketIO) {

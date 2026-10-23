@@ -11,7 +11,7 @@ import (
 
 // ProtocolAttributes builds the declared client and proxy capability attributes.
 func ProtocolAttributes(metadata, proxyChecksum, ob20, compressionRequired, fullLinkTrace bool) map[string]string {
-	client := uint64(1) // existing locator-v2 declaration
+	client := uint64(1 | 4) // locator-v2 and JDBC binary double (avoid Oracle NUMBER conversion)
 	if metadata {
 		client |= 2
 	}

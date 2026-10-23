@@ -40,10 +40,6 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 			return p, fmt.Errorf("%w: non-finite parameter", dberrors.ErrBind)
 		}
 		p.Type = 5
-		if mode == config.ModeOracle {
-			// MYSQL_TYPE_ORA_BINARY_DOUBLE avoids the server's DOUBLE-to-NUMBER conversion.
-			p.Type = 257
-		}
 		p.Data = binary.LittleEndian.AppendUint64(nil, math.Float64bits(v))
 	case bool:
 		p.Type = 1

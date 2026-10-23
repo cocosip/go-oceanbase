@@ -40,9 +40,6 @@ func TestFloat64ParameterEncoding(t *testing.T) {
 					return
 				}
 				wantType := uint16(5)
-				if mode == config.ModeOracle {
-					wantType = 257
-				}
 				if err != nil || p.Type != wantType || p.LengthEncoded || p.LongData || len(p.Data) != 8 {
 					t.Fatalf("parameter=%+v error=%v, want fixed-width type %d", p, err, wantType)
 				}
@@ -53,8 +50,8 @@ func TestFloat64ParameterEncoding(t *testing.T) {
 				if err != nil || len(packet) != 22 {
 					t.Fatalf("execute packet=%x error=%v", packet, err)
 				}
-				if got := binary.LittleEndian.Uint16(packet[12:14]); got != wantType {
-					t.Fatalf("wire type=%d, want %d", got, wantType)
+				if packet[12] != 5 || packet[13] != 0 {
+					t.Fatalf("wire type=%d flags=%d, want DOUBLE with no flags", packet[12], packet[13])
 				}
 				if got := binary.LittleEndian.Uint64(packet[14:]); got != tc.bits {
 					t.Fatalf("wire payload bits=%016x, want %016x", got, tc.bits)

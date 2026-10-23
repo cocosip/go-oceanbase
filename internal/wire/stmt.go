@@ -21,7 +21,7 @@ func DecodePrepareOK(data []byte) (PrepareOK, error) {
 
 // Parameter contains the wire type and unprefixed data for length-encoded values.
 type Parameter struct {
-	Type          uint16
+	Type          uint16 // Low byte is the type; high byte holds flags, including unsigned (0x80).
 	TypeMetadata  []byte
 	Data          []byte
 	LengthEncoded bool

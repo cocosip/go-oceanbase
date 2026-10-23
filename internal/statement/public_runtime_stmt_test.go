@@ -249,7 +249,7 @@ func TestServerPrepareOracleInfinity(t *testing.T) {
 		if !publictest.ServePrepare(ctx, t, p, "SELECT ? FROM dual", 29, 1, nil) {
 			return
 		}
-		payload := append(publictest.ExecuteHeader(29), 0, 1, 1, 1)
+		payload := append(publictest.ExecuteHeader(29), 0, 1, 5, 0)
 		payload = binary.LittleEndian.AppendUint64(payload, math.Float64bits(math.Inf(1)))
 		if !testpeer.ServeOK(ctx, t, p, payload, 6) {
 			return

@@ -14,7 +14,7 @@ func TestAttributesSnapshot(t *testing.T) {
 	delete(attributes, "应用")
 	for range 2 {
 		got, err := connectionAttributes(cfg, "")
-		if err != nil || got["application"] != "billing,worker:1" || got["\xd3\xa6\xd3\xc3"] != "\xb2\xe2\xca\xd4" || got["__ob_client_attribute_capability_flag"] != "3" {
+		if err != nil || got["application"] != "billing,worker:1" || got["\xd3\xa6\xd3\xc3"] != "\xb2\xe2\xca\xd4" || got["__ob_client_attribute_capability_flag"] != "7" {
 			t.Fatalf("attributes no longer use the independent configuration snapshot: %v", err)
 		}
 		got["application"] = "changed"

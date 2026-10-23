@@ -24,7 +24,7 @@ func TestAttributesEncodedBudget(t *testing.T) {
 			packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{
 				"__mysql_client_type":                   "__ob_jdbc_client",
 				"application":                           tc.encoded,
-				"__ob_client_attribute_capability_flag": "3",
+				"__ob_client_attribute_capability_flag": "7",
 				"__proxy_capability_flag":               "1360200",
 			}})
 			if err != nil {

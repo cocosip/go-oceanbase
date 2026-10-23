@@ -109,7 +109,7 @@ func TestCollationLifecycle(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					attrs := map[string]string{testDriverDialectAttribute: testDriverDialectValue, testClientAttributeCapability: "1", testProxyRequestCapability: "1048576"}
+					attrs := map[string]string{testDriverDialectAttribute: testDriverDialectValue, testClientAttributeCapability: "5", testProxyRequestCapability: "1048576"}
 					if framing == testOB20 {
 						attrs[testProxyRequestCapability] = "1081600"
 					}

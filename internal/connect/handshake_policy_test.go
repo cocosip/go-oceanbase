@@ -22,6 +22,7 @@ import (
 )
 
 func TestPacketNegotiation(t *testing.T) {
+	const clientCapabilityAck = "__ob_client_capability_flag"
 	for _, tc := range []struct {
 		name        string
 		options     config.ProtocolOptions
@@ -34,6 +35,8 @@ func TestPacketNegotiation(t *testing.T) {
 	}{
 		{name: testStandard, options: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff}},
 		{name: "default-with-offer", compression: true},
+		{name: "binary-double-ack", vars: map[string]string{clientCapabilityAck: "7"}, metadata: true},
+		{name: "binary-double-without-metadata", vars: map[string]string{clientCapabilityAck: "5"}},
 		{name: "auto-no-offer", options: config.ProtocolOptions{Compression: config.FeatureAuto}},
 		{name: "compressed", options: config.ProtocolOptions{Compression: config.FeatureAuto}, compression: true, offered: true, framed: true},
 		{name: "compression-required", options: config.ProtocolOptions{Compression: config.FeatureRequired}, compression: true, offered: true, framed: true},
@@ -43,7 +46,7 @@ func TestPacketNegotiation(t *testing.T) {
 		{name: "ob20-missing", options: config.ProtocolOptions{OB20: config.FeatureRequired}, unsupported: true},
 		{name: "compress-missing", options: config.ProtocolOptions{Compression: config.FeatureRequired}, unsupported: true},
 		{name: "metadata-missing", options: config.ProtocolOptions{NewMetadata: config.FeatureRequired}, unsupported: true},
-		{name: "metadata-required", options: config.ProtocolOptions{NewMetadata: config.FeatureRequired}, vars: map[string]string{"__ob_client_capability_flag": "2"}, metadata: true},
+		{name: "metadata-required", options: config.ProtocolOptions{NewMetadata: config.FeatureRequired}, vars: map[string]string{clientCapabilityAck: "2"}, metadata: true},
 		{name: "checksum-missing", options: config.ProtocolOptions{Checksum: config.FeatureRequired}, unsupported: true},
 		{name: "checksum-required", options: config.ProtocolOptions{Checksum: config.FeatureRequired}, vars: map[string]string{testProxyCapability: "256"}, framed: true},
 		{name: "off-unsolicited", options: config.ProtocolOptions{OB20: config.FeatureOff}, vars: map[string]string{testProxyCapability: "256"}, unsupported: true},
@@ -62,6 +65,9 @@ func TestPacketNegotiation(t *testing.T) {
 				request, err := p.ReadMessage(ctx)
 				if err != nil {
 					return
+				}
+				if !bytes.Contains(request, []byte("__ob_client_attribute_capability_flag\x017")) {
+					t.Error("login did not request JDBC binary double capability")
 				}
 				offered := binary.LittleEndian.Uint32(request)&32 != 0
 				if offered != tc.offered {
@@ -140,7 +146,7 @@ func TestConnectionAttributesHandshake(t *testing.T) {
 						if interactive {
 							caps |= 1 << 10
 						}
-						want, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: caps, MaxPacketBytes: 64 << 20, Charset: tc.collation, User: testUser, Plugin: authentication.Native, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: testAttributeValue, tc.key: tc.value, testAttributeEmpty: "", testClientAttributeCapability: "1", testProxyRequestCapability: "1048576"}})
+						want, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: caps, MaxPacketBytes: 64 << 20, Charset: tc.collation, User: testUser, Plugin: authentication.Native, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: testAttributeValue, tc.key: tc.value, testAttributeEmpty: "", testClientAttributeCapability: "5", testProxyRequestCapability: "1048576"}})
 						if err != nil {
 							t.Error(err)
 							return
@@ -217,7 +223,7 @@ func TestProxyUserHandshake(t *testing.T) {
 			}
 			want, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{
 				Capabilities: 0x28ba8203, MaxPacketBytes: 64 << 20, Charset: 45, User: testUser, Plugin: authentication.Native,
-				Attributes: map[string]string{testClientAttributeCapability: "1", testProxyUserAttribute: testProxyUser,
+				Attributes: map[string]string{testClientAttributeCapability: "5", testProxyUserAttribute: testProxyUser,
 					testDriverDialectAttribute: testDriverDialectValue, testProxyRequestCapability: "1048576"},
 			})
 			if err != nil {
@@ -364,7 +370,7 @@ func TestProxyUserEncodedBudget(t *testing.T) {
 			encoded = strings.Repeat("\xb2\xe2", 130)
 		}
 		packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{
-			testDriverDialectAttribute: testDriverDialectValue, testProxyUserAttribute: encoded, testClientAttributeCapability: "3", testProxyRequestCapability: "1360200",
+			testDriverDialectAttribute: testDriverDialectValue, testProxyUserAttribute: encoded, testClientAttributeCapability: "7", testProxyRequestCapability: "1360200",
 		}})
 		if err != nil {
 			t.Fatal(err)

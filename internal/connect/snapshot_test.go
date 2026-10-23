@@ -94,7 +94,7 @@ func TestConnectionAttributesSnapshot(t *testing.T) {
 	c := created
 	for range 2 {
 		got, err := ConnectionAttributes(c.cfg, "")
-		if err != nil || got[testAttributeKey] != testAttributeValue || got["\xd3\xa6\xd3\xc3"] != testAttributeGBKValue || got[testClientAttributeCapability] != "3" {
+		if err != nil || got[testAttributeKey] != testAttributeValue || got["\xd3\xa6\xd3\xc3"] != testAttributeGBKValue || got[testClientAttributeCapability] != "7" {
 			t.Fatalf("attributes not encoded from immutable snapshot: %v", err)
 		}
 		got[testAttributeKey] = "changed"
@@ -116,7 +116,7 @@ func TestConnectionAttributesEncodedBudget(t *testing.T) {
 		{testCharsetUTF8MB4, strings.Repeat("a", 65536), strings.Repeat("a", 65536)},
 	} {
 		t.Run(fmt.Sprintf("%s/%d", tc.charset, len(tc.value)), func(t *testing.T) {
-			packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: tc.encoded, testClientAttributeCapability: "3", testProxyRequestCapability: "1360200"}})
+			packet, err := wire.EncodeHandshakeResponse(wire.HandshakeResponse{Capabilities: wire.ClientConnectAttrs, Attributes: map[string]string{testDriverDialectAttribute: testDriverDialectValue, testAttributeKey: tc.encoded, testClientAttributeCapability: "7", testProxyRequestCapability: "1360200"}})
 			if err != nil {
 				t.Fatal(err)
 			}

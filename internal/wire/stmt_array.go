@@ -32,10 +32,6 @@ func EncodeStmtExecuteArray(id uint32, rows [][]Parameter, limit int64, options 
 			return nil, ErrMalformed
 		}
 		for i, parameter := range row {
-			if parameter.Type == 257 {
-				// Array element DOUBLE already bypasses Oracle's NUMBER conversion.
-				parameter.Type = 5
-			}
 			if parameter.Type > 255 || parameter.Type == 160 || len(parameter.TypeMetadata) != 0 || parameter.LongData {
 				return nil, ErrMalformed
 			}
