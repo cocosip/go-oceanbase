@@ -184,7 +184,11 @@ func EncodeValue(ctx context.Context, op *session.Operation, resolver *catalog.R
 		return encodeComplex(ctx, op, resolver, v, v.Null, valuecodec.Key{Mode: op.Protocol().Mode, Schema: v.Schema, Name: v.Type, Version: v.Version}, limit)
 	case types.Array:
 		return encodeComplex(ctx, op, resolver, v, v.Null, valuecodec.Key{Mode: op.Protocol().Mode, Schema: v.Schema, Name: v.Type, Version: v.Version}, limit)
-	case types.Raw, []byte:
+	case []byte:
+		if int64(len(v)) > op.Config().Limits.MaxLOBBytes {
+			return wire.Parameter{}, wire.ErrMessageTooLarge
+		}
+	case types.Raw:
 		limit = min(limit, op.Config().Limits.MaxLOBBytes)
 	}
 	return valuecodec.EncodeParameter(value, op.Protocol().Mode, op.Config().Session, limit)

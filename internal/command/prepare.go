@@ -8,23 +8,23 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-// Prepare allocates a server statement and consumes all parameter metadata.
-func Prepare(ctx context.Context, op *session.Operation, query []byte) (wire.PrepareOK, []wire.Column, error) {
+// Prepare allocates a server statement and returns its parameter and result metadata.
+func Prepare(ctx context.Context, op *session.Operation, query []byte) (wire.PrepareOK, []wire.Column, []wire.Column, error) {
 	if _, err := Start(ctx, op, append([]byte{22}, query...), false); err != nil {
-		return wire.PrepareOK{}, nil, err
+		return wire.PrepareOK{}, nil, nil, err
 	}
 	defer op.EndResponse()
 	data, err := op.Packets().ReadMessage(ctx)
 	if err != nil {
 		op.Discard()
-		return wire.PrepareOK{}, nil, err
+		return wire.PrepareOK{}, nil, nil, err
 	}
 	if len(data) > 0 && data[0] == 255 {
 		err = DecodeServerError(data)
 		if err == wire.ErrMalformed {
 			op.Discard()
 		}
-		return wire.PrepareOK{}, nil, err
+		return wire.PrepareOK{}, nil, nil, err
 	}
 	header, err := wire.DecodePrepareOK(data)
 	if err == nil && header.Columns > MaxColumns {
@@ -32,17 +32,18 @@ func Prepare(ctx context.Context, op *session.Operation, query []byte) (wire.Pre
 	}
 	if err != nil {
 		op.Discard()
-		return header, nil, err
+		return header, nil, nil, err
 	}
 	budget := int64(len(data))
 	parameters, err := ReadMetadata(ctx, op, int(header.Parameters), &budget, false)
+	var columns []wire.Column
 	if err == nil {
-		_, err = ReadMetadata(ctx, op, int(header.Columns), &budget, false)
+		columns, err = ReadMetadata(ctx, op, int(header.Columns), &budget, false)
 	}
 	if err != nil {
 		op.Discard()
 	}
-	return header, parameters, err
+	return header, parameters, columns, err
 }
 
 // CloseStatement retires a server statement without awaiting a response.

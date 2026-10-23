@@ -15,6 +15,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/sqltext"
 	"github.com/cocosip/go-oceanbase/internal/streaminput"
 	"github.com/cocosip/go-oceanbase/internal/wire"
+	"github.com/cocosip/go-oceanbase/types"
 )
 
 type argumentSource struct {
@@ -156,5 +157,35 @@ func TestPrevalidationAndEncodedBudget(t *testing.T) {
 	}
 	if values, err := Encode(context.Background(), op, nil, []any{"ab", "cd"}, 6); err != nil || len(values) != 2 {
 		t.Fatal(values, err)
+	}
+}
+
+func TestOracleBytesLOBAndMessageBudgets(t *testing.T) {
+	s := session.New(config.Config{Limits: config.Limits{MaxLOBBytes: 4}}, &session.Negotiated{Mode: config.ModeOracle})
+	op, err := s.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer op.Release()
+	for _, tc := range []struct {
+		value    any
+		budget   int64
+		want     string
+		tooLarge bool
+	}{
+		{[]byte{0, 1, 127, 255}, 9, "00017fff", false},
+		{[]byte{0, 1, 127, 255}, 8, "", true},
+		{[]byte{0, 1, 127, 255, 0}, 20, "", true},
+		{types.Raw{0, 1, 127, 255}, 5, string([]byte{0, 1, 127, 255}), false},
+		{types.Raw{0, 1, 127, 255, 0}, 20, "", true},
+	} {
+		p, err := Encode(t.Context(), op, nil, []any{tc.value}, tc.budget)
+		if tc.tooLarge {
+			if !errors.Is(err, wire.ErrMessageTooLarge) {
+				t.Fatalf("budget=%d error=%v", tc.budget, err)
+			}
+		} else if err != nil || len(p) != 1 || string(p[0].Data) != tc.want {
+			t.Fatalf("budget=%d params=%v error=%v", tc.budget, p, err)
+		}
 	}
 }

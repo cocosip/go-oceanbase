@@ -3,6 +3,7 @@ package valuecodec
 import (
 	"database/sql/driver"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"strconv"
@@ -56,6 +57,14 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 		}
 		p.Type = 252
 		p.Data = v
+		if mode == config.ModeOracle {
+			if int64(len(v)) > limit/2 || len(v) > math.MaxInt/2 {
+				return wire.Parameter{}, wire.ErrMessageTooLarge
+			}
+			// Connector/J binds Oracle byte arrays as hex text, including BLOB inputs.
+			p.Type, p.Data = 253, make([]byte, hex.EncodedLen(len(v)))
+			hex.Encode(p.Data, v)
+		}
 		p.LengthEncoded = true
 	case string:
 		if int64(utf8.RuneCountInString(v)) > limit {

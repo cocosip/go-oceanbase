@@ -55,7 +55,7 @@ func Prepare(ctx context.Context, op *session.Operation, query string) (*Stateme
 	if err != nil {
 		return nil, err
 	}
-	header, parameters, err := command.Prepare(ctx, op, encoded)
+	header, parameters, columns, err := command.Prepare(ctx, op, encoded)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +66,13 @@ func Prepare(ctx context.Context, op *session.Operation, query string) (*Stateme
 			plan.Slots[i].Index = i
 		}
 	} else if int(header.Parameters) != len(plan.Slots) {
-		op.Discard()
-		return nil, fmt.Errorf("%w: server parameter count", dberrors.ErrBind)
+		// Standalone Oracle PREPARE describes RETURNING outputs as result columns.
+		outputs := sqltext.ReturningBindCount(plan.SQL)
+		if outputs == 0 || outputs != len(columns) || len(parameters)+outputs != len(plan.Slots) {
+			op.Discard()
+			return nil, fmt.Errorf("%w: server parameter count", dberrors.ErrBind)
+		}
+		parameters = append(parameters, columns...)
 	}
 	s := Adopt(op, header.ID, plan, parameters)
 	if err = ctx.Err(); err != nil {

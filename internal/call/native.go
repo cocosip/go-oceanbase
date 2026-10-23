@@ -12,7 +12,6 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/sqltext"
 	"github.com/cocosip/go-oceanbase/internal/statement"
 	"github.com/cocosip/go-oceanbase/internal/wire"
-	"github.com/cocosip/go-oceanbase/types"
 )
 
 // PreparePayload encodes Oracle IN and OUT slots under the original per-parameter budget.
@@ -42,12 +41,7 @@ func PreparePayload(ctx context.Context, op *session.Operation, resolver *catalo
 				}
 			}
 		}
-		limit := budget
-		switch value.(type) {
-		case types.Raw, []byte:
-			limit = min(limit, cfg.Limits.MaxLOBBytes)
-		}
-		params[i], err = parameters.EncodeValue(ctx, op, resolver, value, limit)
+		params[i], err = parameters.EncodeValue(ctx, op, resolver, value, budget)
 		if err != nil {
 			return nil, err
 		}
