@@ -48,6 +48,7 @@ func integrationTestScalarProfile(t *testing.T, p integrationtest.Profile, path 
 	query := "SELECT n,v,b,ts,d,tm,yr FROM " + table + " WHERE id=1"
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, integrationScalarDateText, "-838:59:58.999999", 2026}
+	args[4] = instant.Add(789 * time.Nanosecond)
 	args = append(args, uint64(math.MaxUint64), int64(math.MinInt64), []byte{0, 255, 0, 0})
 	if p.Mode == oceanbase.ModeOracle {
 		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9),dt DATE"

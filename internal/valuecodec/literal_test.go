@@ -36,6 +36,7 @@ func TestScalarClientLiterals(t *testing.T) {
 		value any
 		want  string
 	}{
+		{time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC), "TIMESTAMP '2026-01-02 03:04:05.123456789'"},
 		{types.NString("中😀'"), "UNISTR('\\4E2D\\D83D\\DE00\\0027')"},
 		{types.Raw{0, 255}, "HEXTORAW('00ff')"}, {types.RowID("AAAA"), "CHARTOROWID('AAAA')"},
 		{types.TimestampTZ("2026-01-02 03:04:05.123456789 -00:30"), "TIMESTAMP '2026-01-02 03:04:05.123456789 -00:30'"},

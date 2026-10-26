@@ -111,11 +111,11 @@ func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLO
 func clientTimeLiteral(v time.Time, mode config.Mode, options config.SessionOptions) (string, error) {
 	var s string
 	v = v.In(options.Location)
-	if v.Year() < 1 || v.Year() > 9999 || mode != config.ModeOracle && v.Nanosecond()%1000 != 0 {
-		return "", fmt.Errorf("%w: datetime precision or range", dberrors.ErrBind)
+	if v.Year() < 1 || v.Year() > 9999 {
+		return "", fmt.Errorf("%w: datetime range", dberrors.ErrBind)
 	}
 	s = "'" + v.Format("2006-01-02 15:04:05.000000") + "'"
-	if v.Nanosecond()%1000 != 0 {
+	if mode == config.ModeOracle && v.Nanosecond()%1000 != 0 {
 		s = "'" + v.Format(valueformat.TimestampLayout+".000000000") + "'"
 	}
 	if mode == config.ModeOracle {

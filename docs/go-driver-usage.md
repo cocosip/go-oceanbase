@@ -91,6 +91,8 @@ Use `QueryRowContext` / `QueryContext` for queries and `ExecContext` for writes.
 
 `PrepareMode` defaults to server-side preparation. Explicitly select `PrepareClient` when client interpolation is required; parameterized operations still use the same standard-library API. Close `sql.Stmt` before its owning transaction/connection, and never retain server statement IDs across sessions.
 
+In MySQL mode, ordinary `time.Time` parameters (including `time.Now()`) are converted to `Session.Location` and truncated to microsecond precision in both preparation modes. For example, `.123456789` becomes `.123456`; `.999999999` becomes `.999999` without advancing the second. Applications do not need to truncate timestamps before binding. Years outside 1–9999 after timezone conversion still return `ErrBind`. The destination column can further reduce precision according to server rules. Oracle mode retains nanoseconds for ordinary `time.Time` parameters.
+
 ```go
 tx, err := db.BeginTx(ctx, nil)
 if err != nil { return err }

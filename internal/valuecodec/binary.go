@@ -95,8 +95,8 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 			options.Location = time.UTC
 		}
 		v = v.In(options.Location)
-		if v.Year() < 1 || v.Year() > 9999 || v.Nanosecond()%1000 != 0 {
-			return p, fmt.Errorf("%w: datetime precision or range", dberrors.ErrBind)
+		if v.Year() < 1 || v.Year() > 9999 {
+			return p, fmt.Errorf("%w: datetime range", dberrors.ErrBind)
 		}
 		p.Type = 12
 		p.Data = []byte{11, byte(v.Year()), byte(v.Year() >> 8), byte(v.Month()), byte(v.Day()), byte(v.Hour()), byte(v.Minute()), byte(v.Second())}

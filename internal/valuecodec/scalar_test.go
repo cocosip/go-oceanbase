@@ -169,8 +169,8 @@ func TestBinaryTimeAndScalars(t *testing.T) {
 	if err != nil || p.Type != 12 || !reflect.DeepEqual(p.Data, want) {
 		t.Fatal(p, err)
 	}
-	if _, err = EncodeParameter(value.Add(time.Nanosecond), config.ModeMySQL, config.SessionOptions{Location: local}, 1024); !errors.Is(err, dberrors.ErrBind) {
-		t.Fatal("unrepresentable precision silently truncated", err)
+	if got, err := EncodeParameter(value.Add(time.Nanosecond), config.ModeMySQL, config.SessionOptions{Location: local}, 1024); err != nil || !reflect.DeepEqual(got, p) {
+		t.Fatal("sub-microsecond tail changed binary timestamp", got, err)
 	}
 	if _, err = EncodeParameter("oversized", config.ModeMySQL, config.SessionOptions{Location: local}, 3); !errors.Is(err, wire.ErrMessageTooLarge) {
 		t.Fatal(err)
