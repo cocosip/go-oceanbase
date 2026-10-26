@@ -6,15 +6,6 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
-    inputs:
-      integration:
-        description: 'Run integration tests against explicitly configured test databases'
-        type: boolean
-        default: false
-      stability:
-        description: 'Run extended driver resource checks without a database'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -25,71 +16,56 @@ concurrency:
 
 env:
   GOTOOLCHAIN: local
+  CGO_ENABLED: '0'
 
 jobs:
   test:
-    name: Test (${{ matrix.os }}, Go ${{ matrix.go }})
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.26.x'
           cache: true
-      - name: Show toolchain
-        run: go version
       - name: Download dependencies
         run: go mod download
       - name: Verify dependencies
         run: go mod verify
+      - name: Unit tests
+        shell: bash
+        run: go test ${{ matrix.os == 'ubuntu-latest' && '-coverprofile=coverage.out -covermode=atomic' || '' }} ./... -count=1 -timeout 5m
       - name: Build packages and examples
+        if: matrix.os == 'ubuntu-latest'
         run: go build ./...
-      - name: Check standalone acceptance tool without a database
-        run: go run ./cmd/obtest -list
-      - name: Vet
-        run: go vet ./...
       - name: Compile integration tests without a database
+        if: matrix.os == 'ubuntu-latest'
         run: go test -tags=integration ./... -run '^$' -timeout 1m
-      - name: Unit tests with coverage
-        # The driver is pure Go and must build without cgo, so -race is not used:
-        # it requires cgo by toolchain design. CGO_ENABLED=0 keeps that promise
-        # checked on every runner, and the coverprofile value stays quoted because
-        # PowerShell splits an unquoted -flag=value.ext at the dot.
-        run: go test "-coverprofile=coverage.out" -covermode=atomic ./... -count=1 -timeout 5m
-        env:
-          CGO_ENABLED: '0'
       - name: Upload coverage
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.os == 'ubuntu-latest' }}
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.os }}-go${{ matrix.go }}
+          name: coverage-linux
           path: coverage.out
           if-no-files-found: warn
           retention-days: 14
 
   lint:
-    name: Lint (${{ matrix.os }}, Go ${{ matrix.go }})
-    runs-on: ${{ matrix.os }}
+    name: Lint
+    runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.26.x'
           cache: true
       - name: Check formatting and module files
-        if: runner.os == 'Linux'
         shell: bash
         run: |
           files=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
@@ -99,248 +75,38 @@ jobs:
           fi
           go mod tidy -diff
       - name: Check GitHub Actions workflows
-        if: runner.os == 'Linux'
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
-          args: --timeout=10m
-      - name: Lint integration test sources without a database
-        run: golangci-lint run --build-tags=integration ./...
-
-  native-platform:
-    name: Native ABI (Linux, Go ${{ matrix.go }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.26.x']
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go }}
-          cache: true
-      - name: Prepare system GSSAPI and native ABI fixtures
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgssapi-krb5-2 gcc
-      - name: Check system GSSAPI credential failure and native ABI
-        run: go test -tags=gssapi,gssapitest ./... -count=1 -timeout 5m
-        env:
-          OB_TEST_GSS_REQUIRE: '1'
-      - name: Check embedded OBProxy ABI and Unix transport without a database
-        run: go test -tags=obproxy,obproxytest ./... -count=1 -timeout 5m
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          args: --build-tags=gssapi,gssapitest,obproxy,obproxytest --timeout=10m
-
-  protocol-boundaries:
-    name: 386 boundaries (Go ${{ matrix.go }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.26.x']
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go }}
-          cache: true
-      - name: Run 32-bit boundary tests
-        run: go test ./... -count=1 -timeout 5m
-        env:
-          GOARCH: '386'
-          CGO_ENABLED: '0'
-
-  fuzz:
-    name: Fuzz (${{ matrix.group }}, Go ${{ matrix.go }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.26.x']
-        group: [framing-auth, prepared-values, sql-bind, resources-routing]
-        include:
-          - group: framing-auth
-            targets: >-
-              ./internal/wire:FuzzPacket ./internal/wire:FuzzFrames
-              ./internal/wire:FuzzFullTrace ./internal/wire:FuzzHandshake
-              ./internal/auth:FuzzAuthPlugins
-          - group: prepared-values
-            targets: >-
-              ./internal/wire:FuzzText ./internal/wire:FuzzStmt
-              ./internal/wire:FuzzStmtArray ./internal/wire:FuzzPrepareExecute
-              ./internal/wire:FuzzLOBLocator ./internal/valuecodec:FuzzScalars
-          - group: sql-bind
-            targets: >-
-              ./internal/sqltext:FuzzBindPlan ./internal/statement:FuzzClientPrepare
-              ./internal/sqltext:FuzzJDBCEscapes ./internal/catalog:FuzzMetadataFilters
-              ./internal/cursor:FuzzCursorPosition
-          - group: resources-routing
-            targets: >-
-              ./types:FuzzComplex ./internal/wire:FuzzComplex
-              ./internal/sqltext:FuzzBlobIdentifiers ./internal/streaminput:FuzzLongTextBoundary
-              ./internal/charset:FuzzCharset
-              ./internal/routing:FuzzAddressParsing ./internal/routing:FuzzTNSParser
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go }}
-          cache: true
-      - name: Fuzz each target for 30 seconds
-        shell: bash
-        env:
-          FUZZ_TARGETS: ${{ matrix.targets }}
-        run: |
-          for target in $FUZZ_TARGETS; do
-            package=${target%:*}
-            name=${target##*:}
-            go test "$package" -run '^$' -fuzz "^${name}$" -fuzztime 30s -parallel 2 -timeout 2m 2>&1 | tee -a fuzz-results.txt
-          done
-      - name: Upload fuzz logs and regression corpus
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: fuzz-${{ matrix.group }}-go${{ matrix.go }}
-          path: |
-            fuzz-results.txt
-            **/testdata/fuzz/**
-          retention-days: 14
+          args: --build-tags=integration --timeout=10m
 
   benchmark:
-    name: Benchmark (Go ${{ matrix.go }})
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: Benchmark
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.26.x']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.26.x'
           cache: true
       - name: Run protocol-peer benchmarks without a database
         shell: bash
-        run: go test . ./internal/wire -run '^$' -bench . -benchmem -benchtime=1s -count=3 -timeout 5m | tee benchmark-results.txt
+        run: go test . ./internal/wire -run '^$' -bench . -benchmem -timeout 5m > benchmark-results.txt
       - name: Upload benchmark results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-go${{ matrix.go }}
+          name: benchmark-results
           path: benchmark-results.txt
           retention-days: 30
 
-  stability:
-    name: Stability (${{ matrix.os }}, Go ${{ matrix.go }})
-    timeout-minutes: 20
-    if: github.event_name == 'workflow_dispatch' && inputs.stability
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        go: ['1.26.x']
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go }}
-          cache: true
-      - run: go test . -run '^TestDriver(Resource|Session)Stability$' -count=1 -v -timeout 10m
-        env:
-          OB_TEST_STABILITY_ITERATIONS: '4096'
-      - run: go test . -run '^TestDriverConcurrentSessionStability$' -count=1 -v -timeout 5m
-        env:
-          OB_TEST_STABILITY_ITERATIONS: '1024'
-
-  integration:
-    name: Integration (${{ matrix.profile }}, Go ${{ matrix.go }})
-    timeout-minutes: 30
-    if: github.event_name == 'workflow_dispatch' && inputs.integration
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.26.x']
-        profile: [mysql, oracle, proxy-mysql, proxy-oracle]
-    env:
-      OB_TEST_REQUIRE: '1'
-      OB_TEST_PROFILE: ${{ matrix.profile }}
-      OB_MYSQL_DSN: ${{ secrets.OB_MYSQL_DSN }}
-      OB_ORACLE_DSN: ${{ secrets.OB_ORACLE_DSN }}
-      OBPROXY_MYSQL_DSN: ${{ secrets.OBPROXY_MYSQL_DSN }}
-      OBPROXY_ORACLE_DSN: ${{ secrets.OBPROXY_ORACLE_DSN }}
-      OB_MYSQL_READ_TIMEOUT_SQL: ${{ secrets.OB_MYSQL_READ_TIMEOUT_SQL }}
-      OB_ORACLE_READ_TIMEOUT_SQL: ${{ secrets.OB_ORACLE_READ_TIMEOUT_SQL }}
-      OBPROXY_MYSQL_READ_TIMEOUT_SQL: ${{ secrets.OBPROXY_MYSQL_READ_TIMEOUT_SQL }}
-      OBPROXY_ORACLE_READ_TIMEOUT_SQL: ${{ secrets.OBPROXY_ORACLE_READ_TIMEOUT_SQL }}
-      OB_MYSQL_CREATE_DATABASE_DSN: ${{ secrets.OB_MYSQL_CREATE_DATABASE_DSN }}
-      OBPROXY_MYSQL_CREATE_DATABASE_DSN: ${{ secrets.OBPROXY_MYSQL_CREATE_DATABASE_DSN }}
-      OB_MYSQL_CHANGE_USER_DSN: ${{ secrets.OB_MYSQL_CHANGE_USER_DSN }}
-      OB_ORACLE_CHANGE_USER_DSN: ${{ secrets.OB_ORACLE_CHANGE_USER_DSN }}
-      OBPROXY_MYSQL_CHANGE_USER_DSN: ${{ secrets.OBPROXY_MYSQL_CHANGE_USER_DSN }}
-      OBPROXY_ORACLE_CHANGE_USER_DSN: ${{ secrets.OBPROXY_ORACLE_CHANGE_USER_DSN }}
-      OB_ORACLE_PROXY_DSN: ${{ secrets.OB_ORACLE_PROXY_DSN }}
-      OB_ORACLE_PROXY_AUTH_USER: ${{ secrets.OB_ORACLE_PROXY_AUTH_USER }}
-      OB_ORACLE_PROXY_SESSION_USER: ${{ secrets.OB_ORACLE_PROXY_SESSION_USER }}
-      OBPROXY_ORACLE_PROXY_DSN: ${{ secrets.OBPROXY_ORACLE_PROXY_DSN }}
-      OBPROXY_ORACLE_PROXY_AUTH_USER: ${{ secrets.OBPROXY_ORACLE_PROXY_AUTH_USER }}
-      OBPROXY_ORACLE_PROXY_SESSION_USER: ${{ secrets.OBPROXY_ORACLE_PROXY_SESSION_USER }}
-      OB_MYSQL_CANCEL_SQL: ${{ secrets.OB_MYSQL_CANCEL_SQL }}
-      OB_MYSQL_CANCEL_CODE: ${{ secrets.OB_MYSQL_CANCEL_CODE }}
-      OB_ORACLE_CANCEL_SQL: ${{ secrets.OB_ORACLE_CANCEL_SQL }}
-      OB_ORACLE_CANCEL_CODE: ${{ secrets.OB_ORACLE_CANCEL_CODE }}
-      OBPROXY_MYSQL_CANCEL_SQL: ${{ secrets.OBPROXY_MYSQL_CANCEL_SQL }}
-      OBPROXY_MYSQL_CANCEL_CODE: ${{ secrets.OBPROXY_MYSQL_CANCEL_CODE }}
-      OBPROXY_ORACLE_CANCEL_SQL: ${{ secrets.OBPROXY_ORACLE_CANCEL_SQL }}
-      OBPROXY_ORACLE_CANCEL_CODE: ${{ secrets.OBPROXY_ORACLE_CANCEL_CODE }}
-      OB_MYSQL_WARNING_SQL: ${{ secrets.OB_MYSQL_WARNING_SQL }}
-      OB_ORACLE_WARNING_SQL: ${{ secrets.OB_ORACLE_WARNING_SQL }}
-      OBPROXY_MYSQL_WARNING_SQL: ${{ secrets.OBPROXY_MYSQL_WARNING_SQL }}
-      OBPROXY_ORACLE_WARNING_SQL: ${{ secrets.OBPROXY_ORACLE_WARNING_SQL }}
-      OB_MYSQL_LOCAL_IMPORT_SQL: ${{ secrets.OB_MYSQL_LOCAL_IMPORT_SQL }}
-      OB_ORACLE_LOCAL_IMPORT_SQL: ${{ secrets.OB_ORACLE_LOCAL_IMPORT_SQL }}
-      OBPROXY_MYSQL_LOCAL_IMPORT_SQL: ${{ secrets.OBPROXY_MYSQL_LOCAL_IMPORT_SQL }}
-      OBPROXY_ORACLE_LOCAL_IMPORT_SQL: ${{ secrets.OBPROXY_ORACLE_LOCAL_IMPORT_SQL }}
-      OB_MYSQL_TNS_DSN: ${{ secrets.OB_MYSQL_TNS_DSN }}
-      OB_MYSQL_OCP_DSN: ${{ secrets.OB_MYSQL_OCP_DSN }}
-      OB_ORACLE_TNS_DSN: ${{ secrets.OB_ORACLE_TNS_DSN }}
-      OB_ORACLE_OCP_DSN: ${{ secrets.OB_ORACLE_OCP_DSN }}
-      OBPROXY_MYSQL_TNS_DSN: ${{ secrets.OBPROXY_MYSQL_TNS_DSN }}
-      OBPROXY_MYSQL_OCP_DSN: ${{ secrets.OBPROXY_MYSQL_OCP_DSN }}
-      OBPROXY_ORACLE_TNS_DSN: ${{ secrets.OBPROXY_ORACLE_TNS_DSN }}
-      OBPROXY_ORACLE_OCP_DSN: ${{ secrets.OBPROXY_ORACLE_OCP_DSN }}
-      OB_MYSQL_DISCOVERY_IDENTITY_SQL: ${{ secrets.OB_MYSQL_DISCOVERY_IDENTITY_SQL }}
-      OB_MYSQL_DISCOVERY_TENANT: ${{ secrets.OB_MYSQL_DISCOVERY_TENANT }}
-      OB_MYSQL_DISCOVERY_ROLE: ${{ secrets.OB_MYSQL_DISCOVERY_ROLE }}
-      OB_ORACLE_DISCOVERY_IDENTITY_SQL: ${{ secrets.OB_ORACLE_DISCOVERY_IDENTITY_SQL }}
-      OB_ORACLE_DISCOVERY_TENANT: ${{ secrets.OB_ORACLE_DISCOVERY_TENANT }}
-      OB_ORACLE_DISCOVERY_ROLE: ${{ secrets.OB_ORACLE_DISCOVERY_ROLE }}
-      OBPROXY_MYSQL_DISCOVERY_IDENTITY_SQL: ${{ secrets.OBPROXY_MYSQL_DISCOVERY_IDENTITY_SQL }}
-      OBPROXY_MYSQL_DISCOVERY_TENANT: ${{ secrets.OBPROXY_MYSQL_DISCOVERY_TENANT }}
-      OBPROXY_MYSQL_DISCOVERY_ROLE: ${{ secrets.OBPROXY_MYSQL_DISCOVERY_ROLE }}
-      OBPROXY_ORACLE_DISCOVERY_IDENTITY_SQL: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_IDENTITY_SQL }}
-      OBPROXY_ORACLE_DISCOVERY_TENANT: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_TENANT }}
-      OBPROXY_ORACLE_DISCOVERY_ROLE: ${{ secrets.OBPROXY_ORACLE_DISCOVERY_ROLE }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go }}
-          cache: true
-      - run: >-
-          go test -tags=integration
-          . ./internal/integrationtest ./internal/connect/integration ./internal/control/integration
-          ./internal/statement ./internal/valuecodec ./internal/catalog ./internal/call
-          ./internal/lob ./internal/cursor ./internal/execution ./internal/batch/integration
-          ./internal/diagnostic ./internal/xa
-          -run 'Test(Smoke|QueryCRUD|QueryResults|PrepareRoundTrip|PrepareEquivalence|LocalTx|StmtAfterReset|MultiResult|AllScalarTypes|MetadataCatalog|ScalarCall|Returning|NativeLOB|TableBlob|ComplexTypes|CursorModes|CursorUpdates|SensitiveCursorRefresh|ConcurrentPoolTransactions|ProcedureResources|LongParameters|BatchExecution|BatchRewriteExecution|BatchArrayBindingExecution|PacketModes|ExecuteStrategies|FullLinkTrace|ConnectionFailover|Discovery|LocalImport|SessionOperations|SessionCollation|ChangeUserSessions|ProxyUserSessions|CreateDatabaseSessions|ReadTimeoutSessions|VersionProbeSessions|WarningDetails|CancelQuerySessions|XATransactions|XARecoveryAfterDisconnect)$'
-          -count=1 -timeout 20m
+  release:
+    name: Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [test, lint]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml

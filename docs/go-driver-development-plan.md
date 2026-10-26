@@ -160,6 +160,8 @@ For every acceptance run, record actual Go/OS/architecture, OceanBase/OBProxy ve
 
 ### 5.3 Toolchain and Fault Verification
 
+Routine CI was simplified on 2026-10-26; [README](../README.md#github-actions) describes the current jobs. References below to dedicated fuzz, native ABI, 386, stability or live integration jobs describe the earlier development setup. Their acceptance requirements and local test entry points remain; removing their CI jobs does not establish a passing result.
+
 - D01 creates `.github/workflows/ci.yml`, installs Go `1.26.x`, and runs `go version`, `go list -deps ./...`, `go test ./...`, and `go vet ./...` on Linux/Windows amd64. Changing only the GOTOOLCHAIN string does not prove another version was tested.
 - Verify basic capabilities on Linux/Windows amd64; run `CGO_ENABLED=0 go test ./...` on supported systems. On 386, focus on protocol lengths, indexes, and integer conversion. Record only compile evidence for targets that cannot run. The toolchain requires cgo for `-race`; this driver is pure Go and does not import `C`, so CI omits race and continuously verifies zero-cgo builds using `CGO_ENABLED=0`. Run race detection manually in a separate cgo environment, outside routine checks.
 - Use the existing `.golangci.yml` with a toolchain-compatible golangci-lint v2; pin its CI version and run `golangci-lint run`.

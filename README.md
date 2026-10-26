@@ -134,14 +134,16 @@ The integration command compiles the database tests without running them. `obtes
 
 ### GitHub Actions
 
-[CI](.github/workflows/ci.yml) runs on pushes to `master`, `main` and `develop`, on pull requests and on manual dispatch:
+[CI](.github/workflows/ci.yml) runs on pushes to `master`, `main` and `develop`, on `v*` tag pushes, on pull requests and on manual dispatch:
 
-- Go 1.26 builds, vet, integration-test compilation and coverage tests on Linux, Windows and macOS. Tests use `CGO_ENABLED=0`; race detection requires a separate cgo-enabled run.
-- Lint on Linux and Windows, including integration-tagged sources. Linux also checks formatting, module files and workflow syntax.
-- Linux/386 tests, 22 fuzz targets in four parallel groups (30 seconds per target), and separate Linux GSSAPI/OBProxy system and ABI fixtures without a database.
-- Protocol-peer benchmarks on pull requests and manual runs, saved for comparison without a shared-runner performance threshold.
-- Optional manual `integration` and `stability` jobs, both disabled by default. Integration requires explicit database secrets and `OB_TEST_REQUIRE=1`; automatic push/PR checks do not read database credentials.
+- Go 1.26 unit tests on Linux, Windows and macOS with `CGO_ENABLED=0`. Linux also builds all packages and examples, compiles integration tests without a database, and collects coverage.
+- One Linux lint pass covering ordinary and integration-tagged sources, including vet through the existing linter configuration. Formatting, module files and workflow syntax are checked in the same job.
+- Protocol-peer benchmarks on pull requests, saved for comparison without a shared-runner performance threshold.
 
-Coverage and fuzz artifacts are retained for 14 days; benchmark artifacts for 30 days. Superseded automatic runs are canceled, while manual CI runs are not. [CodeQL](.github/workflows/codeql.yml) scans on push/PR, weekly and on manual dispatch; [Dependabot](.github/dependabot.yml) checks Go modules and Actions weekly. Dependency updates must retain the Go 1.26 minimum.
+Coverage artifacts are retained for 14 days; benchmark artifacts for 30 days. Superseded automatic runs are canceled, while manual CI runs are not. [CodeQL](.github/workflows/codeql.yml) scans on push/PR, weekly and on manual dispatch; [Dependabot](.github/dependabot.yml) checks Go modules and Actions weekly. Dependency updates must retain the Go 1.26 minimum.
+
+On a `v*` tag push, CI calls the reusable [release workflow](.github/workflows/release.yml) only after all platform tests and lint succeed. Publishing generates release notes and creates a source release without rerunning builds or tests. CodeQL remains an independent workflow and is not a release dependency.
+
+Dedicated fuzz campaigns, native GSSAPI/OBProxy ABI fixtures, Linux/386 checks, extended stability runs and live database acceptance run outside routine CI. Their tests and local commands remain available; ordinary unit tests still run fuzz seeds and the default resource checks. Live integration requires explicit database configuration and `OB_TEST_REQUIRE=1`; routine CI does not read database credentials. Race detection requires a separate cgo-enabled run.
 
 Workflow definitions and local results are not evidence of successful remote execution. Live OceanBase/OBProxy acceptance, platform coverage and race results remain subject to the evidence recorded in development progress.

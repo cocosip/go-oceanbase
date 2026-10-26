@@ -34,7 +34,7 @@ GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverBenchmarkFixtures$' -count=30
 GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -benchtime=100x -count=3
 ```
 
-These commands use POSIX shell syntax. In PowerShell, set `$env:GOTOOLCHAIN='go1.26.0'` first, then run the corresponding go commands. No DSN, credentials or database is required. Ordinary `go test ./...` runs warmup and two operations per fixture as well, so CI checks return values and cleanup by default. Ordinary pushes do not collect performance results; PR/manual CI runs a separate benchmark job and saves artifacts.
+These commands use POSIX shell syntax. In PowerShell, set `$env:GOTOOLCHAIN='go1.26.0'` first, then run the corresponding go commands. No DSN, credentials or database is required. Ordinary `go test ./...` runs warmup and two operations per fixture as well, so CI checks return values and cleanup by default. Ordinary pushes do not collect performance results; PR CI runs a separate benchmark job and saves artifacts.
 
 Each fixture has a two-minute total budget starting at connection setup. The peer remains alive through DB.Close; transport closure and waiting for its goroutine follow, with context cancellation last. Because testing.TB.Context is canceled before Cleanup, fixtures use WithoutCancel and impose their own budget. Long benchtime settings must fit this budget. See §6 for separate resource checks; extending this short single-connection benchmark does not establish acceptance.
 
@@ -106,7 +106,7 @@ Live CRUD, caching, native batch optimization, streaming LOB/cursor performance 
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverResourceStability$' -count=1 -v -timeout 10m
 ```
 
-In PowerShell, set `$env:OB_TEST_STABILITY_ITERATIONS='4096'` and `$env:GOTOOLCHAIN` before the go command. The manual CI stability input independently enables the same Go 1.26 Linux/Windows check without integration or database secrets. An unexecuted remote job is not a pass.
+In PowerShell, set `$env:OB_TEST_STABILITY_ITERATIONS='4096'` and `$env:GOTOOLCHAIN` before the go command. Extended stability checks run locally, outside routine CI, without integration or database secrets.
 
 Each scenario completes Cleanup before the next begins. After every round, an explicit GC precedes resource_sample records for elapsed_ms, HeapAlloc, HeapObjects and NumGoroutine. Sample 0 is an unloaded baseline; there are nine points total. Resource ownership, cache capacity and pool closure are hard assertions. Heap/goroutine values are process observations including testing's fixed tree, output, runtime caches and peer costs; they have no arbitrary thresholds and do not prove absence of leaks. This run covers repeated connection creation and basic serial paths, not one long-lived session or every extension/error/concurrency/framing combination. net.Pipe provides no real OS socket/file-handle curves. Database load and long production runs remain pending.
 
@@ -186,7 +186,7 @@ The default is eight rounds per combination in ordinary tests/automatic CI. OB_T
 OB_TEST_STABILITY_ITERATIONS=4096 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverSessionStability$' -count=1 -v -timeout 10m
 ```
 
-See §6 for PowerShell environment syntax. Manual stability CI runs §6/§7 with 4096 iterations, then §8 with 1024 rounds per connection, without database secrets. Each combination creates only a fixed test tree and at most nine post-GC samples, recording cycles/iterations, elapsed_ms, HeapAlloc, HeapObjects, NumGoroutine and dials. Sample 0 already has an idle physical connection and a peer waiting for commands; it is not directly comparable with §6's unloaded, closed-session baseline.
+See §6 for PowerShell environment syntax. For extended local checks, run §6/§7 with 4096 iterations, then §8 with 1024 rounds per connection, without database secrets. Each combination creates only a fixed test tree and at most nine post-GC samples, recording cycles/iterations, elapsed_ms, HeapAlloc, HeapObjects, NumGoroutine and dials. Sample 0 already has an idle physical connection and a peer waiting for commands; it is not directly comparable with §6's unloaded, closed-session baseline.
 
 These process samples impose no arbitrary memory threshold and cannot establish zero leaks. See §8 for three-connection load. Mixed concurrent complex types/LOBs/cursors, transport faults, real OS sockets/handles and long production curves remain pending. This check does not increase the 18-scenario benchmark count.
 
@@ -219,7 +219,7 @@ Every sample had five goroutines and one dial. Heap/object counts grew and fluct
 
 Each round locks and inspects the original physical connections for transaction/response/resources, cache indexes/leases and descriptor budgets. Each segment checks pool counts open=3/inUse=3/idle=0. After all loops, release the leases and check idle=3, then reborrow all three simultaneously, verifying distinct original sessions and successful Pings. After pool closure, check open/inUse/idle=0 and all original connections closed. Peers must receive QUIT and transport closure (EOF or net.Pipe ErrClosedPipe). Before cleanup, the main test waits up to five seconds for every peer confirmation; timeout/cancellation does not count as successful closure. Checks precede reborrow/reset so pool reset cannot hide residual state.
 
-The default is eight rounds per connection, 24 per combination. OB_TEST_STABILITY_ITERATIONS selects rounds per connection (1–10000). Runs split into at most eight segments, retaining at most nine post-GC process samples for completed per-connection rounds, connection count, elapsed time, heap/objects, goroutines and dials. Worker goroutines have exited at sampling time, while all three leases remain pinned. Each combination has a two-minute budget; manual CI uses 1024 rounds per connection rather than applying the single-connection 4096 budget to triple load.
+The default is eight rounds per connection, 24 per combination. OB_TEST_STABILITY_ITERATIONS selects rounds per connection (1–10000). Runs split into at most eight segments, retaining at most nine post-GC process samples for completed per-connection rounds, connection count, elapsed time, heap/objects, goroutines and dials. Worker goroutines have exited at sampling time, while all three leases remain pinned. Each combination has a two-minute budget; extended local runs use 1024 rounds per connection rather than applying the single-connection 4096 budget to triple load.
 
 ```sh
 OB_TEST_STABILITY_ITERATIONS=1024 GOTOOLCHAIN=go1.26.0 go test . -run '^TestDriverConcurrentSessionStability$' -count=1 -v -timeout 5m

@@ -1712,6 +1712,8 @@ Maintain a separate per-option mapping identifying Go configuration, standard al
 
 ### 20.1 Verification Layers
 
+Routine CI was simplified on 2026-10-26 to three-platform unit tests, Linux build/integration compilation/lint, and PR benchmarks; see [README](../README.md#github-actions). Dedicated fuzz, native ABI, 386, extended stability and live integration runs remain separate acceptance work. Earlier references to dedicated CI jobs describe the development setup, not the current workflow or completed acceptance.
+
 1. **Standard-library contracts**: interface assertions, conversion, NumInput, NextResultSet, ErrBadConn, Validator, SessionResetter.
 2. **Protocol tests/fuzz**: packet boundaries, compression, OB20, truncation/oversize/unknown fields, NULL bitmaps, types/nesting.
 3. **Real servers in both modes**: ordinary/client/server/combined execution, all types, procedures, batches, LOB, cursors, metadata, XA.
