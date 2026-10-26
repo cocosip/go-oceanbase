@@ -64,7 +64,8 @@ type SessionOptions struct {
 	// SkipVersionProbe omits ob_version() during initialization; default false.
 	// Version-dependent features stay disabled or unsupported when the version is unknown.
 	SkipVersionProbe bool
-	// ParseTime converts unzoned dates and timestamps using Location; invalid or ambiguous times fail.
+	// ParseTime converts dates/timestamps to time.Time, using Location for unzoned/LTZ values.
+	// Zoned timestamps retain their explicit offset; invalid or ambiguous times fail.
 	ParseTime bool
 	// CompatibleMysqlVersion selects MySQL 5 or 8 client result and conversion semantics; zero defaults to 5.
 	CompatibleMysqlVersion int

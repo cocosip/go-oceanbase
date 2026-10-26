@@ -20,8 +20,8 @@ type IntervalYM string
 // IntervalDS preserves a signed day and second interval with up to nine fractional digits.
 type IntervalDS string
 
-// Scan reads a canonical timestamp.
-func (t *TimestampTZ) Scan(src any) error { return scanTyped(t, src, TimestampTZ.Value) }
+// Scan reads a canonical timestamp or time.Time; time.Time cannot retain original text scale.
+func (t *TimestampTZ) Scan(src any) error { return scanTimestamp(t, src, TimestampTZ.Value) }
 
 // Value implements driver.Valuer.
 func (t TimestampTZ) Value() (driver.Value, error) {
@@ -38,8 +38,26 @@ func (t TimestampTZ) Time() (time.Time, error) {
 	return p.Instant, err
 }
 
-// Scan reads a canonical session timestamp.
-func (t *TimestampLTZ) Scan(src any) error { return scanTyped(t, src, TimestampLTZ.Value) }
+// Scan reads a canonical session timestamp or time.Time with an explicit offset.
+func (t *TimestampLTZ) Scan(src any) error { return scanTimestamp(t, src, TimestampLTZ.Value) }
+
+func scanTimestamp[T ~string](dest *T, src any, validate func(T) (driver.Value, error)) error {
+	if instant, ok := src.(time.Time); ok {
+		_, offset := instant.Zone()
+		if instant.Year() < 1 || instant.Year() > 9999 || offset%60 != 0 || offset < -12*3600 || offset > 14*3600 {
+			return dberrors.ErrType
+		}
+		text := instant.Format(valueformat.TimestampLayout + ".999999999 -07:00")
+		name := instant.Location().String()
+		if _, err := time.LoadLocation(name); err == nil {
+			if _, err := valueformat.ParseTimestamp(text + " " + name); err == nil {
+				text += " " + name
+			}
+		}
+		src = text
+	}
+	return scanTyped(dest, src, validate)
+}
 
 // Value implements driver.Valuer.
 func (t TimestampLTZ) Value() (driver.Value, error) {

@@ -93,6 +93,33 @@ Use `QueryRowContext` / `QueryContext` for queries and `ExecContext` for writes.
 
 In MySQL mode, ordinary `time.Time` parameters (including `time.Now()`) are converted to `Session.Location` and truncated to microsecond precision in both preparation modes. For example, `.123456789` becomes `.123456`; `.999999999` becomes `.999999` without advancing the second. Applications do not need to truncate timestamps before binding. Years outside 1–9999 after timezone conversion still return `ErrBind`. The destination column can further reduce precision according to server rules. Oracle mode retains nanoseconds for ordinary `time.Time` parameters.
 
+Set `cfg.Session.ParseTime = true` before `NewConnector` to read date/timestamp columns into ordinary Go time fields (DSN `parseTime=true`). The default is false. `ColumnTypes().ScanType()` follows the returned value; database type names stay unchanged.
+
+| SQL type | ParseTime=false | ParseTime=true |
+| --- | --- | --- |
+| Oracle DATE / TIMESTAMP | Canonical string | time.Time in Session.Location; DATE retains hours/minutes/seconds, TIMESTAMP retains nanoseconds |
+| Oracle TIMESTAMP WITH TIME ZONE | Canonical string | time.Time using the value's explicit offset and validated region |
+| Oracle TIMESTAMP WITH LOCAL TIME ZONE | Canonical session string | time.Time resolved in actual Session.Location |
+| MySQL DATE | Date string | time.Time at midnight in Session.Location |
+| MySQL DATETIME / TIMESTAMP | Date/time string | time.Time in Session.Location; TIMESTAMP session conversion is performed by the server |
+| MySQL TIME / YEAR | Signed duration string / int64 | Same duration string / int64 |
+| Oracle INTERVAL YEAR TO MONTH / DAY TO SECOND | Specialized canonical string | Same string; not time.Time or time.Duration |
+| SQL NULL | nil | nil; use sql.NullTime, sql.Null[time.Time] or a time pointer |
+
+For example, with a connector configured above and a non-NULL Oracle TZ column:
+
+```go
+var createdAt time.Time
+if err := db.QueryRowContext(ctx,
+    "SELECT CREATED_AT FROM APP_USER WHERE ID=?", id).Scan(&createdAt); err != nil {
+    return err
+}
+```
+
+Compatibility: with ParseTime=true, Oracle TZ/LTZ now reach custom Scanners as time.Time rather than string. TimestampTZ/TimestampLTZ accept both forms, including through sql.Null[T]. Parsed time preserves the instant, offset and nanoseconds, but cannot retain original fractional scale or every zone token. For exact canonical text, keep ParseTime=false and use the specialized Scanners. Ordinary time.Time input still binds as TIMESTAMP; use TimestampTZ/TimestampLTZ inputs to request those native identities explicitly. Unrepresentable dates and unresolved LTZ daylight-saving gaps/overlaps fail conversion rather than becoming zero time or selecting an offset. Keep Session.Location consistent with the database session timezone.
+
+MySQL TIME precision follows the existing compatibility profile: the default CompatibleMysqlVersion=5 removes fractional seconds from TIME results; explicitly select 8 to retain nonzero fractions. ParseTime does not change this policy or turn negative/>24-hour durations into timestamps.
+
 ```go
 tx, err := db.BeginTx(ctx, nil)
 if err != nil { return err }

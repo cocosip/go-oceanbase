@@ -23,8 +23,26 @@ func DecodeRowValue(column wire.Column, binaryRows bool, data []byte, mode confi
 	}
 	if mode == config.ModeOracle && oracleTemporal(column.Type) {
 		value, err := DecodeOracleTemporal(column.Type, data, options.Location)
-		if err == nil && column.Type == 202 && options.ParseTime {
-			return ParseRowTime(value, options.Location)
+		if err == nil && options.ParseTime {
+			switch column.Type {
+			case 200:
+				return types.TimestampTZ(value).Time()
+			case 201:
+				parts, err := valueformat.ParseLTZ(value)
+				if err != nil {
+					return nil, err
+				}
+				location := options.Location
+				if location == nil {
+					location = time.UTC
+				}
+				if parts.Local {
+					return valueformat.ResolveLocal(parts.Instant, location)
+				}
+				return parts.Instant.In(location), nil
+			case 202:
+				return ParseRowTime(value, options.Location)
+			}
 		}
 		return value, err
 	}

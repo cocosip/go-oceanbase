@@ -12,6 +12,7 @@ import (
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/valueformat"
+	"github.com/cocosip/go-oceanbase/types"
 )
 
 func assignmentOperation(t *testing.T) *session.Operation {
@@ -23,6 +24,35 @@ func assignmentOperation(t *testing.T) *session.Operation {
 	}
 	t.Cleanup(func() { op.Release() })
 	return op
+}
+
+func TestParsedTemporalOutputs(t *testing.T) {
+	op := assignmentOperation(t)
+	want := time.Date(2024, 2, 29, 12, 34, 56, 123456789, time.FixedZone("", -1800))
+	var instant time.Time
+	var nullable sql.NullTime
+	var tz types.TimestampTZ
+	var ltz types.TimestampLTZ
+	var nullableTZ sql.Null[types.TimestampTZ]
+	var nullableLTZ sql.Null[types.TimestampLTZ]
+	for _, dest := range []any{&instant, &nullable, &tz, &ltz, &nullableTZ, &nullableLTZ} {
+		binding, err := newScalarBinding(Output{Dest: dest})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = Assign(t.Context(), op, nil, []*Binding{binding}, []driver.Value{want}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !instant.Equal(want) || !nullable.Valid || !nullable.Time.Equal(want) || !nullableTZ.Valid || !nullableLTZ.Valid {
+		t.Fatal("temporal output changed")
+	}
+	for _, value := range []interface{ Time() (time.Time, error) }{tz, ltz, nullableTZ.V, nullableLTZ.V} {
+		got, err := value.Time()
+		if err != nil || !got.Equal(want) {
+			t.Fatal(got, err)
+		}
+	}
 }
 
 type failingOutScanner struct{ calls int }

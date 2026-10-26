@@ -21,6 +21,8 @@ func caseDefinitions() []caseDefinition {
 		{name: "scalars", description: "exact decimal, Unicode, binary, date/time and NULL", configure: scalarConfig, run: runScalars},
 		{name: "mysql-scalars", description: "MySQL TIME/YEAR, integer boundaries, BIT, binary padding and metadata", mysqlOnly: true, configure: scalarConfig, run: runMySQLScalars},
 		{name: "oracle-scalars", description: "Oracle national text, TZ/LTZ, intervals, ROWID and typed NULL", oracleOnly: true, configure: oracleScalarConfig, run: runOracleScalars},
+		{name: "temporal-time-server", description: "ParseTime date/timestamp/TZ/LTZ scans, precision, metadata and NULL with server preparation", configure: temporalTimeConfig, run: runTemporalTimes},
+		{name: "temporal-time-client", description: "ParseTime date/timestamp/TZ/LTZ scans, precision, metadata and NULL with client preparation", configure: func(cfg *oceanbase.Config) { temporalTimeConfig(cfg); clientPrepare(cfg) }, run: runTemporalTimes},
 		{name: "transactions", description: "commit, rollback, savepoint and read-only transaction", run: runTransactions},
 		{name: "metadata", description: "table/column/primary key dictionary and ColumnTypes", run: runMetadata},
 		{name: "metadata-parameters", description: "describe parameters without executing SQL, including Oracle repeated names", run: runParameterMetadata},

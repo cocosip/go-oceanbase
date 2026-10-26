@@ -100,7 +100,7 @@ func ColumnScanType(c wire.Column, mode config.Mode, options config.SessionOptio
 	if c.Type == 210 && mode == config.ModeOracle {
 		return reflect.TypeFor[[]byte]()
 	}
-	if options.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type == 202 && mode == config.ModeOracle) {
+	if options.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type >= 200 && c.Type <= 202 && mode == config.ModeOracle) {
 		return reflect.TypeFor[time.Time]()
 	}
 	if c.Charset == 63 && (c.Type == 15 || c.Type >= 249) || c.Type == 16 || c.Type == 203 {

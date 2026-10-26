@@ -10,6 +10,8 @@ Config defaults: 10-second connection budget, 64 MiB logical messages, 16 MiB LO
 
 ## 1. Canonical Options and Initial Field Values
 
+Temporal Go contract: `Session.ParseTime` defaults false. When true, DATE/DATETIME/TIMESTAMP and Oracle TZ/LTZ return time.Time with matching ScanType. TZ uses its explicit offset/validated region; LTZ uses actual Session.Location and rejects unresolved DST gaps/overlaps. Specialized timestamp Scanners accept time.Time, but exact scale/zone-token preservation requires ParseTime=false. TIME/YEAR/INTERVAL keep their existing source types. Default MySQL profile 5 removes TIME fractions; profile 8 preserves them. See the complete [result matrix and compatibility note](go-driver-usage.md#3-queries-parameters-and-local-transactions).
+
 “Java initial field value” comes from pinned [Options](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/Options.java#L60), linked per field. Unassigned primitive fields use false/0 and references null. Reflection against unmodified Options source in a separate JVM checked all 160 entries; values are not inferred from enum descriptions. Numeric units follow the left-hand DefaultOptions definitions; strings retain their original values.
 
 These values are starting points without parameters, with DriverManager login timeout 0 and no credential plugins, **not final values for every connection path**. JVM login timeout may affect connectTimeout; HA mode supplies socketTimeout; see §4 for tristate booleans/other interactions. Go depends on neither JVM properties nor Java plugins.

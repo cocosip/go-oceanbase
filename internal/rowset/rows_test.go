@@ -50,9 +50,18 @@ func TestRowsIterationAndMetadata(t *testing.T) {
 	if err := r.Next(dest); err != io.EOF || r.HasNextResultSet() {
 		t.Fatal("closed snapshot retained rows", err)
 	}
-	parsed := New(context.Background(), config.ModeOracle, true, []Set{{Columns: []wire.Column{{Type: 202}}}})
-	if parsed.ColumnTypeScanType(0) != reflect.TypeFor[time.Time]() {
-		t.Fatal("ParseTime metadata lost")
+	for _, typ := range []byte{200, 201, 202} {
+		instant := time.Date(2024, 2, 29, 12, 34, 56, 123456789, time.UTC)
+		parsed := New(context.Background(), config.ModeOracle, true, []Set{{Columns: []wire.Column{{Type: typ}}, Rows: [][]driver.Value{{instant}, {nil}}}})
+		if parsed.ColumnTypeScanType(0) != reflect.TypeFor[time.Time]() {
+			t.Fatal("ParseTime metadata lost")
+		}
+		if err := parsed.Next(dest); err != nil || dest[0] != instant {
+			t.Fatal("materialized timestamp changed", dest, err)
+		}
+		if err := parsed.Next(dest); err != nil || dest[0] != nil {
+			t.Fatal("materialized NULL changed", dest, err)
+		}
 	}
 }
 

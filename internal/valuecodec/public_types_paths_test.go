@@ -97,7 +97,7 @@ func TestOracleParseTime(t *testing.T) {
 			t.Fatal("Oracle TIMESTAMP ignored parseTime", value, err)
 		}
 	}
-	if valuecodec.ColumnScanType(wire.Column{Type: 202}, oceanbase.ModeOracle, options) != reflect.TypeFor[time.Time]() || valuecodec.ColumnScanType(wire.Column{Type: 201}, oceanbase.ModeOracle, options) != reflect.TypeFor[string]() {
+	if valuecodec.ColumnScanType(wire.Column{Type: 202}, oceanbase.ModeOracle, options) != reflect.TypeFor[time.Time]() || valuecodec.ColumnScanType(wire.Column{Type: 201}, oceanbase.ModeOracle, options) != reflect.TypeFor[time.Time]() {
 		t.Fatal("parseTime scan metadata disagrees with values")
 	}
 }

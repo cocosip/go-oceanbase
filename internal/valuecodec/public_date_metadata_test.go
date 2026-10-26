@@ -19,19 +19,25 @@ const testDateText = "2024-02-29 12:34:56"
 
 func TestDateColumnTypes(t *testing.T) {
 	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
-		for _, path := range []string{testTextStrategy, testServerStrategy, testClientStrategy} {
-			for _, framing := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
-				for _, parseTime := range []bool{false, true} {
-					t.Run(fmt.Sprintf("%d/%s/%s/%t", mode, path, framing, parseTime), func(t *testing.T) {
-						testDateColumnTypes(t, mode, path, framing, parseTime)
-					})
+		types := []byte{7, 10, 12}
+		if mode == oceanbase.ModeOracle {
+			types = []byte{12}
+		}
+		for _, typ := range types {
+			for _, path := range []string{testTextStrategy, testServerStrategy, testClientStrategy} {
+				for _, framing := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
+					for _, parseTime := range []bool{false, true} {
+						t.Run(fmt.Sprintf("%d/%d/%s/%s/%t", mode, typ, path, framing, parseTime), func(t *testing.T) {
+							testDateColumnTypes(t, mode, typ, path, framing, parseTime)
+						})
+					}
 				}
 			}
 		}
 	}
 }
 
-func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, path, framing string, parseTime bool) {
+func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, typ byte, path, framing string, parseTime bool) {
 	t.Helper()
 	status := byte(2)
 	if mode == oceanbase.ModeOracle {
@@ -42,18 +48,25 @@ func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, path, framing string
 		cfg.PrepareMode = oceanbase.PrepareClient
 	}
 	db := publictest.BatchRewriteDB(t, cfg, framing, func(ctx context.Context, p *wire.PacketIO) {
-		row := append([]byte{byte(len(testDateText))}, testDateText...)
+		text := testDateText
+		if typ == 10 {
+			text = text[:10]
+		}
+		row := append([]byte{byte(len(text))}, text...)
 		nullRow := []byte{251}
 		if path == testServerStrategy {
-			if !publictest.ServePrepareStatus(ctx, t, p, testDateQuery, 7, 0, [][]byte{testpeer.TextColumn("d", 12, 63, 0)}, status) || !testpeer.ReadCommand(ctx, t, p, publictest.ExecuteHeader(7)) {
+			if !publictest.ServePrepareStatus(ctx, t, p, testDateQuery, 7, 0, [][]byte{testpeer.TextColumn("d", typ, 63, 0)}, status) || !testpeer.ReadCommand(ctx, t, p, publictest.ExecuteHeader(7)) {
 				return
 			}
 			row = []byte{0, 0, 7, 0xe8, 0x07, 2, 29, 12, 34, 56}
+			if typ == 10 {
+				row = []byte{0, 0, 4, 0xe8, 0x07, 2, 29}
+			}
 			nullRow = []byte{0, 4}
 		} else if !testpeer.ReadQuery(ctx, t, p, testDateQuery) {
 			return
 		}
-		if !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("d", 12, 63, 0), []byte{254, 0, 0, status, 0}, row, nullRow, []byte{254, 0, 0, status, 0}) {
+		if !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("d", typ, 63, 0), []byte{254, 0, 0, status, 0}, row, nullRow, []byte{254, 0, 0, status, 0}) {
 			return
 		}
 		if path == testServerStrategy && !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7)) {
@@ -83,7 +96,7 @@ func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, path, framing string
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertDateColumnRows(t, rows, mode, parseTime)
+	assertDateColumnRows(t, rows, mode, typ, parseTime)
 	if prepared != nil {
 		if err = prepared.Close(); err != nil {
 			t.Fatal(err)
@@ -94,7 +107,7 @@ func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, path, framing string
 	}
 }
 
-func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode, parseTime bool) {
+func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode, typ byte, parseTime bool) {
 	t.Helper()
 	defer func() { _ = rows.Close() }()
 	columns, err := rows.ColumnTypes()
@@ -102,15 +115,23 @@ func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode, par
 		t.Fatal("date column metadata missing", err)
 	}
 	wantType := valueformat.TypeNameDateTime
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.ModeOracle || typ == 10 {
 		wantType = valueformat.TypeNameDate
+	} else if typ == 7 {
+		wantType = valueformat.TypeNameTimestamp
 	}
 	if got := columns[0].DatabaseTypeName(); got != wantType {
 		t.Errorf("date DatabaseTypeName=%q, want %q", got, wantType)
 	}
 	var want any = testDateText
+	if typ == 10 {
+		want = testDateText[:10]
+	}
 	if parseTime {
 		want = time.Date(2024, 2, 29, 12, 34, 56, 0, time.UTC)
+		if typ == 10 {
+			want = time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC)
+		}
 	}
 	if got := columns[0].ScanType(); got != reflect.TypeOf(want) {
 		t.Errorf("date ScanType=%v, want %v", got, reflect.TypeOf(want))
