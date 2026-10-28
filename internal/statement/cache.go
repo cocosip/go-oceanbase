@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/cocosip/go-oceanbase/config"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/sqltext"
 )
@@ -20,18 +21,26 @@ type Cache struct {
 // CacheableSQL excludes transaction/session changes and multiple statements.
 func CacheableSQL(op *session.Operation, query string) bool {
 	p := op.Protocol()
-	tokens, err := sqltext.LexSQL(query, p.Mode, p.OK.Status&512 != 0, false)
-	if err != nil || len(tokens) == 0 || tokens[0].Kind != 'w' {
-		return false
+	noBackslash := p.OK.Status&512 != 0
+	quoteModes := []bool{false}
+	// ANSI_QUOTES is not reported in status flags; neither interpretation may hide a separator.
+	if p.Mode == config.ModeMySQL && !noBackslash && strings.Contains(query, `"`) && strings.Contains(query, `\`) {
+		quoteModes = append(quoteModes, true)
 	}
-	switch strings.ToUpper(query[tokens[0].Start:tokens[0].End]) {
-	case "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE":
-	default:
-		return false
-	}
-	for _, token := range tokens {
-		if token.Kind == ';' {
+	for _, ansiQuotes := range quoteModes {
+		tokens, err := sqltext.LexSQL(query, p.Mode, noBackslash, ansiQuotes)
+		if err != nil || len(tokens) == 0 || tokens[0].Kind != 'w' {
 			return false
+		}
+		switch strings.ToUpper(query[tokens[0].Start:tokens[0].End]) {
+		case "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE":
+		default:
+			return false
+		}
+		for _, token := range tokens {
+			if token.Kind == ';' {
+				return false
+			}
 		}
 	}
 	return true
