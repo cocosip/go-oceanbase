@@ -11,7 +11,6 @@ import (
 	"github.com/cocosip/go-oceanbase/config"
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/catalog"
-	"github.com/cocosip/go-oceanbase/internal/lob"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/valuecodec"
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -128,9 +127,4 @@ func (c *Decoder) ComplexValues(ctx context.Context, columns []wire.Column, valu
 // LOBValues materializes locator columns within the supplied limit.
 func (c *Decoder) LOBValues(ctx context.Context, columns []wire.Column, values []driver.Value, limit int64) error {
 	return c.materializeLOBValuesLocked(ctx, columns, values, limit)
-}
-
-// ReadLOB materializes and frees one native locator.
-func (c *Decoder) ReadLOB(ctx context.Context, n *lob.Native, limit int64) (driver.Value, error) {
-	return c.materializeAndFreeLOBLocked(ctx, n, limit)
 }

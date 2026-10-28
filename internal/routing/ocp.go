@@ -168,7 +168,7 @@ func jsonDescriptor(d *json.Decoder, depth int, nodes *int) ([]descriptorNode, e
 		}
 		n := descriptorNode{key: key}
 		switch key {
-		case addressListKey, "ADDRESS":
+		case addressListKey, addressKey:
 			tok, e := d.Token()
 			if e != nil || tok != json.Delim('[') {
 				return nil, ErrInvalid

@@ -58,7 +58,7 @@ func CloseStatement(ctx context.Context, op *session.Operation, id uint32) error
 	p := op.Packets()
 	p.ResetSequence()
 	err := p.WriteMessage(ctx, binary.LittleEndian.AppendUint32([]byte{25}, id))
-	if err != nil {
+	if err != nil && !PreSend(err) {
 		op.Discard()
 	}
 	return err

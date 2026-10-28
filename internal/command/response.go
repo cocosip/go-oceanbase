@@ -53,7 +53,7 @@ func Start(ctx context.Context, op *session.Operation, payload []byte, binary bo
 		return nil, err
 	}
 	if err := op.BeginResponse(); err != nil {
-		return nil, err
+		return nil, &notStarted{err}
 	}
 	p := op.Packets()
 	p.ResetSequence()
@@ -65,11 +65,6 @@ func Start(ctx context.Context, op *session.Operation, payload []byte, binary bo
 		return nil, err
 	}
 	return &RawResponse{op: op, binary: binary, done: true}, nil
-}
-
-// Adopt consumes a response whose command has already been sent by a specialized primitive.
-func Adopt(op *session.Operation, binary bool) *RawResponse {
-	return &RawResponse{op: op, binary: binary, done: true}
 }
 
 // Columns returns the current raw column descriptions.

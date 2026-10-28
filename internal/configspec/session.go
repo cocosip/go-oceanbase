@@ -6,9 +6,13 @@ import (
 )
 
 // SessionTimeZone returns a valid session zone name or minute-aligned fixed offset.
+// The process-local zone is rejected: its meaning and offset vary by host.
 func SessionTimeZone(loc *time.Location) (string, bool) {
 	if loc == nil {
 		loc = time.UTC
+	}
+	if loc == time.Local {
+		return "", false
 	}
 	t := time.Unix(0, 0).In(loc)
 	start, end := t.ZoneBounds()
@@ -24,7 +28,7 @@ func SessionTimeZone(loc *time.Location) (string, bool) {
 		}
 		return fmt.Sprintf("%s%02d:%02d", sign, offset/3600, offset%3600/60), true
 	}
-	if loc == time.Local || !ZoneToken(loc.String(), 128) {
+	if !ZoneToken(loc.String(), 128) {
 		return "", false
 	}
 	return loc.String(), true

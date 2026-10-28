@@ -3,6 +3,7 @@ package statement
 import (
 	"container/list"
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/cocosip/go-oceanbase/internal/session"
@@ -68,7 +69,9 @@ func (c *Cache) Recycle(ctx context.Context, op *session.Operation, s *Statement
 		delete(c.entries, s.plan.Query)
 		c.order.Remove(old)
 		if err := previous.Close(ctx, op); err != nil {
-			return err
+			// A failed eviction means the connection cannot cache: release the
+			// new statement instead of leaking its server-side handle.
+			return errors.Join(err, s.Close(ctx, op))
 		}
 	}
 	s.cacheNoBackslash = op.Protocol().OK.Status&512 != 0

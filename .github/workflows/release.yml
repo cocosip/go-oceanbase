@@ -29,9 +29,24 @@ jobs:
             echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CURR_TAG}"
           } > CHANGELOG_BODY.md
 
+      - name: Classify release
+        id: classify
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          lower="${TAG,,}"
+          case "$lower" in
+            *-rc*|*-alpha*|*-beta*|*-pre*|*-preview*|*-dev*|*-snapshot*|*-nightly*)
+              echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           body_path: CHANGELOG_BODY.md
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.classify.outputs.prerelease }}
+          make_latest: ${{ steps.classify.outputs.prerelease == 'false' && 'true' || 'false' }}

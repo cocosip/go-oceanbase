@@ -18,12 +18,16 @@ const discoveryHealthB = "health-b:2881"
 const discoveryTestAddress = "host:2881"
 
 const testDescription = `(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=tcp)(HOST=HOST1)(PORT=2881)(TYPE=master))(ADDRESS=(HOST=host2)(PORT=2882)(TYPE=slave)(WEIGHT=7)))(CONNECT_DATA=(SERVICE_NAME=orders)))`
+
+// testBareAddressDescription places ADDRESS entries directly under DESCRIPTION,
+// which Oracle-style TNS aliases also accept.
+const testBareAddressDescription = `(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=HOST1)(PORT=2881)(TYPE=master))(ADDRESS=(HOST=host2)(PORT=2882)(TYPE=slave)(WEIGHT=7))(CONNECT_DATA=(SERVICE_NAME=orders)))`
 const testOCP = `{"ADDRESS_LIST":[{"ADDRESS":[{"PROTOCOL":"tcp","HOST":"host1","PORT":2881,"TYPE":"master"}]}],"CONNECT_DATA":{"SERVICE_NAME":"orders"}}`
 
 func TestTNSParser(t *testing.T) {
-	for _, input := range []string{testDescription, "orders=" + testDescription, "(orders=" + testDescription + ")", "# comment\nother=" + strings.ReplaceAll(testDescription, discoveryTestService, "other") + "\norders=" + testDescription} {
+	for _, input := range []string{testDescription, testBareAddressDescription, "orders=" + testDescription, "(orders=" + testDescription + ")", "# comment\nother=" + strings.ReplaceAll(testDescription, discoveryTestService, "other") + "\norders=" + testDescription} {
 		alias := discoveryTestService
-		if input == testDescription {
+		if input == testDescription || input == testBareAddressDescription {
 			alias = ""
 		}
 		s, err := ParseTNS([]byte(input), alias)
@@ -34,7 +38,7 @@ func TestTNSParser(t *testing.T) {
 			t.Fatalf("endpoint semantics: %+v", s.Endpoints)
 		}
 	}
-	for _, input := range []string{"", testDescription + "garbage", strings.Replace(testDescription, "tcp", "udp", 1), strings.Replace(testDescription, "PORT=2881", "PORT=0", 1), strings.Replace(testDescription, "HOST=HOST1", "HOST=HOST1)(HOST=other", 1), strings.Replace(testDescription, "TYPE=master", "TYPE=unknown", 1), "orders=" + testDescription + " orders=" + testDescription, strings.Repeat("(x=", 40) + "a" + strings.Repeat(")", 40), strings.Repeat(" ", (1<<20)+1), strings.Replace(testDescription, "ADDRESS_LIST=", "UNKNOWN=", 1)} {
+	for _, input := range []string{"", testDescription + "garbage", strings.Replace(testDescription, "tcp", "udp", 1), strings.Replace(testDescription, "PORT=2881", "PORT=0", 1), strings.Replace(testDescription, "HOST=HOST1", "HOST=HOST1)(HOST=other", 1), strings.Replace(testDescription, "TYPE=master", "TYPE=unknown", 1), "orders=" + testDescription + " orders=" + testDescription, strings.Repeat("(x=", 40) + "a" + strings.Repeat(")", 40), strings.Repeat(" ", (1<<20)+1), strings.Replace(testDescription, "ADDRESS_LIST=", "UNKNOWN=", 1), strings.Replace(testBareAddressDescription, "(CONNECT_DATA", "(WEIGHT=1)(CONNECT_DATA", 1)} {
 		alias := ""
 		if strings.HasPrefix(input, "orders=") {
 			alias = discoveryTestService

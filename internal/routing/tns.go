@@ -10,6 +10,7 @@ import (
 
 const discoveryLimit = 1 << 20
 const addressListKey = "ADDRESS_LIST"
+const addressKey = "ADDRESS"
 
 type descriptorNode struct {
 	key, value string
@@ -157,7 +158,7 @@ func descriptionSnapshot(nodes []descriptorNode, identity string) (Snapshot, err
 	seen := map[string]bool{}
 	group := uint16(0)
 	for _, n := range nodes {
-		if n.key != addressListKey && seen[n.key] {
+		if n.key != addressListKey && n.key != addressKey && seen[n.key] {
 			return s, ErrInvalid
 		}
 		seen[n.key] = true
@@ -166,7 +167,7 @@ func descriptionSnapshot(nodes []descriptorNode, identity string) (Snapshot, err
 			count := 0
 			policies := map[string]bool{}
 			for _, a := range n.children {
-				if a.key != "ADDRESS" {
+				if a.key != addressKey {
 					if policies[a.key] || !validPolicy(a) {
 						return s, ErrInvalid
 					}
@@ -185,6 +186,17 @@ func descriptionSnapshot(nodes []descriptorNode, identity string) (Snapshot, err
 				return s, ErrInvalid
 			}
 			group++
+		case addressKey:
+			// Bare ADDRESS entries are alternates within one priority group.
+			e, err := descriptorEndpoint(n.children)
+			if err != nil {
+				return s, err
+			}
+			e.Group = group
+			s.Endpoints = append(s.Endpoints, e)
+			if len(s.Endpoints) > 1024 {
+				return s, ErrInvalid
+			}
 		case "CONNECT_DATA":
 			if len(n.children) != 1 || n.children[0].key != "SERVICE_NAME" || !validService(n.children[0].value) {
 				return s, ErrInvalid

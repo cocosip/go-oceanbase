@@ -138,7 +138,7 @@ func (m *Manager) Finish(ctx context.Context, op *session.Operation, cursors *cu
 		query = "COMMIT"
 	}
 	_, err := command.Start(ctx, op, append([]byte{3}, query...), false)
-	sent := err == nil || !command.PreSend(err)
+	sent := err == nil || !command.Unsent(err)
 	if err == nil {
 		_, err = command.ReadOK(ctx, op)
 	}

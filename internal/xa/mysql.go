@@ -33,7 +33,7 @@ func mysql(ctx context.Context, op *session.Operation, r *Request) error {
 		query += " ONE PHASE"
 	}
 	if _, err := command.Start(ctx, op, []byte("\x03"+query), false); err != nil {
-		return failure(op, r, err, !command.PreSend(err))
+		return failure(op, r, err, !command.Unsent(err))
 	}
 	if _, err := command.ReadOK(ctx, op); err != nil {
 		return failure(op, r, err, true)

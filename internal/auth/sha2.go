@@ -48,6 +48,7 @@ func EncryptPassword(password string, challenge []byte, key *rsa.PublicKey) ([]b
 	if err != nil {
 		return nil, err
 	}
+	defer clear(plain)
 	for i := range plain {
 		plain[i] ^= challenge[i%len(challenge)]
 	}
