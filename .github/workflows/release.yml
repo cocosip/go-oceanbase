@@ -37,7 +37,7 @@ jobs:
         run: |
           lower="${TAG,,}"
           case "$lower" in
-            *-rc*|*-alpha*|*-beta*|*-pre*|*-preview*|*-dev*|*-snapshot*|*-nightly*)
+            *-rc*|*-alpha*|*-beta*|*-pre*|*-dev*|*-snapshot*|*-nightly*)
               echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *)
               echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
