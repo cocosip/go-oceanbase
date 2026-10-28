@@ -8,6 +8,7 @@ import (
 
 	"github.com/cocosip/go-oceanbase/config"
 	"github.com/cocosip/go-oceanbase/dberrors"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 func TestAuthPluginGSSMechanismSecurity(t *testing.T) {
@@ -31,6 +32,31 @@ func (p *gssStepProbe) Step([]byte) ([]byte, bool, error) {
 }
 
 func (*gssStepProbe) Close() error { return nil }
+
+func TestAuthPluginGSSServerError(t *testing.T) {
+	for _, malformed := range []bool{false, true} {
+		probe := &gssStepProbe{}
+		plugin := &gssAuth{native: probe}
+		data := []byte{255, 0x15, 4, '#', '2', '8', '0', '0', '0', 'n', 'o'}
+		if malformed {
+			data = []byte{255}
+		}
+		out, err := plugin.Respond(t.Context(), config.Credentials{}, config.AuthChallenge{More: true, Data: data})
+		if malformed {
+			if !errors.Is(err, wire.ErrMalformed) {
+				t.Fatalf("malformed server error: %v", err)
+			}
+		} else {
+			var server *dberrors.Error
+			if !errors.As(err, &server) || server.Code != 1045 || server.SQLState != "28000" || server.Message != "no" {
+				t.Fatalf("server error was interpreted as a GSS token: %v", err)
+			}
+		}
+		if out != nil || probe.calls != 0 {
+			t.Fatal("server error reached native GSS context", out, probe.calls)
+		}
+	}
+}
 
 func TestAuthPluginGSSCanceledBeforeNativeStep(t *testing.T) {
 	base, cancel := context.WithCancel(context.Background())

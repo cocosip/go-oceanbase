@@ -218,7 +218,7 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 	}
 	if !testpeer.SendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
 		!testpeer.ReadCommand(ctx, t, p, optimizationExecute(id, -value, true)) || !testpeer.SendPackets(ctx, t, p, commandPacket(1, 0, status)) ||
-		!testpeer.ReadCommand(ctx, t, p, stmtPacket(25, id)) || !testpeer.ReadQuery(ctx, t, p, sessionStabilitySelect) ||
+		!testpeer.ReadQuery(ctx, t, p, sessionStabilitySelect) ||
 		!testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("v", 8, 63, 0), []byte{254, 0, 0, status, 0}) {
 		return false
 	}
@@ -240,10 +240,10 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 	if mode == config.ModeOracle {
 		end = []txStep{{finish, 4}, {testAutocommitOn, status}}
 	}
-	if !serveTxSteps(ctx, t, p, end) || !servePrepareStatus(ctx, t, p, sessionStabilityUpdate, id+1, 1, nil, status) ||
-		!testpeer.ReadCommand(ctx, t, p, optimizationExecute(id+1, value, false)) ||
+	if !serveTxSteps(ctx, t, p, end) ||
+		!testpeer.ReadCommand(ctx, t, p, optimizationExecute(id, value, true)) ||
 		!testpeer.SendPackets(ctx, t, p, []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'x'}) ||
-		!testpeer.ReadCommand(ctx, t, p, stmtPacket(25, id+1)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
+		!testpeer.ReadCommand(ctx, t, p, stmtPacket(25, id)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 		return false
 	}
 	return true

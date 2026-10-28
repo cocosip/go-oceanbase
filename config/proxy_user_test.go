@@ -17,7 +17,7 @@ func TestProxyUserConfig(t *testing.T) {
 	}{
 		{"proxy-private\x00", "", ModeOracle},
 		{"proxy-private\xff", "", ModeOracle},
-		{"private测试", "ascii", ModeOracle},
+		{"private测试", testCharsetASCII, ModeOracle},
 		{testProxyUser, "", ModeMySQL},
 	} {
 		_, err := Normalize(Config{User: testUser, ProxyUser: tc.value, Mode: tc.mode, Session: SessionOptions{Charset: tc.charset}})

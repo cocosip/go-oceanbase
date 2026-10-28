@@ -19,22 +19,6 @@ import (
 	"github.com/cocosip/go-oceanbase/types"
 )
 
-// ResolveArguments resolves only deferred root adapters, in logical argument order.
-// Already normalized values retain their identity and never invoke a Valuer again.
-func ResolveArguments(args []driver.NamedValue) ([]driver.NamedValue, error) {
-	resolved := append([]driver.NamedValue(nil), args...)
-	for i := range resolved {
-		if source, ok := resolved[i].Value.(ArgumentSource); ok {
-			value, err := source.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			resolved[i].Value = value
-		}
-	}
-	return resolved, nil
-}
-
 // PrepareArguments preserves prepare validation and conversion order without reading inputs.
 // Each deferred logical value is resolved and checked before advancing to the next one.
 func PrepareArguments(op *session.Operation, query string, args []driver.NamedValue) ([]driver.NamedValue, error) {
@@ -79,33 +63,6 @@ func PrepareArguments(op *session.Operation, query string, args []driver.NamedVa
 		}
 	}
 	return resolved, nil
-}
-
-// Prevalidate checks normalized IN arguments before preparation, without I/O.
-// Callers retain the original MySQL named-routine and OUT validation gates.
-func Prevalidate(op *session.Operation, query string, args []driver.NamedValue) error {
-	if int64(utf8.RuneCountInString(query)) >= op.Config().Limits.MaxMessageBytes {
-		return wire.ErrMessageTooLarge
-	}
-	if len(args) > 65535 {
-		return fmt.Errorf("%w: too many arguments", dberrors.ErrBind)
-	}
-	for _, arg := range args {
-		if source, ok := arg.Value.(*streaminput.Source); ok {
-			if _, err := sourceParameter(op, source); err != nil {
-				return err
-			}
-		}
-	}
-	if op.Protocol().Mode == config.ModeOracle {
-		plan, err := sqltext.BuildBindPlan(query, op.Protocol().Mode)
-		if err != nil {
-			return err
-		}
-		_, err = Bind(plan, args)
-		return err
-	}
-	return nil
 }
 
 // Bind resolves deferred logical values once after each name check, then maps physical slots.

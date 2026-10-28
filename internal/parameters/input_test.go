@@ -66,20 +66,17 @@ func TestBindConversionOnce(t *testing.T) {
 }
 
 func TestArgumentResolutionOrder(t *testing.T) {
+	op := parameterOperation(t, config.ModeOracle)
 	var first, second int
 	want := errors.New("current argument failed")
-	if _, err := ResolveArguments([]driver.NamedValue{{Value: argumentSource{calls: &first, err: want}}, {Value: argumentSource{calls: &second}}}); !errors.Is(err, want) || first != 1 || second != 0 {
+	if _, err := PrepareArguments(op, "SELECT :a,:b FROM dual", []driver.NamedValue{{Name: "a", Value: argumentSource{calls: &first, err: want}}, {Name: "b", Value: argumentSource{calls: &second}}}); !errors.Is(err, want) || first != 1 || second != 0 {
 		t.Fatal(first, second, err)
 	}
 	var reads int
 	state := new(atomic.Bool)
 	source := &streaminput.Source{Reader: unreadReader{&reads}, Length: -1, State: state}
-	args, err := ResolveArguments([]driver.NamedValue{{Name: "a", Value: argumentSource{value: source, calls: &first}}})
+	args, err := PrepareArguments(op, "SELECT :a,:A FROM dual", []driver.NamedValue{{Name: "a", Value: argumentSource{value: source, calls: &first}}})
 	if err != nil {
-		t.Fatal(err)
-	}
-	op := parameterOperation(t, config.ModeOracle)
-	if err = Prevalidate(op, "SELECT :a,:A FROM dual", args); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := sqltext.BuildBindPlan("SELECT :a,:A FROM dual", config.ModeOracle)
@@ -91,7 +88,7 @@ func TestArgumentResolutionOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	params, err := Encode(context.Background(), op, nil, values, 1024)
-	if err != nil || len(params) != 2 || !params[0].LongData || !params[1].LongData || reads != 0 || state.Load() || values[0] != source || values[1] != source {
+	if err != nil || first != 2 || len(params) != 2 || !params[0].LongData || !params[1].LongData || reads != 0 || state.Load() || values[0] != source || values[1] != source {
 		t.Fatal(params, values, reads, state.Load(), err)
 	}
 }
@@ -142,14 +139,14 @@ func TestPrepareArgumentsStopsAtCurrentLongData(t *testing.T) {
 
 func TestPrevalidationAndEncodedBudget(t *testing.T) {
 	op := parameterOperation(t, config.ModeOracle)
-	if err := Prevalidate(op, "SELECT :x FROM dual", nil); !errors.Is(err, dberrors.ErrBind) {
+	if _, err := PrepareArguments(op, "SELECT :x FROM dual", nil); !errors.Is(err, dberrors.ErrBind) {
 		t.Fatal(err)
 	}
-	if err := Prevalidate(op, strings.Repeat("x", int(op.Config().Limits.MaxMessageBytes)), nil); !errors.Is(err, wire.ErrMessageTooLarge) {
+	if _, err := PrepareArguments(op, strings.Repeat("x", int(op.Config().Limits.MaxMessageBytes)), nil); !errors.Is(err, wire.ErrMessageTooLarge) {
 		t.Fatal(err)
 	}
 	var reader *strings.Reader
-	if err := Prevalidate(op, "SELECT :x FROM dual", []driver.NamedValue{{Name: "x", Value: &streaminput.Source{Reader: reader, State: new(atomic.Bool)}}}); !errors.Is(err, dberrors.ErrLongData) {
+	if _, err := PrepareArguments(op, "SELECT :x FROM dual", []driver.NamedValue{{Name: "x", Value: &streaminput.Source{Reader: reader, State: new(atomic.Bool)}}}); !errors.Is(err, dberrors.ErrLongData) {
 		t.Fatal(err)
 	}
 	if _, err := Encode(context.Background(), op, nil, []any{"ab", "cd"}, 5); !errors.Is(err, wire.ErrMessageTooLarge) {

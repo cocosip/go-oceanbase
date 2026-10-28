@@ -353,16 +353,9 @@ func TestAuthFastSuccessRequiresFinalOK(t *testing.T) {
 }
 
 func TestAuthUnknownCharset(t *testing.T) {
-	_, err := runAuthTest(t, config.Config{User: testUser, Session: config.SessionOptions{Charset: "unavailable"}}, func(ctx context.Context, p *wire.PacketIO) {
-		if err := p.WriteMessage(ctx, authGreeting(authentication.Native, false)); err != nil {
-			t.Error(err)
-			return
-		}
-		if _, err := p.ReadMessage(ctx); err == nil {
-			t.Error("unknown charset silently ignored")
-		}
-	})
-	if !errors.Is(err, dberrors.ErrUnsupported) || strings.Contains(err.Error(), "unavailable") {
+	_, err := config.Normalize(config.Config{User: testUser, Session: config.SessionOptions{Charset: "unavailable"}})
+	var invalid *config.ConfigError
+	if !errors.As(err, &invalid) || invalid.Field != "Session.Charset" || strings.Contains(err.Error(), "unavailable") {
 		t.Fatal(err)
 	}
 }

@@ -109,6 +109,42 @@ func TestStatementCacheFullReset(t *testing.T) {
 	}
 }
 
+func TestStatementCacheSurvivesTextQuery(t *testing.T) {
+	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			status := byte(2)
+			if mode == oceanbase.ModeOracle {
+				status = 6
+			}
+			db := optimizationDB(t, mode, oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
+				if !publictest.ServePrepareStatus(ctx, t, p, testBatchSQL, 7, 1, nil, status) || !testpeer.ServeOK(ctx, t, p, optimizationExecute(7, 1, false), status) {
+					return
+				}
+				eof := []byte{254, 0, 0, status, 0}
+				if !testpeer.ReadCommand(ctx, t, p, []byte("\x03SELECT 1")) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("v", 3, 63, 0), eof, []byte{1, '1'}, eof) {
+					return
+				}
+				if !testpeer.ServeOK(ctx, t, p, optimizationExecute(7, 2, true), status) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 7)) {
+					return
+				}
+				p.ResetSequence()
+				testpeer.ServeQuit(t, p)
+			})
+			defer func() { _ = db.Close() }()
+			if _, err := db.ExecContext(context.Background(), testBatchSQL, 1); err != nil {
+				t.Fatal(err)
+			}
+			var value int
+			if err := db.QueryRowContext(context.Background(), "SELECT 1").Scan(&value); err != nil || value != 1 {
+				t.Fatal(value, err)
+			}
+			if _, err := db.ExecContext(context.Background(), testBatchSQL, 2); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestStatementCacheInvalidation(t *testing.T) {
 	for _, sqlLimit := range []int{1, 1024} {
 		t.Run(fmt.Sprint(sqlLimit), func(t *testing.T) {

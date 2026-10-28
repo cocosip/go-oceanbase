@@ -97,6 +97,17 @@ func TestResultUint64(t *testing.T) {
 	}
 }
 
+func TestRawResponseMalformedServerError(t *testing.T) {
+	ctx, s, op := responseOperation(t, [][]byte{{255, 0x15, 4, '#', '4', '2'}})
+	r, err := Start(ctx, op, []byte{3, 'q'}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.Advance(ctx); !errors.Is(err, wire.ErrMalformed) || !s.Closed() || op.ResponseActive() {
+		t.Fatalf("err=%v closed=%v active=%v", err, s.Closed(), op.ResponseActive())
+	}
+}
+
 func TestRawResponseDoesNotReleaseOperation(t *testing.T) {
 	ctx, s, op := responseOperation(t, [][]byte{{1}, testpeer.TextColumn("v", 253, 45, 0), {254, 0, 0, 2, 0}, {1, 'x'}, {254, 0, 0, 2, 0}})
 	r, err := Start(ctx, op, []byte{3, 'q'}, false)

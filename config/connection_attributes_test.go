@@ -21,7 +21,7 @@ func TestConnectionAttributesValidation(t *testing.T) {
 		{name: "nul-value", attributes: map[string]string{testAttributeKey: "private\x00"}},
 		{name: "invalid-key", attributes: map[string]string{"private\xff": testAttributeValue}},
 		{name: "invalid-value", attributes: map[string]string{testAttributeKey: "private\xff"}},
-		{name: "unrepresentable-key", charset: "ascii", attributes: map[string]string{"应用": testAttributePrivate}},
+		{name: "unrepresentable-key", charset: testCharsetASCII, attributes: map[string]string{"应用": testAttributePrivate}},
 		{name: "unrepresentable-value", charset: localFilenameCharset, attributes: map[string]string{testAttributeKey: "😀private"}},
 		{name: "byte-budget", attributes: map[string]string{testAttributeKey: strings.Repeat("p", 129)}, maxBytes: 128},
 		{name: "combined-budget", attributes: map[string]string{testAttributeKey: strings.Repeat("p", 90)}, maxBytes: 128},

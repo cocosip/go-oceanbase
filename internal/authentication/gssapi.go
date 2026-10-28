@@ -8,6 +8,7 @@ import (
 	"github.com/cocosip/go-oceanbase/config"
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/auth"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 type gssAuth struct {
@@ -52,6 +53,13 @@ func (p *gssAuth) Respond(ctx context.Context, _ config.Credentials, c config.Au
 			return nil, auth.ErrInvalidChallenge
 		}
 		token = c.Data
+	}
+	if len(token) > 0 && token[0] == 255 {
+		server, err := wire.DecodeServerError(token)
+		if err != nil {
+			return nil, err
+		}
+		return nil, &dberrors.Error{Code: server.Code, SQLState: server.SQLState, Message: server.Message}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

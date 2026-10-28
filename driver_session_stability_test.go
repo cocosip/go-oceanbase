@@ -170,7 +170,7 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 	}
 	if !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) ||
 		!testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(id, -value, true)) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) ||
-		!testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, id)) || !testpeer.ReadQuery(ctx, t, p, sessionStabilitySelect) ||
+		!testpeer.ReadQuery(ctx, t, p, sessionStabilitySelect) ||
 		!testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("v", 8, 63, 0), []byte{254, 0, 0, status, 0}) {
 		return false
 	}
@@ -197,10 +197,9 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 		probeEnd = []publictest.TxStep{{Query: driverFixtureRollbackSQL, Status: 4}, {Query: driverFixtureAutocommitOn, Status: status}}
 	}
 	if !publictest.ServeTxSteps(ctx, t, p, end) || !publictest.ServeTxSteps(ctx, t, p, begin) || !publictest.ServeTxSteps(ctx, t, p, probeEnd) ||
-		!publictest.ServePrepareStatus(ctx, t, p, sessionStabilityUpdate, id+1, 1, nil, status) ||
-		!testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(id+1, value, false)) ||
+		!testpeer.ReadCommand(ctx, t, p, driverFixtureOptimizationExecute(id, value, true)) ||
 		!testpeer.SendPackets(ctx, t, p, []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'x'}) ||
-		!testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, id+1)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
+		!testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, id)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 		return false
 	}
 	return true

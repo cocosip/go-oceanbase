@@ -33,6 +33,9 @@ func cloneSessionOptions(options SessionOptions) (SessionOptions, error) {
 		return SessionOptions{}, &ConfigError{Field: fieldNCharset}
 	}
 	options.Charset = strings.ToLower(options.Charset)
+	if _, ok := charset.HandshakeID(options.Charset); !ok {
+		return SessionOptions{}, &ConfigError{Field: "Session.Charset"}
+	}
 	if options.Collation != "" && (len(options.Collation) > 128 || !configspec.SessionVariableName(options.Collation)) {
 		return SessionOptions{}, &ConfigError{Field: "Session.Collation"}
 	}

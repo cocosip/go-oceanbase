@@ -175,13 +175,7 @@ func TestCursorSensitiveInitialChildren(t *testing.T) {
 						return
 					}
 					if kind == fetchError {
-						if !testpeer.SendPackets(ctx, t, p, []byte{255, 40, 4, '#', 'H', 'Y', '0', '0', '0', 'x'}) {
-							return
-						}
-						p.ResetSequence()
-						if _, err := p.ReadMessage(ctx); err == nil {
-							t.Error("failed child fetch retained the connection")
-						}
+						serveFailedInitialChildFetch(ctx, t, p)
 						return
 					}
 					if !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("n", 8, 63, 0), []byte{254, 0, 0, 6, 0}, binary.LittleEndian.AppendUint64([]byte{0, 0}, 42), []byte{254, 0, 0, 134, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 92)) {
@@ -226,5 +220,16 @@ func TestCursorSensitiveInitialChildren(t *testing.T) {
 				t.Fatal("initial child cleanup damaged parent session", err)
 			}
 		})
+	}
+}
+
+func serveFailedInitialChildFetch(ctx context.Context, t *testing.T, p *wire.PacketIO) {
+	t.Helper()
+	if !testpeer.SendPackets(ctx, t, p, []byte{255, 40, 4, '#', 'H', 'Y', '0', '0', '0', 'x'}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 92)) {
+		return
+	}
+	p.ResetSequence()
+	if _, err := p.ReadMessage(ctx); err == nil {
+		t.Error("failed child fetch retained the connection")
 	}
 }

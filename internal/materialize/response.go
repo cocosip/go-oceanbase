@@ -145,17 +145,15 @@ func (c *Decoder) DecodeSet(ctx context.Context, set *Set, used *int64) error {
 func (c *Decoder) Fetch(ctx context.Context, id uint32, count int, columns []wire.Column, options command.FetchOptions) (Set, uint16, command.Result, error) {
 	r, err := command.FetchRaw(ctx, c.op, id, count, columns, options)
 	if err != nil {
-		var server *dberrors.Error
-		if errors.As(err, &server) {
-			c.op.Discard()
-		}
 		return Set{}, 0, command.Result{}, err
 	}
 	var used int64
 	sets, err := c.CollectResponse(ctx, r, true, &used)
 	if err != nil {
-		c.op.Discard()
-		c.op.EndResponse()
+		if c.op.ResponseActive() {
+			c.op.Discard()
+			c.op.EndResponse()
+		}
 		return Set{}, 0, command.Result{}, err
 	}
 	if err = c.CheckEpoch(); err != nil {
