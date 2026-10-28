@@ -23,6 +23,7 @@ func (o *ExecutionOptions) normalize() error {
 	return nil
 }
 
+//nolint:goconst // DSN option names intentionally match the canonical parser names.
 func (o *ExecutionOptions) applyDSNOption(name, value string) error {
 	var err error
 	switch name {

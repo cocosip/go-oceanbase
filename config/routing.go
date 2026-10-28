@@ -51,6 +51,7 @@ type RoutingOptions struct {
 	ValidationInterval time.Duration
 }
 
+//nolint:goconst // DSN option names intentionally match the canonical parser names.
 func (o *RoutingOptions) applyDSNOption(name, value string) error {
 	var err error
 	switch name {

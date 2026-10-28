@@ -27,6 +27,7 @@ func ParseDSN(dsn string) (Config, error) {
 	if err != nil {
 		return Config{}, &ConfigError{Field: "DSN options"}
 	}
+	values = normalizeDSNOptionNames(values)
 	hasDescription := values.Has("addressDescription")
 	if err := parseTransportDSN(&cfg, values); err != nil {
 		return Config{}, err
@@ -48,6 +49,83 @@ func ParseDSN(dsn string) (Config, error) {
 		}
 	}
 	return Normalize(cfg)
+}
+
+// normalizeDSNOptionNames makes the query-key boundary case-insensitive while
+// leaving decoded values untouched. Repeated keys remain in one value list so
+// the existing option-specific validation rejects them before selecting one.
+func normalizeDSNOptionNames(values url.Values) url.Values {
+	result := make(url.Values, len(values))
+	for name, list := range values {
+		key := strings.ToLower(name)
+		if canonical, ok := dsnOptionCanonicalNames[key]; ok {
+			key = canonical
+		}
+		result[key] = append(result[key], list...)
+	}
+	return result
+}
+
+var dsnOptionCanonicalNames = newDSNOptionCanonicalNames()
+
+//nolint:goconst // canonical names intentionally mirror the existing parser switches.
+func newDSNOptionCanonicalNames() map[string]string {
+	return map[string]string{
+		"interactive":              "interactive",
+		"proxyuser":                "proxyUser",
+		"createdatabaseifmissing":  "createDatabaseIfMissing",
+		"charset":                  "charset",
+		"collation":                "collation",
+		"ncharset":                 "ncharset",
+		"location":                 "location",
+		"parsetime":                "parseTime",
+		"skipversionprobe":         "skipVersionProbe",
+		"compatiblemysqlversion":   "compatibleMysqlVersion",
+		"allowoldpassword":         "allowOldPassword",
+		"passwordcharset":          "passwordCharset",
+		"serviceprincipalname":     "servicePrincipalName",
+		"compression":              "compression",
+		"ob20":                     "ob20",
+		"checksum":                 "checksum",
+		"newmetadata":              "newMetadata",
+		"proxychecksum":            "proxyChecksum",
+		"fulllinktrace":            "fullLinkTrace",
+		"prepareexecute":           "prepareExecute",
+		"statementcachesize":       "statementCacheSize",
+		"statementcachesqllimit":   "statementCacheSQLLimit",
+		"reuseparametertypes":      "reuseParameterTypes",
+		"statementchecksum":        "statementChecksum",
+		"addresses":                "addresses",
+		"role":                     "role",
+		"balance":                  "balance",
+		"maxattempts":              "maxAttempts",
+		"attempttimeout":           "attemptTimeout",
+		"retrydelay":               "retryDelay",
+		"blacklisttimeout":         "blacklistTimeout",
+		"validationinterval":       "validationInterval",
+		"mode":                     "mode",
+		"connecttimeout":           "connectTimeout",
+		"readtimeout":              "readTimeout",
+		"cleanuptimeout":           "cleanupTimeout",
+		"maxmessagebytes":          "maxMessageBytes",
+		"maxlobbytes":              "maxLOBBytes",
+		"fetchsize":                "fetchSize",
+		"maxresultitems":           "maxResultItems",
+		"rowsaffectedmode":         "rowsAffectedMode",
+		"preparemode":              "prepareMode",
+		"resetmode":                "resetMode",
+		"allowmultistatements":     "allowMultiStatements",
+		"network":                  "network",
+		"socket":                   "socket",
+		"tnsfile":                  "tnsFile",
+		"tnsalias":                 "tnsAlias",
+		"ocpurl":                   "ocpURL",
+		"addressdescription":       "addressDescription",
+		"discoveryservice":         "discoveryService",
+		"discoveryrefreshinterval": "discoveryRefreshInterval",
+		"discoverytimeout":         "discoveryTimeout",
+		"discoverymaxage":          "discoveryMaxAge",
+	}
 }
 
 func applyDSNOption(cfg *Config, name, value string) error {

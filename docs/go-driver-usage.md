@@ -18,7 +18,7 @@ oceanbase://app%40tenant:password@127.0.0.1:2881/demo?mode=mysql
 oceanbase://app%40tenant:password@127.0.0.1:2881/?mode=oracle
 ```
 
-URL-escape password characters such as `@`, `#`, `/` and `?`. Prefer `Config`, or construct URLs with `net/url.UserPassword`; do not concatenate credential-bearing URLs manually. DSNs reject arbitrary JDBC options and unknown keys; see the [option mapping](go-driver-options-mapping.md) for supported settings. Do not log DSNs or complete configurations.
+URL-escape password characters such as `@`, `#`, `/` and `?`. Prefer `Config`, or construct URLs with `net/url.UserPassword`; do not concatenate credential-bearing URLs manually. Supported DSN option names are case-insensitive (`connectTimeout`, `connecttimeout` and `CONNECTTIMEOUT` are equivalent), while option values retain their original case and characters. Duplicate names after case folding are rejected, including duplicates with the same value. DSNs reject arbitrary JDBC options and unknown keys; see the [option mapping](go-driver-options-mapping.md) for supported settings. Do not log DSNs or complete configurations.
 
 Compression defaults off, matching Connector/J 2.4.14. To enable it when offered by the server, set `cfg.Protocol.Compression = oceanbase.FeatureAuto` or DSN `compression=auto`; absent server support falls back to ordinary packets. `FeatureRequired` / `compression=required` is an explicit Go extension that fails when support is absent. OB20 still takes precedence over optional compression. The zero policy `FeatureDefault` resolves to compression off and all other protocol policies auto; use named constants instead of numeric values. Off=1 and Required=2 remain stable; Auto moves from 0 to 3, while zero now selects the per-option default.
 

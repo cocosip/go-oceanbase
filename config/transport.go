@@ -15,6 +15,7 @@ const (
 	configAddrField     = "Addr"
 )
 
+//nolint:goconst // DSN option names intentionally match the canonical parser names.
 func parseTransportDSN(cfg *Config, values url.Values) error {
 	for _, name := range []string{"network", "socket"} {
 		if list, ok := values[name]; ok && (len(list) != 1 || list[0] == "") {

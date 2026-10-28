@@ -79,7 +79,7 @@ oceanbase://app%40tenant:password@127.0.0.1:2881/demo?mode=mysql
 oceanbase://app%40tenant:password@127.0.0.1:2881/?mode=oracle
 ```
 
-These are placeholders. URL-escape credentials (`%40` represents `@`), or use `Config` to avoid constructing credential-bearing URLs. DSNs reject unknown options; JDBC settings are not interchangeable with Go settings. See the [usage guide](docs/go-driver-usage.md) and [option mapping](docs/go-driver-options-mapping.md) for supported configuration.
+These are placeholders. URL-escape credentials (`%40` represents `@`), or use `Config` to avoid constructing credential-bearing URLs. Supported DSN option names ignore case; duplicate names after case folding are rejected, while values keep their existing semantics. DSNs reject unknown options; JDBC settings are not interchangeable with Go settings. See the [usage guide](docs/go-driver-usage.md) and [option mapping](docs/go-driver-options-mapping.md) for supported configuration.
 
 Configure `TLSConfig` with trusted CAs and a server name when encryption is required; leaving it nil does not enable TLS. Use a context for each operation. Network timeouts or an uncertain commit outcome do not make writes safe to replay.
 
