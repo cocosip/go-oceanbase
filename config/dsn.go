@@ -28,7 +28,7 @@ func ParseDSN(dsn string) (Config, error) {
 		return Config{}, &ConfigError{Field: "DSN options"}
 	}
 	values = normalizeDSNOptionNames(values)
-	hasDescription := values.Has("addressDescription")
+	hasDescription := values.Has(addressDescriptionOption)
 	if err := parseTransportDSN(&cfg, values); err != nil {
 		return Config{}, err
 	}
@@ -120,7 +120,7 @@ func newDSNOptionCanonicalNames() map[string]string {
 		"tnsfile":                  "tnsFile",
 		"tnsalias":                 "tnsAlias",
 		"ocpurl":                   "ocpURL",
-		"addressdescription":       "addressDescription",
+		"addressdescription":       addressDescriptionOption,
 		"discoveryservice":         "discoveryService",
 		"discoveryrefreshinterval": "discoveryRefreshInterval",
 		"discoverytimeout":         "discoveryTimeout",

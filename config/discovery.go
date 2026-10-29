@@ -13,7 +13,10 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/routing"
 )
 
-const discoveryField = "Discovery"
+const (
+	discoveryField           = "Discovery"
+	addressDescriptionOption = "addressDescription"
+)
 
 // Topology is an owned discovery snapshot for one logical service.
 // Explicit endpoint roles are required when Routing.Role is constrained.
@@ -74,7 +77,7 @@ func publicTopology(s routing.Snapshot) Topology {
 func ParseAddressDescription(description string) (Topology, error) {
 	s, err := routing.ParseTNS([]byte(description), "")
 	if err != nil {
-		return Topology{}, &ConfigError{Field: "addressDescription"}
+		return Topology{}, &ConfigError{Field: addressDescriptionOption}
 	}
 	return publicTopology(s), nil
 }
@@ -152,7 +155,7 @@ func parseDiscoveryDSN(cfg *Config, values url.Values) error {
 	for _, v := range []struct {
 		name   string
 		target *string
-	}{{"tnsFile", &file}, {"tnsAlias", &alias}, {"ocpURL", &ocp}, {"addressDescription", &description}, {"discoveryService", &cfg.Discovery.Service}} {
+	}{{"tnsFile", &file}, {"tnsAlias", &alias}, {"ocpURL", &ocp}, {addressDescriptionOption, &description}, {"discoveryService", &cfg.Discovery.Service}} {
 		s, err := get(v.name)
 		if err != nil {
 			return err
