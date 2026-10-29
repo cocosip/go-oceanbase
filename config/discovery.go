@@ -71,8 +71,6 @@ func publicTopology(s routing.Snapshot) Topology {
 
 // ParseAddressDescription extracts an inline TNS DESCRIPTION without file or network I/O.
 // Connector routing options take precedence over Java load-balancing policy hints.
-//
-//nolint:goconst // DSN option names intentionally match the public error field.
 func ParseAddressDescription(description string) (Topology, error) {
 	s, err := routing.ParseTNS([]byte(description), "")
 	if err != nil {
