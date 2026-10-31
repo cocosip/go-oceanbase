@@ -47,6 +47,38 @@ func TestSessionMutationStatementCache(t *testing.T) {
 	}
 }
 
+func TestSessionNeutralStatementCache(t *testing.T) {
+	db := optimizationDB(t, config.ModeMySQL, config.ExecutionOptions{StatementCacheSize: 1}, func(ctx context.Context, p *wire.PacketIO) {
+		if !servePrepare(ctx, t, p, testBatchSQL, 7, 1, nil) || !testpeer.ServeOK(ctx, t, p, optimizationExecute(7, 1, false), 2) {
+			return
+		}
+		if !testpeer.ServeOK(ctx, t, p, []byte("\x03SHOW VARIABLES LIKE 'sql_mode'"), 2) {
+			return
+		}
+		if !testpeer.ServeOK(ctx, t, p, optimizationExecute(7, 1, false), 2) || !testpeer.ReadCommand(ctx, t, p, stmtPacket(25, 7)) {
+			return
+		}
+		p.ResetSequence()
+		testpeer.ServeQuit(t, p)
+	})
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	pinned, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pinned.Close() }()
+	if _, err = pinned.ExecContext(ctx, testBatchSQL, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pinned.ExecContext(ctx, "SHOW VARIABLES LIKE 'sql_mode'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pinned.ExecContext(ctx, testBatchSQL, 1); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionOperationEmptyRowset(t *testing.T) {
 	db := queryDB(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadQuery(ctx, t, p, "SELECT DATABASE()") || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("v", 253, 45, 0), []byte{254, 0, 0, 2, 0}, []byte{254, 0, 0, 2, 0}) {

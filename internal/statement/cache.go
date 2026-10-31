@@ -20,30 +20,60 @@ type Cache struct {
 
 // CacheableSQL excludes transaction/session changes and multiple statements.
 func CacheableSQL(op *session.Operation, query string) bool {
+	head, ok := statementHead(op, query)
+	if !ok {
+		return false
+	}
+	switch head {
+	case "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE":
+		return true
+	}
+	return false
+}
+
+// SessionNeutralSQL reports whether a non-cacheable statement provably cannot change
+// session or schema state, so executing it need not invalidate cached statements.
+func SessionNeutralSQL(op *session.Operation, query string) bool {
+	head, ok := statementHead(op, query)
+	if !ok {
+		return false
+	}
+	switch head {
+	case "SHOW", "EXPLAIN", "DESC", "DESCRIBE":
+		return true
+	}
+	return false
+}
+
+// statementHead returns the uppercased leading keyword when every permitted quoting
+// interpretation lexes the query to a single statement with a word head. ANSI_QUOTES
+// is not reported in status flags, so neither interpretation may hide a separator.
+func statementHead(op *session.Operation, query string) (string, bool) {
 	p := op.Protocol()
 	noBackslash := p.OK.Status&512 != 0
 	quoteModes := []bool{false}
-	// ANSI_QUOTES is not reported in status flags; neither interpretation may hide a separator.
 	if p.Mode == config.ModeMySQL && !noBackslash && strings.Contains(query, `"`) && strings.Contains(query, `\`) {
 		quoteModes = append(quoteModes, true)
 	}
+	head := ""
 	for _, ansiQuotes := range quoteModes {
 		tokens, err := sqltext.LexSQL(query, p.Mode, noBackslash, ansiQuotes)
 		if err != nil || len(tokens) == 0 || tokens[0].Kind != 'w' {
-			return false
-		}
-		switch strings.ToUpper(query[tokens[0].Start:tokens[0].End]) {
-		case "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE":
-		default:
-			return false
+			return "", false
 		}
 		for _, token := range tokens {
 			if token.Kind == ';' {
-				return false
+				return "", false
 			}
 		}
+		word := strings.ToUpper(query[tokens[0].Start:tokens[0].End])
+		if head == "" {
+			head = word
+		} else if head != word {
+			return "", false
+		}
 	}
-	return true
+	return head, true
 }
 
 // Take removes one idle statement, rejecting metadata parsed under different escaping.

@@ -49,7 +49,7 @@ func (e *Engine) queryLocked(ctx context.Context, op *session.Operation, query s
 		if err = e.validateImport(op, query, options.Input); err != nil {
 			return nil, err
 		}
-		if op.Config().Execution.StatementCacheSize > 0 && !statement.CacheableSQL(op, query) {
+		if op.Config().Execution.StatementCacheSize > 0 && !statement.CacheableSQL(op, query) && !statement.SessionNeutralSQL(op, query) {
 			if err = e.statements.Clear(ctx, op); err != nil {
 				return nil, err
 			}

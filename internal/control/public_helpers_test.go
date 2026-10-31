@@ -54,7 +54,7 @@ func stmtPacket(cmd byte, id uint32) []byte { return binary.LittleEndian.AppendU
 
 const warningClientPreparePath = "prepared-client"
 
-func servePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, id uint32, params int, columns [][]byte) bool {
+func servePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, query string, id uint32, params int, columns [][]byte) bool { //nolint:unparam // fixed prepare shapes keep peer scripts readable
 	t.Helper()
 	return servePrepareStatus(ctx, t, p, query, id, params, columns, 2)
 }
@@ -514,7 +514,7 @@ func assertReadWriteRejected(t *testing.T, pinned *sql.Conn) {
 	}
 }
 
-func optimizationExecute(id uint32, value int64, reuse bool) []byte {
+func optimizationExecute(id uint32, value int64, reuse bool) []byte { //nolint:unparam // fixed execute shapes keep peer scripts readable
 	b := append(executeHeader(id), 0, 1)
 	if reuse {
 		b[len(b)-1] = 0
