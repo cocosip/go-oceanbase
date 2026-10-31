@@ -220,7 +220,7 @@ JDBC URL ha-mode/multi-address/TNS/OCP entry points map to Go Routing/Discovery;
 
 ## 4. Initialization Interactions, Default Differences, and Zero Values
 
-Java [DefaultOptions.parse](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L1397) starts with new Options or a supplied old Options; same-name Properties override URL parameters. Lowercased booleans accept empty/1/true and 0/false; repeated identical URL keys do not overwrite previously added values. Do not rely on Properties enumeration order to resolve different aliases of one field. Go uses one explicit Config snapshot; query names are case-sensitive, duplicate/empty values reject, booleans are strictly true/false.
+Java [DefaultOptions.parse](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/util/DefaultOptions.java#L1397) starts with new Options or a supplied old Options; same-name Properties override URL parameters. Lowercased booleans accept empty/1/true and 0/false; repeated identical URL keys do not overwrite previously added values. Do not rely on Properties enumeration order to resolve different aliases of one field. Go uses one explicit Config snapshot; query option names are case-insensitive and normalized to canonical spelling, duplicate/empty values reject, booleans are strictly true/false.
 
 | Actual Java initialization/default rule | Go contract/migration requirement |
 | --- | --- |
