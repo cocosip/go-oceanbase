@@ -176,7 +176,7 @@ const authCloseErrorPath = "close-error"
 
 const serverErrorPath = "server-error"
 
-func commandPacket(affected, id uint64, status byte) []byte {
+func commandPacket(affected, id uint64, status byte) []byte { //nolint:unparam // fixed OK shapes keep peer scripts readable
 	data := binary.LittleEndian.AppendUint64([]byte{254}, affected)
 	data = binary.LittleEndian.AppendUint64(append(data, 254), id)
 	return append(append([]byte{0}, data...), status, 0, 0, 0)
@@ -309,6 +309,56 @@ func testChangeUserConversationState(t *testing.T, mode config.Mode, path string
 	case <-peerDone:
 	case <-ctx.Done():
 		t.Fatal("authentication peer did not finish", ctx.Err())
+	}
+}
+
+func TestChangeUserOracleDatabaseCase(t *testing.T) {
+	for _, tc := range []struct {
+		mode config.Mode
+		want string
+	}{
+		{config.ModeMySQL, "next"},
+		{config.ModeOracle, "NEXT"},
+	} {
+		t.Run(fmt.Sprintf("%d", tc.mode), func(t *testing.T) {
+			status := byte(2)
+			if tc.mode == config.ModeOracle {
+				status = 6
+			}
+			configured, err := controlConnector(config.Config{User: testUser, Mode: tc.mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+				if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
+					return
+				}
+				ctx = context.Background()
+				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, tc.mode, tc.want)) || !testpeer.SendPackets(ctx, t, p, commandPacket(0, 0, status)) || !testpeer.ServeBaseline(ctx, t, p, status) {
+					return
+				}
+				p.ResetSequence()
+				testpeer.ServeQuit(t, p)
+			})})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			s, err := configured.Connect(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Discard()
+			op, err := s.Acquire(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer op.Release()
+			m := New()
+			cache, resolver, cursors, lobs := &statement.Cache{}, &catalog.Resolver{}, &cursor.Manager{}, &lob.Manager{}
+			if err = m.ChangeUser(ctx, op, cache, resolver, cursors, lobs, config.Credentials{User: stateUserName, Password: stateUserPassword}, "next", false); err != nil {
+				t.Fatal(err)
+			}
+			if err = closeControlSession(ctx, s, op); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

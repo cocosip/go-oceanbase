@@ -232,7 +232,12 @@ func TestChangeUserDatabase(t *testing.T) {
 				status = 6
 			}
 			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
-				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, mode, "NewSchema")) || !testpeer.SendPackets(ctx, t, p, commandPacket(0, 0, status)) || !testpeer.ServeBaseline(ctx, t, p, status) {
+				want := "NewSchema"
+				if mode == config.ModeOracle {
+					// COM_CHANGE_USER uppercases an explicit Oracle database, matching Connector/J.
+					want = "NEWSCHEMA"
+				}
+				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, mode, want)) || !testpeer.SendPackets(ctx, t, p, commandPacket(0, 0, status)) || !testpeer.ServeBaseline(ctx, t, p, status) {
 					return
 				}
 				p.ResetSequence()

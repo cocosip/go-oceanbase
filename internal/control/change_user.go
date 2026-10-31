@@ -29,6 +29,12 @@ func (m *Manager) ChangeUser(ctx context.Context, op *session.Operation, cache *
 	cfg.User, cfg.Password, cfg.Credentials = credentials.User, credentials.Password, nil
 	cfg.ProxyUser = credentials.ProxyUser
 	cfg.Database, cfg.Mode = database, identity.Mode
+	// Connector/J uppercases an explicit Oracle database in COM_CHANGE_USER, while a
+	// database derived from user@tenant keeps its original case.
+	if identity.Mode == config.ModeOracle && database != "" {
+		database = strings.ToUpper(database)
+		cfg.Database = database
+	}
 	cfg.CreateDatabaseIfMissing = false
 	credentials, err = connect.ResolveCredentials(ctx, cfg)
 	if err != nil {
