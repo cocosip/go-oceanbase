@@ -24,7 +24,7 @@ func (f *frameIO) readOB20() error {
 	n := int3(h[:3])
 	payload := binary.LittleEndian.Uint32(h[19:])
 	if n < 28 || payload != uint32(n-28) {
-		return ErrMessageTooLarge
+		return ErrMalformed
 	}
 	if int3(h[4:]) != 0 || binary.LittleEndian.Uint16(h[7:]) != 0x20ab || binary.LittleEndian.Uint16(h[9:]) != 20 || binary.LittleEndian.Uint32(h[11:]) != f.ob.ConnectionID || uint32(int3(h[15:])) != f.requestID {
 		return ErrMalformed
@@ -36,10 +36,8 @@ func (f *frameIO) readOB20() error {
 	if (checksum != 0 || f.ob.RequireChecksum) && checksum != obCRC16(h[:29]) {
 		return ErrChecksum
 	}
+	// Unknown flag bits are tolerated so future server flags cannot break frame parsing.
 	flags := binary.LittleEndian.Uint32(h[23:])
-	if flags & ^uint32(15) != 0 {
-		return ErrMalformed
-	}
 	f.sequence++
 	f.obSequence++
 	data := make([]byte, int(payload))

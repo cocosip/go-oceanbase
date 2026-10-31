@@ -237,6 +237,26 @@ func TestOB20InvalidFrames(t *testing.T) {
 	}
 }
 
+func TestOB20UnknownFlags(t *testing.T) {
+	p := NewPacketIO(newBufferConn(ob20Fixture([]byte{1, 0, 0, 0, 'x'}, 0, 2|16|32)), 64)
+	_ = p.EnableOB20(OB20Options{ConnectionID: 42})
+	p.ResetSequence()
+	if got, err := p.ReadMessage(context.Background()); err != nil || string(got) != "x" {
+		t.Fatal("unknown OB20 flag bits must not break frame parsing", got, err)
+	}
+}
+
+func TestOB20HeaderPayloadMismatch(t *testing.T) {
+	frame := ob20Fixture([]byte{1, 0, 0, 0, 'x'}, 0, 2)
+	frame[0]++
+	p := NewPacketIO(newBufferConn(frame), 64)
+	_ = p.EnableOB20(OB20Options{ConnectionID: 42})
+	p.ResetSequence()
+	if _, err := p.ReadMessage(context.Background()); !errors.Is(err, ErrMalformed) {
+		t.Fatal("header/payload mismatch is malformed, not oversized", err)
+	}
+}
+
 func TestOB20Extras(t *testing.T) {
 	for _, extra := range [][]byte{{1}, {1, 0, 5, 0, 0, 0}, {1, 0, 0, 0, 0, 1}} {
 		payload := binary.LittleEndian.AppendUint32(nil, uint32(len(extra)))
