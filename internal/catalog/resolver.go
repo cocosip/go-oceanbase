@@ -250,7 +250,7 @@ func AnonymousComplexDescriptor(version uint64, element *valuecodec.Descriptor) 
 // DescribeColumns attaches immutable complex shapes to result metadata.
 func (r *Resolver) DescribeColumns(ctx context.Context, op *session.Operation, columns []wire.Column) error {
 	for i, column := range columns {
-		if column.Type != 160 {
+		if column.Type != 160 || column.IsXMLType() {
 			continue
 		}
 		d, err := r.Column(ctx, op, column)

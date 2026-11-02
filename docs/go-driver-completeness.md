@@ -22,16 +22,15 @@
 
 ## 已确认的客户端实现差距
 
-这里列四个尚缺实现的明确子集，不是四项全类型支持承诺，也不是本次已复现的数据损坏 bug。
+这里列三个尚缺实现的明确子集，不是三项全类型支持承诺，也不是本次已复现的数据损坏 bug。
 
 | ID / 关联能力 | 服务端可用范围与依据 | Go 确切缺口 | 明确不包含 |
 | --- | --- | --- | --- |
-| G04 / T17 XMLTYPE String 结果 | 官方支持 XMLTYPE；N 的 ownerless XMLTYPE/type160 text/binary String 结果、列存储、函数返回成功 | [物化入口](../internal/materialize/decoder.go)对 text type160 拒绝，binary 按复杂值处理，缺 XMLTYPE String 身份/解码；可复用 string | PL OUT/INOUT 见 B05；不要求 XML DOM/SQLXML API；string 输入本来可发，不把全部 XML 参数输入再算缺口 |
 | G05a / T14 命名 LOB 内容传入 PL | N 的 named OBJECT/collection BLOB/CLOB 内容，在 PL 中 GETLENGTH/SUBSTR/RAWTOHEX 读取成员成功 | [EncodeComplexScalar](../internal/valuecodec/complex.go)拒绝非 NULL BLOB/CLOB 成员，缺已证明的内容输入子集 | 成员写入持久 BLOB 列的指定形状见 B06；不包含 locator 回绑、所有 TIMESTAMP 和所有 collection 头 |
 | G07a / T15 named scalar/nested OBJECT text 结果 | N 的 NUMBER、普通/national 字符叶子、递归 named OBJECT text wire 可解析且读取成功 | [materialize](../internal/materialize/decoder.go)统一拒绝 text type160，缺有描述符/无歧义的这一 parser 子集 | RAW/DATE/TIMESTAMP、LOB/cursor 等任意成员不在此范围，见 B07；实际返回 VARCHAR2 的 collection 构造结果是普通 string，见 V15 |
 | G07b / Q05、T14 命名复杂构造输入 | N 的多语句命名 OBJECT、递归 OBJECT、named collection 构造 SQL 有成功子集 | [ClientLiteral](../internal/valuecodec/literal.go)不处理 Object/Array，缺命名构造器路径；binary 复杂绑定仍可用 | 不含匿名值、locator、集合子树 NULL OBJECT、复杂结果/所有 PL-only 类型；展开必须有界并保留类型身份 |
 
-G01/G03 已补本地实现，仍需各自的 Go 实库验收；G04/G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
+G01/G03/G04 已补本地实现，仍需各自的 Go 实库验收；G04 已限定系统 XMLTYPE 字符串结果；G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
 
 ## 已补实现，实库待验收
 
@@ -39,6 +38,7 @@ G01/G03 已补本地实现，仍需各自的 Go 实库验收；G04/G07a 只读�
 | --- | --- | --- |
 | G01 / T19–T20 字符集 | 已补 SJIS/Big5/DEC8/TIS620/GB2312/EUCKR 严格编码、握手和结果 collation，UTF16LE 结果解码及列长度；修正 x/text 与 OceanBase 映射/别名差异，完整单字节/双字节解码摘要及所有有效字符无损回编码、本地公开 SQL/参数/national/握手路径覆盖 | 新增 MySQL 存储/UTF16LE 实库测试入口，当前未配置 DSN，未获得新实库通过；Oracle 指定会话初始化拒绝仍归 B04，未知新字符集仍归 U06；UTF16LE 不开放 SQL client |
 | G03 / T12 显式 UROWID 参数 | 已补 `URowID`/`sql.Null[URowID]`/nil `*URowID`、Oracle type209 typed NULL、client CAST、OUT/INOUT 推导与显式 Type；公开 SQL peer 覆盖普通 prepare 类型复用、client/combined 及输出方向；MySQL/坏值/长度在发送前拒绝 | 新增直连/代理长 ROWID 回绑 UROWID 列、NULL 复用和 PL INOUT 入口，当前 DSN 未配置全部跳过；type209 结果仍按 ROWID 元数据读取，未猜测 UROWID 结果名；批处理沿既有资格判定顺序回退 |
+| G04 / T17 XMLTYPE String 结果 | 已补 ownerless/SYS XMLTYPE type160 身份识别、text/binary 长度编码和严格 UTF-8 string/NULL、XMLTYPE 元数据；跳过 UDT 描述且不误识别用户同名类型，覆盖 mixed OBJECT/XML 结果 | 直连/代理列存储/函数结果测试入口未配置 DSN，未获得 Go 实库通过；无 XML DOM/SQLXML API；PL OUT/INOUT 指定目标限制 B05 继续独立保留 |
 
 ## 客户端范围限制与可选扩展
 

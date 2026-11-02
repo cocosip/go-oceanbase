@@ -144,6 +144,8 @@ Use `Number` / `Decimal` or exact strings for money/high-precision numbers; do n
 
 Oracle `URowID` explicitly binds native type 209; `RowID` retains its existing string/CHARTOROWID behavior. Use `sql.Null[oceanbase.URowID]` or a nil `*oceanbase.URowID` for a typed NULL. `Out{Dest: &id}` infers UROWID from an `URowID` destination; a string destination can use `Type: "UROWID"`. Both reject in MySQL mode. Wire type 209 cannot distinguish ROWID from UROWID results, so result metadata continues to report ROWID. New UROWID paths have local protocol coverage; live acceptance is pending.
 
+Oracle system XMLTYPE results (ownerless or SYS metadata) return strict UTF-8 strings in text and binary queries, with SQL NULL preserved; `DatabaseTypeName` reports XMLTYPE. The driver preserves the serialized text, including server-added whitespace, and does not parse XML or resolve external entities. A user OBJECT named XMLTYPE keeps the ordinary complex-type path. XMLTYPE PL OUT/INOUT is outside this result adaptation; live acceptance of the new Go paths is pending.
+
 Close Rows promptly and check `Rows.Err()` after iteration. For multiple results, loop over `NextResultSet()` as well. Under the standard-library contract, `sql.RawBytes` remains valid only until the next row operation; copy it for longer retention.
 
 ## 4. Extensions and resource ownership

@@ -368,7 +368,7 @@ func (r *Rows) bufferResources(ctx context.Context) error {
 	}
 	found := false
 	for _, column := range r.columns {
-		found = found || column.Type == 160 || column.Type == 163 || column.Type == 210 || column.Type == 211
+		found = found || column.Type == 160 && !column.IsXMLType() || column.Type == 163 || column.Type == 210 || column.Type == 211
 	}
 	if !found {
 		return nil

@@ -134,7 +134,7 @@ func (s *State) Capture(values []driver.Value, physical bool) {
 func (s *State) ReadHidden(ctx context.Context, op *session.Operation, r *command.RawResponse) error {
 	hasComplex := false
 	for _, column := range r.Columns() {
-		hasComplex = hasComplex || column.Type == 160
+		hasComplex = hasComplex || column.Type == 160 && !column.IsXMLType()
 	}
 	if hasComplex {
 		if s.complexColumns != nil {

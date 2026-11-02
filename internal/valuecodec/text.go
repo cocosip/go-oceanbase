@@ -23,6 +23,9 @@ func TextTypeName(c wire.Column, mode config.Mode, session ...config.SessionOpti
 		case 163:
 			return valueformat.TypeNameRefCursor
 		case 160:
+			if c.IsXMLType() {
+				return "XMLTYPE"
+			}
 			return "OBJECT/ARRAY"
 		case 3:
 			return valueformat.TypeNameNumber
@@ -138,6 +141,9 @@ func mysqlTextTypeName(c wire.Column, session ...config.SessionOptions) string {
 func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
 	if data == nil {
 		return nil, nil
+	}
+	if mode == config.ModeOracle && c.IsXMLType() {
+		return charset.Decode(charsetUTF8MB4, data)
 	}
 	if TextTypeName(c, mode, session...) == "" {
 		return nil, &dberrors.UnsupportedTypeError{Type: c.Type, Mode: mode}

@@ -28,6 +28,8 @@ Oracle sensitive-cursor freshness is fixed and verified across connections, with
 
 Current UROWID input contract (2026-11-02): `URowID`, nullable values and OUT/INOUT preserve native type 209, including SQL NULL; client preparation uses CAST AS UROWID. Existing RowID binding and type-209 result metadata remain unchanged. Public local peers cover separate/combined/client execution and type reuse; the new Oracle direct/proxy storage and PL test profiles are unconfigured, so no new live pass is claimed. See G03 in the classified matrix.
 
+XMLTYPE result adaptation (2026-11-02): ownerless/SYS type160 metadata maps to XMLTYPE/string with strict UTF-8, including binary length framing. Named user OBJECTs keep descriptor decoding. Local text/prepare/combined and mixed OBJECT/XML peers pass; new storage/function integration profiles are unconfigured. PL output target rejection B05 is independent.
+
 ## 1. Handshake, Authentication, and Modes
 
 | Capability | Confirmed basis | Current Go behavior | Verification status |

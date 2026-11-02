@@ -145,6 +145,10 @@ func DecodeBinaryRow(data []byte, columns []Column) ([][]byte, error) {
 		}
 		switch c.Type {
 		case 160:
+			if c.IsXMLType() {
+				fields[i] = r.lenBytes()
+				break
+			}
 			if c.ComplexShape == nil {
 				return nil, ErrMalformed
 			}

@@ -151,7 +151,7 @@ func (o *nativeOutput) consume(ctx context.Context, hidden bool) error {
 	columns := o.raw.Columns()
 	hasComplex := false
 	for _, column := range columns {
-		if column.Type == 160 {
+		if column.Type == 160 && !column.IsXMLType() {
 			hasComplex = true
 		}
 	}

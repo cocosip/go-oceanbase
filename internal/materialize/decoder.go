@@ -70,6 +70,9 @@ func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [
 			}
 			continue
 		case 160:
+			if columns[i].IsXMLType() {
+				break
+			}
 			if !binaryRows {
 				return nil, fmt.Errorf("%w: complex rows require server prepared statements", dberrors.ErrUnsupported)
 			}
@@ -105,7 +108,7 @@ func (c *Decoder) ComplexValue(ctx context.Context, column wire.Column, data []b
 // ComplexValues resolves all complex columns within the result budget.
 func (c *Decoder) ComplexValues(ctx context.Context, columns []wire.Column, values []driver.Value) error {
 	for i, column := range columns {
-		if column.Type != 160 || values[i] == nil {
+		if column.Type != 160 || column.IsXMLType() || values[i] == nil {
 			continue
 		}
 		raw, ok := values[i].([]byte)

@@ -19,7 +19,7 @@ func (c *Decoder) CollectSet(ctx context.Context, r *command.RawResponse, binary
 	set := Set{Columns: r.Columns()}
 	hasComplex := false
 	for _, column := range set.Columns {
-		hasComplex = hasComplex || column.Type == 160
+		hasComplex = hasComplex || column.Type == 160 && !column.IsXMLType()
 	}
 	if hasComplex && !binaryRows {
 		return Set{}, fmt.Errorf("%w: complex rows require server prepared statements", dberrors.ErrUnsupported)

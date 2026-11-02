@@ -1,5 +1,7 @@
 package wire
 
+import "strings"
+
 // Column is the protocol 4.1 column definition, including OceanBase's final bytes.
 type Column struct {
 	Catalog, Schema, Table, OriginalTable, Name, OriginalName string
@@ -16,6 +18,11 @@ type Column struct {
 	ElementVersion                                            uint64
 	ComplexShape                                              *ComplexShape
 	NewMetadata                                               bool
+}
+
+// IsXMLType recognizes the system XMLTYPE string wire, not a user type of the same name.
+func (c Column) IsXMLType() bool {
+	return c.Type == 160 && c.ElementType == 0 && (c.ComplexSchema == "" || strings.EqualFold(c.ComplexSchema, "SYS")) && strings.EqualFold(c.ComplexName, "XMLTYPE")
 }
 
 // DecodeColumn parses a complete column definition, preserving optional extension bytes.
