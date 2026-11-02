@@ -3,7 +3,6 @@ package materialize
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/cocosip/go-oceanbase/dberrors"
@@ -16,13 +15,10 @@ import (
 // CollectSet only receives bytes; descriptor and LOB queries wait for the full response.
 func (c *Decoder) CollectSet(ctx context.Context, r *command.RawResponse, binaryRows bool, used *int64) (Set, error) {
 	r.BoundBytes(true)
-	set := Set{Columns: r.Columns()}
+	set := Set{Columns: r.Columns(), TextRows: !binaryRows}
 	hasComplex := false
 	for _, column := range set.Columns {
 		hasComplex = hasComplex || column.Type == 160 && !column.IsXMLType()
-	}
-	if hasComplex && !binaryRows {
-		return Set{}, fmt.Errorf("%w: complex rows require server prepared statements", dberrors.ErrUnsupported)
 	}
 	*used += valuecodec.SnapshotMetadataSize(set.Columns)
 	if *used > c.op.Config().Limits.MaxMessageBytes {
@@ -100,9 +96,29 @@ func (c *Decoder) DecodeSet(ctx context.Context, set *Set, used *int64) error {
 		if err := errors.Join(c.resolver.DescribeColumns(ctx, c.op, set.Columns), c.CheckEpoch()); err != nil {
 			return err
 		}
+		if set.TextRows {
+			for _, column := range set.Columns {
+				if column.Type != 160 || column.IsXMLType() {
+					continue
+				}
+				d, err := c.resolver.Column(ctx, c.op, column)
+				if err != nil {
+					return err
+				}
+				if err := valuecodec.ValidateComplexText(d); err != nil {
+					return err
+				}
+			}
+		}
 		for _, raw := range set.RawRows {
-			fields, err := wire.DecodeBinaryRow(raw, set.Columns)
-			if err != nil {
+			var fields [][]byte
+			var err error
+			if set.TextRows {
+				fields, err = wire.DecodeTextRow(raw, len(set.Columns))
+			} else {
+				fields, err = wire.DecodeBinaryRow(raw, set.Columns)
+			}
+			if err != nil && !set.TextRows {
 				c.resolver.Clear()
 				if err = errors.Join(c.resolver.DescribeColumns(ctx, c.op, set.Columns), c.CheckEpoch()); err != nil {
 					return err
@@ -112,11 +128,14 @@ func (c *Decoder) DecodeSet(ctx context.Context, set *Set, used *int64) error {
 					return err
 				}
 			}
-			row, err := Row(c.op, set.Columns, true, fields, true)
 			if err != nil {
 				return err
 			}
-			if err = errors.Join(c.ComplexValues(ctx, set.Columns, row), c.CheckEpoch()); err != nil {
+			row, err := Row(c.op, set.Columns, !set.TextRows, fields, true)
+			if err != nil {
+				return err
+			}
+			if err = errors.Join(c.complexValues(ctx, set.Columns, row, set.TextRows), c.CheckEpoch()); err != nil {
 				return err
 			}
 			*used += valuecodec.SnapshotValuesSize(row) - int64(len(raw))

@@ -158,3 +158,20 @@ func (c *Decoder) decodeComplexFieldLocked(ctx context.Context, f valuecodec.Fie
 func (c *Decoder) complexCharset(typ string) string {
 	return valuecodec.ComplexCharset(typ, c.op.Config().Session)
 }
+
+func (c *Decoder) complexTextValue(ctx context.Context, column wire.Column, data []byte) (driver.Value, error) {
+	d, err := c.resolver.Column(ctx, c.op, column)
+	if err != nil {
+		return nil, err
+	}
+	limit := c.op.Config().Limits.MaxMessageBytes
+	value, err := valuecodec.DecodeComplexText(d, data, limit)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := valuecodec.ComplexDriverValue(value, false)
+	if err == nil && int64(len(encoded.(string))) > limit {
+		return nil, wire.ErrMessageTooLarge
+	}
+	return encoded, err
+}

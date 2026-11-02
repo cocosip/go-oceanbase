@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding/binary"
-	"fmt"
 	"slices"
 
 	"github.com/cocosip/go-oceanbase/config"
@@ -21,9 +20,10 @@ type RefCursorID uint32
 
 // Set buffers one raw result for deferred descriptor and LOB resolution.
 type Set struct {
-	Columns []wire.Column
-	Rows    [][]driver.Value
-	RawRows [][]byte
+	Columns  []wire.Column
+	Rows     [][]driver.Value
+	RawRows  [][]byte
+	TextRows bool
 }
 
 // Decoder binds materialization to one session epoch.
@@ -73,8 +73,8 @@ func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [
 			if columns[i].IsXMLType() {
 				break
 			}
-			if !binaryRows {
-				return nil, fmt.Errorf("%w: complex rows require server prepared statements", dberrors.ErrUnsupported)
+			if op.Protocol().Mode != config.ModeOracle {
+				return nil, dberrors.ErrUnsupported
 			}
 			if field != nil {
 				values[i] = append([]byte{}, field...)
@@ -107,6 +107,10 @@ func (c *Decoder) ComplexValue(ctx context.Context, column wire.Column, data []b
 
 // ComplexValues resolves all complex columns within the result budget.
 func (c *Decoder) ComplexValues(ctx context.Context, columns []wire.Column, values []driver.Value) error {
+	return c.complexValues(ctx, columns, values, false)
+}
+
+func (c *Decoder) complexValues(ctx context.Context, columns []wire.Column, values []driver.Value, text bool) error {
 	for i, column := range columns {
 		if column.Type != 160 || column.IsXMLType() || values[i] == nil {
 			continue
@@ -115,7 +119,13 @@ func (c *Decoder) ComplexValues(ctx context.Context, columns []wire.Column, valu
 		if !ok {
 			return dberrors.ErrComplex
 		}
-		value, err := c.ComplexValue(ctx, column, raw)
+		var value driver.Value
+		var err error
+		if text {
+			value, err = c.complexTextValue(ctx, column, raw)
+		} else {
+			value, err = c.ComplexValue(ctx, column, raw)
+		}
 		if err != nil {
 			return err
 		}

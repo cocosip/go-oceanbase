@@ -22,14 +22,13 @@
 
 ## 已确认的客户端实现差距
 
-这里列两个尚缺实现的明确子集，不是两项全类型支持承诺，也不是本次已复现的数据损坏 bug。
+这里列一个尚缺实现的明确子集，不是全类型支持承诺，也不是本次已复现的数据损坏 bug。
 
 | ID / 关联能力 | 服务端可用范围与依据 | Go 确切缺口 | 明确不包含 |
 | --- | --- | --- | --- |
-| G07a / T15 named scalar/nested OBJECT text 结果 | N 的 NUMBER、普通/national 字符叶子、递归 named OBJECT text wire 可解析且读取成功 | [materialize](../internal/materialize/decoder.go)统一拒绝 text type160，缺有描述符/无歧义的这一 parser 子集 | RAW/DATE/TIMESTAMP、LOB/cursor 等任意成员不在此范围，见 B07；实际返回 VARCHAR2 的 collection 构造结果是普通 string，见 V15 |
 | G07b / Q05、T14 命名复杂构造输入 | N 的多语句命名 OBJECT、递归 OBJECT、named collection 构造 SQL 有成功子集 | [ClientLiteral](../internal/valuecodec/literal.go)不处理 Object/Array，缺命名构造器路径；binary 复杂绑定仍可用 | 不含匿名值、locator、集合子树 NULL OBJECT、复杂结果/所有 PL-only 类型；展开必须有界并保留类型身份 |
 
-G01/G03/G04/G05a 已补本地实现，仍需各自的 Go 实库验收；G04 已限定系统 XMLTYPE 字符串结果；G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
+G01/G03/G04/G05a/G07a 已补本地实现，仍需各自的 Go 实库验收；G04 已限定系统 XMLTYPE 字符串结果；G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
 
 ## 已补实现，实库待验收
 
@@ -39,6 +38,8 @@ G01/G03/G04/G05a 已补本地实现，仍需各自的 Go 实库验收；G04 已�
 | G03 / T12 显式 UROWID 参数 | 已补 `URowID`/`sql.Null[URowID]`/nil `*URowID`、Oracle type209 typed NULL、client CAST、OUT/INOUT 推导与显式 Type；公开 SQL peer 覆盖普通 prepare 类型复用、client/combined 及输出方向；MySQL/坏值/长度在发送前拒绝 | 新增直连/代理长 ROWID 回绑 UROWID 列、NULL 复用和 PL INOUT 入口，当前 DSN 未配置全部跳过；type209 结果仍按 ROWID 元数据读取，未猜测 UROWID 结果名；批处理沿既有资格判定顺序回退 |
 | G04 / T17 XMLTYPE String 结果 | 已补 ownerless/SYS XMLTYPE type160 身份识别、text/binary 长度编码和严格 UTF-8 string/NULL、XMLTYPE 元数据；跳过 UDT 描述且不误识别用户同名类型，覆盖 mixed OBJECT/XML 结果 | 直连/代理列存储/函数结果测试入口未配置 DSN，未获得 Go 实库通过；无 XML DOM/SQLXML API；PL OUT/INOUT 指定目标限制 B05 继续独立保留 |
 | G05a / T14 命名 LOB 内容输入 | 已补命名 flat/nested OBJECT 和 named collection 的 BLOB bytes/Raw、CLOB 严格 UTF-8 内容输入；保留命名 LOB collection 身份，普通 prepare/combined、NULL/empty、大值和预算本地通过 | PL 读取成员的直连/代理测试入口全部因 DSN 未配置跳过；不包含匿名 LOB 元素头、NCLOB、locator 回绑；B06 持久 BLOB 成员写列限制继续保留 |
+
+| G07a / T15 named OBJECT text 结果 | 已补描述符驱动的 NUMBER、普通/national 字符、递归命名 OBJECT 文本解码及 UTF-8、NULL、引号/分隔符、身份/字段数/深度/节点/字节预算校验；全响应结束后查询描述符，公开 text/client、混合 XML、多结果、尾包/连接复用通过 | 只支持已证明可解析的 named OBJECT 子集；RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符继续拒绝，包括整列 NULL；普通 VARCHAR2 不走 parser；新增直连/代理实库用例均缺 DSN 跳过，B07/B08 继续独立保留 |
 
 ## 客户端范围限制与可选扩展
 

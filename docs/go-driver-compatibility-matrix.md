@@ -451,3 +451,5 @@ No database connections or Linux deployment runs in this round; overall totals r
 
 
 2026-11-02 G05a：命名 OBJECT（含嵌套）/collection 的 BLOB 成员可用 `[]byte`/`Raw` 内容，CLOB 成员用严格 UTF-8 `string` 内容输入；受 MaxLOBBytes/MaxMessageBytes 和复杂值节点预算约束。命名 LOB collection 保留目录身份；匿名 LOB collection、NCLOB、locator 回绑继续拒绝。仅实现 PL 读取内容的已知子集，指定目标将 BLOB OBJECT 成员写入持久列的 B06 限制仍单列。新增普通/combined 本地测试通过，实库测试因 DSN 未配置全部跳过；本段更新旧的“全部非 NULL LOB 输入拒绝”边界，不声明实库已验收。
+
+2026-11-02 G07a：named OBJECT 文本结果现在可扫描为 `Object`，支持 NUMBER、普通/national 字符和递归 named OBJECT；按目录身份、字段顺序、UTF-8、NULL 及有界 parser 解码。业务响应全部结束后才查询目录，兼容 XMLTYPE/普通列混合及后续结果集。RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符仍拒绝，普通 VARCHAR2 结果仍为 string；不根据全 NULL 属性猜测根对象 NULL。本地回归与走查完成；Go 直连/代理实库用例因 DSN 未配置跳过，B07/B08 仍保留。本段更新旧的“所有复杂 text 结果拒绝”边界。
