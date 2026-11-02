@@ -113,6 +113,7 @@ func newDSNOptionCanonicalNames() map[string]string {
 		"maxresultitems":           "maxResultItems",
 		"rowsaffectedmode":         "rowsAffectedMode",
 		"preparemode":              "prepareMode",
+		"emulateunsupportedpstmts": "emulateUnsupportedPstmts",
 		"resetmode":                "resetMode",
 		"allowmultistatements":     "allowMultiStatements",
 		"network":                  "network",
@@ -205,6 +206,15 @@ func applyConnectionDSNOption(cfg *Config, name, value string) error {
 			cfg.PrepareMode = PrepareClient
 		default:
 			err = &ConfigError{Field: "prepareMode"}
+		}
+	case "emulateUnsupportedPstmts":
+		switch value {
+		case dsnTrue:
+			cfg.EmulateUnsupportedPstmts = true
+		case dsnFalse:
+			cfg.EmulateUnsupportedPstmts = false
+		default:
+			err = &ConfigError{Field: name}
 		}
 	case "resetMode":
 		switch value {

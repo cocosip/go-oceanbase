@@ -40,7 +40,7 @@
 
 | ID / 原关联 | 已有能力与限制 | 正确处理 |
 | --- | --- | --- |
-| C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；[server prepare 错误](../internal/execution/execute.go)返回调用方，无普遍 1295 自动回退 | 可选自动化，不是参数化 SQL 全部缺失。N 有注入1295+真实存储，目标原生1295未确认；扩展须限定未执行业务的拒绝、可插值参数且不重放 |
+| C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后仅独立 server PREPARE 的 1295 回退到 client 插值 | [配置/DSN](../config/dsn.go) 与 [执行回退](../internal/execution/execute.go) 已有本地协议回归；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL；真实服务端 1295 覆盖仍待 N |
 | C08 / 原 G08、Q05/Q19 多语句 LongData | [插值](../internal/statement/interpolate.go)拒绝流，server-prepared 长参数与普通多语句已有 | 可选有界展开；不是直接把 piece-data 拼入文本，也不要求无限流式脚本 |
 | C09 / 原 G09、Q20 pipeline | [TryNative](../internal/batch/native.go)仅选限定 scalar DML；SELECT/复杂值/流/framed 等顺序执行 | 性能/组合范围差距，不是 SQL 不能执行；N 对应子集可供扩展依据，Oracle piece-data 另见 U04 |
 | C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值有限额，大对象另有 LOB/TableBlob | 已定义资源契约；如需普通列流 API，另定顺序/所有权/取消契约 |

@@ -89,7 +89,7 @@ If the target does not expose the initialization version query, explicitly set `
 
 Use `QueryRowContext` / `QueryContext` for queries and `ExecContext` for writes. Both modes support `?`; Oracle also supports `:name` with `sql.Named`. Placeholders bind values, not table names, column names or keywords. Validate dynamic identifiers independently using trusted rules; do not concatenate application values into SQL.
 
-`PrepareMode` defaults to server-side preparation. Explicitly select `PrepareClient` when client interpolation is required; parameterized operations still use the same standard-library API. Close `sql.Stmt` before its owning transaction/connection, and never retain server statement IDs across sessions.
+`PrepareMode` defaults to server-side preparation. Explicitly select `PrepareClient` when client interpolation is required; parameterized operations still use the same standard-library API. `EmulateUnsupportedPstmts` is opt-in and only falls back from an independent server `PREPARE` returning error 1295 to that client path; output, stream, combined and other-error cases remain server errors. Close `sql.Stmt` before its owning transaction/connection, and never retain server statement IDs across sessions.
 
 In MySQL mode, ordinary `time.Time` parameters (including `time.Now()`) are converted to `Session.Location` and truncated to microsecond precision in both preparation modes. For example, `.123456789` becomes `.123456`; `.999999999` becomes `.999999` without advancing the second. Applications do not need to truncate timestamps before binding. Years outside 1–9999 after timezone conversion still return `ErrBind`. The destination column can further reduce precision according to server rules. Oracle mode retains nanoseconds for ordinary `time.Time` parameters.
 
@@ -247,6 +247,7 @@ The four TestReadTimeoutSessions profiles require OB_MYSQL_READ_TIMEOUT_SQL, OB_
 2026-11-02 G07a：named OBJECT 文本结果现在可扫描为 `Object`，支持 NUMBER、普通/national 字符和递归 named OBJECT；按目录身份、字段顺序、UTF-8、NULL 及有界 parser 解码。业务响应全部结束后才查询目录，兼容 XMLTYPE/普通列混合及后续结果集。RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符仍拒绝，普通 VARCHAR2 结果仍为 string；不根据全 NULL 属性猜测根对象 NULL。本地回归与走查完成；Go 直连/代理实库用例因 DSN 未配置跳过，B07/B08 仍保留。本段更新旧的“所有复杂 text 结果拒绝”边界。
 
 2026-11-02 G07b：设置 `PrepareMode: PrepareClient` 后，命名 `Object`/`Array` 输入可按当前连接的目录描述生成 SQL 构造器；多语句另外启用 `AllowMultiStatements`。字段名称/顺序和可选 Type 必须匹配目录，嵌套值使用确切目录类型名称；支持 NUMBER、普通/national 字符、RAW、DATE/TIMESTAMP 叶子。类型身份双引号转义，内容复用已有字面量编码，受编码字节及复杂值预算限制。匿名类型、LOB/locator/cursor、集合内部 NULL OBJECT 子树及同命令中的 DDL/动态 EXECUTE 均拒绝。默认 server prepare 不变，也没有自动回退或 SQL 重放。新增实库测试当前缺 DSN，不能记为真实存储通过。
+2026-11-02 C02：新增 `EmulateUnsupportedPstmts`/`emulateUnsupportedPstmts`，默认关闭。开启后，独立 server `PREPARE` 返回 1295 且参数可走现有 client 插值时才回退；不覆盖 combined、输出、流参数、其他错误或已执行响应，也不重放业务命令。本地协议回归通过，真实服务端 1295 仍待 N 验证。
 
 ```go
 // Oracle 中已存在 APP.T，按目录顺序包含 N NUMBER 字段。

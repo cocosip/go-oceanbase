@@ -7,9 +7,9 @@ import (
 )
 
 func TestDSNCreateDatabase(t *testing.T) {
-	for _, value := range []string{"true", "false"} {
+	for _, value := range []string{dsnTrue, dsnFalse} {
 		cfg, err := ParseDSN("oceanbase://app@localhost/example?mode=mysql&createDatabaseIfMissing=" + value)
-		if err != nil || cfg.CreateDatabaseIfMissing != (value == "true") {
+		if err != nil || cfg.CreateDatabaseIfMissing != (value == dsnTrue) {
 			t.Fatalf("valid explicit creation policy rejected: %v", err)
 		}
 	}

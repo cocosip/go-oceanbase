@@ -105,19 +105,22 @@ type Config struct {
 	ConnectTimeout time.Duration
 	// DialContext returns a raw transport. Nil and typed-nil connections are rejected.
 	// A non-nil connection returned with an error is closed by the driver.
-	DialContext          func(context.Context, string, string) (net.Conn, error)
-	Credentials          func(context.Context) (Credentials, error)
-	Auth                 AuthOptions
-	Session              SessionOptions
-	Protocol             ProtocolOptions
-	Execution            ExecutionOptions
-	Routing              RoutingOptions
-	Discovery            DiscoveryOptions
-	Limits               Limits
-	RowsAffectedMode     RowsAffectedMode
-	ResetMode            ResetMode
-	PrepareMode          PrepareMode
-	AllowMultiStatements bool
+	DialContext      func(context.Context, string, string) (net.Conn, error)
+	Credentials      func(context.Context) (Credentials, error)
+	Auth             AuthOptions
+	Session          SessionOptions
+	Protocol         ProtocolOptions
+	Execution        ExecutionOptions
+	Routing          RoutingOptions
+	Discovery        DiscoveryOptions
+	Limits           Limits
+	RowsAffectedMode RowsAffectedMode
+	ResetMode        ResetMode
+	PrepareMode      PrepareMode
+	// EmulateUnsupportedPstmts retries an unsupported standalone server PREPARE
+	// through the existing client-preparation path before business execution.
+	EmulateUnsupportedPstmts bool
+	AllowMultiStatements     bool
 	// Interactive requests the server's interactive session timeout; default false.
 	Interactive bool
 	// ConnectionAttributes supplies application metadata, encoded using Session.Charset.

@@ -125,7 +125,6 @@ func TestDSNJavaDriverOpen(t *testing.T) {
         useOraclePrepareExecute
         autoDeserialize
         maxBatchTotalParamsNum
-        emulateUnsupportedPstmts
         enableQueryTimeouts
         useCursorOffset
         blobSendChunkSize
@@ -173,6 +172,7 @@ func TestDSNJavaDriverOpen(t *testing.T) {
     `)
 	shared := []struct{ name, value string }{
 		{testConnectTimeoutOption, "30s"}, {"servicePrincipalName", "oceanbase/db.example@EXAMPLE.COM"}, {"compatibleMysqlVersion", "8"},
+		{"emulateUnsupportedPstmts", "true"},
 	}
 	names := make(map[string]bool)
 	for _, name := range rejected {
@@ -193,7 +193,7 @@ func TestDSNJavaDriverOpen(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.name == testConnectTimeoutOption && cfg.ConnectTimeout != 30*time.Second || tc.name == "servicePrincipalName" && cfg.Auth.ServicePrincipalName != tc.value || tc.name == "compatibleMysqlVersion" && cfg.Session.CompatibleMysqlVersion != 8 {
+			if tc.name == testConnectTimeoutOption && cfg.ConnectTimeout != 30*time.Second || tc.name == "servicePrincipalName" && cfg.Auth.ServicePrincipalName != tc.value || tc.name == "compatibleMysqlVersion" && cfg.Session.CompatibleMysqlVersion != 8 || tc.name == "emulateUnsupportedPstmts" && !cfg.EmulateUnsupportedPstmts {
 				t.Fatal("shared name lost Go semantics")
 			}
 			db, err := sql.Open("oceanbase", dsn)

@@ -58,15 +58,7 @@ func (e *Engine) queryLocked(ctx context.Context, op *session.Operation, query s
 		return e.start(ctx, op, append([]byte{3}, payload...), false, nil, nil, nil, options, false, false)
 	}
 	if op.Config().PrepareMode == config.PrepareClient {
-		plan, err := sqltext.BuildBindPlanEscapes(query, op.Protocol().Mode, op.Protocol().OK.Status&512 != 0)
-		if err != nil {
-			return nil, err
-		}
-		values, err := e.bind(ctx, op, plan, args)
-		if err != nil {
-			return nil, err
-		}
-		payload, err := interpolateClient(ctx, op, plan, values)
+		payload, err := e.clientPreparedPayload(ctx, op, query, args)
 		if err != nil {
 			return nil, err
 		}
@@ -88,6 +80,17 @@ func (e *Engine) queryLocked(ctx context.Context, op *session.Operation, query s
 	prepared, err := e.statements.Take(ctx, op, query)
 	if err == nil && prepared == nil {
 		prepared, err = statement.PrepareAutomatic(ctx, op, query, combined)
+		if err != nil && op.Config().EmulateUnsupportedPstmts && !combined && !hasLong(namedValues(args)) {
+			var serverErr *dberrors.Error
+			if errors.As(err, &serverErr) && serverErr.Code == 1295 {
+				payload, payloadErr := e.clientPreparedPayload(ctx, op, query, args)
+				if payloadErr != nil {
+					return nil, payloadErr
+				}
+				owned = false
+				return e.start(ctx, op, append([]byte{3}, payload...), false, nil, nil, nil, options, false, false)
+			}
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -99,6 +102,30 @@ func (e *Engine) queryLocked(ctx context.Context, op *session.Operation, query s
 	}
 	owned = false
 	return e.queryPrepared(ctx, op, prepared, args, options)
+}
+
+func (e *Engine) clientPreparedPayload(ctx context.Context, op *session.Operation, query string, args []driver.NamedValue) ([]byte, error) {
+	plan, err := sqltext.BuildBindPlanEscapes(query, op.Protocol().Mode, op.Protocol().OK.Status&512 != 0)
+	if err != nil {
+		return nil, err
+	}
+	values, err := e.bind(ctx, op, plan, args)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := interpolateClient(ctx, op, plan, values)
+	if err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func namedValues(args []driver.NamedValue) []any {
+	values := make([]any, len(args))
+	for i, arg := range args {
+		values[i] = arg.Value
+	}
+	return values
 }
 
 // Exec consumes all results before returning the final command count.
