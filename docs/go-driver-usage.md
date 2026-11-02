@@ -245,3 +245,16 @@ The four TestReadTimeoutSessions profiles require OB_MYSQL_READ_TIMEOUT_SQL, OB_
 2026-11-02 G05a：命名 OBJECT（含嵌套）/collection 的 BLOB 成员可用 `[]byte`/`Raw` 内容，CLOB 成员用严格 UTF-8 `string` 内容输入；受 MaxLOBBytes/MaxMessageBytes 和复杂值节点预算约束。命名 LOB collection 保留目录身份；匿名 LOB collection、NCLOB、locator 回绑继续拒绝。仅实现 PL 读取内容的已知子集，指定目标将 BLOB OBJECT 成员写入持久列的 B06 限制仍单列。新增普通/combined 本地测试通过，实库测试因 DSN 未配置全部跳过；本段更新旧的“全部非 NULL LOB 输入拒绝”边界，不声明实库已验收。
 
 2026-11-02 G07a：named OBJECT 文本结果现在可扫描为 `Object`，支持 NUMBER、普通/national 字符和递归 named OBJECT；按目录身份、字段顺序、UTF-8、NULL 及有界 parser 解码。业务响应全部结束后才查询目录，兼容 XMLTYPE/普通列混合及后续结果集。RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符仍拒绝，普通 VARCHAR2 结果仍为 string；不根据全 NULL 属性猜测根对象 NULL。本地回归与走查完成；Go 直连/代理实库用例因 DSN 未配置跳过，B07/B08 仍保留。本段更新旧的“所有复杂 text 结果拒绝”边界。
+
+2026-11-02 G07b：设置 `PrepareMode: PrepareClient` 后，命名 `Object`/`Array` 输入可按当前连接的目录描述生成 SQL 构造器；多语句另外启用 `AllowMultiStatements`。字段名称/顺序和可选 Type 必须匹配目录，嵌套值使用确切目录类型名称；支持 NUMBER、普通/national 字符、RAW、DATE/TIMESTAMP 叶子。类型身份双引号转义，内容复用已有字面量编码，受编码字节及复杂值预算限制。匿名类型、LOB/locator/cursor、集合内部 NULL OBJECT 子树及同命令中的 DDL/动态 EXECUTE 均拒绝。默认 server prepare 不变，也没有自动回退或 SQL 重放。新增实库测试当前缺 DSN，不能记为真实存储通过。
+
+```go
+// Oracle 中已存在 APP.T，按目录顺序包含 N NUMBER 字段。
+value := oceanbase.Object{Schema: "APP", Type: "T", Fields: []oceanbase.Attribute{
+    {Name: "N", Value: oceanbase.Number("123.45")},
+}}
+// db 使用 PrepareClient；此脚本还需 AllowMultiStatements=true。
+_, err := db.ExecContext(ctx,
+    "INSERT INTO items VALUES (:v); INSERT INTO items VALUES (:v)",
+    sql.Named("v", value))
+```

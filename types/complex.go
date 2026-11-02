@@ -49,7 +49,7 @@ type Array struct {
 }
 
 // Value returns lossless format-1 JSON. This driver preserves Object identity in
-// CheckNamedValue and binds the native complex protocol, rather than this JSON.
+// CheckNamedValue and uses native binding or named client constructors, rather than this JSON.
 func (o Object) Value() (driver.Value, error) { return complexDriverValue(o, o.Null) }
 
 // Value returns lossless format-1 JSON; native bindings use the server descriptor.

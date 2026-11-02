@@ -13,9 +13,15 @@ import (
 	"github.com/cocosip/go-oceanbase/types"
 )
 
+const (
+	testComplexChild = "CHILD"
+	testComplexRoot  = "ROOT"
+	testComplexTag   = "TAG"
+)
+
 func textObjectDescriptor() *Descriptor {
-	child := &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "CHILD"}, Fields: []Field{{Name: "N", Type: valueformat.TypeNameNumber}, {Name: "S", Type: valueformat.TypeNameNVarchar2}}}
-	return &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "ROOT", Version: 7}, Fields: []Field{{Name: "C", Type: "CHILD", Child: child}, {Name: "TAG", Type: valueformat.TypeNameNumber}}}
+	child := &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: testComplexChild}, Fields: []Field{{Name: "N", Type: valueformat.TypeNameNumber}, {Name: "S", Type: valueformat.TypeNameNVarchar2}}}
+	return &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: testComplexRoot, Version: 7}, Fields: []Field{{Name: "C", Type: testComplexChild, Child: child}, {Name: testComplexTag, Type: valueformat.TypeNameNumber}}}
 }
 
 func TestComplexTextObjects(t *testing.T) {

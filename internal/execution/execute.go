@@ -66,7 +66,7 @@ func (e *Engine) queryLocked(ctx context.Context, op *session.Operation, query s
 		if err != nil {
 			return nil, err
 		}
-		payload, err := statement.Interpolate(op, plan, values)
+		payload, err := interpolateClient(ctx, op, plan, values)
 		if err != nil {
 			return nil, err
 		}

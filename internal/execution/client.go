@@ -45,7 +45,7 @@ func (e *Engine) QueryClient(ctx context.Context, s *statement.Client, args []dr
 	if err != nil {
 		return nil, err
 	}
-	query, err := statement.Interpolate(op, plan, values)
+	query, err := interpolateClient(ctx, op, plan, values)
 	if err != nil {
 		return nil, err
 	}

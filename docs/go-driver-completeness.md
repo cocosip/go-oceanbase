@@ -22,13 +22,7 @@
 
 ## 已确认的客户端实现差距
 
-这里列一个尚缺实现的明确子集，不是全类型支持承诺，也不是本次已复现的数据损坏 bug。
-
-| ID / 关联能力 | 服务端可用范围与依据 | Go 确切缺口 | 明确不包含 |
-| --- | --- | --- | --- |
-| G07b / Q05、T14 命名复杂构造输入 | N 的多语句命名 OBJECT、递归 OBJECT、named collection 构造 SQL 有成功子集 | [ClientLiteral](../internal/valuecodec/literal.go)不处理 Object/Array，缺命名构造器路径；binary 复杂绑定仍可用 | 不含匿名值、locator、集合子树 NULL OBJECT、复杂结果/所有 PL-only 类型；展开必须有界并保留类型身份 |
-
-G01/G03/G04/G05a/G07a 已补本地实现，仍需各自的 Go 实库验收；G04 已限定系统 XMLTYPE 字符串结果；G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
+本轮确认的 G01/G03/G04/G05a/G07a/G07b 六个客户端实现子集均已补齐，当前没有尚待编码的已确认 G 项，详见下表。这不表示全部类型、方向、版本或部署均已支持；参考 SDK 成功和本地测试不能替代 Go 实库验收。C 类仍是客户端范围限制/可选扩展，U 类仍需调查，S/B/A/ENV/V/X 不合并为客户端缺实现。
 
 ## 已补实现，实库待验收
 
@@ -38,8 +32,9 @@ G01/G03/G04/G05a/G07a 已补本地实现，仍需各自的 Go 实库验收；G04
 | G03 / T12 显式 UROWID 参数 | 已补 `URowID`/`sql.Null[URowID]`/nil `*URowID`、Oracle type209 typed NULL、client CAST、OUT/INOUT 推导与显式 Type；公开 SQL peer 覆盖普通 prepare 类型复用、client/combined 及输出方向；MySQL/坏值/长度在发送前拒绝 | 新增直连/代理长 ROWID 回绑 UROWID 列、NULL 复用和 PL INOUT 入口，当前 DSN 未配置全部跳过；type209 结果仍按 ROWID 元数据读取，未猜测 UROWID 结果名；批处理沿既有资格判定顺序回退 |
 | G04 / T17 XMLTYPE String 结果 | 已补 ownerless/SYS XMLTYPE type160 身份识别、text/binary 长度编码和严格 UTF-8 string/NULL、XMLTYPE 元数据；跳过 UDT 描述且不误识别用户同名类型，覆盖 mixed OBJECT/XML 结果 | 直连/代理列存储/函数结果测试入口未配置 DSN，未获得 Go 实库通过；无 XML DOM/SQLXML API；PL OUT/INOUT 指定目标限制 B05 继续独立保留 |
 | G05a / T14 命名 LOB 内容输入 | 已补命名 flat/nested OBJECT 和 named collection 的 BLOB bytes/Raw、CLOB 严格 UTF-8 内容输入；保留命名 LOB collection 身份，普通 prepare/combined、NULL/empty、大值和预算本地通过 | PL 读取成员的直连/代理测试入口全部因 DSN 未配置跳过；不包含匿名 LOB 元素头、NCLOB、locator 回绑；B06 持久 BLOB 成员写列限制继续保留 |
-
 | G07a / T15 named OBJECT text 结果 | 已补描述符驱动的 NUMBER、普通/national 字符、递归命名 OBJECT 文本解码及 UTF-8、NULL、引号/分隔符、身份/字段数/深度/节点/字节预算校验；全响应结束后查询描述符，公开 text/client、混合 XML、多结果、尾包/连接复用通过 | 只支持已证明可解析的 named OBJECT 子集；RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符继续拒绝，包括整列 NULL；普通 VARCHAR2 不走 parser；新增直连/代理实库用例均缺 DSN 跳过，B07/B08 继续独立保留 |
+| G07b / Q05、T14 命名复杂构造输入 | 已补显式 PrepareClient 的命名 OBJECT/递归 OBJECT/named collection 构造器；按目录字段类型处理 NUMBER、字符/national、RAW、DATE/TIMESTAMP，安全转义限定类型身份并限制编码字节/节点/深度；普通调用、显式 client Stmt、重复命名参数、多语句及发送前拒绝本地通过 | 匿名类型、LOB/locator/cursor、集合内部 NULL OBJECT 子树仍拒绝；嵌套输入须用确切目录名称；含 DDL/动态 EXECUTE 的复杂输入命令拒绝；多语句仍显式启用。新增真实对象列/PL collection 独立连接存储验证入口，直连/代理均无 DSN 跳过；不替代原生 binary TIMESTAMP/collection 头证据 |
+
 
 ## 客户端范围限制与可选扩展
 
@@ -118,7 +113,7 @@ G01/G03/G04/G05a/G07a 已补本地实现，仍需各自的 Go 实库验收；G04
 
 | ID / 原关联 | 尚不能下的结论 | 需要先核实 |
 | --- | --- | --- |
-| U01 / 原G05 TIMESTAMP、G06 collection头 | Go有拒绝点，未核实所有TIMESTAMP/NCHAR/NVARCHAR2/LOB元素输入wire，不能整个组合算确定缺失或服务端不支持 | named/anonymous、元素头/成员体/方向/NULL/empty逐形状取得成功依据；PL LOB内容子集已列G05a |
+| U01 / 原G05 TIMESTAMP、G06 collection头 | Go有拒绝点，未核实所有原生binary TIMESTAMP/NCHAR/NVARCHAR2/LOB元素输入wire，不能整个组合算确定缺失或服务端不支持 | named/anonymous、元素头/成员体/方向/NULL/empty逐形状取得成功依据；PL LOB内容子集已列G05a，client命名构造器已列G07b，不代替原生binary头验收 |
 | U02 / 原G15 PL-only RECORD | 缺字段目录/公开绑定不等于数据库不能声明/使用RECORD；Java前置拒绝不能证明服务端拒绝 | 普通RECORD字段描述/成功wire；含cursor成员导致package INVALID的参考形状仅说明该包形状前提失败 |
 | U03 / T23 ANYDATA PL、locator/cursor成员输入 | 官方PL支持、已有输出/标量locator不能证明这些专门输入协议 | 满足B10包前提后取得描述/writer/方向；REF CURSOR IN/INOUT按X01排除 |
 | U04 / C09 Oracle piece-data流水化 | Java也逐片ACK，不能直接算Go少功能 | 是否存在允许多片无ACK的目标协议；无依据保留顺序，不猜协议 |

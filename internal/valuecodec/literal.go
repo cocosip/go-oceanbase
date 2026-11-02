@@ -25,10 +25,12 @@ type OutputVariable string
 // LongPlaceholder retains a server-bound streaming parameter slot.
 type LongPlaceholder struct{}
 
-// ClientLiteral renders a bounded scalar SQL literal; callers reject streaming inputs first.
+// ClientLiteral renders a bounded SQL literal; callers reject streaming inputs first.
 func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
 	var s string
 	switch v := v.(type) {
+	case ResolvedComplex:
+		return complexConstructor(v, mode, options, maxLOBBytes, limit)
 	case LongPlaceholder:
 		return "?", nil
 	case OutputVariable:

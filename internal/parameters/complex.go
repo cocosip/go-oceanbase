@@ -90,7 +90,7 @@ func (e *complexEncoder) value(d *valuecodec.Descriptor, value any, depth int, c
 	if err := valueformat.ComplexNode(depth, &e.nodes); err != nil {
 		return err
 	}
-	schema, name, values, err := complexInputValues(d, value)
+	schema, name, values, err := valuecodec.ComplexInputValues(d, value)
 	if err != nil {
 		return err
 	}
@@ -157,31 +157,4 @@ func (e *complexEncoder) scalar(typ string, value any, depth int) error {
 		return err
 	}
 	return e.append(p.Data, p.LengthEncoded)
-}
-
-func complexInputValues(d *valuecodec.Descriptor, value any) (string, string, []any, error) {
-	var values []any
-	var schema, name string
-	switch v := value.(type) {
-	case types.Object:
-		if v.Null || d.Array || len(v.Fields) != len(d.Fields) {
-			return "", "", nil, dberrors.ErrComplex
-		}
-		schema, name = v.Schema, v.Type
-		values = make([]any, len(v.Fields))
-		for i, f := range v.Fields {
-			if f.Name != d.Fields[i].Name || f.Type != "" && f.Type != d.Fields[i].Type {
-				return "", "", nil, dberrors.ErrComplex
-			}
-			values[i] = f.Value
-		}
-	case types.Array:
-		if v.Null || !d.Array || v.ElementType != "" && v.ElementType != d.Fields[0].Type {
-			return "", "", nil, dberrors.ErrComplex
-		}
-		schema, name, values = v.Schema, v.Type, v.Elements
-	default:
-		return "", "", nil, dberrors.ErrComplex
-	}
-	return schema, name, values, nil
 }
