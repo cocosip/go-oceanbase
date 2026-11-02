@@ -93,7 +93,7 @@ func TestComplexNamedArray(t *testing.T) {
 }
 
 func TestComplexArrayUnsupportedHeader(t *testing.T) {
-	for _, typ := range []string{valueformat.TypeNameNVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameTimestamp, valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob} {
+	for _, typ := range []string{valueformat.TypeNameNVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameTimestamp, valueformat.TypeNameNClob} {
 		for _, elements := range [][]any{nil, {nil}} {
 			t.Run(typ+"/"+strings.Repeat("null", len(elements)), func(t *testing.T) {
 				ctx, op := parameterDictionaryOperation(t, typ)
@@ -111,6 +111,27 @@ func TestComplexArrayUnsupportedHeader(t *testing.T) {
 					t.Fatal("unsupported built-in element attempted a descriptor query", err)
 				}
 			})
+		}
+	}
+}
+
+func TestNamedLOBCollectionEmptyAndNull(t *testing.T) {
+	for _, typ := range []string{valueformat.TypeNameBlob, valueformat.TypeNameClob} {
+		for _, elements := range [][]any{nil, {nil}} {
+			ctx, op := parameterDictionaryOperation(t, typ)
+			var resolver catalog.Resolver
+			p, err := EncodeValue(ctx, op, &resolver, types.Array{Schema: "S", Type: "TA", Elements: elements}, 4096)
+			want := []byte{0}
+			if len(elements) == 1 {
+				want = []byte{1, 1}
+			}
+			if err != nil || p.Type != 160 || !reflect.DeepEqual(p.TypeMetadata, []byte{1, 'S', 2, 'T', 'A', 0}) || !reflect.DeepEqual(p.Data, want) {
+				t.Fatal(p, err)
+			}
+			_, err = EncodeValue(ctx, op, &resolver, types.Array{ElementType: typ, Elements: elements}, 4096)
+			if !errors.Is(err, dberrors.ErrUnsupported) {
+				t.Fatal("anonymous LOB array enabled", err)
+			}
 		}
 	}
 }

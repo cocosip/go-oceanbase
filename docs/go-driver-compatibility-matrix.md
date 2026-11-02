@@ -448,3 +448,6 @@ Sixteen baseline scenarios cover both-mode CRUD, per-call/reused preparation, ca
 | Multi-VALUES | Explicit BatchMultiValues, simple placeholder tuples only; Chunks retains aggregate counts/IDs, per-item values unknown | Three streams/budgets/continue-stop/cancellation/disconnect/safe fallback covered; server semantics/performance unaccepted |
 
 No database connections or Linux deployment runs in this round; overall totals remain 28/32 implemented, 0/32 real acceptance.
+
+
+2026-11-02 G05a：命名 OBJECT（含嵌套）/collection 的 BLOB 成员可用 `[]byte`/`Raw` 内容，CLOB 成员用严格 UTF-8 `string` 内容输入；受 MaxLOBBytes/MaxMessageBytes 和复杂值节点预算约束。命名 LOB collection 保留目录身份；匿名 LOB collection、NCLOB、locator 回绑继续拒绝。仅实现 PL 读取内容的已知子集，指定目标将 BLOB OBJECT 成员写入持久列的 B06 限制仍单列。新增普通/combined 本地测试通过，实库测试因 DSN 未配置全部跳过；本段更新旧的“全部非 NULL LOB 输入拒绝”边界，不声明实库已验收。

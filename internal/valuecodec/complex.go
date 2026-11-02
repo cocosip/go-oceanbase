@@ -34,7 +34,7 @@ func EncodeComplexScalar(typ string, value any, options config.SessionOptions, m
 			return wire.Parameter{}, err
 		}
 		return complexParameter([]byte(text), true, limit)
-	case valueformat.TypeNameRaw:
+	case valueformat.TypeNameRaw, valueformat.TypeNameBlob:
 		var data []byte
 		switch v := value.(type) {
 		case types.Raw:
@@ -48,6 +48,19 @@ func EncodeComplexScalar(typ string, value any, options config.SessionOptions, m
 			return wire.Parameter{}, wire.ErrMessageTooLarge
 		}
 		return complexParameter(data, true, limit)
+	case valueformat.TypeNameClob:
+		text, ok := value.(string)
+		if !ok {
+			return wire.Parameter{}, dberrors.ErrComplex
+		}
+		if int64(len(text)) > min(maxLOBBytes, limit) {
+			return wire.Parameter{}, wire.ErrMessageTooLarge
+		}
+		// Named CLOB payloads bypass client charset conversion on the server.
+		if !utf8.ValidString(text) {
+			return wire.Parameter{}, charset.ErrEncoding
+		}
+		return complexParameter([]byte(text), true, limit)
 	case valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar, valueformat.TypeNameChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameNChar:
 		var text string
 		switch v := value.(type) {
@@ -156,7 +169,8 @@ func ComplexCharset(typ string, options config.SessionOptions) string {
 // EncodeComplexMetadata serializes a resolved descriptor's parameter type metadata.
 func EncodeComplexMetadata(d *Descriptor, options config.SessionOptions, sqlLimit, limit int64) ([]byte, error) {
 	schemaName, typeName := d.Key.Schema, d.Key.Name
-	if d.Array {
+	namedLOB := d.Array && typeName != "" && len(d.Fields) == 1 && d.Fields[0].Child == nil && (strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameBlob) || strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameClob))
+	if d.Array && !namedLOB {
 		schemaName, typeName = "", ""
 	}
 	schema, err := encodeMetadataName(schemaName, options, sqlLimit)
@@ -170,7 +184,7 @@ func EncodeComplexMetadata(d *Descriptor, options config.SessionOptions, sqlLimi
 	metadata := wire.AppendComplexLenBytes(nil, schema)
 	metadata = wire.AppendComplexLenBytes(metadata, name)
 	metadata = wire.AppendComplexLenEnc(metadata, d.Key.Version)
-	if d.Array {
+	if d.Array && !namedLOB {
 		field := d.Fields[0]
 		if field.Child == nil {
 			elementType := ComplexElementWireType(field.Type)
