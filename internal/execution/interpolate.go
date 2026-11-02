@@ -2,9 +2,12 @@ package execution
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cocosip/go-oceanbase/config"
 	"github.com/cocosip/go-oceanbase/dberrors"
@@ -15,19 +18,27 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/statement"
 	"github.com/cocosip/go-oceanbase/internal/streaminput"
 	"github.com/cocosip/go-oceanbase/internal/valuecodec"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 	"github.com/cocosip/go-oceanbase/types"
 )
 
 // interpolateClient resolves complex input identities before pure statement interpolation.
 func interpolateClient(ctx context.Context, op *session.Operation, plan sqltext.Plan, values []any) ([]byte, error) {
+	if hasLong(values) {
+		if !clientMultiStatement(op, plan.Query) {
+			return nil, fmt.Errorf("%w: long data requires server preparation", dberrors.ErrUnsupported)
+		}
+		var err error
+		values, err = materializeClientLongData(ctx, op, values)
+		if err != nil {
+			return nil, err
+		}
+	}
 	hasComplex := false
 	for _, value := range values {
 		switch value.(type) {
 		case types.Object, types.Array:
 			hasComplex = true
-		}
-		if _, ok := value.(*streaminput.Source); ok {
-			return nil, fmt.Errorf("%w: long data requires server preparation", dberrors.ErrUnsupported)
 		}
 	}
 	if hasComplex {
@@ -57,6 +68,87 @@ func interpolateClient(ctx context.Context, op *session.Operation, plan sqltext.
 		}
 	}
 	return statement.Interpolate(op, plan, values)
+}
+
+func clientMultiStatement(op *session.Operation, query string) bool {
+	if op.Config().PrepareMode != config.PrepareClient || !op.Config().AllowMultiStatements || op.Protocol().Mode != config.ModeMySQL || op.Protocol().Capabilities&wire.ClientMultiStatements == 0 {
+		return false
+	}
+	noBackslash := op.Protocol().OK.Status&512 != 0
+	ansiModes := []bool{false}
+	if !noBackslash && strings.Contains(query, `"`) && strings.Contains(query, `\`) {
+		ansiModes = append(ansiModes, true)
+	}
+	for _, ansiQuotes := range ansiModes {
+		tokens, err := sqltext.LexSQL(query, op.Protocol().Mode, noBackslash, ansiQuotes)
+		if err != nil {
+			return false
+		}
+		found := false
+		for i, token := range tokens {
+			if token.Kind == ';' && i+1 < len(tokens) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func materializeClientLongData(ctx context.Context, op *session.Operation, values []any) ([]any, error) {
+	result := slices.Clone(values)
+	replacements := make(map[*atomic.Bool]any)
+	for i, value := range result {
+		source, ok := value.(*streaminput.Source)
+		if !ok {
+			continue
+		}
+		if replacement, ok := replacements[source.State]; ok {
+			result[i] = replacement
+			continue
+		}
+		if err := source.Validate(); err != nil {
+			return nil, err
+		}
+		if !source.Claim() {
+			return nil, dberrors.ErrLongData
+		}
+		var data []byte
+		var err error
+		limit := source.MaxBytes
+		if limit == 0 {
+			limit = op.Config().Limits.MaxLOBBytes
+		}
+		reader := streaminput.NewBoundedReader(ctx, source.Reader, source.Length, limit)
+		if source.Length == 0 {
+			var probe [1]byte
+			_, err = reader.Read(probe[:])
+			if err == nil {
+				err = io.ErrNoProgress
+			}
+			if err == io.EOF {
+				err = nil
+			}
+		} else {
+			data, err = io.ReadAll(reader)
+		}
+		if err != nil {
+			return nil, errors.Join(dberrors.ErrLongData, err)
+		}
+		var replacement any = data
+		if source.Text {
+			if _, err = streaminput.TextBoundary(data, true); err != nil {
+				return nil, errors.Join(dberrors.ErrLongData, err)
+			}
+			replacement = string(data)
+		}
+		replacements[source.State] = replacement
+		result[i] = replacement
+	}
+	return result, nil
 }
 
 func validateConstructorSQL(op *session.Operation, query string) error {

@@ -490,7 +490,7 @@ Implement the COM_STMT_PREPARE_EXECUTE basic encoding, output decoding, and capa
 
 Fallback occurs only before business execution. Only confirmed unsupported server-prepare errors may permit configured client-prepare fallback; lost execution responses never trigger another execution path.
 
-Multi-statement text requires explicit `AllowMultiStatements`; semicolons inside procedures/Oracle blocks are not multiple top-level statements. Parameterized multi-statements unsupported by server preparation must fail capability checks before sending or use explicitly selected client preparation; never secretly enable interpolation. Use Execute (§11.4) for full ordered mixed results/per-item counts.
+Multi-statement text requires explicit `AllowMultiStatements`; semicolons inside procedures/Oracle blocks are not multiple top-level statements. MySQL top-level multi-statements may use explicitly selected client preparation with bounded one-time materialization of `LongData` into existing literals; single statements, Oracle blocks, and disabled capability still reject client streams. Parameterized multi-statements unsupported by server preparation must fail capability checks before sending or use explicitly selected client preparation; never secretly enable interpolation. Use Execute (§11.4) for full ordered mixed results/per-item counts.
 
 ### 10.1.1 Implemented Optional Execution Strategies (D24)
 

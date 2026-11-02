@@ -41,7 +41,7 @@
 | ID / 原关联 | 已有能力与限制 | 正确处理 |
 | --- | --- | --- |
 | C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后仅独立 server PREPARE 的 1295 回退到 client 插值 | [配置/DSN](../config/dsn.go) 与 [执行回退](../internal/execution/execute.go) 已有本地协议回归；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL；真实服务端 1295 覆盖仍待 N |
-| C08 / 原 G08、Q05/Q19 多语句 LongData | [插值](../internal/statement/interpolate.go)拒绝流，server-prepared 长参数与普通多语句已有 | 可选有界展开；不是直接把 piece-data 拼入文本，也不要求无限流式脚本 |
+| C08 / 原 G08、Q05/Q19 多语句 LongData | MySQL 顶层多语句在 `PrepareClient` + `AllowMultiStatements` 下支持一次性有界读入后复用现有字面量编码；其他路径仍按原边界处理 | [客户端展开](../internal/execution/interpolate.go)与 peer 回归已覆盖；只读入 `MaxBytes/MaxLOBBytes` 范围，不拼接 piece-data，不覆盖 Oracle PL/单语句/未启用多语句；真实服务端多结果仍待验收 |
 | C09 / 原 G09、Q20 pipeline | [TryNative](../internal/batch/native.go)仅选限定 scalar DML；SELECT/复杂值/流/framed 等顺序执行 | 性能/组合范围差距，不是 SQL 不能执行；N 对应子集可供扩展依据，Oracle piece-data 另见 U04 |
 | C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值有限额，大对象另有 LOB/TableBlob | 已定义资源契约；如需普通列流 API，另定顺序/所有权/取消契约 |
 | C11 / C17 Oracle warning 详情 | count 已有，[ReadWarnings](../internal/control/warnings.go)只给 MySQL 详情 | 客户端/参考接口范围；当前依据不能证明“数据库没有任何 Oracle warning 详情能力” |
