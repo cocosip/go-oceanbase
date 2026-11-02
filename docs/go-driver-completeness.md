@@ -22,18 +22,23 @@
 
 ## 已确认的客户端实现差距
 
-这里列六个明确子集，不是六项全类型支持承诺，也不是本次已复现的数据损坏 bug。
+这里列五个尚缺实现的明确子集，不是五项全类型支持承诺，也不是本次已复现的数据损坏 bug。
 
 | ID / 关联能力 | 服务端可用范围与依据 | Go 确切缺口 | 明确不包含 |
 | --- | --- | --- | --- |
-| G01 / T19–T20 字符集 | 官方 MySQL 列表包含 SJIS/Big5/DEC8/TIS620、GB2312/EUCKR 等，结果编码含 UTF16LE；N 的 MySQL SJIS/Big5、GB2312/EUCKR 有指定成功子集 | [字符集](../internal/charset/charset.go)和[握手 ID](../internal/charset/handshake.go)缺这些映射，未知编码/collation 拒绝；逐编码补 client/result/national 契约与严格映射 | Oracle EUCKR/SJIS/Big5 已拒绝初始化见 B04，不纳入此开发子集；UJIS 等版本前提见 U06；UTF16LE 是结果差距，不要求开放 SQL client 编码 |
 | G03 / T12 显式 UROWID 身份 | 官方支持 UROWID；N 有普通/combined、OUT/INOUT/RETURNING 成功子集 | [RowID](../types/scalar.go)参数当前发[字符串 type253](../internal/valuecodec/binary.go)，client 为 CHARTOROWID；缺独立 UROWID/type209 参数/NULL 身份契约 | **不是 Go 完全不能读写 UROWID**：type209 文本结果已有；通用字符串转换能否满足各场景另验 |
 | G04 / T17 XMLTYPE String 结果 | 官方支持 XMLTYPE；N 的 ownerless XMLTYPE/type160 text/binary String 结果、列存储、函数返回成功 | [物化入口](../internal/materialize/decoder.go)对 text type160 拒绝，binary 按复杂值处理，缺 XMLTYPE String 身份/解码；可复用 string | PL OUT/INOUT 见 B05；不要求 XML DOM/SQLXML API；string 输入本来可发，不把全部 XML 参数输入再算缺口 |
 | G05a / T14 命名 LOB 内容传入 PL | N 的 named OBJECT/collection BLOB/CLOB 内容，在 PL 中 GETLENGTH/SUBSTR/RAWTOHEX 读取成员成功 | [EncodeComplexScalar](../internal/valuecodec/complex.go)拒绝非 NULL BLOB/CLOB 成员，缺已证明的内容输入子集 | 成员写入持久 BLOB 列的指定形状见 B06；不包含 locator 回绑、所有 TIMESTAMP 和所有 collection 头 |
 | G07a / T15 named scalar/nested OBJECT text 结果 | N 的 NUMBER、普通/national 字符叶子、递归 named OBJECT text wire 可解析且读取成功 | [materialize](../internal/materialize/decoder.go)统一拒绝 text type160，缺有描述符/无歧义的这一 parser 子集 | RAW/DATE/TIMESTAMP、LOB/cursor 等任意成员不在此范围，见 B07；实际返回 VARCHAR2 的 collection 构造结果是普通 string，见 V15 |
 | G07b / Q05、T14 命名复杂构造输入 | N 的多语句命名 OBJECT、递归 OBJECT、named collection 构造 SQL 有成功子集 | [ClientLiteral](../internal/valuecodec/literal.go)不处理 Object/Array，缺命名构造器路径；binary 复杂绑定仍可用 | 不含匿名值、locator、集合子树 NULL OBJECT、复杂结果/所有 PL-only 类型；展开必须有界并保留类型身份 |
 
-G01 按模式/用途逐编码验收；G03 只补显式参数身份；G04/G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
+G01 已补实现，按模式/用途逐编码补实库验收；G03 只补显式参数身份；G04/G07a 只读取已证明可解析的结果。参考成功不能替代 Go 补实现后的回归和实库验收。
+
+## 已补实现，实库待验收
+
+| ID / 关联能力 | 本次实现与本地证据 | 服务端/验收边界 |
+| --- | --- | --- |
+| G01 / T19–T20 字符集 | 已补 SJIS/Big5/DEC8/TIS620/GB2312/EUCKR 严格编码、握手和结果 collation，UTF16LE 结果解码及列长度；修正 x/text 与 OceanBase 映射/别名差异，完整单字节/双字节解码摘要及所有有效字符无损回编码、本地公开 SQL/参数/national/握手路径覆盖 | 新增 MySQL 存储/UTF16LE 实库测试入口，当前未配置 DSN，未获得新实库通过；Oracle 指定会话初始化拒绝仍归 B04，未知新字符集仍归 U06；UTF16LE 不开放 SQL client |
 
 ## 客户端范围限制与可选扩展
 

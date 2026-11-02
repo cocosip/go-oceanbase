@@ -18,6 +18,9 @@ func TestJavaParityCharsetHandshakeAndInitialization(t *testing.T) {
 		collation        byte
 	}{
 		{"HKSCS", "镬😀", "镬😀", 152}, {"HKSCS31", "镬😀", "镬😀", 153}, {"GB18030_2022", "龴", "\xfe\x59", 217},
+		{"SJIS", "日本", "\x93\xfa\x96\x7b", 13}, {"BIG5", "中文", "\xa4\xa4\xa4\xe5", 1},
+		{"GB2312", "中文", "\xd6\xd0\xce\xc4", 24}, {"EUCKR", "한글", "\xc7\xd1\xb1\xdb", 19},
+		{"DEC8", "ŒŸ", "\xd7\xdd", 3}, {"TIS620", "กข", "\xa1\xa2", 18},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, err := oceanbase.ParseDSN("oceanbase://user@localhost/?charset=" + tc.name)

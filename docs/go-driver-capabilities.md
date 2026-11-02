@@ -101,8 +101,8 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | T16 LONG/LONG RAW/BFILE/NCLOB | — | 不承诺原生支持；兼容分支不作支持证据 | 官方[类型表][O4]明确不支持，归S01；现有NCLOB名称/locator分支和GetTypeInfo不表示目标可建列；H20 NCLOB902是负向记录 | S01官方明确不支持四个原生类型 | SRC/L/H20（负向） |
 | T17 XMLTYPE String列/函数结果 | — | 结果适配缺口G04 | 官方[XMLTYPE][O8]支持；N的ownerless type160 String结果已有成功依据，Go仍走complex；参数string可发送，不要求SQLXML/DOM；PL OUT/INOUT拒绝B05不属于待补writer | 列/函数String可用；指定PL OUT/INOUT B05 | SRC/V；N仅参考 |
 | T18 VECTOR稠密向量 | 通用string路径已有，专项待验 | — | [官方类型][O11]；N列值/metadata为CHAR/String，Go的string绑定/文本解码可承载，归V14；没有专用向量codec不算已确认缺功能 | 官方支持；N的CHAR/String无需专用codec | SRC/V；N仅参考 |
-| T19 SQL/握手字符集 | 受限 | 受限 | [字符集实现](../internal/charset/charset.go)支持 utf8mb4、utf8/mb3、latin1、ASCII、binary、GBK、GB18030、GB18030_2022、HKSCS/HKSCS31；不在白名单的 client 编码拒绝 | MySQL官方列表；Oracle初始化参考B04分开 | SRC/L/H20（指定编码）/V |
-| T20 结果/national编码 | 受限 | 受限 | [collation映射](../internal/charset/charset.go)和UTF16大端解码已有；UTF16LE、GB2312/EUCKR/SJIS/Big5/DEC8/TIS620等缺映射G01；client、result、national和Oracle失败初始化B04分别判断 | client/result/national不同；B04不全面否定编码 | SRC/L/V |
+| T19 SQL/握手字符集 | 受限 | 受限 | [字符集实现](../internal/charset/charset.go)支持 utf8mb4、utf8/mb3、latin1、ASCII、binary、GBK、GB18030、GB18030_2022、HKSCS/HKSCS31、SJIS、Big5、DEC8、TIS620、GB2312、EUCKR；不在白名单的 client 编码拒绝 | G01本地映射已补；新实库待验；Oracle B04分开 | SRC/L/H20（指定编码）/V |
+| T20 结果/national编码 | 受限 | 受限 | [collation映射](../internal/charset/charset.go)、UTF16大端/小端及GB2312/EUCKR/SJIS/Big5/DEC8/TIS620严格映射已补（G01）；client、result、national和Oracle失败初始化B04分别判断 | G01已补本地路径，实库逐用途验；B04保留 | SRC/L/V |
 | T21 表 BLOB 随机分块访问 | 受限 | 受限 | [OpenTableBlob](../lob.go)、[表 BLOB 实现](../internal/lob/table.go)；要求可确定 schema/基表/完整 PK，MySQL 用长度/子串读写，Oracle 复用 native Blob；修改要求可写事务及适用锁/引擎条件，普通 Conn 跨块读取不承诺快照 | H20子集；基表/PK/锁/引擎为前提 | SRC/L/H20（指定子集）/V |
 | T22 SDO_GEOMETRY | — | 通用Object/Array待验 | 官方[复合类型][O9]；N有generic OBJECT/ARRAY整列读取/受限输入，先验Go描述符/成员/NULL/SRID，归V17；无GIS专用模型本身不算缺失 | 官方复合类型，N通用路径可用，Go V17 | SRC/V；N仅参考 |
 | T23 ANYDATA | — | 无独立映射；前提待核实 | 官方[ANYDATA][O10]仅PL，不允许持久表列S02；N目标缺SYS.ANYDATA为B10；PL writer/描述归U03，不把全部ANYDATA列为确定缺功能 | S02禁持久列；B10目标缺包；PL U03 | SRC/U；N仅参考 |

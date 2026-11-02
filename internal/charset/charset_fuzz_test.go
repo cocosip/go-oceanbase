@@ -12,7 +12,7 @@ func FuzzCharset(f *testing.F) {
 		if len(data) > 1024 {
 			return
 		}
-		names := [...]string{testUTF8MB4, "utf8mb3", testGBK, testGB18030, testUTF16, testLatin1, testASCII, "binary", "gb18030_2022", testHKSCS, testHKSCS31}
+		names := [...]string{testUTF8MB4, "utf8mb3", testGBK, testGB18030, testUTF16, testLatin1, testASCII, "binary", "gb18030_2022", testHKSCS, testHKSCS31, "sjis", "big5", "gb2312", "euckr", "dec8", "tis620", "utf16le"}
 		name := names[int(kind)%len(names)]
 		if text, err := Decode(name, data); err == nil {
 			encoded, err := Encode(name, text)

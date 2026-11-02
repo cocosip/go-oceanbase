@@ -56,7 +56,7 @@ func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 		}
 		name, ok := charset.Collation(c.Charset)
 		// HKSCS metadata uses the server's mbmaxlen=2 despite its UTF-8 wire payload.
-		width := map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, charsetGBK: 2, "hkscs": 2, "hkscs31": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, charsetGB18030: 4, "gb18030_2022": 4}[name]
+		width := map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, "dec8": 1, "tis620": 1, charsetGBK: 2, "gb2312": 2, "euckr": 2, "sjis": 2, "big5": 2, "hkscs": 2, "hkscs31": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, "utf16le": 4, charsetGB18030: 4, "gb18030_2022": 4}[name]
 		if !ok || width == 0 || c.Length%width != 0 {
 			return 0, false
 		}

@@ -15,6 +15,14 @@ import (
 )
 
 const (
+	nameSJIS    = "sjis"
+	nameBig5    = "big5"
+	nameGB2312  = "gb2312"
+	nameEUCKR   = "euckr"
+	nameDEC8    = "dec8"
+	nameTIS620  = "tis620"
+	nameUTF16LE = "utf16le"
+
 	nameUTF8MB4     = "utf8mb4"
 	nameUTF8MB3     = "utf8mb3"
 	nameLatin1      = "latin1"
@@ -63,6 +71,8 @@ func Encode(name, text string) ([]byte, error) {
 			}
 		}
 		return []byte(text), nil
+	case nameSJIS, nameBig5, nameGB2312, nameEUCKR, nameDEC8, nameTIS620:
+		return encodeLegacy(strings.ToLower(name), text)
 	default:
 		enc := textEncoding(name)
 		if enc == nil {
@@ -78,6 +88,10 @@ func Encode(name, text string) ([]byte, error) {
 
 // Decode converts connection bytes to Go UTF-8 text, rejecting invalid input.
 func Decode(name string, data []byte) (string, error) {
+	switch strings.ToLower(name) {
+	case nameSJIS, nameBig5, nameGB2312, nameEUCKR, nameDEC8, nameTIS620:
+		return decodeLegacy(strings.ToLower(name), data)
+	}
 	if strings.EqualFold(name, nameGB180302022) {
 		return decodeGB180302022(data)
 	}
@@ -89,14 +103,19 @@ func Decode(name string, data []byte) (string, error) {
 		return string(s), nil
 	}
 	if enc := textEncoding(name); enc != nil {
-		if strings.EqualFold(name, "utf16") && !validUTF16(data) {
+		utf16Name := strings.EqualFold(name, "utf16") || strings.EqualFold(name, nameUTF16LE)
+		var order binary.ByteOrder = binary.BigEndian
+		if strings.EqualFold(name, nameUTF16LE) {
+			order = binary.LittleEndian
+		}
+		if utf16Name && !validUTF16(data, order) {
 			return "", ErrEncoding
 		}
 		decoded, err := enc.NewDecoder().Bytes(data)
 		if err != nil {
 			return "", ErrEncoding
 		}
-		if strings.ContainsRune(string(decoded), utf8.RuneError) && !strings.EqualFold(name, "utf16") && !validReplacement(enc, data) {
+		if strings.ContainsRune(string(decoded), utf8.RuneError) && !utf16Name && !validReplacement(enc, data) {
 			return "", ErrEncoding
 		}
 		return string(decoded), nil
@@ -116,23 +135,25 @@ func textEncoding(name string) encoding.Encoding {
 		return simplifiedchinese.GB18030
 	case "utf16":
 		return unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM)
+	case nameUTF16LE:
+		return unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)
 	}
 	return nil
 }
 
-func validUTF16(data []byte) bool {
+func validUTF16(data []byte, order binary.ByteOrder) bool {
 	if len(data)%2 != 0 {
 		return false
 	}
 	for i := 0; i < len(data); i += 2 {
-		n := binary.BigEndian.Uint16(data[i:])
+		n := order.Uint16(data[i:])
 		if n < 0xd800 || n > 0xdfff {
 			continue
 		}
 		if n > 0xdbff || i+4 > len(data) {
 			return false
 		}
-		next := binary.BigEndian.Uint16(data[i+2:])
+		next := order.Uint16(data[i+2:])
 		if next < 0xdc00 || next > 0xdfff {
 			return false
 		}
@@ -169,6 +190,9 @@ func validReplacement(enc encoding.Encoding, data []byte) bool {
 
 // Collation identifies supported OceanBase result encodings; unknown IDs are rejected.
 func Collation(id uint16) (string, bool) {
+	if name, ok := legacyResultCollations[id]; ok {
+		return name, true
+	}
 	switch {
 	case id == 63:
 		return nameBinary, true
@@ -180,6 +204,7 @@ func Collation(id uint16) (string, bool) {
 		return nameGBK, true
 	case id == 54 || id == 55 || id >= 101 && id <= 124:
 		return "utf16", true
+
 	// OceanBase ob_charset.h: CS_TYPE_HKSCS_BIN, CS_TYPE_HKSCS31_BIN,
 	// and CS_TYPE_GB18030_2022_BIN through CS_TYPE_GB18030_2022_STROKE_CS.
 	case id == 152:

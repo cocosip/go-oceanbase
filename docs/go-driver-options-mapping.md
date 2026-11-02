@@ -258,4 +258,6 @@ All source links point to files containing the test entry points; one test may s
 
 Session.Charset now accepts `hkscs`, `hkscs31`, and `gb18030_2022`, using existing charset configuration/DSN and strict boundary encoding without new boolean switches. Both HKSCS names use UTF-8 payloads; 2022 uses a separate mapping and is not an old GB18030 alias. Actual server charset support remains pending integration.
 
+G01 additionally implements `sjis`, `big5`, `gb2312`, `euckr`, `dec8` and `tis620` through the same options, with strict OceanBase mappings rather than permissive Windows aliases. UTF16LE results decode by their actual collation; `Session.Charset=utf16le` remains invalid. Local mapping/peer tests pass, while server version/mode/use acceptance remains separate; Oracle initialization rejections recorded in the gap matrix are unchanged.
+
 Batch generated IDs are retained through appended BatchItem fields; multi-VALUES uses appended BatchMultiValues/BatchResult.Chunks without a Java-style global rewrite switch or changed defaults. MySQL routine named parameters/legacy SHOW CREATE fallback reuse existing parameter/Metadata APIs; built-in types use appended MetadataTypeInfo. No configuration options are added for these fixes.
