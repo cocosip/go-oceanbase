@@ -26,11 +26,11 @@ func integrationTestScalarProfile(t *testing.T, p integrationtest.Profile, path 
 	cfg.Session.Location = time.UTC
 	cfg.Session.ParseTime = false
 	cfg.Session.CompatibleMysqlVersion = 8
-	cfg.Session.Charset = "utf8mb4"
+	cfg.Session.Charset = charsetUTF8MB4
 	if p.Mode == oceanbase.ModeOracle {
 		cfg.Session.NCharset = "utf16"
 	}
-	if path == "client" {
+	if path == testClientStrategy {
 		cfg.PrepareMode = oceanbase.PrepareClient
 	} else {
 		cfg.PrepareMode = oceanbase.PrepareServer

@@ -16,7 +16,7 @@ func TestAllScalarTypes(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
-			for _, path := range []string{integrationScalarTextPath, "server", "client"} {
+			for _, path := range []string{integrationScalarTextPath, testServerStrategy, testClientStrategy} {
 				t.Run(path, func(t *testing.T) { integrationTestScalarProfile(t, p, path) })
 			}
 		})

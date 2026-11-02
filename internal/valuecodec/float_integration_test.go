@@ -28,7 +28,7 @@ func TestBinaryDoubleRange(t *testing.T) {
 	}
 	for _, profile := range profiles {
 		t.Run(profile.Name, func(t *testing.T) {
-			for _, path := range []string{"ordinary", "prepared", "combined", binaryDoubleCombinedPreparedPath, binaryDoubleArrayPath} {
+			for _, path := range []string{"ordinary", "prepared", testURowIDCombined, binaryDoubleCombinedPreparedPath, binaryDoubleArrayPath} {
 				t.Run(path, func(t *testing.T) { testBinaryDoubleRange(t, profile, path) })
 			}
 		})

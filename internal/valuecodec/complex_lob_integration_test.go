@@ -37,7 +37,7 @@ func TestOracleNamedLOBContent(t *testing.T) {
 				db := sql.OpenDB(connector)
 				db.SetMaxOpenConns(1)
 				defer func() { _ = db.Close() }()
-				for _, scalar := range []string{"BLOB", "CLOB"} {
+				for _, scalar := range []string{"BLOB", testLOBClob} {
 					for _, shape := range []string{"object", testLOBNested, testLOBCollection} {
 						t.Run(scalar+"/"+shape, func(t *testing.T) { verifyNamedLOBContent(t, db, scalar, shape) })
 					}
@@ -51,7 +51,7 @@ func verifyNamedLOBContent(t *testing.T, db *sql.DB, scalar, shape string) {
 	t.Helper()
 	ctx := integrationtest.TestContext(t)
 	base := fmt.Sprintf("OBGL_%d", time.Now().UnixNano())
-	leaf, root, proc := base+"L", base+"R", base+"P"
+	leaf, proc := base+"L", base+"P"
 	var created []string
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -71,18 +71,19 @@ func verifyNamedLOBContent(t *testing.T, db *sql.DB, scalar, shape string) {
 	}
 	create("TYPE", leaf, " AS OBJECT (A "+scalar+", N "+scalar+")")
 	member, nullMember := "p.A", "p.N"
-	root = leaf
-	if shape == testLOBNested {
+	root := leaf
+	switch shape {
+	case testLOBNested:
 		root = base + "R"
 		create("TYPE", root, " AS OBJECT (C "+leaf+")")
 		member, nullMember = "p.C.A", "p.C.N"
-	} else if shape == testLOBCollection {
+	case testLOBCollection:
 		root = base + "R"
 		create("TYPE", root, " AS TABLE OF "+scalar)
 		member, nullMember = "p(1)", "p(2)"
 	}
 	expression := "RAWTOHEX(DBMS_LOB.SUBSTR(" + member + ", 32, 1))"
-	if scalar == "CLOB" {
+	if scalar == testLOBClob {
 		expression = "DBMS_LOB.SUBSTR(" + member + ", 32, 1)"
 	}
 	create("PROCEDURE", proc, "(p IN "+root+", n OUT NUMBER, v OUT VARCHAR2) IS BEGIN IF "+nullMember+" IS NOT NULL THEN RAISE_APPLICATION_ERROR(-20001,'NULL member changed'); END IF; n := DBMS_LOB.GETLENGTH("+member+"); v := "+expression+"; END;")
@@ -97,14 +98,15 @@ func verifyNamedLOBContent(t *testing.T, db *sql.DB, scalar, shape string) {
 		}
 		var content any = data
 		length, prefix := int64(len(data)), fmt.Sprintf("%X", data[:min(32, len(data))])
-		if scalar == "CLOB" {
+		if scalar == testLOBClob {
 			content, length = text, int64(utf8.RuneCountInString(text))
 			prefix = string([]rune(text)[:min(32, utf8.RuneCountInString(text))])
 		}
 		var value any = oceanbase.Object{Schema: owner, Type: leaf, Fields: []oceanbase.Attribute{{Name: "A", Value: content}, {Name: "N"}}}
-		if shape == testLOBNested {
+		switch shape {
+		case testLOBNested:
 			value = oceanbase.Object{Schema: owner, Type: root, Fields: []oceanbase.Attribute{{Name: "C", Value: value}}}
-		} else if shape == testLOBCollection {
+		case testLOBCollection:
 			value = oceanbase.Array{Schema: owner, Type: root, Elements: []any{content, nil}}
 		}
 		var gotLength int64

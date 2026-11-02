@@ -21,7 +21,7 @@ func TestMySQLCharsets(t *testing.T) {
 		}
 		t.Run(p.Name, func(t *testing.T) {
 			for _, tc := range []struct{ charset, text string }{
-				{"utf8mb4", "中文🙂"}, {"utf8", "中文"}, {"latin1", "café €"},
+				{charsetUTF8MB4, "中文🙂"}, {"utf8", "中文"}, {"latin1", "café €"},
 				{"gbk", "中文"}, {"gb18030", "中文🙂"}, {"ascii", "ascii;\\'"},
 				{"sjis", "日本語ｱ〜;\\'"}, {"big5", "中文;\\'"}, {"gb2312", "中文;\\'"},
 				{"euckr", "한글;\\'"}, {"dec8", "ŒŸœÿ;\\'"}, {"tis620", "กข฿;\\'"},

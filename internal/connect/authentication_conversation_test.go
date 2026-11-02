@@ -149,6 +149,10 @@ func TestAuthPluginConversationCompletion(t *testing.T) {
 					return
 				}
 				if path == authNilOutputPath {
+					// This probe needs its own deadline instead of the fixture-wide deadline.
+					if e := packets.ReplaceConn(raw); e != nil {
+						t.Fatal(e)
+					}
 					checkCtx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
 					defer cancel()
 					_, e := packets.ReadMessage(checkCtx)

@@ -299,6 +299,9 @@ func ListenUnix(t *testing.T, directory, name string) (net.Listener, string) {
 // AuthPeerConn keeps fixture-wide deadlines while PacketIO changes per-message deadlines.
 type AuthPeerConn struct{ net.Conn }
 
+// SetDeadline keeps the fixture's underlying I/O deadline unchanged.
+func (AuthPeerConn) SetDeadline(time.Time) error { return nil }
+
 // SetReadDeadline keeps the fixture's underlying read deadline unchanged.
 func (AuthPeerConn) SetReadDeadline(time.Time) error { return nil }
 

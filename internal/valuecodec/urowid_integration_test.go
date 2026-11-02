@@ -24,12 +24,12 @@ func TestOracleURowID(t *testing.T) {
 		if profile.Mode != oceanbase.ModeOracle {
 			continue
 		}
-		for _, path := range []string{"server", "client", "combined"} {
+		for _, path := range []string{testServerStrategy, testClientStrategy, testURowIDCombined} {
 			t.Run(profile.Name+"/"+path, func(t *testing.T) {
 				cfg := integrationtest.ProfileConfig(t, profile)
 				cfg.Execution.PrepareExecute = path == "combined"
 				cfg.Execution.ReuseParameterTypes = true
-				if path == "client" {
+				if path == testClientStrategy {
 					cfg.PrepareMode = oceanbase.PrepareClient
 				}
 				connector, err := oceanbase.NewConnector(cfg)

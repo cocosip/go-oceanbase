@@ -54,7 +54,8 @@ func runPlatformPeer(t *testing.T, listener net.Listener, cfg config.Config) {
 	}
 	select {
 	case <-done:
-	case <-ctx.Done():
+	// Allow the peer's three-second I/O deadline to expire before failing cleanup.
+	case <-time.After(4 * time.Second):
 		t.Fatal("platform peer did not close")
 	}
 }

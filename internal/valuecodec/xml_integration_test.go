@@ -72,11 +72,12 @@ func TestOracleXMLType(t *testing.T) {
 				for shape, query := range []string{"SELECT X FROM " + table + " WHERE ID>=? ORDER BY ID", "SELECT " + function + "() FROM dual WHERE ?=1"} {
 					var rows *sql.Rows
 					var stmt *sql.Stmt
-					if path == testTextStrategy {
+					switch path {
+					case testTextStrategy:
 						rows, err = db.QueryContext(ctx, strings.Replace(query, "?", "1", 1))
-					} else if path == testClientStrategy {
+					case testClientStrategy:
 						rows, err = db.QueryContext(ctx, query, 1)
-					} else {
+					default:
 						stmt, err = db.PrepareContext(ctx, query)
 						if err == nil {
 							rows, err = stmt.QueryContext(ctx, 1)
@@ -85,28 +86,7 @@ func TestOracleXMLType(t *testing.T) {
 					if err != nil {
 						integrationtest.FailOperation(t, "query XML", err)
 					}
-					columns, err := rows.ColumnTypes()
-					if err != nil || columns[0].DatabaseTypeName() != "XMLTYPE" || columns[0].ScanType() != reflect.TypeFor[string]() {
-						t.Fatal("XML metadata mismatch")
-					}
-					var got sql.Null[string]
-					if !rows.Next() {
-						t.Fatal(rows.Err())
-					}
-					if err := rows.Scan(&got); err != nil || !got.Valid || got.V != "<x>患者😀</x>\n" {
-						t.Fatal("XML value mismatch", err)
-					}
-					if shape == 0 {
-						if !rows.Next() {
-							t.Fatal(rows.Err())
-						}
-						if err := rows.Scan(&got); err != nil || got.Valid {
-							t.Fatal("XML NULL mismatch", err)
-						}
-					}
-					if rows.Next() || rows.Err() != nil {
-						t.Fatal(rows.Err())
-					}
+					verifyOracleXMLRows(t, rows, shape == 0)
 					if err := rows.Close(); err != nil {
 						integrationtest.FailOperation(t, "close XML rows", err)
 					}
@@ -118,5 +98,31 @@ func TestOracleXMLType(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func verifyOracleXMLRows(t *testing.T, rows *sql.Rows, wantNull bool) {
+	t.Helper()
+	columns, err := rows.ColumnTypes()
+	if err != nil || columns[0].DatabaseTypeName() != "XMLTYPE" || columns[0].ScanType() != reflect.TypeFor[string]() {
+		t.Fatal("XML metadata mismatch")
+	}
+	var got sql.Null[string]
+	if !rows.Next() {
+		t.Fatal(rows.Err())
+	}
+	if err := rows.Scan(&got); err != nil || !got.Valid || got.V != "<x>患者😀</x>\n" {
+		t.Fatal("XML value mismatch", err)
+	}
+	if wantNull {
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		if err := rows.Scan(&got); err != nil || got.Valid {
+			t.Fatal("XML NULL mismatch", err)
+		}
+	}
+	if rows.Next() || rows.Err() != nil {
+		t.Fatal(rows.Err())
 	}
 }

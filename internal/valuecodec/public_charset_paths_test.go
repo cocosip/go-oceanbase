@@ -79,7 +79,7 @@ func TestAddedCharsetColumnLengths(t *testing.T) {
 		}
 	}
 	for _, binaryRows := range []bool{false, true} {
-		v, err := valuecodec.DecodeRowValue(wire.Column{Type: 253, Charset: 56}, binaryRows, []byte{0x2d, 0x4e, 0x3d, 0xd8, 0x00, 0xde}, config.ModeMySQL, config.SessionOptions{Charset: "utf8mb4"})
+		v, err := valuecodec.DecodeRowValue(wire.Column{Type: 253, Charset: 56}, binaryRows, []byte{0x2d, 0x4e, 0x3d, 0xd8, 0x00, 0xde}, config.ModeMySQL, config.SessionOptions{Charset: charsetUTF8MB4})
 		if err != nil || v != "中😀" {
 			t.Fatalf("UTF16LE result: %v, %v", v, err)
 		}

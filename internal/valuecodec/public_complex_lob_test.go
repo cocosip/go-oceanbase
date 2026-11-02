@@ -17,6 +17,7 @@ import (
 const (
 	testLOBCollection = "collection"
 	testLOBNested     = "nested"
+	testLOBClob       = "CLOB"
 )
 
 func TestNamedComplexLOBInputs(t *testing.T) {
