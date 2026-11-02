@@ -72,7 +72,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | Q16 Oracle DML 数组绑定 | — | 受限 | `BatchArrayBinding`；[门槛](../internal/batch/strategies.go)：真实版本 ≥4.2.1、可写事务、server prepare、至少两项、ContinueOnError、限定标量等；不是 collection 参数 | 版本/可写事务门槛；H24验证Oracle native子集 | SRC/L/H20/H24/V |
 | Q17 自动语句缓存、参数类型头复用 | 有实现 | 有实现 | `Execution.StatementCacheSize/ReuseParameterTypes`；缓存默认关闭；同物理会话/类型描述/成功状态内复用，身份、session SQL/reset 等触发失效 | 客户端缓存优化；DDL/目录失效V07 | SRC/L/H20/V |
 | Q18 LOCAL INFILE / 导入 | 受限 | 受限 | [Import](../local_infile.go)、[导入校验](../internal/execution/import.go)；单次应用流授权，不按服务器文件名读取本地文件；两模式均要求 autocommit、无本地事务且未进入 XA 专用状态 | H20两模式导入成功；事务安全为客户端限制 | SRC/L/H20/V |
-| Q19 长参数分片上传 | 有实现 | 受限 | [LongData](../long_data.go)、[上传](../internal/statement/upload.go)；MySQL long-data / Oracle piece-data，Oracle 依版本；单次 Reader、有界且不自动回放；client prepare 不支持流 | MySQL long-data/Oracle逐片ACK；U04不猜pipeline | SRC/L/H20/V |
+| Q19 长参数分片上传 | 有实现 | 受限 | [LongData](../long_data.go)、[上传](../internal/statement/upload.go)；MySQL long-data / Oracle piece-data，Oracle 依版本；单次 Reader、有界且不自动回放；client prepare 不支持流 | MySQL long-data/Oracle逐片ACK；[U04确认状态](go-driver-completeness.md#u-series-status)不猜无 ACK pipeline | SRC/L/H20/V |
 | Q20 multi-send / pipelining | 受限 | 受限 | [批量 native 选择](../internal/batch/native.go)、[pipeline](../internal/batch/pipeline.go)；server prepare、标量 DML、ContinueOnError 等门槛；framed 传输/Shared Memory 或不合资格形状走顺序；不是 SELECT/复杂值/流的通用 pipeline | 客户端优化范围C09，不是服务器不能执行SELECT | SRC/L/H20（指定子集）/V |
 | Q21 MariaDB bulk 协议 | 排除 | — | 枚举 `BatchBulk` 不表示已有 bulk writer；当前不合资格策略走顺序；不能把 Java MariaDB 继承选项当 OceanBase 必需协议 | X03非当前OceanBase协议承诺 | SRC/L |
 | Q22 context、读超时、显式 CancelQuery | 有实现 | 有实现 | [取消控制](../internal/control/cancel.go)；命令预算、单次目标及辅助连接 KILL；权限/代理路由影响实际中断；取消不保证无数据库效果 | 实际KILL权限/路由/中断码V10 | SRC/L/H20（报告子集）/V |
@@ -105,8 +105,8 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | T20 结果/national编码 | 受限 | 受限 | [collation映射](../internal/charset/charset.go)、UTF16大端/小端及GB2312/EUCKR/SJIS/Big5/DEC8/TIS620严格映射已补（G01）；client、result、national和Oracle失败初始化B04分别判断 | G01已补本地路径，实库逐用途验；B04保留 | SRC/L/V |
 | T21 表 BLOB 随机分块访问 | 受限 | 受限 | [OpenTableBlob](../lob.go)、[表 BLOB 实现](../internal/lob/table.go)；要求可确定 schema/基表/完整 PK，MySQL 用长度/子串读写，Oracle 复用 native Blob；修改要求可写事务及适用锁/引擎条件，普通 Conn 跨块读取不承诺快照 | H20子集；基表/PK/锁/引擎为前提 | SRC/L/H20（指定子集）/V |
 | T22 SDO_GEOMETRY | — | 通用Object/Array待验 | 官方[复合类型][O9]；N有generic OBJECT/ARRAY整列读取/受限输入，先验Go描述符/成员/NULL/SRID，归V17；无GIS专用模型本身不算缺失 | 官方复合类型，N通用路径可用，Go V17 | SRC/V；N仅参考 |
-| T23 ANYDATA | — | 无独立映射；前提待核实 | 官方[ANYDATA][O10]仅PL，不允许持久表列S02；N目标缺SYS.ANYDATA为B10；PL writer/描述归U03，不把全部ANYDATA列为确定缺功能 | S02禁持久列；B10目标缺包；PL U03 | SRC/U；N仅参考 |
-| T24 SPARSEVECTOR | 目标语法/wire待核实 | — | 官方[向量文档][O11]示例是无维数SPARSEVECTOR，自V4.3.5 BP2起支持；N的SPARSEVECTOR(3)1064不证明类型不支持，归U05，尚不确认需专用codec | 官方有支持；错误DDL不能证伪，U05 | SRC/U |
+| T23 ANYDATA | — | 无独立映射；前提待核实 | 官方[ANYDATA][O10]仅PL，不允许持久表列S02；N目标缺SYS.ANYDATA为B10；PL writer/描述归[U03](go-driver-completeness.md#u-series-status)，不把全部ANYDATA列为确定缺功能 | S02禁持久列；B10目标缺包；PL U03 | SRC/U；N仅参考 |
+| T24 SPARSEVECTOR | 目标语法/wire待核实 | — | 官方[向量文档][O11]示例是无维数SPARSEVECTOR，自V4.3.5 BP2起支持；N的SPARSEVECTOR(3)1064不证明类型不支持，归[U05](go-driver-completeness.md#u-series-status)，尚不确认需专用codec | 官方有支持；错误DDL不能证伪；U05 | SRC/U |
 | T25 MySQL SQL ARRAY | 通用string路径已有，专项待验 | — | 官方[ARRAY][O12]；N的ARRAY(INT)为CHAR/String，归V15；Go Array是Oracle collection而非此类型；默认值是官方限制S03 | 官方有支持；S03禁默认值；Go V15 | SRC/V；N仅参考 |
 | T26 RoaringBitmap | 通用bytes/SQL函数路径已有，专项待验 | — | 官方[位图][O13]；N为BLOB/bytes结果，rb_build_varbinary等函数写入可用，归V16；直接bytes绑定的1235是指定形状B11，不要求codec绕过 | 函数/bytes可用；直接bytes指定绑定B11 | SRC/V；N仅参考 |
 

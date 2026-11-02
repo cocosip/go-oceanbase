@@ -22,7 +22,7 @@
 
 ## 已确认的客户端实现差距
 
-本轮确认的 G01/G03/G04/G05a/G07a/G07b 六个客户端实现子集均已补齐，当前没有尚待编码的已确认 G 项，详见下表。这不表示全部类型、方向、版本或部署均已支持；参考 SDK 成功和本地测试不能替代 Go 实库验收。C 类仍是客户端范围限制/可选扩展，U 类仍需调查，S/B/A/ENV/V/X 不合并为客户端缺实现。
+本轮确认的 G01/G03/G04/G05a/G07a/G07b 六个客户端实现子集均已补齐，当前没有尚待编码的已确认 G 项，详见下表。这不表示全部类型、方向、版本或部署均已支持；参考 SDK 成功和本地测试不能替代 Go 实库验收。C 类仍是客户端范围限制/可选扩展，U 类已拆出可确认的客户端边界，但服务端归因仍需调查，S/B/A/ENV/V/X 不合并为客户端缺实现。
 
 ## 已补实现，实库待验收
 
@@ -111,16 +111,20 @@
 
 ## 依据不足，暂不归因
 
-| ID / 原关联 | 尚不能下的结论 | 需要先核实 |
-| --- | --- | --- |
-| U01 / 原G05 TIMESTAMP、G06 collection头 | Go有拒绝点，未核实所有原生binary TIMESTAMP/NCHAR/NVARCHAR2/LOB元素输入wire，不能整个组合算确定缺失或服务端不支持 | named/anonymous、元素头/成员体/方向/NULL/empty逐形状取得成功依据；PL LOB内容子集已列G05a，client命名构造器已列G07b，不代替原生binary头验收 |
-| U02 / 原G15 PL-only RECORD | 缺字段目录/公开绑定不等于数据库不能声明/使用RECORD；Java前置拒绝不能证明服务端拒绝 | 普通RECORD字段描述/成功wire；含cursor成员导致package INVALID的参考形状仅说明该包形状前提失败 |
-| U03 / T23 ANYDATA PL、locator/cursor成员输入 | 官方PL支持、已有输出/标量locator不能证明这些专门输入协议 | 满足B10包前提后取得描述/writer/方向；REF CURSOR IN/INOUT按X01排除 |
-| U04 / C09 Oracle piece-data流水化 | Java也逐片ACK，不能直接算Go少功能 | 是否存在允许多片无ACK的目标协议；无依据保留顺序，不猜协议 |
-| U05 / T24 SPARSEVECTOR | N失败的是SPARSEVECTOR(3)，官方示例是无维数的SPARSEVECTOR且说明V4.3.5 BP2起支持；1064不足以证明类型不支持 | 按正确语法验DDL、值/metadata/函数；TO_VECTOR 1305只说明那个函数调用不可用 |
-| U06 / G01 新编码/版本 | 官方列出UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7和版本条件，但目标部署/用途未核实 | 逐版本/模式/用途确认ID/映射；不能Go不识别就归服务端，也不外推Oracle初始化 |
-| U07 / 原G10 native参数码 | 通用输入已有，无type245/16/13/255专用writer不自动说明相关类型无法用 | 先验V13真实存储，只有明确无法满足的参数身份才新增缺口 |
-| U08 / Oracle超长NUL脚本 | Java/.NET特定大脚本超时不能单独证明服务端不支持或Go parser有缺陷 | 正确SQL/确切大小预算/发送执行消费阶段/独立效果；保留成功与失败长度，不随意截断 |
+<a id="u-series-status"></a>
+
+本表把“客户端已经能确认的边界”和“仍然需要目标端点才能判断的事实”分开。当前没有任何 U 项可以直接升级为 G、S 或 B；其中 U04 的客户端顺序协议已经明确，U07 的通用参数路径也已有本地依据，后续应优先补实库证据而不是先写新的 codec。
+
+| ID / 原关联 | 尚不能下的结论 | 本次已确认的客户端/协议边界 | 关闭或升级条件 |
+| --- | --- | --- | --- |
+| U01 / 原G05 TIMESTAMP、G06 collection头 | 不能由 Go 的拒绝点推出服务端不支持，也不能把所有 native binary TIMESTAMP/NCHAR/NVARCHAR2/LOB 元素合并成一个缺口 | [`ComplexElementWireType`](../internal/valuecodec/complex.go) 只映射 NUMBER/DATE/VARCHAR/CHAR/RAW；[`TestComplexArrayUnsupportedHeader`](../internal/parameters/complex_native_test.go) 已确认 named/anonymous 数组的 TIMESTAMP、NCHAR、NVARCHAR2、NCLOB 在描述查询/发送前拒绝。PL LOB 内容 G05a、命名构造器 G07b 不覆盖这些元素头 | 按 named/anonymous、元素头/成员体、方向、NULL/empty 分形状抓取成功 wire；服务端拒绝才转 B/S，成功且 Go 无法发送才新增对应 G 子项 |
+| U02 / 原G15 PL-only RECORD | 缺目录字段或 Java 前置拒绝，不能证明数据库不能声明/使用 RECORD | [Oracle 目录计划](../internal/catalog/metadata_sql_oracle.go)只保留 DATA_TYPE/TYPE_NAME/DATA_LEVEL 等描述字段；当前[绑定入口](../internal/call/binding.go)没有 RECORD 的 descriptor/writer，已确认 Go 侧没有可发送的 RECORD 输入路径 | 用有效 package 中的普通 RECORD 取得 ALL_ARGUMENTS、描述和 IN/OUT wire；含 cursor 成员的 INVALID package 只能作为形状前提失败 |
+| U03 / T23 ANYDATA PL、locator/cursor成员输入 | 官方 PL 支持、已有 OUT 或标量 locator，不能证明 ANYDATA/locator/cursor 成员的专门输入协议 | B10 的 `SYS.ANYDATA` 包前提失败仍是已确认的目标限制；[`EncodeComplexScalar`](../internal/valuecodec/complex.go) 没有 locator/cursor writer，REF CURSOR IN/INOUT 继续按 X01 排除，已有 native locator 仅覆盖输出/资源路径 | 在满足 B10 包前提的目标上分别取得 ANYDATA 描述/writer/方向和 locator/cursor 成员 wire；每个方向单独归类 |
+| U04 / C09 Oracle piece-data流水化 | 尚无证据证明目标协议允许多片无 ACK，不能把“Go 没有无 ACK 流水”算成服务端缺陷 | [Oracle 长参数上传](../internal/statement/upload.go)每片发送后读取并校验 OK，再发送下一片；Java 参考也逐片 ACK；[批处理选择](../internal/batch/native.go)在 shared-memory 等不满足独立流条件时回退顺序，[Pipeline](../internal/wire/pipeline.go)拒绝 framed 流 | 只有抓到目标协议允许多片无 ACK 的证据才继续设计流水化；否则把 U04 降为 C09 的明确协议限制，不新增实现待办 |
+| U05 / T24 SPARSEVECTOR | `SPARSEVECTOR(3)` 的 1064 不能证明类型不支持，Go 也没有专用 codec 可供推断 | 当前没有 SPARSEVECTOR 专用输入、结果或 metadata 路径；通用 string 路径不能证明维数、NULL、函数语义正确 | 在版本 ≥4.3.5 BP2 的目标上按官方无维数语法验 DDL、值、metadata 和函数；正确语法仍失败才记录确切 B/S |
+| U06 / G01 新编码/版本 | 官方列出的 UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 受版本和用途影响，不能以 Go 未识别直接归服务端不支持 | 当前[字符集映射](../internal/charset/charset.go)没有这些名称的 encoder/collation 映射；这只确认客户端配置会拒绝未知名称，不确认目标没有对应 ID 或部署 | 逐版本、模式、用途确认 collation ID/握手/结果/参数；需要支持且目标有 ID 时新增 G，否则按 ENV/S 保留确切范围 |
+| U07 / 原G10 native参数码 | 没有 type245/16/13/255 专用 writer，不等于 JSON/BIT/YEAR/GEOMETRY 必须使用这些身份 | [`EncodeParameter`](../internal/valuecodec/binary.go)已覆盖通用 string/bytes/整数等输入，公开测试确认其类型头和结果路径；当前没有证据表明 V13 的真实列要求专用输入身份 | 在真实列/转换上抓取参数类型、metadata、存储/回读；只有通用路径确实不能满足时，按具体 type/形状新增 G |
+| U08 / Oracle超长NUL脚本 | Java/.NET 特定大脚本超时不能证明服务端不支持，也不能单独证明 Go parser 有缺陷 | 客户端准备路径已将 Oracle 文本 NUL 转为 `CHR(0)`，并对 SQL 编码字节和累计预算做边界检查；[`TestClientPrepareEncoding`](../internal/command/client_prepare_test.go)已覆盖该转换，未覆盖目标执行效果 | 在真实 Oracle 上按确切长度分别验证发送、prepare/execute、消费和独立效果，记录成功/失败阈值；不得为绕过失败而静默截断或重放 |
 
 ## 明确排除与生态差异
 
@@ -139,6 +143,6 @@
 - N：obconnector-dotnet/docs/obconnector-dotnet-completeness.md及obconnector-dotnet-missing-features-roadmap.md的D-02d1～d3、D-04a1/a2/e、D-05、D-07、D-08m、D-09、D-12a/b/c、目录/RECORD段落；本次核对ComplexLobInputTests.cs、XmlProbeTests.cs、VectorArrayStringWireTests.cs的实际用例形状，不记作Go实测。
 - Java：核对ComplexUtil.storeComplexAttrData成员writer、createSQLXML客户端拒绝和OB20 reader压缩长度拒绝；没有把Java拒绝当服务端不支持证明。
 
-本次定向运行 charset、valuecodec、parameters、materialize、statement、batch 六包中与映射、复杂值、拒绝/不重放及批处理回退相关的 15 个顶层测试，全部通过。默认 Go 缓存首轮遇到访问拒绝，改用项目内缓存后通过；这只证明所选本地用例，不是实库兼容性验收。本次未连接数据库，也未重新验证当前部署、权限或参考 SDK 的服务端失败形状。
+本轮运行 `go test ./internal/parameters ./internal/valuecodec ./internal/streaminput ./internal/batch`，全部通过；覆盖复杂值头拒绝、通用参数类型、NUL 文本转换、分片上传和批处理回退。这只证明所选本地用例，不是实库兼容性验收。本次未连接数据库，也未重新验证当前部署、权限或参考 SDK 的服务端失败形状。
 
 上一版“15项功能差距”的汇总撤销：原G10–G14多数是通用路径验收/调查，G05/G06/G07按操作形状拆开，服务端/权限/环境也已拆开。后续G表按明确子集立项，C表按需求选择，V表补验收；S/B/A/ENV/U/X不直接转为实现待办。
