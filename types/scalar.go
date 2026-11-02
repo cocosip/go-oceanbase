@@ -18,6 +18,16 @@ type Raw []byte
 // RowID binds an Oracle row identifier.
 type RowID string
 
+// URowID binds an Oracle universal row identifier using the native type-209 wire.
+// Use sql.Null[URowID] or a nil *URowID for a typed SQL NULL.
+type URowID string
+
+// Scan reads a universal row identifier without changing the receiver on error.
+func (r *URowID) Scan(src any) error { return scanTyped(r, src, URowID.Value) }
+
+// Value validates the same base64 text representation returned for Oracle ROWID.
+func (r URowID) Value() (driver.Value, error) { return RowID(r).Value() }
+
 // Scan reads UTF-8 text.
 func (n *NString) Scan(src any) error {
 	if n == nil {

@@ -72,7 +72,7 @@ func EncodeStmtExecuteArray(id uint32, rows [][]Parameter, limit int64, options 
 		payload = append(payload, make([]byte, (len(rows)+7)/8)...)
 		for i, row := range rows {
 			parameter := row[column]
-			if parameter.Type == 6 {
+			if parameter.IsNull() {
 				payload[bitmap+i/8] |= 1 << uint(i%8)
 				continue
 			}

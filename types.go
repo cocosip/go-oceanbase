@@ -17,6 +17,9 @@ type Raw = types.Raw
 // RowID binds an Oracle row identifier.
 type RowID = types.RowID
 
+// URowID binds Oracle universal row identifiers with explicit native type identity.
+type URowID = types.URowID
+
 // ErrComplex identifies invalid complex values, descriptions or representations.
 var ErrComplex = dberrors.ErrComplex
 

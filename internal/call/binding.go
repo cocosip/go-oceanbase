@@ -66,7 +66,7 @@ func validOutputType(name string) bool {
 	case valueformat.TypeNameObject, valueformat.TypeNameArray:
 		return true
 	case valueformat.TypeNameNumber, valueformat.TypeNameDecimal, valueformat.TypeNameInteger, valueformat.TypeNameBigInt, "BIGINT UNSIGNED", valueformat.TypeNameBoolean, valueformat.TypeNameFloat, valueformat.TypeNameDouble, valueformat.TypeNameBinaryFloat, valueformat.TypeNameBinaryDouble,
-		valueformat.TypeNameVarchar, valueformat.TypeNameVarchar2, valueformat.TypeNameChar, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameVarbinary, valueformat.TypeNameDate, valueformat.TypeNameDateTime, valueformat.TypeNameTimestamp,
+		valueformat.TypeNameVarchar, valueformat.TypeNameVarchar2, valueformat.TypeNameChar, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameURowID, valueformat.TypeNameVarbinary, valueformat.TypeNameDate, valueformat.TypeNameDateTime, valueformat.TypeNameTimestamp,
 		valueformat.TypeNameTimestampTZ, valueformat.TypeNameTimestampLTZ, valueformat.TypeNameIntervalYM, valueformat.TypeNameIntervalDS, valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob:
 		return true
 	}
@@ -76,7 +76,7 @@ func validOutputType(name string) bool {
 func (b *Binding) validateMode(mode config.Mode) error {
 	if b.Length > 0 {
 		switch b.Type {
-		case valueformat.TypeNameVarchar, valueformat.TypeNameVarchar2, valueformat.TypeNameChar, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameVarbinary, valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob:
+		case valueformat.TypeNameVarchar, valueformat.TypeNameVarchar2, valueformat.TypeNameChar, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameURowID, valueformat.TypeNameVarbinary, valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob:
 		default:
 			return fmt.Errorf("%w: length requires a text or binary output type", dberrors.ErrOut)
 		}
@@ -91,7 +91,7 @@ func (b *Binding) validateMode(mode config.Mode) error {
 		return nil
 	}
 	switch b.Type {
-	case valueformat.TypeNameVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameBinaryFloat, valueformat.TypeNameBinaryDouble, valueformat.TypeNameTimestampTZ, valueformat.TypeNameTimestampLTZ, valueformat.TypeNameIntervalYM, valueformat.TypeNameIntervalDS, valueformat.TypeNameClob, valueformat.TypeNameNClob:
+	case valueformat.TypeNameVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameURowID, valueformat.TypeNameBinaryFloat, valueformat.TypeNameBinaryDouble, valueformat.TypeNameTimestampTZ, valueformat.TypeNameTimestampLTZ, valueformat.TypeNameIntervalYM, valueformat.TypeNameIntervalDS, valueformat.TypeNameClob, valueformat.TypeNameNClob:
 		return fmt.Errorf("%w: output type in MySQL compatibility mode", dberrors.ErrUnsupported)
 	}
 	if b.Precision > 0 && (b.Scale < 0 || b.Scale > 30 || b.Scale > b.Precision) {
@@ -116,6 +116,8 @@ func inferOutputType(t reflect.Type) string {
 		return valueformat.TypeNameRaw
 	case reflect.TypeFor[types.RowID]():
 		return valueformat.TypeNameRowID
+	case reflect.TypeFor[types.URowID]():
+		return valueformat.TypeNameURowID
 	case reflect.TypeFor[types.TimestampTZ]():
 		return valueformat.TypeNameTimestampTZ
 	case reflect.TypeFor[types.TimestampLTZ]():
@@ -256,7 +258,7 @@ func (c *assignment) scanOutput(dest, source any) error {
 
 func outputText(value any) (string, error) {
 	switch v := value.(type) {
-	case types.Number, types.NString, types.Raw, types.RowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
+	case types.Number, types.NString, types.Raw, types.RowID, types.URowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
 		standard, err := v.(driver.Valuer).Value()
 		if err != nil {
 			return "", err
@@ -283,6 +285,18 @@ func outputText(value any) (string, error) {
 func (c *assignment) validateOutputValue(b *Binding, value driver.Value) error {
 	if value == nil {
 		return nil
+	}
+	if id, ok := value.(*types.URowID); ok && id == nil {
+		return nil
+	}
+	if b.Type == valueformat.TypeNameURowID {
+		text, err := outputText(value)
+		if err != nil {
+			return err
+		}
+		if _, err = types.URowID(text).Value(); err != nil {
+			return err
+		}
 	}
 	if b.Length > 0 {
 		text, err := outputText(value)

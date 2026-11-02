@@ -376,6 +376,8 @@ func TestOutNativeResponseBoundaries(t *testing.T) {
 func TestOutPreSendValidation(t *testing.T) {
 	var scalar int64
 	var n oceanbase.Number
+	badID := "bad!"
+	goodID := "AAAA"
 	for _, tc := range []struct {
 		name, version string
 		mode          config.Mode
@@ -388,6 +390,9 @@ func TestOutPreSendValidation(t *testing.T) {
 		{"oracle-precision", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &n, Precision: 39}, oceanbase.ErrOut},
 		{"mysql-scale", testOutVersion, config.ModeMySQL, oceanbase.Out{Dest: &n, Precision: 2, Scale: 3}, oceanbase.ErrOut},
 		{"mysql-native-type", testOutVersion, config.ModeMySQL, oceanbase.Out{Dest: &scalar, Type: "ROWID"}, dberrors.ErrUnsupported},
+		{"mysql-urowid", testOutVersion, config.ModeMySQL, oceanbase.Out{Dest: &goodID, Type: valueformat.TypeNameURowID}, dberrors.ErrUnsupported},
+		{"bad-urowid", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &badID, Type: valueformat.TypeNameURowID, In: true}, dberrors.ErrType},
+		{"urowid-length", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &goodID, Type: valueformat.TypeNameURowID, In: true, Length: 3}, dberrors.ErrOut},
 		{"numeric-length", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &scalar, Length: 5}, oceanbase.ErrOut},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

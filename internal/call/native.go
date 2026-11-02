@@ -11,7 +11,9 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/sqltext"
 	"github.com/cocosip/go-oceanbase/internal/statement"
+	"github.com/cocosip/go-oceanbase/internal/valueformat"
 	"github.com/cocosip/go-oceanbase/internal/wire"
+	"github.com/cocosip/go-oceanbase/types"
 )
 
 // PreparePayload encodes Oracle IN and OUT slots under the original per-parameter budget.
@@ -38,6 +40,17 @@ func PreparePayload(ctx context.Context, op *session.Operation, resolver *catalo
 			if b.In {
 				if err = ValidateValue(op, b, b.input); err != nil {
 					return nil, err
+				}
+			}
+			if b.Type == valueformat.TypeNameURowID {
+				if value == nil {
+					value = (*types.URowID)(nil)
+				} else if id, ok := value.(*types.URowID); !ok || id != nil {
+					text, conversionErr := outputText(value)
+					if conversionErr != nil {
+						return nil, conversionErr
+					}
+					value = types.URowID(text)
 				}
 			}
 		}

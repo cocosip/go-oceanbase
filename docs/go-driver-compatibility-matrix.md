@@ -26,6 +26,8 @@ Current live evidence: [2026-10-20 release validation](release-validation-2026-1
 
 Oracle sensitive-cursor freshness is fixed and verified across connections, with ROWID refresh, aliases, wildcards, repeated columns, ordinal ordering, LOBs and deletion. The earlier [2026-10-19 report](oracle-live-validation-2026-10-19.md) is historical: its JDBC comparison exercised cached rows and did not prove refresh unsupported. The corrected Connector/J comparison and the Go fix are recorded in the current release report. Oracle positive warnings and LOCAL import now pass; import requires autocommit in both modes to prevent implicit commits of caller transactions. NCLOB, nested-table storage and selected child CURSOR forms remain target limits; Oracle view/alternate-identity/proxy and unavailable TLS/compression/OBProxy/OCP/failover deployments were reviewed against the pinned official Java source and local protocol peers. See the release report for exact source paths, intentional Go differences and unverified deployment boundaries. Additional infrastructure/grants are not requirements for this package release; source alignment does not count as a live pass.
 
+Current UROWID input contract (2026-11-02): `URowID`, nullable values and OUT/INOUT preserve native type 209, including SQL NULL; client preparation uses CAST AS UROWID. Existing RowID binding and type-209 result metadata remain unchanged. Public local peers cover separate/combined/client execution and type reuse; the new Oracle direct/proxy storage and PL test profiles are unconfigured, so no new live pass is claimed. See G03 in the classified matrix.
+
 ## 1. Handshake, Authentication, and Modes
 
 | Capability | Confirmed basis | Current Go behavior | Verification status |

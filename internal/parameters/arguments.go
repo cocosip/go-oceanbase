@@ -26,21 +26,30 @@ func NormalizeStep(value any) (next any, again bool, err error) {
 			typ = typ.Elem()
 		}
 		if typ.PkgPath() == "database/sql" && strings.HasPrefix(typ.Name(), "Null[") {
+			var null any
+			if field, ok := typ.FieldByName("V"); ok && (field.Type == reflect.TypeFor[types.URowID]() || field.Type == reflect.TypeFor[*types.URowID]()) {
+				null = (*types.URowID)(nil)
+			}
 			if nullable.Kind() == reflect.Pointer {
 				if nullable.IsNil() {
-					return nil, false, nil
+					return null, false, nil
 				}
 				nullable = nullable.Elem()
 			}
 			if !nullable.FieldByName("Valid").Bool() {
-				return nil, false, nil
+				return null, false, nil
 			}
 			return nullable.FieldByName("V").Interface(), true, nil
 		}
 	}
-	switch value.(type) {
+	switch value := value.(type) {
+	case *types.URowID:
+		if value == nil {
+			return value, false, nil
+		}
+		return *value, true, nil
 	case types.Object, types.Array, *types.Object, *types.Array,
-		types.Number, types.NString, types.Raw, types.RowID, *types.Number, *types.NString, *types.Raw, *types.RowID,
+		types.Number, types.NString, types.Raw, types.RowID, types.URowID, *types.Number, *types.NString, *types.Raw, *types.RowID,
 		types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS,
 		*types.TimestampTZ, *types.TimestampLTZ, *types.IntervalYM, *types.IntervalDS:
 		rv := reflect.ValueOf(value)

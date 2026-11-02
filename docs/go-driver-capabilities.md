@@ -94,7 +94,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | T09 TIMESTAMP、TZ/LTZ | TIMESTAMP有实现 | 受限 | [精确时间值](../types/temporal.go)；Oracle时间保留纳秒/偏移/地区，LTZ用会话墙钟；N指定named-region binary失败B09不否定数字偏移/text/LTZ | 官方支持；指定named-region binary参考B09 | SRC/L/H20/V |
 | T10 INTERVAL YM/DS | — | 有实现 | [IntervalYM/DS](../types/temporal.go)，原生与 client literal 路径；区分精度、符号和 NULL | 官方Oracle类型；精度/方向分别验 | SRC/L/H20/V |
 | T11 NCHAR/NVARCHAR2 | — | 受限 | [NString](../types/scalar.go)、`Session.NCharset`，scalar 输入/结果和限定复杂成员；不能覆盖任意 national collection 头 | 官方Oracle national类型；collection头U01 | SRC/L/H20/V |
-| T12 ROWID / UROWID | — | type209结果已有；显式UROWID输入缺口 | type209按ROWID文本读取；[RowID](../types/scalar.go)输入用type253、client用CHARTOROWID；G03仅为独立UROWID/type209参数身份，不宣称所有UROWID读写不能工作 | 官方支持UROWID；显式type209子集N成功 | SRC/L/H20（ROWID子集）/V |
+| T12 ROWID / UROWID | — | 有实现；实库待验收 | type209 结果仍按 ROWID 文本读取；`RowID` 保持 type253/CHARTOROWID；`URowID` 显式 type209/CAST，含 typed NULL、OUT/INOUT；G03 本地实现已补，结果元数据不猜 UROWID 名称 | 官方支持；新增长值存储/PL INOUT Go 入口未配置 DSN | SRC/L/H20（仅原 ROWID 子集）/V |
 | T13 原生 BLOB/CLOB locator | — | 受限 | [OpenBlob/OpenClob](../lob.go)、[DBMS_LOB](../internal/lob/native.go)；固定 Conn/Tx、版本/locator 门槛；可分块读写/截断/临时释放，字符偏移有明确 Unicode 规则 | BLOB/CLOB支持；locator/版本/资源V09 | SRC/L/H20/V |
 | T14 命名 OBJECT/collection、描述缓存 | — | 受限 | [Object/Array](../types/complex.go)、[绑定](../internal/parameters/complex.go)、[codec](../internal/valuecodec/complex.go)有NUMBER/字符/RAW/DATE/嵌套等；PL中LOB内容读取子集缺输入G05a；TIMESTAMP/collection头先查U01；持久nested列B02、BLOB成员写列B06、根NULL输出B08分开 | 指定PL子集可用；持久列B02/写列B06/根NULL B08分开 | SRC/L/H20（binary/PL子集）/V |
 | T15 复杂值text、LOB/cursor成员 | — | 受限 | binary nested LOB结果物化已有；[入口](../internal/materialize/decoder.go)拒绝text type160；已证明scalar/nested named text结果缺口G07a与坏payload/LOB成员身份B07分开；locator/cursor专门输入尚缺依据U03 | scalar/nested text可用；坏成员形状B07分开 | SRC/L/H20（指定结果）/V |
@@ -114,18 +114,18 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 
 | ID / 能力 | Go客户端能力与边界 | 服务端/部署判定 | 入口与证据 |
 | --- | --- | --- | --- |
-| X01 本地事务、隔离级别、只读、savepoint | 双模式有实现；Oracle 不接受 RepeatableRead、ReadOnly+ReadCommitted 等非法组合；DDL 隐式提交等由服务端决定 | 模式/隔离级别由数据库语义决定 | [事务](../internal/control/transaction.go)、[保存点](../internal/control/savepoint.go)；S/L/H20/V |
+| X01 本地事务、隔离级别、只读、savepoint | 双模式有实现；Oracle 不接受 RepeatableRead、ReadOnly+ReadCommitted 等非法组合；DDL 隐式提交等由服务端决定 | 模式/隔离级别由数据库语义决定 | [事务](../internal/control/transaction.go)、[保存点](../internal/control/savepoint.go)；SRC/L/H20/V |
 | X02 环境事务、分布式协调器 | Go 不复制 TransactionScope；不内置持久化全局事务协调器，应用负责决策/日志/恢复 | X02应用协调器职责，不是服务器无事务 | [XA API](../xa.go)；接口差异/排除，不计普通本地事务缺失 |
-| X03 XA start/end/prepare/commit/rollback/recover | 双模式有实现，MySQL XA SQL / Oracle DBMS_XA；固定专用会话；Forget、RM timeout 不伪造支持，join/suspend 受目标限制 | 正常XA H20；JOIN/SUSPEND指定拒绝B01 | [XA 实现](../internal/xa/manager.go)；S/L/H20/V |
-| X04 unknown outcome 与连接淘汰 | 发送后的故障不自动重放；写入/提交未知保留分类，旧资源不能进入新租约；不等于已经证明真实节点崩溃恢复 | 真实故障恢复V05；客户端不重放 | [错误](../dberrors/errors.go)、[XA](../internal/xa)；S/L/H20（正常与指定故障子集）/V |
-| P01 标准包、EOF、逻辑包边界 | 双模式有实现，校验序号/长度/截断，资源与结果预算有界 | 标准协议已用；不是所有畸形路径实库验收 | [wire](../internal/wire/packet.go)、[command](../internal/command)；S/L/H20 |
-| P02 标准 zlib 压缩 | 依真实协商，auto 可回退；有帧编码/解码及 Java 互操作证据，不等于真实服务已使用压缩 | 历史端点未提供压缩ENV02，不是产品不支持 | [compress](../internal/wire/compress.go)、[互操作用例](../internal/wire/compression_java_test.go)；S/L/H20（回退）/V |
-| P03 OB20、CRC、proxy checksum、新 metadata | 有实现，各能力分别协商；OB20 CRC、proxy checksum、SQL checksum 是不同能力 | 真实协商端点ENV02；常量不等于部署通过 | [OB20](../internal/wire/ob20.go)、[协议配置](../config/protocol.go)；S/L/V |
-| P04 Oracle PrepareExecute、SQL checksum | 受限：PrepareExecute 依真实版本 ≥2.2.76，普通执行 SQL checksum 依 ≥4.1.2；相关开关显式开启，不绕过版本/模式检查 | 真实版本/能力门槛，不以配置覆盖 | [执行选项](../config/execution_options.go)、[native statement](../internal/statement/native.go)；S/L/H20/H24/V |
-| P05 Full Link Trace | 有协商/extra-info/采样控制/trace-span 信息子集；需 OB20 与目标支持；客户端事件不是服务器 trace 或 collector 验收 | 服务端/代理FLT与collector前提ENV02 | [trace](../internal/diagnostic/trace.go)、[wire trace](../internal/wire/trace.go)；S/L/V |
-| P06 压缩OB20、proxy reroute | 当前客户端/协议范围排除X03；Java压缩长度拒绝只证明该Java reader的边界，不能据此断言OceanBase产品整体不支持 | X03当前范围，服务端普遍结论未建立 | [兼容性条件](go-driver-compatibility-matrix.md)；S/U |
-| M01 数据库、列、键、索引、权限、过程、UDT 元数据 | 双模式目录计划有实现，Oracle UDT/同义词与 MySQL 目录差异保留；不存在的 Oracle catalog 返回空；权限错误不伪造为空成功 | 权限A01/目录参考B12/元数据V07 | [Metadata API](../metadata.go)、[catalog](../internal/catalog)；S/L/H20（子集）/V |
-| M02 日志、慢请求、包/请求诊断 | slog 注入和有界 callback；不记录原始 SQL、参数、凭据和包体；Rows 时长包含消费时间 | 客户端诊断；服务器trace另见P05 | [诊断配置](../config/diagnostic.go)、[诊断实现](../internal/diagnostic)；S/L/V（负载） |
+| X03 XA start/end/prepare/commit/rollback/recover | 双模式有实现，MySQL XA SQL / Oracle DBMS_XA；固定专用会话；Forget、RM timeout 不伪造支持，join/suspend 受目标限制 | 正常XA H20；JOIN/SUSPEND指定拒绝B01 | [XA 实现](../internal/xa/manager.go)；SRC/L/H20/V |
+| X04 unknown outcome 与连接淘汰 | 发送后的故障不自动重放；写入/提交未知保留分类，旧资源不能进入新租约；不等于已经证明真实节点崩溃恢复 | 真实故障恢复V05；客户端不重放 | [错误](../dberrors/errors.go)、[XA](../internal/xa)；SRC/L/H20（正常与指定故障子集）/V |
+| P01 标准包、EOF、逻辑包边界 | 双模式有实现，校验序号/长度/截断，资源与结果预算有界 | 标准协议已用；不是所有畸形路径实库验收 | [wire](../internal/wire/packet.go)、[command](../internal/command)；SRC/L/H20 |
+| P02 标准 zlib 压缩 | 依真实协商，auto 可回退；有帧编码/解码及 Java 互操作证据，不等于真实服务已使用压缩 | 历史端点未提供压缩ENV02，不是产品不支持 | [compress](../internal/wire/compress.go)、[互操作用例](../internal/wire/compression_java_test.go)；SRC/L/H20（回退）/V |
+| P03 OB20、CRC、proxy checksum、新 metadata | 有实现，各能力分别协商；OB20 CRC、proxy checksum、SQL checksum 是不同能力 | 真实协商端点ENV02；常量不等于部署通过 | [OB20](../internal/wire/ob20.go)、[协议配置](../config/protocol.go)；SRC/L/V |
+| P04 Oracle PrepareExecute、SQL checksum | 受限：PrepareExecute 依真实版本 ≥2.2.76，普通执行 SQL checksum 依 ≥4.1.2；相关开关显式开启，不绕过版本/模式检查 | 真实版本/能力门槛，不以配置覆盖 | [执行选项](../config/execution_options.go)、[native statement](../internal/statement/native.go)；SRC/L/H20/H24/V |
+| P05 Full Link Trace | 有协商/extra-info/采样控制/trace-span 信息子集；需 OB20 与目标支持；客户端事件不是服务器 trace 或 collector 验收 | 服务端/代理FLT与collector前提ENV02 | [trace](../internal/diagnostic/trace.go)、[wire trace](../internal/wire/trace.go)；SRC/L/V |
+| P06 压缩OB20、proxy reroute | 当前客户端/协议范围排除X03；Java压缩长度拒绝只证明该Java reader的边界，不能据此断言OceanBase产品整体不支持 | X03当前范围，服务端普遍结论未建立 | [兼容性条件](go-driver-compatibility-matrix.md)；SRC/U |
+| M01 数据库、列、键、索引、权限、过程、UDT 元数据 | 双模式目录计划有实现，Oracle UDT/同义词与 MySQL 目录差异保留；不存在的 Oracle catalog 返回空；权限错误不伪造为空成功 | 权限A01/目录参考B12/元数据V07 | [Metadata API](../metadata.go)、[catalog](../internal/catalog)；SRC/L/H20（子集）/V |
+| M02 日志、慢请求、包/请求诊断 | slog 注入和有界 callback；不记录原始 SQL、参数、凭据和包体；Rows 时长包含消费时间 | 客户端诊断；服务器trace另见P05 | [诊断配置](../config/diagnostic.go)、[诊断实现](../internal/diagnostic)；SRC/L/V（负载） |
 | M03 池指标、OpenTelemetry 接入 | `sql.DB.Stats` 有池统计，callback 可供应用接入观测；无内置 OTel exporter、.NET Activity/Meter 或 Java JMX 等价承诺 | 标准库/应用观测，不是服务器协议能力 | [池示例](../pool_example_test.go)、[诊断配置](../config/diagnostic.go)；标准库/应用适配，非协议缺失 |
 | R01 Go 版本、平台、CI、性能/长稳 | Go 1.26+；已有 Windows 本地及历史 hosted 检查记录，当前所有 OS/tag/真实部署组合尚未全验；本地 peer benchmark 不代表实库吞吐或长期稳定性 | 按Go/OS/tag/实际服务端组合验V11 | [go.mod](../go.mod)、[历史发布检查](release-validation-2026-10-20.md)、[benchmarks](go-driver-benchmarks.md)；H20/V |
 | R02 JDBC/ADO.NET 专属 API 与容器集成 | 不复制 JDBC 类、ADO.NET factory/DI、DataAdapter、CommandBuilder、DbBatchReader；Go 用 sql.DB/Conn/Tx、Rows、ExecBatch 等自身契约 | 语言生态差异X04 | [用法](go-driver-usage.md)；生态接口差异 |

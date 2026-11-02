@@ -30,6 +30,7 @@ const (
 	TypeNameNVarchar2    = "NVARCHAR2"
 	TypeNameNChar        = "NCHAR"
 	TypeNameRowID        = "ROWID"
+	TypeNameURowID       = "UROWID"
 	TypeNameFloat        = "FLOAT"
 	TypeNameDouble       = "DOUBLE"
 	TypeNameVarchar      = "VARCHAR"

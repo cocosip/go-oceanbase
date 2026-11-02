@@ -28,7 +28,7 @@ func CloneKey(value any) (any, error) {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
 			return nil, dberrors.ErrLOB
 		}
-	case string, int64, uint64, bool, time.Time, types.Number, types.NString, types.RowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
+	case string, int64, uint64, bool, time.Time, types.Number, types.NString, types.RowID, types.URowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
 	default:
 		return nil, fmt.Errorf("%w: unsupported or NULL primary key value", dberrors.ErrLOB)
 	}

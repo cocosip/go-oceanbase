@@ -22,7 +22,7 @@ import (
 // EncodeParameter encodes a scalar parameter within its payload budget.
 func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, limit int64) (wire.Parameter, error) {
 	switch v.(type) {
-	case types.Number, types.NString, types.Raw, types.RowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
+	case types.Number, types.NString, types.Raw, types.RowID, types.URowID, *types.URowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
 		return encodeScalarParameter(v, mode, options, limit)
 	}
 	p := wire.Parameter{}
@@ -108,6 +108,15 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 }
 
 func encodeScalarParameter(v any, mode config.Mode, options config.SessionOptions, limit int64) (wire.Parameter, error) {
+	if id, ok := v.(*types.URowID); ok {
+		if mode != config.ModeOracle {
+			return wire.Parameter{}, dberrors.ErrUnsupported
+		}
+		if id == nil {
+			return wire.Parameter{Type: 209, LengthEncoded: true, Null: true}, nil
+		}
+		v = *id
+	}
 	p := wire.Parameter{}
 	switch v := v.(type) {
 	case types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
@@ -128,7 +137,7 @@ func encodeScalarParameter(v any, mode config.Mode, options config.SessionOption
 			return p, err
 		}
 		p.Type, p.LengthEncoded, p.Data = 246, true, []byte(text)
-	case types.NString, types.Raw, types.RowID:
+	case types.NString, types.Raw, types.RowID, types.URowID:
 		if mode != config.ModeOracle {
 			return p, dberrors.ErrUnsupported
 		}
@@ -160,6 +169,11 @@ func encodeScalarParameter(v any, mode config.Mode, options config.SessionOption
 				return p, err
 			}
 			p.Type, p.Data = 253, []byte(v)
+		case types.URowID:
+			if _, err := v.Value(); err != nil {
+				return p, err
+			}
+			p.Type, p.Data = 209, []byte(v)
 		}
 		if int64(len(p.Data)) > limit {
 			return wire.Parameter{}, wire.ErrMessageTooLarge

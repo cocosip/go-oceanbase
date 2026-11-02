@@ -26,11 +26,15 @@ type Parameter struct {
 	Data          []byte
 	LengthEncoded bool
 	LongData      bool // A separate upload supplies the body; bitmap and type remain present.
+	Null          bool // SQL NULL retaining an explicit type, rather than type 6.
 }
+
+// IsNull reports both untyped and explicitly typed SQL NULL parameters.
+func (p Parameter) IsNull() bool { return p.Null || byte(p.Type) == 6 }
 
 // EncodedSize returns the parameter body size, excluding bitmap and type header.
 func (p Parameter) EncodedSize() int64 {
-	if byte(p.Type) == 6 || p.LongData {
+	if p.IsNull() || p.LongData {
 		return 0
 	}
 	n := int64(len(p.Data))
@@ -106,7 +110,7 @@ func EncodeStmtExecuteOptions(id uint32, params []Parameter, limit int64, option
 		b[len(b)-1] = 0
 	}
 	for i, p := range params {
-		if byte(p.Type) == 6 {
+		if p.IsNull() {
 			b[bitmap+i/8] |= 1 << uint(i%8)
 		}
 		if !options.ReuseTypes {
@@ -115,7 +119,7 @@ func EncodeStmtExecuteOptions(id uint32, params []Parameter, limit int64, option
 		}
 	}
 	for _, p := range params {
-		if byte(p.Type) == 6 || p.LongData {
+		if p.IsNull() || p.LongData {
 			continue
 		}
 		if p.LengthEncoded {

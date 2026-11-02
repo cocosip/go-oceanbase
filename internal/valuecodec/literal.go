@@ -38,7 +38,7 @@ func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLO
 		return string(v), nil
 	case types.Number:
 		return valueformat.PlainNumber(string(v), limit)
-	case types.NString, types.Raw, types.RowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
+	case types.NString, types.Raw, types.RowID, types.URowID, *types.URowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
 		if mode != config.ModeOracle {
 			return "", dberrors.ErrUnsupported
 		}
@@ -125,6 +125,16 @@ func clientTimeLiteral(v time.Time, mode config.Mode, options config.SessionOpti
 }
 
 func scalarLiteral(value any, mode config.Mode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
+	if id, ok := value.(*types.URowID); ok {
+		if id == nil {
+			const nullURowID = "CAST(NULL AS UROWID)"
+			if int64(len(nullURowID)) > limit {
+				return "", wire.ErrMessageTooLarge
+			}
+			return nullURowID, nil
+		}
+		value = *id
+	}
 	// Value validates the representation and returns the exact text to bind, so
 	// binding anything else would bypass that validation.
 	validated, err := value.(driver.Valuer).Value()
@@ -142,6 +152,8 @@ func scalarLiteral(value any, mode config.Mode, options config.SessionOptions, m
 	switch v := value.(type) {
 	case types.RowID:
 		literal = "CHARTOROWID(" + oracleQuoted(text) + ")"
+	case types.URowID:
+		literal = "CAST(" + oracleQuoted(text) + " AS UROWID)"
 	case types.NString:
 		if int64(len(v)) > limit {
 			return "", wire.ErrMessageTooLarge
