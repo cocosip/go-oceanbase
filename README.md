@@ -103,7 +103,7 @@ Availability depends on compatibility mode, server version, negotiated capabilit
 | --- | --- |
 | [Usage guide](docs/go-driver-usage.md) | Configuration, TLS, queries, ownership, errors and examples |
 | [Capability matrix](docs/go-driver-capabilities.md) | Current Go driver capabilities and support boundaries |
-| [Missing-feature matrix](docs/go-driver-completeness.md) | Implementation gaps, limited subsets and acceptance gaps |
+| [Feature gaps and limitations](docs/go-driver-completeness.md) | Driver gaps separated from server, permission, environment and verification limits |
 | [Compatibility matrix](docs/go-driver-compatibility-matrix.md) | Feature support, conditions and verification status |
 | [Option mapping](docs/go-driver-options-mapping.md) | Java-to-Go configuration mapping and migration differences |
 | [Architecture](docs/go-driver-architecture-design.md) | Public contracts, protocol design and package boundaries |

@@ -2,6 +2,8 @@
 
 For the consolidated Go capability inventory and classified gaps, see the [capability matrix](go-driver-capabilities.md) and [missing-feature matrix](go-driver-completeness.md). This document retains the detailed protocol conditions and historical verification evidence.
 
+The 2026-11-02 matrices above govern current gap classification. Historical NCLOB implementation/peer-test entries below describe compatibility code only: the cited official Oracle type table excludes native NCLOB. Target rejections, missing grants, unavailable deployments and unverified client paths are separate categories, not a combined driver backlog.
+
 This matrix separates Java source conditions, Go implementation, and real-environment verification. Java baseline: obconnector-j 2.4.14, commit `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`. Source conditions are not server-support promises; the MySQL handshake version string is not directly treated as an OceanBase version.
 
 The driver supports version-gated behavior across the numeric OceanBase version
