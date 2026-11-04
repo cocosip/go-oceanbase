@@ -1,6 +1,6 @@
 # 待实库验证清单（目标恢复后执行）
 
-> **执行状态（2026-11-04 恢复后）**：本文档 §2 两个场景、§4 全量回归与 §3 的疑点 1/2 已完成，结果见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。剩余未满足项是 §3 疑点 3（需被显式授权的第二账号）与 §8 的环境类条目。保留本文作为后续环境到位时的执行清单。
+> **执行状态（2026-11-04 恢复后）**：本文档 §2 两个场景、§4 全量回归与 §3 的三个疑点均已完成，结果见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。第二身份就绪后全量为 **114/0/3/27**（两模式 `change-user` 已通过）；剩余未满足项只有 §8 的环境类条目。保留本文作为后续环境到位时的执行清单。
 
 更新日期：2026-11-04。原第三套直连目标（OceanBase 4.4.2.2 双模式）在 2026-11-04 复验过程中开始对任意语句返回 `wire: read after 0 bytes: EOF`（TCP 2881 仍可建连），随后用户确认为**数据库服务器损坏、恢复时间未知**；服务器修复后已完成恢复复验。本文档把恢复后需要补做的验证按顺序列出，避免遗漏；不含任何 DSN、口令或地址。
 
@@ -9,6 +9,7 @@
 - 环境变量（由使用者在本机 shell 设置，仓库与日志中不出现；`Linux 环境`指运行驱动的**客户端**，不是服务端操作系统）：
   - `OB_MYSQL_DSN`：MySQL 模式 DSN（`oceanbase://用户@主机:端口/库?mode=mysql`）
   - `OB_ORACLE_DSN`：Oracle 模式 DSN（`oceanbase://用户@主机:端口/库?mode=oracle`）
+  - `OB_MYSQL_CHANGE_DSN` / `OB_ORACLE_CHANGE_DSN`：第二身份 DSN，供 `change-user` 场景（配置项 `change_user_dsn_env`）使用
 - 首次连通性探测（任一失败即先处理环境，不要直接跑验收）：
 
 ```powershell
@@ -37,7 +38,7 @@ $cases = '{"targets":[{"name":"mysql","dsn_env":"OB_MYSQL_DSN"},{"name":"oracle"
    `SELECT PRIVILEGE FROM USER_COL_PRIVS WHERE ROWNUM=0`（能解析即列名正确）。
 3. **权限字典 0 行是否符合预期**：对象的隐式权限不在字典中，需用"被显式授予表/列权限的第二个账号"验证 `MetadataTablePrivileges`/`MetadataColumnPrivileges` 返回非空且 grantee/grantable 正确。
 
-疑点结论（2026-11-04 恢复后）：1 是**验收场景自身的假设错误**，不是字典截断——MySQL 模式下服务器把表标识符折叠为小写（探测：创建 64 字 `OBT_LLL…` 后 `information_schema.TABLES` 返回同样 64 字的小写名）；已把场景改为长度一致 + 大小写折叠比较并补离线夹具，驱动本身无需修改。2 已确认 `USER_COL_PRIVS`/`ALL_COL_PRIVS` 的列名都是 `PRIVILEGE`（OceanBase 文档该页 `PRIVILLEGE` 为笔误），`ALL_COL_PRIVS` 的属主列是 `OWNER`、`ALL_TAB_PRIVS` 用 `TABLE_SCHEMA`，与驱动投影一致。3 仍未验证：当前 `RISDB` 账号无 `CREATE USER` 权限（1031），无法建立被显式授权的第二账号；需要使用者提供一个第二 Oracle 账号或授权。
+疑点结论（2026-11-04 恢复后）：1 是**验收场景自身的假设错误**，不是字典截断——MySQL 模式下服务器把表标识符折叠为小写（探测：创建 64 字 `OBT_LLL…` 后 `information_schema.TABLES` 返回同样 64 字的小写名）；已把场景改为长度一致 + 大小写折叠比较并补离线夹具，驱动本身无需修改。2 已确认 `USER_COL_PRIVS`/`ALL_COL_PRIVS` 的列名都是 `PRIVILEGE`（OceanBase 文档该页 `PRIVILLEGE` 为笔误），`ALL_COL_PRIVS` 的属主列是 `OWNER`、`ALL_TAB_PRIVS` 用 `TABLE_SCHEMA`，与驱动投影一致。3 已用 SYS 创建第二身份后验证：表级 `GRANT SELECT` 在受让账号的 `USER_TAB_PRIVS` 中返回非空且 grantor/grantee/grantable 正确；列级授权的两种语法均被 4.4.2.2 Oracle 模式拒绝（OBE-00969 / OBE-00900），因此 `USER_COL_PRIVS` 恒为空——这是**服务端不支持列级授权**，不是驱动缺口；另观察到 `ALL_TAB_PRIVS` 在本目标上只显示当前会话自身的授权行，跨用户验证应使用受让账号的 `USER_*` 视图。
 
 ## 4. 全量回归
 
@@ -45,9 +46,9 @@ $cases = '{"targets":[{"name":"mysql","dsn_env":"OB_MYSQL_DSN"},{"name":"oracle"
 go run ./cmd/obtest -config <config.json> -report <不存在的路径>.json
 ```
 
-预期：**72 场景 × 2 目标 = 144 项 → 112 pass / 0 fail / 5 skip / 27 not applicable**（MySQL 54/0/3/15；Oracle 58/0/2/12）。其中 skip 仍是目标侧拒绝与缺失夹具：MySQL XA suspend/join 1398、Oracle NCLOB 902、两模式 `change-user`（缺第二身份）。
+预期：**72 场景 × 2 目标 = 144 项 → 114 pass / 0 fail / 3 skip / 27 not applicable**（MySQL 55/0/2/15；Oracle 59/0/1/12）。skip 是目标侧拒绝：MySQL XA suspend/join 1398、Oracle NCLOB 902。
 
-**实际（2026-11-04 恢复后）**：第一次全量运行 111/1/5/27，唯一失败为 `mysql-direct identifier-length`（场景的大小写假设错误，见 §3 疑点 1）；修正场景后全量复跑达成 **112 pass / 0 fail / 5 skip / 27 not applicable**，与预期完全一致。
+**实际（2026-11-04 恢复后）**：第一次全量运行 111/1/5/27，唯一失败为 `mysql-direct identifier-length`（场景的大小写假设错误，见 §3 疑点 1）；修正场景后全量复跑达成 **112 pass / 0 fail / 5 skip / 27 not applicable**。随后用 SYS/root 创建第二身份（`OBGO_SECOND` / `obgo_second`，凭据只经环境变量）并配置 `change_user_dsn_env`，全量复跑达成 **114 pass / 0 fail / 3 skip / 27 not applicable**，两模式 `change-user` 均通过。
 
 ## 5. 清理确认
 
@@ -77,7 +78,7 @@ SELECT OBJECT_NAME,OBJECT_TYPE FROM USER_OBJECTS WHERE OBJECT_NAME LIKE 'OBT\_OF
 | --- | --- | --- | --- |
 | 1 | 配置与连通性 | `go run ./cmd/obtest -config <config.json> -check` | 1 min |
 | 2 | 两个待验场景 | 见 §2 命令 | 2 min |
-| 3 | 全量回归 | 见 §4 命令，预期 112/0/5/27 | 5 min |
+| 3 | 全量回归 | 见 §4 命令，预期 114/0/3/27 | 5 min |
 | 4 | 三个疑点核对 | 见 §3 的三条 SQL/场景 | 5 min |
 | 5 | 残留清理确认 | 见 §5 的查询，应为 0 行 | 2 min |
 | 6 | 更新文档 | 见 §6 | 10 min |
@@ -91,7 +92,8 @@ SELECT OBJECT_NAME,OBJECT_TYPE FROM USER_OBJECTS WHERE OBJECT_NAME LIKE 'OBT\_OF
 | --- | --- |
 | 两模式连通性与 `-check` | 普通 TCP 2881 直连 |
 | `identifier-length`、`topology-sources` | 前者连库；后者不连库（TNS/OCP 源解析） |
-| 全量 72 场景（预期 112/0/5/27） | 场景本身不使用 TLS |
+| 全量 72 场景（预期 114/0/3/27） | 场景本身不使用 TLS |
+| 第二身份 `change-user`（两模式） | 已由 SYS/root 创建 `OBGO_SECOND` / `obgo_second`，DSN 只走环境变量 |
 | 全量集成测试（配 DSN） | 未提供 TLS 的用例按既有规则跳过，其余实跑 |
 | V05 故障/XA、V06 耐久、V07 元数据、A01/A02、B22/B20 疑点复验 | 均为普通连接上的行为 |
 | 跨平台/CI 证据的 Windows 部分 | 本机 |
