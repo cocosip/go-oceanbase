@@ -4,7 +4,7 @@ A Go `database/sql` driver for OceanBase in MySQL and Oracle compatibility modes
 
 **Status: release candidate.** Direct-target acceptance is complete for OceanBase 4.4.2.2 in both compatibility modes: the 72-scenario acceptance tool reached **114 pass / 0 fail / 3 skip / 27 not applicable**, the full integration suite passed, and both-mode `ChangeUser` passed with second identities. TLS, compression, OBProxy/multi-node, plugin/KDC and Linux-client combinations require deployments the current endpoints cannot provide and are recorded as unverified boundaries, not client gaps. See the [release-readiness assessment](docs/go-driver-completeness.md#发布就绪评估release-readiness) and the [compatibility matrix](docs/go-driver-compatibility-matrix.md).
 
-The [2026-10-20 release validation](docs/release-validation-2026-10-20.md) records passing direct MySQL/Oracle 4.4.2.2 scenarios, official Connector/J 2.4.14 source alignment, and deployment validation boundaries. Licensed under [MIT](LICENSE).
+The [2026-10-20 release validation](docs/live-validation.md) records passing direct MySQL/Oracle 4.4.2.2 scenarios, official Connector/J 2.4.14 source alignment, and deployment validation boundaries. Licensed under [MIT](LICENSE).
 
 ## Requirements
 
@@ -147,6 +147,7 @@ Performance pass/fail thresholds are intentionally not defined. Live database th
 | [Development plan](docs/go-driver-development-plan.md) | D01–D32 scope and delivery stages |
 | [Development progress](docs/go-driver-development-progress.md) | Implementation history and verification evidence |
 | [Benchmarks](docs/go-driver-benchmarks.md) | Local protocol-peer scenarios, commands, samples and limitations |
+| [Live validation record](docs/live-validation.md) | Merged live-database evidence, current baseline and dated results |
 | [Acceptance tool](docs/go-driver-test-tool.md) | Configure and run the standalone `obtest` database suite |
 
 ## Examples and database acceptance
