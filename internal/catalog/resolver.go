@@ -218,6 +218,12 @@ func AnonymousDescriptor(column wire.Column) (*valuecodec.Descriptor, error) {
 		typ = valueformat.TypeNameNumber
 	case 12:
 		typ = valueformat.TypeNameDate
+	case 202:
+		typ = valueformat.TypeNameTimestamp
+	case 207:
+		typ = valueformat.TypeNameNVarchar2
+	case 208:
+		typ = valueformat.TypeNameNChar
 	case 15, 253:
 		typ = valueformat.TypeNameVarchar2
 	case 254:

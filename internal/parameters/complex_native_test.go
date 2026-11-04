@@ -93,7 +93,7 @@ func TestComplexNamedArray(t *testing.T) {
 }
 
 func TestComplexArrayUnsupportedHeader(t *testing.T) {
-	for _, typ := range []string{valueformat.TypeNameNVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameTimestamp, valueformat.TypeNameNClob} {
+	for _, typ := range []string{valueformat.TypeNameNClob} {
 		for _, elements := range [][]any{nil, {nil}} {
 			t.Run(typ+"/"+strings.Repeat("null", len(elements)), func(t *testing.T) {
 				ctx, op := parameterDictionaryOperation(t, typ)
@@ -111,6 +111,32 @@ func TestComplexArrayUnsupportedHeader(t *testing.T) {
 					t.Fatal("unsupported built-in element attempted a descriptor query", err)
 				}
 			})
+		}
+	}
+}
+
+func TestComplexTemporalNationalArrays(t *testing.T) {
+	for _, tc := range []struct {
+		typ  string
+		code byte
+	}{{valueformat.TypeNameTimestamp, 202}, {valueformat.TypeNameNVarchar2, 207}, {valueformat.TypeNameNChar, 208}} {
+		for _, elements := range [][]any{nil, {nil}} {
+			ctx, op := parameterDictionaryOperation(t, tc.typ)
+			var resolver catalog.Resolver
+			for _, value := range []types.Array{{Schema: "S", Type: "TA", Elements: elements}, {ElementType: tc.typ, Elements: elements}} {
+				p, err := EncodeValue(ctx, op, &resolver, value, 4096)
+				want := []byte{0}
+				if len(elements) == 1 {
+					want = []byte{1, 1}
+				}
+				metadata := []byte{0, 0, 0, tc.code}
+				if value.Type != "" && tc.typ == valueformat.TypeNameTimestamp {
+					metadata = []byte{1, 'S', 2, 'T', 'A', 0}
+				}
+				if err != nil || p.Type != 160 || !reflect.DeepEqual(p.TypeMetadata, metadata) || !reflect.DeepEqual(p.Data, want) {
+					t.Fatal("temporal/national array encoding", tc.typ, p, err)
+				}
+			}
 		}
 	}
 }

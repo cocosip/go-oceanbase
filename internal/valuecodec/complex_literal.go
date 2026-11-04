@@ -160,6 +160,17 @@ func (e *constructorEncoder) scalar(typ string, value any, depth int) error {
 	switch typ {
 	case valueformat.TypeNameDate, valueformat.TypeNameTimestamp:
 		literal, err = constructorTime(typ, value)
+	case valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2:
+		var text types.NString
+		switch v := value.(type) {
+		case string:
+			text = types.NString(v)
+		case types.NString:
+			text = v
+		default:
+			return dberrors.ErrComplex
+		}
+		literal, err = ClientLiteral(text, config.ModeOracle, e.options, e.maxLOBBytes, e.limit)
 	default:
 		var p wire.Parameter
 		p, err = EncodeComplexScalar(typ, value, e.options, e.maxLOBBytes, e.limit)
@@ -181,11 +192,7 @@ func (e *constructorEncoder) scalar(typ string, value any, depth int) error {
 			default:
 				return dberrors.ErrComplex
 			}
-			var v any = text
-			if typ == valueformat.TypeNameNChar || typ == valueformat.TypeNameNVarchar2 {
-				v = types.NString(text)
-			}
-			literal, err = ClientLiteral(v, config.ModeOracle, e.options, e.maxLOBBytes, e.limit)
+			literal, err = ClientLiteral(text, config.ModeOracle, e.options, e.maxLOBBytes, e.limit)
 		}
 	}
 	if err != nil {

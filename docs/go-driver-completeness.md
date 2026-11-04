@@ -74,6 +74,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | B12 / M01 参数目录字符长度 | Oracle，H03 再次确认 ALL_ARGUMENTS.CHAR_LENGTH/CHAR_USED 查询 904/42S22；N/Java 同 SQL 同码 | 当前 Go 参数计划读 DATA_LENGTH，不查询这两列；不是当前查询故障，也不把字节长度当字符长度 |
 | B13 / T08 TIME极限小数 | MySQL，N：指定permissive binary截整秒，strict text1292而binary仍截断成功 | 路径相关服务端语义记录，尚非Go复现缺陷；不静默截断/CAST来制造一致 |
 | B14 / T17 + P04 XMLTYPE combined 结果形状 | Oracle 4.4.2.2，H03：原始 combined 响应一个行包后结束，遗漏 NULL 行且无错误 | 驱动已对确切版本禁用通用可选 combined 优化，所有六种配置返回完整两行，删除 B14 skip；必需 OUT/RETURNING 保持并实库通过。版本范围外未推断同故障 |
+| B15 / anonymous TIMESTAMP collection INOUT | Oracle 4.4.2.2, current Go live fixture: anonymous element metadata has no accuracy; direct INOUT rounds `.123456789` to `.123457` | Named native collection and independent SQL constructor control retain nine digits; fixed named metadata preserves dictionary precision. Anonymous IN/OUT through a typed local variable is independently verified; see [evidence](complex-temporal-national-validation-2026-11-03.md) |
 
 ## 权限、身份与环境不足
 
@@ -118,7 +119,7 @@ This table separates confirmed client boundaries from missing protocol or deploy
 
 | ID / 原关联 | 尚不能下的结论 | 本次已确认的客户端/协议边界 | 关闭或升级条件 |
 | --- | --- | --- | --- |
-| U01 / 原G05 TIMESTAMP、G06 collection头 | 不能由 Go 的拒绝点推出服务端不支持，也不能把所有 native binary TIMESTAMP/NCHAR/NVARCHAR2/LOB 元素合并成一个缺口 | [`ComplexElementWireType`](../internal/valuecodec/complex.go) 只映射 NUMBER/DATE/VARCHAR/CHAR/RAW；[`TestComplexArrayUnsupportedHeader`](../internal/parameters/complex_native_test.go) 已确认 named/anonymous 数组的 TIMESTAMP、NCHAR、NVARCHAR2、NCLOB 在描述查询/发送前拒绝。PL LOB 内容 G05a、命名构造器 G07b 不覆盖这些元素头 | 按 named/anonymous、元素头/成员体、方向、NULL/empty 分形状抓取成功 wire；服务端拒绝才转 B/S，成功且 Go 无法发送才新增对应 G 子项 |
+| U01 / native temporal/national/LOB collections | TIMESTAMP/NCHAR/NVARCHAR2 input and headers are implemented; LOB/locator and NCLOB remain separate | `TestOracleComplexTemporalNational`: 15 fixture configurations, zero failures/skips; named/anonymous IN/OUT, NULL/empty, mixed charsets, named nanosecond INOUT and nested OBJECT pass. Complex national input charset corruption fixed | Anonymous direct TIMESTAMP INOUT defaults to six-digit accuracy on this target; named types retain nine. See [focused evidence](complex-temporal-national-validation-2026-11-03.md). Anonymous LOB/locator headers still need successful wire evidence |
 | U02 / 原 G15 PL-only RECORD | 当前服务端支持普通 RECORD，不能再说缺字段目录 | `TestOraclePLTypeReadiness` VALID package、PL INOUT 调用和 ALL_PLSQL_TYPE_ATTRS 的 NUMBER/VARCHAR2 字段通过；目录在 PL 使用/编译后可见。Go 仍没有 RECORD descriptor/writer | 可继续做客户端原生绑定，但须取得成功 IN/OUT wire；普通 RECORD 成功不证明含 cursor 成员均可用 |
 | U03 / T23 ANYDATA PL、locator/cursor 成员输入 | 当前 SYS.ANYDATA 存在且 PL 数字构造/GetNumber 回读通过；不能沿用缺包结论 | Go 原生 ANYDATA descriptor/writer、locator/cursor 成员输入仍无成功协议依据；REF CURSOR IN/INOUT 按 X01 排除 | 可继续客户端协议调查；PL 标量内部运算成功不等于已实现 typed ANYDATA 参数；S02 持久列禁用独立 |
 | U04 / C09 Oracle piece-data 流水化 | 关闭为 C09 的已知顺序协议范围，不列当前缺陷 | Go 每片等待 OK，Java 同样逐片 ACK；framed 流不走 pipeline | 只有新增无 ACK 协议成功依据才重开，不盲写无 ACK 发送 |

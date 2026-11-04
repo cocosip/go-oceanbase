@@ -92,7 +92,7 @@ go test -tags=integration ./internal/valuecodec -run '^(TestOracleURowID|TestOra
 | U06 additional charsets | Updated: seven strict Go mappings implemented | Six connection charsets and all seven column/result charsets passed live; SWE7 `@tenant` identity rejection is preserved. See [focused evidence](charset-nul-validation-2026-11-03.md) |
 | U02 普通 RECORD | 服务端 PL 与成员目录可用；Go 缺原生 descriptor/writer | 可继续做客户端协议工作；须先取得成功 typed IN/OUT wire，不能用 PL 内部变量测试代替绑定验收 |
 | U03 ANYDATA / locator 成员 | ANYDATA PL 已可用，Go typed writer 与 locator/cursor 成员输入仍无成功依据 | 可以继续调查原生描述和输入协议；没有证据称当前服务端全面不支持；持久 ANYDATA 列 S02、REF CURSOR IN/INOUT X01 独立排除 |
-| U01 TIMESTAMP/national/LOB collection 头 | 当前客户端发送前拒绝部分 native 元素头；尚无成功 wire | 需要逐 named/anonymous、方向和元素形状验证；暂不能承诺客户端补码即可，也不能归服务端缺失 |
+| U01 temporal/national/LOB collection headers | TIMESTAMP/NCHAR/NVARCHAR2 native IN/OUT, named nanosecond INOUT and mixed national charsets verified in 15 fixture configurations | [Focused evidence](complex-temporal-national-validation-2026-11-03.md); anonymous direct TIMESTAMP INOUT remains six-digit on this target; anonymous LOB/locator headers remain open |
 | U04 piece-data 无 ACK pipeline | 现有协议逐片 ACK，Java 同样如此 | 归 C09 可选性能范围，不盲写无 ACK pipeline；未来有协议依据再重开 |
 | U05/U07/V13–V17 | 上述基础子集已通过，SDO 已修复 | 不再将全部类型列为待开发；坏维数/空嵌套数组/非 NULL SRID/其他 GIS 形状等边界仍可补验 |
 | U08 Oracle long NUL scripts | Updated: old concatenation failure reproduced and fixed with REPLACE | 12003/98304/196608-byte single/double queries and independent CLOB storage/control checks passed; larger sizes remain unverified. See [focused evidence](charset-nul-validation-2026-11-03.md) |

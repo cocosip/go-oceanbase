@@ -98,6 +98,15 @@ func TestComplexConstructorScalarIdentity(t *testing.T) {
 	}
 }
 
+func TestComplexConstructorNationalBypassesClientCharset(t *testing.T) {
+	d := &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "T"}, Fields: []Field{{Name: "V", Type: valueformat.TypeNameNVarchar2}}}
+	v := types.Object{Type: "T", Fields: []types.Attribute{{Name: "V", Value: "😀"}}}
+	got, err := ClientLiteral(ResolvedComplex{d, v}, config.ModeOracle, config.SessionOptions{Charset: charsetGBK, NCharset: charsetUTF16}, 1024, 4096)
+	if err != nil || got != `"S"."T"(UNISTR('\D83D\DE00'))` {
+		t.Fatal("national constructor incorrectly required client encoding", got, err)
+	}
+}
+
 func TestComplexConstructorRejectsUnsafeShapes(t *testing.T) {
 	for _, typ := range []string{valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob, valueformat.TypeNameRefCursor, "UNKNOWN"} {
 		d := &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "T"}, Fields: []Field{{Name: "V", Type: typ}}}

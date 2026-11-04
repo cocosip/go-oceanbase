@@ -93,9 +93,6 @@ func TestComplexTextEncodedBudget(t *testing.T) {
 						return
 					}
 					want := []byte{42, 4, 0xb2, 0xe2, 0xb2, 0xe2}
-					if charset == testCharsetUTF16 {
-						want = []byte{42, 4, 0x6d, 0x4b, 0x6d, 0x4b}
-					}
 					if err != nil || !bytes.Equal(e.data, want) {
 						t.Fatal("complex field rejected a fitting encoded value", err)
 					}

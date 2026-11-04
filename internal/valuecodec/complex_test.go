@@ -22,7 +22,7 @@ func TestComplexScalarEncodedBudget(t *testing.T) {
 		{valueformat.TypeNameNumber, types.Number("1e0000000"), config.SessionOptions{}, []byte("1")},
 		{valueformat.TypeNameRaw, types.Raw{0, 255}, config.SessionOptions{}, []byte{0, 255}},
 		{valueformat.TypeNameVarchar2, "测测", config.SessionOptions{Charset: charsetGBK}, []byte{0xb2, 0xe2, 0xb2, 0xe2}},
-		{valueformat.TypeNameNVarchar2, "测测", config.SessionOptions{Charset: charsetGBK, NCharset: charsetUTF16}, []byte{0x6d, 0x4b, 0x6d, 0x4b}},
+		{valueformat.TypeNameNVarchar2, "测测", config.SessionOptions{Charset: charsetGBK, NCharset: charsetUTF16}, []byte{0xb2, 0xe2, 0xb2, 0xe2}},
 	} {
 		limit := int64(len(tc.want) + 1)
 		p, err := EncodeComplexScalar(tc.typ, tc.value, tc.options, 1024, limit)

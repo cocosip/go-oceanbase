@@ -16,7 +16,8 @@ import (
 
 // EncodeComplexScalar encodes one native scalar field including its complete framing budget.
 func EncodeComplexScalar(typ string, value any, options config.SessionOptions, maxLOBBytes, limit int64) (wire.Parameter, error) {
-	switch strings.ToUpper(typ) {
+	typ = strings.ToUpper(typ)
+	switch typ {
 	case valueformat.TypeNameNumber, valueformat.TypeNameInteger, valueformat.TypeNameDecimal, valueformat.TypeNameNumeric:
 		var text string
 		switch v := value.(type) {
@@ -75,12 +76,7 @@ func EncodeComplexScalar(typ string, value any, options config.SessionOptions, m
 			return wire.Parameter{}, wire.ErrMessageTooLarge
 		}
 		name := options.Charset
-		if typ == valueformat.TypeNameNVarchar2 || typ == valueformat.TypeNameNChar {
-			name = options.NCharset
-			if name == "" {
-				name = options.Charset
-			}
-		}
+		// Complex national inputs use the connection charset, unlike scalar NString.
 		if name == "" {
 			name = charsetUTF8MB4
 		}
@@ -89,19 +85,27 @@ func EncodeComplexScalar(typ string, value any, options config.SessionOptions, m
 			return wire.Parameter{}, err
 		}
 		return complexParameter(data, true, limit)
-	case valueformat.TypeNameDate:
+	case valueformat.TypeNameDate, valueformat.TypeNameTimestamp:
 		var wall time.Time
+		scale := 9
 		switch v := value.(type) {
 		case time.Time:
 			wall = v
 		case string:
 			var err error
-			wall, _, err = valueformat.ParseWall(v)
+			wall, scale, err = valueformat.ParseWall(v)
 			if err != nil {
 				return wire.Parameter{}, err
 			}
 		default:
 			return wire.Parameter{}, dberrors.ErrComplex
+		}
+		if typ == valueformat.TypeNameTimestamp {
+			data, err := encodeOracleWall(wall, scale)
+			if err != nil {
+				return wire.Parameter{}, err
+			}
+			return complexParameter(data, true, limit)
 		}
 		if wall.Nanosecond() != 0 {
 			return wire.Parameter{}, dberrors.ErrComplex
@@ -132,6 +136,12 @@ func ComplexElementWireType(typ string) byte {
 		return 0
 	case valueformat.TypeNameDate:
 		return 12
+	case valueformat.TypeNameTimestamp:
+		return 202
+	case valueformat.TypeNameNVarchar2:
+		return 207
+	case valueformat.TypeNameNChar:
+		return 208
 	case valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar:
 		return 15
 	case valueformat.TypeNameChar:
@@ -187,8 +197,9 @@ func ComplexCharset(typ string, options config.SessionOptions) string {
 // EncodeComplexMetadata serializes a resolved descriptor's parameter type metadata.
 func EncodeComplexMetadata(d *Descriptor, options config.SessionOptions, sqlLimit, limit int64) ([]byte, error) {
 	schemaName, typeName := d.Key.Schema, d.Key.Name
-	namedLOB := d.Array && typeName != "" && len(d.Fields) == 1 && d.Fields[0].Child == nil && (strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameBlob) || strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameClob))
-	if d.Array && !namedLOB {
+	// Anonymous TIMESTAMP metadata has no precision; named types preserve it in INOUT calls.
+	namedCollection := d.Array && typeName != "" && len(d.Fields) == 1 && d.Fields[0].Child == nil && (strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameBlob) || strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameClob) || strings.EqualFold(d.Fields[0].Type, valueformat.TypeNameTimestamp))
+	if d.Array && !namedCollection {
 		schemaName, typeName = "", ""
 	}
 	schema, err := encodeMetadataName(schemaName, options, sqlLimit)
@@ -202,7 +213,7 @@ func EncodeComplexMetadata(d *Descriptor, options config.SessionOptions, sqlLimi
 	metadata := wire.AppendComplexLenBytes(nil, schema)
 	metadata = wire.AppendComplexLenBytes(metadata, name)
 	metadata = wire.AppendComplexLenEnc(metadata, d.Key.Version)
-	if d.Array && !namedLOB {
+	if d.Array && !namedCollection {
 		field := d.Fields[0]
 		if field.Child == nil {
 			elementType := ComplexElementWireType(field.Type)
