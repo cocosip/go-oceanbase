@@ -2,7 +2,7 @@
 
 A Go `database/sql` driver for OceanBase in MySQL and Oracle compatibility modes. Use the standard library for queries, prepared statements and transactions, and the same `oceanbase` package for batch execution, LOBs, cursors and XA.
 
-**Status: under development.** Live database compatibility acceptance is complete for direct targets (72 scenarios: 114 pass / 0 fail / 3 skip / 27 not applicable on 2026-11-04); TLS, proxy/multi-node, compression, plugin/KDC and Linux-client combinations still need deployments. See the [compatibility matrix](docs/go-driver-compatibility-matrix.md) and [development progress](docs/go-driver-development-progress.md) for implemented behavior, verification evidence and remaining work.
+**Status: release candidate.** Direct-target acceptance is complete for OceanBase 4.4.2.2 in both compatibility modes: the 72-scenario acceptance tool reached **114 pass / 0 fail / 3 skip / 27 not applicable**, the full integration suite passed, and both-mode `ChangeUser` passed with second identities. TLS, compression, OBProxy/multi-node, plugin/KDC and Linux-client combinations require deployments the current endpoints cannot provide and are recorded as unverified boundaries, not client gaps. See the [release-readiness assessment](docs/go-driver-completeness.md#发布就绪评估release-readiness) and the [compatibility matrix](docs/go-driver-compatibility-matrix.md).
 
 The [2026-10-20 release validation](docs/release-validation-2026-10-20.md) records passing direct MySQL/Oracle 4.4.2.2 scenarios, official Connector/J 2.4.14 source alignment, and deployment validation boundaries. Licensed under [MIT](LICENSE).
 
@@ -96,6 +96,44 @@ Configure `TLSConfig` with trusted CAs and a server name when encryption is requ
 | Connectivity | TLS, caller-supplied credentials and logging, routing/discovery and platform-specific transports |
 
 Availability depends on compatibility mode, server version, negotiated capabilities and platform. The [compatibility matrix](docs/go-driver-compatibility-matrix.md) records those boundaries. Resource APIs require a pinned `*sql.Conn` or `*sql.Tx`; close rows and resources before releasing their session.
+
+## Server-side unavailable combinations
+
+These are deployment boundaries, not missing Go features. The driver reports them explicitly instead of simulating success. The [compatibility matrix §0](docs/go-driver-compatibility-matrix.md#0-server-side-unavailable-verification-release-boundary) records the exact evidence.
+
+| Combination | Why it is unverified | Driver behavior |
+| --- | --- | --- |
+| TLS / mTLS | The endpoint reports `have_ssl=YES` but has no certificates configured | Plaintext unless `TLSConfig` is set; certificate and mTLS logic covered by local peer tests |
+| Compression | The direct endpoint does not advertise `CLIENT_COMPRESS` | `compression=required` fails negotiation with an explicit unsupported-capability error |
+| OBProxy, multi-node, OCP | Only a direct single-endpoint 2881 is available (2883 is not a usable protocol endpoint) | Direct-target behavior verified; proxy and topology paths unverified |
+| Plugin / KDC | No vendor plugin runtime or KDC is deployed | No per-plugin support is claimed |
+| B21 Oracle proxy reauthentication | 4.4.2.2 does not apply the proxy target on `COM_CHANGE_USER` | The driver rejects the proxy target on this version instead of reporting a false success |
+| Linux client transports | The local client host is Windows without WSL or Docker | Core driver builds without cgo; Unix socket/shared memory/VC/GSSAPI paths unverified |
+
+## Benchmarks
+
+`BenchmarkDriver` covers 18 scenarios over one physical connection to an in-process `net.Pipe` protocol peer. It connects to no database, so **ns/op is not database latency**; timings include `database/sql`, the driver, peer response construction, protocol I/O and result assertions. The full methodology, all samples and resource checks are in the [benchmark guide](docs/go-driver-benchmarks.md).
+
+Go 1.26.0, Windows/amd64, Intel Core i5-9400 @ 2.90GHz, GOMAXPROCS=6, 100 operations × 3 samples, median:
+
+| Scenario | MySQL ns/op | Oracle ns/op |
+| --- | --- | --- |
+| crud | 140,431 | 133,644 |
+| prepare-per-call | 81,428 | 91,360 |
+| prepare-reuse | 19,949 | 27,104 |
+| cache-hit | 26,670 | 29,375 |
+| batch-multisend (8 rows) | 208,289 | 216,202 |
+| batch-rewrite / array-binding (8 rows) | 157,059 | 96,715 |
+| lob (16 KiB BLOB) | 352,196 | 102,149 |
+| fetch (32 values) | 278,709 | 319,728 |
+
+Reproduce with:
+
+```sh
+GOTOOLCHAIN=go1.26.0 go test . -run '^$' -bench '^BenchmarkDriver$' -benchmem -benchtime=100x -count=3
+```
+
+Performance pass/fail thresholds are intentionally not defined. Live database throughput, TLS/compression and multi-connection load are not covered by these samples.
 
 ## Documentation
 

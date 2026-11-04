@@ -24,7 +24,7 @@ Oracle 模式相关能力以具有该模式的产品版本/租户为前提；官
 | L | 仓库存在本地单测、协议 peer 或故障用例；不是本次重跑结果，也不是服务端兼容性证明 |
 | H20 | [历史实库报告](release-validation-2026-10-20.md)：OceanBase 4.4.2.2 双模式直连；仅限报告列明场景 |
 | H24 | [浮点专项报告](binary-double-live-validation-2026-10-24.md)：双模式直连 float64 参数及 Oracle 数组绑定子集 |
-| H03 | [2026-11-03 Go 直连复验](live-validation-2026-11-03.md)：OceanBase 4.4.2.2 双模式；B14 规避无 skip、SDO 修复、扩展类型与 PL 前提按指定子集验收 |
+| H03 | [恢复后直连复验](live-validation-2026-11-04-recovery.md)：OceanBase 4.4.2.2 双模式；B14 规避无 skip、SDO 修复、扩展类型与 PL 前提按指定子集验收 |
 | H03T | [第二套直连目标复验](live-validation-2026-11-03-second-target.md)：独立 OceanBase 4.4.2.2 双模式；全量集成测试通过、`obtest` 79/0/3/14、MySQL/Oracle ChangeUser 通过、Oracle 初始代理登录通过、COM_CHANGE_USER 代理目标未应用（B21） |
 | H03U | [第三套直连目标复验](live-validation-2026-11-04-third-target.md)：独立 OceanBase 4.4.2.2 双模式；全量集成测试通过、`obtest` 70 场景 108/0/5/27（MySQL 52/0/3/15；Oracle 56/0/2/12）、新增 extended-types/geometry/oracle-spatial/oracle-urowid/oracle-xml 、oracle-number-scale、mysql-charset、oracle-binary-float、mysql-utf16le、oracle-synonym、mysql-enum-set、mysql-generated-columns、char-padding、empty-lob、metadata-patterns、oracle-identity、metadata-indexes、metadata-routines、statement-parameters、metadata-type-info、views 及 floats 场景首次实库通过、B16/B17/B11/B01/S01 复现；无第二身份与代理身份（ChangeUser 跳过） |
 | V | 尚缺对应真实部署、类型形状或故障验收；可以与 H20/H24 同时存在 |
@@ -168,4 +168,4 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 [O12]: https://github.com/oceanbase/oceanbase-doc/blob/2a5ae3a23a51729d065cec716508eb26cb064106/zh-CN/700.reference/500.sql-reference/100.sql-syntax/200.common-tenant-of-mysql-mode/100.basic-elements-of-mysql-mode/100.data-type-of-mysql-mode/1200.array-data-type-of-mysql-mode/100.array-data-type-overview-of-mysql-mode.md
 [O13]: https://github.com/oceanbase/oceanbase-doc/blob/2a5ae3a23a51729d065cec716508eb26cb064106/zh-CN/700.reference/500.sql-reference/100.sql-syntax/200.common-tenant-of-mysql-mode/100.basic-elements-of-mysql-mode/100.data-type-of-mysql-mode/1000.roaring-bitmap-data-type-of-mysql-mode/100.roaring-bitmap-data-type-overview-of-mysql-mode.md
 
-Current continuation evidence and external prerequisites: [remaining validation](remaining-validation-2026-11-03.md). Native RECORD/ANYDATA OUT and anonymous LOB header rejections are target-specific; current direct OB20/query success is separate from unavailable compression, proxy topology and trace collection.
+Current continuation evidence and external prerequisites: [pending verification](pending-live-verification.md). Native RECORD/ANYDATA OUT and anonymous LOB header rejections are target-specific; current direct OB20/query success is separate from unavailable compression, proxy topology and trace collection.

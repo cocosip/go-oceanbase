@@ -1,6 +1,6 @@
 # OceanBase Go driver usage guide
 
-This guide describes the current public API. See [development progress](go-driver-development-progress.md) for implementation status and the [compatibility matrix](go-driver-compatibility-matrix.md) for target-specific limits. The minimum Go version is 1.26. Networked examples have compilation evidence; live acceptance is limited to the explicitly recorded tests in the [direct-target report](live-validation-2026-11-03.md) and [charset/NUL follow-up](charset-nul-validation-2026-11-03.md).
+This guide describes the current public API. See [development progress](go-driver-development-progress.md) for implementation status and the [compatibility matrix](go-driver-compatibility-matrix.md) for target-specific limits. The minimum Go version is 1.26. Networked examples have compilation evidence; live acceptance is limited to the explicitly recorded tests in the [recovery report](live-validation-2026-11-04-recovery.md) and [charset/NUL follow-up](charset-nul-validation-2026-11-03.md).
 
 ## 1. Connections, compatibility modes and logging
 

@@ -106,3 +106,5 @@ SELECT OBJECT_NAME,OBJECT_TYPE FROM USER_OBJECTS WHERE OBJECT_NAME LIKE 'OBT\_OF
 | D28/D30/D31/D32 的 Linux 侧子项 | 需要**客户端** Linux 运行时（Unix socket/VC/系统 GSSAPI） |
 
 TLS 客户端逻辑本身已有本地证书 peer 测试（`tls.Config`、证书校验、mTLS 用例），缺的只是"真实服务端部署"证据，不需要为它重写代码。
+
+服务端无法提供项的发布口径与驱动行为见[兼容矩阵 §0](go-driver-compatibility-matrix.md#0-server-side-unavailable-verification-release-boundary)与[缺失矩阵发布就绪评估](go-driver-completeness.md#发布就绪评估release-readiness)；这些项不改变 114/0/3/27 的直连基线。

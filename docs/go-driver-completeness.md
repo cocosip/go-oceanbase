@@ -20,7 +20,7 @@
 
 两个维度独立：Go 没有 writer 与目标拒绝某操作可同时成立，但后者不能作为盲目开发理由。同名类型、错误码、单个 SDK 前置拒绝均不能证明全部服务端形态不支持。没有专用 Go 类型/codec，也不等于 string/bytes 通用路径不能完成工作。
 
-**来源口径**：H20/H24 为 Go 历史实库报告；H03 为 [2026-11-03 Go 直连实库复验](live-validation-2026-11-03.md)。N 为其他语言客户端（.NET/Java）文档或用例中的观察记录，仅作旁证，不作为能力或协议依据；仅标 N 的服务端失败形状本次没有用 Go 重跑。N 可证明某个子集可实现或限定服务端前提，不能记作 Go 实测通过/失败。索引见文末。
+**来源口径**：H20/H24 为 Go 历史实库报告；H03 为 [恢复后直连复验](live-validation-2026-11-04-recovery.md)。N 为其他语言客户端（.NET/Java）文档或用例中的观察记录，仅作旁证，不作为能力或协议依据；仅标 N 的服务端失败形状本次没有用 Go 重跑。N 可证明某个子集可实现或限定服务端前提，不能记作 Go 实测通过/失败。索引见文末。
 
 ## 已确认的客户端实现差距
 
@@ -90,9 +90,9 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | ID / 关联能力 | 已记录的前提不足 | 分类边界 |
 | --- | --- | --- |
 | A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000；用户表同义词、视图同义词与同义词链已实库验收：`TestOracleSynonymUsage`/`TestOracleSynonymChain` 创建、经同义词读写、`MetadataSynonyms`/`MetadataTables` 均通过（2026-11-03） | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
-| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权用一次性第二身份实库验收：MySQL 成功路径+错误密码 1045、Oracle 成功路径+错误密码 600/42000 均通过，失败均弃用连接且池恢复。第二套目标复验：一次性 MySQL/Oracle 第二身份下 ChangeUser 与 `obtest` change-user 再次通过；经 SYS 授权创建一次性代理账号/`GRANT CONNECT THROUGH` 后，Oracle 初始 ProxyUser 登录通过（`CURRENT_USER`=目标、`PROXY_USER`=代理账号），但 `COM_CHANGE_USER` 未应用代理目标（B21）。2026-11-04 恢复后目标：由 SYS/root 创建持久第二身份（`OBGO_SECOND` / `obgo_second`），两模式 `obtest change-user` 通过，全量基线升至 114/0/3/27 | MySQL 与 Oracle 的 ChangeUser 已验收；ProxyUser 初始登录已验收，代理重认证是目标侧限制；不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md)与[恢复后复验报告](live-validation-2026-11-04-recovery.md) |
+| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权用一次性第二身份实库验收：MySQL 成功路径+错误密码 1045、Oracle 成功路径+错误密码 600/42000 均通过，失败均弃用连接且池恢复。第二套目标复验：一次性 MySQL/Oracle 第二身份下 ChangeUser 与 `obtest` change-user 再次通过；经 SYS 授权创建一次性代理账号/`GRANT CONNECT THROUGH` 后，Oracle 初始 ProxyUser 登录通过（`CURRENT_USER`=目标、`PROXY_USER`=代理账号），但 `COM_CHANGE_USER` 未应用代理目标（B21）。2026-11-04 恢复后目标：由 SYS/root 创建持久第二身份（`OBGO_SECOND` / `obgo_second`），两模式 `obtest change-user` 通过，全量基线升至 114/0/3/27 | MySQL 与 Oracle 的 ChangeUser 已验收；ProxyUser 初始登录已验收，代理重认证是目标侧限制；不修改业务账号权限来制造通过；见[恢复后复验报告](live-validation-2026-11-04-recovery.md) |
 | ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
-| ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [fresh results](remaining-validation-2026-11-03.md) |
+| ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [pending verification](pending-live-verification.md) |
 | ENV03 / C14–C15 ODP/多节点/OCP/TNS | H20仅直连单端点 | 缺真实代理/控制面/集群，单上游relay不证明HA |
 | ENV04 / C08 plugin/KDC | 客户端分支存在，缺真实正负端点和逐插件服务端依据 | 不能列服务器已支持全部，也不能列明确不支持全部；逐项确认 |
 | ENV05 / C05 平台原生传输 | 真实Linux VC、系统GSSAPI、服务IPC/ACL前提未全验；这里指**客户端**运行环境（Linux/macOS 客户端的 Unix socket/Shared Memory/OBProxy VC 与系统 GSSAPI），与服务端操作系统无关 | OS/tag/库/服务条件，不是普通SQL缺口 |
@@ -134,7 +134,7 @@ This table separates confirmed client boundaries from missing protocol or deploy
 | --- | --- | --- | --- |
 | U01 / native temporal/national/LOB collections | TIMESTAMP/NCHAR/NVARCHAR2 input and headers are implemented; LOB/locator and NCLOB remain separate | `TestOracleComplexTemporalNational`: 15 fixture configurations, zero failures/skips; named/anonymous IN/OUT, NULL/empty, mixed charsets, named nanosecond INOUT and nested OBJECT pass. Complex national input charset corruption fixed | Anonymous direct TIMESTAMP INOUT defaults to six-digit accuracy on this target; named types retain nine. See [focused evidence](complex-temporal-national-validation-2026-11-03.md). Raw anonymous BLOB/CLOB headers 210/211 return 600/HY000 while named forms succeed (B18); locator input still lacks a successful writer contract |
 | U02 / PL-only RECORD | PL-local RECORD and member directory work; native OUT returns 600/0A000 (-4007) | Five conventional raw metadata layouts returned 600/HY000; no successful native input contract is established. Current OUT rejection is B16, not absence of PL RECORD | A supported native wire/version is required before adding a descriptor/writer; no scalar SQL wrapper is called native support |
-| U03 / ANYDATA and locator/cursor inputs | PL ANYDATA number operations work; native ANYDATA OUT returns 600/0A000 (-4007) | SYS.ANYDATA is a distinct ANYDATA typecode with no ordinary OBJECT attributes; no successful typed input/locator writer contract yet | B16 is the exact OUT rejection; S02 persistent-column and X01 cursor-IN exclusions remain separate. See [fresh evidence](remaining-validation-2026-11-03.md) |
+| U03 / ANYDATA and locator/cursor inputs | PL ANYDATA number operations work; native ANYDATA OUT returns 600/0A000 (-4007) | SYS.ANYDATA is a distinct ANYDATA typecode with no ordinary OBJECT attributes; no successful typed input/locator writer contract yet | B16 is the exact OUT rejection; S02 persistent-column and X01 cursor-IN exclusions remain separate. See [pending verification](pending-live-verification.md) |
 | U04 / C09 Oracle piece-data 流水化 | 关闭为 C09 的已知顺序协议范围，不列当前缺陷 | Go 每片等待 OK，另一客户端同样逐片 ACK；framed 流不走 pipeline | 只有新增无 ACK 协议成功依据才重开，不盲写无 ACK 发送 |
 | U05 / T24 SPARSEVECTOR | 基础 string 子集已验，撤销“正确语法/wire 未知”状态 | `TestMySQLExtendedTypes` 无维数 SPARSEVECTOR，`{1:1,3:2}` 存储/回读/NULL、CHAR/string metadata，server/client 与 text/参数路径通过 | 高维/非法输入/函数组合继续作为专项覆盖，不需要先新增专用 codec |
 | U06 / G01 additional charsets | Seven strict mappings implemented; tested MySQL subset complete | UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 encoders, decoders, handshake IDs and 14 result collation IDs; independent full mapping hashes; six connection charsets and all seven column/result charsets passed server/client live tests | SWE7 cannot encode ASCII `@`, so the supplied tenant-qualified identity is safely rejected for a SWE7 connection; use UTF8 for that identity and SWE7 columns/results. Other versions and Oracle initialization remain separate; see [focused evidence](charset-nul-validation-2026-11-03.md) |
@@ -155,9 +155,9 @@ This table separates confirmed client boundaries from missing protocol or deploy
 
 - 官方链接见[能力矩阵依据](go-driver-capabilities.md#依据与维护)；本次重新读取MySQL字符集、Oracle类型、XMLTYPE、ANYDATA、向量、ARRAY相关正文。
 - H20：[Go发布实库报告](release-validation-2026-10-20.md)；H24：[Go浮点专项](binary-double-live-validation-2026-10-24.md)。只引用明确子集，历史成功不是本次重跑。
-- H03：[2026-11-03 Go直连复验](live-validation-2026-11-03.md)：G01/G03/G04/G05a/G07a/G07b、B14 规避、SDO 修复、MySQL 扩展类型、PL 前提及本地检查；不包括所有代理/平台组合。
+- H03：[恢复后直连复验](live-validation-2026-11-04-recovery.md)：G01/G03/G04/G05a/G07a/G07b、B14 规避、SDO 修复、MySQL 扩展类型、PL 前提及本地检查；不包括所有代理/平台组合。
 - H03R：[原生重置与剩余探测复验](native-reset-and-probe-validation-2026-11-03.md)：COM_RESET_CONNECTION 双模式成功但驱动保持淘汰、C02 44 条语句无 1295、Oracle warning 无明细入口、本轮 obtest/集成基线。
-- H03I：[ChangeUser 第二身份验收](change-user-acceptance-2026-11-03.md)：经授权创建并删除一次性 MySQL 只读身份；ChangeUser 成功/错误密码 1045 实库通过，obtest 37/0/2/8；Oracle 仍 1031 无 CREATE USER。
+- H03I：[恢复后直连复验](live-validation-2026-11-04-recovery.md)：经授权创建并删除一次性 MySQL 只读身份；ChangeUser 成功/错误密码 1045 实库通过，obtest 37/0/2/8；Oracle 仍 1031 无 CREATE USER。
 - H03T：[第二套直连目标复验](live-validation-2026-11-03-second-target.md)：独立 4.4.2.2 双模式全量集成测试通过；obtest 79/0/3/14；一次性第二身份下 MySQL/Oracle ChangeUser 通过；Oracle 初始代理登录通过、`COM_CHANGE_USER` 未应用代理目标（B21）；双模式及 Oracle combined-PL XA 收据丢失通过；B16/B18/B01/S01 拒绝形状复现。
 - H03U：[第三套直连目标复验](live-validation-2026-11-04-third-target.md)：独立 4.4.2.2 双模式全量集成测试通过；obtest 70 场景 108/0/5/27（MySQL 52/0/3/15；Oracle 56/0/2/12）；extended-types/geometry/oracle-spatial/oracle-urowid/oracle-xml 及双模式 floats 二十二个新场景首次实库通过；B16（RECORD/ANYDATA 600/0A000）、B17（SDO 13029）、B11（RoaringBitmap 直传 bytes 拒绝）、B01（MySQL XA 1398）、S01（Oracle NCLOB 902）复现；无第二身份与代理身份，ChangeUser 跳过。
 - H03V：[恢复后复验](live-validation-2026-11-04-recovery.md)：72 场景 112/0/5/27 后，经 Oracle SYS 创建 `OBGO_SECOND`、MySQL root 创建 `obgo_second` 并配置 `change_user_dsn_env`，两模式 `change-user` 通过，全量 **114/0/3/27**（MySQL 55/0/2/15；Oracle 59/0/1/12）；表级显式授权在受让账号 `USER_TAB_PRIVS` 可见，列级授权被服务端语法拒绝（OBE-00969/00900），`ALL_TAB_PRIVS` 在本目标仅显示自身授权行。
@@ -168,7 +168,7 @@ This table separates confirmed client boundaries from missing protocol or deploy
 
 上一版“15项功能差距”的汇总撤销：原G10–G14多数是通用路径验收/调查，G05/G06/G07按操作形状拆开，服务端/权限/环境也已拆开。后续G表按明确子集立项，C表按需求选择，V表补验收；S/B/A/ENV/U/X不直接转为实现待办。
 
-Fresh continuation: [remaining validation and exact external prerequisites](remaining-validation-2026-11-03.md). This report preserves unavailable and rejected shapes; it does not declare the complete matrix passed.
+Fresh continuation: [pending verification and external prerequisites](pending-live-verification.md). This report preserves unavailable and rejected shapes; it does not declare the complete matrix passed.
 ## 2026-11-04 范围重载与后续推进
 
 **范围重载**：Java Connector/J 的类层次、选项名映射、JDBC 转义与 JDBC 类 API 不再属于本驱动的能力或验收范围。已删除 `go-driver-options-mapping.md`（Java 选项矩阵）与 `obconnector-j-architecture-outline.md`（Java 结构分析），并删除实验性 `RewriteJDBCEscapes` API 与 `jdbc-escapes` 场景。能力矩阵 Q24 标为不适用；本矩阵不再把 Java 兼容列为缺失项。
@@ -184,5 +184,40 @@ Fresh continuation: [remaining validation and exact external prerequisites](rema
 | 服务端/目标 S/B/A | S01–S03、B01–B22、A01–A02 | 服务端拒绝/权限/已记录形状 | 否（需目标复验） |
 | 环境 ENV | ENV01–ENV05 | TLS/mTLS、代理/多节点、压缩、插件/KDC、平台传输 | 否（需对应部署） |
 | 待验证 V | V01–V17 剩余组合 | 需实库/平台证据 | 否（需目标） |
+
+## 发布就绪评估（Release readiness）
+
+### 分类计数与结论
+
+| 分类 | 行数 | 含义 | 发布结论 |
+| --- | --- | --- | --- |
+| G 已补实现并实库验收 | 6 | 本次补齐并在指定目标实库通过的子集 | 全部通过，可发布 |
+| B 指定目标服务端拒绝 | 22 | 4.4.2.2 上按确切模式/形状被服务端拒绝，非 Go 缺口 | 不阻塞发布；驱动显式报错，文档声明边界 |
+| ENV 环境未具备 | 5 | 需要 TLS/压缩/OBProxy/插件/Linux 客户端等部署 | 不阻塞代码发布；不得声明已验收 |
+| U 依据不足/未确认 | 8 | 无成功 wire 依据或跨版本形状未确认，无法用当前目标证明 | 保持 open，不用其他语言实现替代依据 |
+| V 验证待补 | 16 | 目标/路径未实跑（部分已有本地 peer 证据） | 保持未验收标注，不写入“已支持” |
+| S 官方明确不支持 | 3 | 官方文档排除的形态 | 不实现，不属于缺失功能 |
+| X 范围外/排除 | 5 | 明确不做或不属于驱动范围 | 不实现 |
+| A 认证/身份 | 2 | 身份切换与代理身份边界 | A02 已验收；代理重认证归 B21/ENV |
+| C 客户端范围限制 | 5 | 参考客户端行为差异或 Go `database/sql` 边界 | 记录限制，不视为缺失 |
+
+**离线可实现的客户端功能缺口为 0**：除上表 B/ENV/U/V 分类外，没有尚未实现的 Go 侧功能。
+
+### 服务端无法提供（发布说明必须列出的未验证项）
+
+| 项 | 缺什么 | 驱动当前行为 |
+| --- | --- | --- |
+| TLS / mTLS（ENV01/V01） | 服务端证书与启用 TLS 的端点（`have_ssl=YES` 但证书字段为空） | 未启用 TLS 时明文连接；客户端证书/主机名校验与 mTLS 由本地 peer 用例覆盖 |
+| 压缩（ENV02） | 服务端或 OBProxy 宣告 `CLIENT_COMPRESS` | `compression=required` 显式报 `unsupported capability`，不静默降级 |
+| OBProxy/多节点/OCP（ENV03） | ODP 端点、多节点集群与控制面（2883 不是可用 MySQL 协议端点） | 仅直连单端点行为已验证，代理/拓扑路径未验证 |
+| 插件/KDC（ENV04） | 插件运行时与 KDC | 未建立真实正负端点，不声明逐插件支持 |
+| B21 代理重认证 | 应用代理目标的新服务端/代理版本 | 4.4.2.2 上显式拒绝代理目标，避免假成功 |
+| Linux 客户端传输（D28/ENV05） | Linux 客户端运行时（Unix socket/共享内存/OBProxy VC/系统 GSSAPI） | 核心驱动无 cgo；平台传输未验收，不属于服务端缺口 |
+
+### 发布建议
+
+- 建议发布版本：`v0.3.0`（当前 `v0.2.0` 之后的首个包含第二身份验收、114/0/3/27 直连基线与服务端边界声明的版本）。
+- 发布说明必须同时列出“未验证部署组合”（上表六项）与“指定目标服务端拒绝”（B 类），不得把它们写成 Go 待补功能。
+- 代码发布条件已满足：全量 `go test ./...`、`golangci-lint`（含 integration tag）、文档校验均通过；实库基线 114/0/3/27。
 
 **结论（2026-11-04 恢复后更新）**：缺失矩阵重载后，**Go 侧没有可在离线环境实现的功能缺口**，剩余条目全部指向"新环境/新部署"；不存在可自行定义契约的扩展项：C10 的普通列流式读取既非服务端能力，也无参考客户端对应接口，不实现、不定契约。目标恢复后已完成直连复验：72 场景全量先 **112/0/5/27**，第二身份（SYS 创建 `OBGO_SECOND`、root 创建 `obgo_second`）就绪后最终 **114 pass / 0 fail / 3 skip / 27 not applicable**（MySQL 55/0/2/15，Oracle 59/0/1/12），全量集成套件全部 `ok`，`identifier-length`/`topology-sources` 两个新场景实库通过；`identifier-length` 的首跑失败是验收场景的大小写假设问题（MySQL 折叠表标识符），已修正场景并补离线夹具，驱动无缺陷。剩余 skip 仅为服务端拒绝的 MySQL XA SUSPEND/JOIN 与 Oracle NCLOB。仍未满足的只剩环境类：TLS/mTLS、压缩、OBProxy/多节点/OCP、插件/KDC、客户端 Linux 平台传输与 B21 代理重认证；显式授权已验表级，列级授权为服务端不支持。详见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。后续按[待实库验证清单](pending-live-verification.md) §8 执行环境到位后的条目。
