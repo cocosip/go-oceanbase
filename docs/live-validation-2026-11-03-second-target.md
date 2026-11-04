@@ -13,6 +13,7 @@
 | ProxyUser | Oracle 初始代理登录通过（`CURRENT_USER`=目标、`PROXY_USER`=认证代理账号）；`COM_CHANGE_USER` 重认证后代理目标未生效，驱动已对该确切版本在发送前拒绝（B21），见下节 |
 | G 项 | G01/G03/G04/G05a/G07a/G07b 指定子集在集成套件中复验通过 |
 | U 项与目标拒绝 | `TestOraclePLTypeReadiness` 仍按契约断言：RECORD/ANYDATA 原生 OUT 返回 600/0A000（B16）；匿名 LOB 头 600/HY000（B18）；NCLOB DDL 902（S01）；MySQL XA SUSPEND/JOIN 1398（B01） |
+| 收据丢失 | 双模式普通 COMMIT、MySQL XA PREPARE/COMMIT 与新增的 **Oracle combined-PL XA PREPARE/COMMIT**（保留 OUT 行、丢弃尾部 native OK）均通过；`ErrXAOutcomeUnknown`/`ErrCommitUnknown` 分类、独立恢复与效果可见性断言通过 |
 | 其余 | XA 1PC/2PC/rollback/recovery（Oracle 含 suspend/join）、敏感游标、LOB、复杂类型、LOCAL INFILE、warnings、cancel、metadata、批处理在双模式通过 |
 
 ## 新发现：Oracle 代理身份在 COM_CHANGE_USER 上不生效

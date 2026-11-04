@@ -29,7 +29,24 @@ func TestMySQLXAReceiptLoss(t *testing.T) {
 	}
 	for _, p := range profiles {
 		if p.Mode != oceanbase.ModeMySQL {
-			continue // Oracle XA has a combined PL response, not a single OK.
+			continue // Oracle XA has a combined PL response, covered separately.
+		}
+		for _, phase := range []string{integrationXAPrepareReceipt, integrationXACommitReceipt} {
+			t.Run(p.Name+"/"+phase, func(t *testing.T) { integrationXAReceiptLoss(t, p, phase) })
+		}
+	}
+}
+
+// TestOracleXAReceiptLoss covers the combined PL response used by Oracle XA:
+// the fixture drops the trailing native OK after the OUT row is delivered.
+func TestOracleXAReceiptLoss(t *testing.T) {
+	profiles, err := integrationtest.Profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range profiles {
+		if p.Mode != oceanbase.ModeOracle {
+			continue
 		}
 		for _, phase := range []string{integrationXAPrepareReceipt, integrationXACommitReceipt} {
 			t.Run(p.Name+"/"+phase, func(t *testing.T) { integrationXAReceiptLoss(t, p, phase) })
@@ -72,6 +89,9 @@ func integrationXAReceiptLoss(t *testing.T, p integrationtest.Profile, phase str
 		}
 	})
 	if err := oceanbase.XAStart(ctx, pinned, xid, oceanbase.XANoFlags); err != nil {
+		if errors.Is(err, oceanbase.ErrUnsupported) {
+			t.Skip("combined prepare/execute XA is unavailable for this target")
+		}
 		integrationtest.FailOperation(t, "start receipt-loss XA", err)
 	}
 	if _, err := pinned.ExecContext(ctx, "INSERT INTO "+table+" VALUES (1)"); err != nil {
@@ -80,17 +100,7 @@ func integrationXAReceiptLoss(t *testing.T, p integrationtest.Profile, phase str
 	if err := oceanbase.XAEnd(ctx, pinned, xid, oceanbase.XASuccess); err != nil {
 		integrationtest.FailOperation(t, "end receipt-loss XA", err)
 	}
-	var err error
-	if phase == integrationXAPrepareReceipt {
-		fault.Arm()
-		_, err = oceanbase.XAPrepare(ctx, pinned, xid)
-	} else {
-		if vote, err := oceanbase.XAPrepare(ctx, pinned, xid); err != nil || vote != oceanbase.XAPrepared {
-			t.Fatal("receipt-loss XA did not prepare", vote, err)
-		}
-		fault.Arm()
-		err = oceanbase.XACommit(ctx, pinned, xid, false)
-	}
+	err := integrationXAReceiptPhase(ctx, t, p, pinned, xid, fault, phase)
 	if !fault.Acknowledged() || !errors.Is(err, oceanbase.ErrXA) || !errors.Is(err, oceanbase.ErrXAOutcomeUnknown) || errors.Is(err, driver.ErrBadConn) || errors.Is(err, oceanbase.ErrCommitUnknown) != (phase == integrationXACommitReceipt) {
 		t.Fatal("XA receipt loss classification", phase, fault.Acknowledged(), err)
 	}
@@ -124,6 +134,24 @@ func integrationXAReceiptLoss(t *testing.T, p integrationtest.Profile, phase str
 	if err = recovered.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != 1 {
 		t.Fatal("independent XA final effect", count, err)
 	}
+}
+
+func integrationXAReceiptPhase(ctx context.Context, t *testing.T, p integrationtest.Profile, pinned *sql.Conn, xid oceanbase.XID, fault *integrationtest.ReceiptLossConn, phase string) error {
+	t.Helper()
+	arm := fault.Arm
+	if p.Mode == oceanbase.ModeOracle {
+		arm = fault.ArmCombined
+	}
+	if phase == integrationXAPrepareReceipt {
+		arm()
+		_, err := oceanbase.XAPrepare(ctx, pinned, xid)
+		return err
+	}
+	if vote, err := oceanbase.XAPrepare(ctx, pinned, xid); err != nil || vote != oceanbase.XAPrepared {
+		t.Fatal("receipt-loss XA did not prepare", vote, err)
+	}
+	arm()
+	return oceanbase.XACommit(ctx, pinned, xid, false)
 }
 
 func integrationRecoveredXID(t *testing.T, conn *sql.Conn, xid oceanbase.XID) bool {

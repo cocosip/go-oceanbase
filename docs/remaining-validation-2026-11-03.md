@@ -64,6 +64,7 @@ An independently supplied direct OceanBase 4.4.2.2 MySQL/Oracle target was verif
 - ChangeUser: disposable MySQL and Oracle second identities passed `TestChangeUserSessions`, `TestChangeUserFailure` and `obtest change-user` in both modes.
 - Oracle ProxyUser: a disposable proxy account plus `ALTER USER ... GRANT CONNECT THROUGH` was granted. Initial proxy login returned the target as `CURRENT_USER`/`SESSION_USER` and the authenticating account as `PROXY_USER`. Reauthentication with the same credentials returned success but left `CURRENT_USER`/`SESSION_USER` as the authenticating account, so this target does not apply the proxy target on `COM_CHANGE_USER` (B21). The driver does resend `__ob_client_proxy_user_name`; this is a target behavior, not a send-path gap.
 - Rejection shapes re-confirmed: RECORD/ANYDATA native OUT 600/0A000 (B16), anonymous LOB headers 600/HY000 (B18), NCLOB DDL 902 (S01), MySQL XA SUSPEND/JOIN 1398 (B01).
-- Still not covered: TLS/mTLS (endpoint plaintext), required compression, OBProxy/multi-node/OCP/TNS, Linux/macOS native runs, Oracle combined-XA receipt loss, named-region timezone initialization (1882).
+- Receipt loss: both-mode plain COMMIT, MySQL XA PREPARE/COMMIT and the new Oracle combined-PL XA PREPARE/COMMIT cases pass. The Oracle fixture keeps the OUT row and drops only the trailing native OK (`TestOracleXAReceiptLoss`).
+- Still not covered: TLS/mTLS (endpoint plaintext), required compression, OBProxy/multi-node/OCP/TNS, Linux/macOS native runs, named-region timezone initialization (1882).
 
 See the [second-target report](live-validation-2026-11-03-second-target.md).
