@@ -86,7 +86,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | ID / 关联能力 | 已记录的前提不足 | 分类边界 |
 | --- | --- | --- |
 | A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000 | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
-| A02 / C09/C12 另一身份/代理 | H20缺第二身份/代理grant，CREATE USER探针1031 | 缺授权fixture；保留ChangeUser/ProxyUser实现，不修改业务账号权限来制造通过 |
+| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权由 MySQL root 创建一次性只读身份：ChangeUser 成功路径与错误密码 1045（弃用连接、池恢复）实库通过；Oracle 租户 RISDB 的 CREATE USER 仍返回 1031 | MySQL 身份切换已验收（fixture 已删除，复跑需外部第二身份）；Oracle/ProxyUser 仍缺授权 fixture，不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md) |
 | ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
 | ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [fresh results](remaining-validation-2026-11-03.md) |
 | ENV03 / C14–C15 ODP/多节点/OCP/TNS | H20仅直连单端点 | 缺真实代理/控制面/集群，单上游relay不证明HA |
@@ -149,6 +149,7 @@ This table separates confirmed client boundaries from missing protocol or deploy
 - H20：[Go发布实库报告](release-validation-2026-10-20.md)；H24：[Go浮点专项](binary-double-live-validation-2026-10-24.md)。只引用明确子集，历史成功不是本次重跑。
 - H03：[2026-11-03 Go直连复验](live-validation-2026-11-03.md)：G01/G03/G04/G05a/G07a/G07b、B14 规避、SDO 修复、MySQL 扩展类型、PL 前提及本地检查；不包括所有代理/平台组合。
 - H03R：[原生重置与剩余探测复验](native-reset-and-probe-validation-2026-11-03.md)：COM_RESET_CONNECTION 双模式成功但驱动保持淘汰、C02 44 条语句无 1295、Oracle warning 无明细入口、本轮 obtest/集成基线。
+- H03I：[ChangeUser 第二身份验收](change-user-acceptance-2026-11-03.md)：经授权创建并删除一次性 MySQL 只读身份；ChangeUser 成功/错误密码 1045 实库通过，obtest 37/0/2/8；Oracle 仍 1031 无 CREATE USER。
 - N：obconnector-dotnet/docs/obconnector-dotnet-completeness.md及obconnector-dotnet-missing-features-roadmap.md的D-02d1～d3、D-04a1/a2/e、D-05、D-07、D-08m、D-09、D-12a/b/c、目录/RECORD段落；本次核对ComplexLobInputTests.cs、XmlProbeTests.cs、VectorArrayStringWireTests.cs的实际用例形状，不记作Go实测。
 - Java：核对ComplexUtil.storeComplexAttrData成员writer、createSQLXML客户端拒绝和OB20 reader压缩长度拒绝；没有把Java拒绝当服务端不支持证明。
 
