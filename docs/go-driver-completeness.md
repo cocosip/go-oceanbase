@@ -101,12 +101,12 @@ A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边�
 | V02 / C05/C08 平台/认证 | transport/authentication与ABI/peer | 实际OS/runtime/plugin/KDC，前提ENV04/05；客户端名字不证明服务端支持 |
 | V03 / C14–C15 路由/发现 | 地址选择、TNS/OCP、刷新/建连切换 | 实际租户身份/角色/硬过期/恢复，前提ENV03；已发业务不重放 |
 | V04 / P02–P05 协议/trace | 帧、CRC、协商/trace子集 | 实际layer/双向帧/控制/collector，前提ENV02，三类checksum分开 |
-| V05 / X03–X04 故障/XA | 正常XA、unknown分类/故障peer | 回执丢失、节点/代理/进程崩溃、独立查账/持久恢复，不是缺XA API |
+| V05 / X03–X04 故障/XA | Both modes pass real local COMMIT receipt loss with independent committed effects; MySQL XA PREPARE/COMMIT receipt loss and explicit recovery pass | Oracle combined-XA receipt loss, node/proxy/process crashes and durable coordinator restart remain open; a real complete OK is consumed before EOF, not a simulated server acknowledgement |
 | V06 / pool/endurance/performance | Four workers x128 rounds per mode: 512 transactions each, 256 committed, zero retained leases; acceptance tool and affected race checks pass | Finite roughly seven-second runs do not prove endurance, server handle trends or throughput; retain real workload acceptance |
 | V07 / M01/Q07 元数据 | 目录计划/历史子集 | 最小权限、overload、引用身份/precision等；A01/B12另列 |
 | V08 / T08–T11 时间/编码 | 精确时间、national与已有charset | 零日期SQL_MODE、DST/LTZ/地区/存储；B04/B09不变成待写codec |
 | V09 / Q10–Q11/T13–T15 资源组合 | cursor/LOB/OBJECT/OUT子集 | 提前Close/取消/尾包/预算/事务池代际/可见性；B02/B03/B06/B07/B08逐形状排除 |
-| V10 / C09/C11–C13/Q18/Q22 会话 | 初始化、属性、读超时、ChangeUser/导入/取消 | 真实身份/中断码/部分效果/借用者隔离；A02另列 |
+| V10 / C09/C11–C13/Q18/Q22 会话 | Both modes pass the automatic locked-row network-read-timeout fixture, rejected reuse of the old pinned session and replacement connection | Other identity/interruption/partial-effect and borrower-isolation combinations remain open; A02 is separate |
 | V11 / platform/version/CI | Current Windows full suites pass on Go 1.26.0 and 1.27.2; native ABI fixtures/race checks and Linux amd64/arm64 plus Darwin arm64 cross-build pass | Native Linux/macOS runtime and hosted CI acceptance remain open; no WSL/Docker runtime available locally |
 | V13 / 原 G10、T05–T07 JSON/BIT/YEAR/GEOMETRY | `TestMySQLExtendedTypes` server/client、text/参数查询、NULL 实库通过 | JSON string、BIT(8) 整数、YEAR、GEOMETRY WKT 函数输入及完整 SRID/WKB bytes 回读/回绑已验；不声称所有几何类型/转换均通过；U07 指定子集关闭 |
 | V14 / VECTOR | Server/client live boundaries cover short/long dimensions, NaN, overflow and extreme finite values in the 42-case extended suite | Exact target normalization/rejection is retained; independent storage and pinned-session recovery pass. No new dedicated codec needed |
