@@ -105,3 +105,7 @@ go test -tags=integration ./internal/valuecodec -run '^(TestOracleURowID|TestOra
 | ENV01–05 / V01–11 | 无启用 TLS/mTLS、真实 ODP/多节点/OCP、KDC/plugin、完整平台及长稳/故障部署 | 需要对应服务/环境；不能称为服务端产品不支持，也不能用本地 peer 替代实库正向证据 |
 
 B 表中只有标 H03 的条目可算本次 Go 复验；仅 N/H20 的失败形状仍属参考/历史证据。完整逐项分类见[缺失矩阵](go-driver-completeness.md)。连接配置和临时探针均未保留在 Git；本轮不提交或推送修改。
+
+## Continuation after native temporal/national support
+
+See [fresh continuation results](remaining-validation-2026-11-03.md): acceptance 75 pass / 0 fail / 6 skip / 13 not applicable; 42 extended boundaries; 16 GIS cases with explicit positive and negative counts; native PL output and anonymous LOB restrictions; 12 protocol positives and two required-compression negotiation failures; finite concurrent transactions; current local gates. This updates the earlier protocol/environment snapshot without claiming missing deployments passed.

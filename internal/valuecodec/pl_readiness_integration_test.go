@@ -3,6 +3,8 @@
 package valuecodec_test
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -46,6 +48,28 @@ func TestOraclePLTypeReadiness(t *testing.T) {
 			}
 			if _, err := db.ExecContext(ctx, "DECLARE V "+name+".R; BEGIN V.N:=41; V.S:='record'; "+name+".P(V); IF V.N IS NULL OR V.N!=42 OR V.S IS NULL OR V.S!='record!' THEN RAISE_APPLICATION_ERROR(-20001,'record mismatch'); END IF; END;"); err != nil {
 				integrationtest.FailOperation(t, "record server-side PL round trip", err)
+			}
+			for _, tc := range []struct{ name, query string }{
+				{"record-native-output", "DECLARE V " + name + ".R; BEGIN V.N:=41; V.S:='record'; ? := V; END;"},
+				{"anydata-native-output", "BEGIN ? := SYS.ANYDATA.ConvertNumber(42); END;"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					conn, err := db.Conn(ctx)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer func() { _ = conn.Close() }()
+					var output oceanbase.Object
+					_, err = conn.ExecContext(ctx, tc.query, sql.Out{Dest: &output})
+					var server *oceanbase.Error
+					// The tested target rejects these outputs before a typed result reaches the client.
+					if !errors.As(err, &server) || !integrationtest.OnlyServerErrorCode(err, 600) || server.SQLState != "0A000" {
+						integrationtest.FailOperation(t, "expected native PL output rejection", err)
+					}
+					if err := conn.PingContext(ctx); err != nil {
+						integrationtest.FailOperation(t, "reuse after native PL output rejection", err)
+					}
+				})
 			}
 			rows, err := db.QueryContext(ctx, "SELECT ATTR_NAME,ATTR_TYPE_NAME FROM ALL_PLSQL_TYPE_ATTRS WHERE PACKAGE_NAME=? ORDER BY ATTR_NO", name)
 			if err != nil {

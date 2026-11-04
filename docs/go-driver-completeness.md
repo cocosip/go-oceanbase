@@ -75,6 +75,9 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | B13 / T08 TIME极限小数 | MySQL，N：指定permissive binary截整秒，strict text1292而binary仍截断成功 | 路径相关服务端语义记录，尚非Go复现缺陷；不静默截断/CAST来制造一致 |
 | B14 / T17 + P04 XMLTYPE combined 结果形状 | Oracle 4.4.2.2，H03：原始 combined 响应一个行包后结束，遗漏 NULL 行且无错误 | 驱动已对确切版本禁用通用可选 combined 优化，所有六种配置返回完整两行，删除 B14 skip；必需 OUT/RETURNING 保持并实库通过。版本范围外未推断同故障 |
 | B15 / anonymous TIMESTAMP collection INOUT | Oracle 4.4.2.2, current Go live fixture: anonymous element metadata has no accuracy; direct INOUT rounds `.123456789` to `.123457` | Named native collection and independent SQL constructor control retain nine digits; fixed named metadata preserves dictionary precision. Anonymous IN/OUT through a typed local variable is independently verified; see [evidence](complex-temporal-national-validation-2026-11-03.md) |
+| B16 / native PL RECORD and ANYDATA OUT | Current target returns 600/0A000 (-4007) before typed output, confirmed by raw wire and public `sql.Out` regressions | PL-local RECORD/ANYDATA and RECORD metadata work. This does not classify every native input shape unsupported |
+| B17 / spatial reference 4326 | Oracle SDO point insert returns 13029/HY000; MySQL GIS functions return 3548/SR001; both reproduce with pure SQL controls | SRID 0 point/GIS round trips work; no driver conversion or dictionary modification is applied |
+| B18 / anonymous LOB collection headers | Raw Oracle codes 210/211 with inline BLOB/CLOB member bodies return 600/HY000 | The same named collection payloads succeed and store independent expected content; rejection is specific to the tested anonymous headers |
 
 ## 权限、身份与环境不足
 
@@ -83,7 +86,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000 | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
 | A02 / C09/C12 另一身份/代理 | H20缺第二身份/代理grant，CREATE USER探针1031 | 缺授权fixture；保留ChangeUser/ProxyUser实现，不修改业务账号权限来制造通过 |
 | ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
-| ENV02 / P02–P05 协议端点 | 历史直连缺压缩/OB20正向目标与FLT/collector组合 | 缺协商环境，不把合成帧当实库，也不把拒绝协商扩大为产品无此协议 |
+| ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [fresh results](remaining-validation-2026-11-03.md) |
 | ENV03 / C14–C15 ODP/多节点/OCP/TNS | H20仅直连单端点 | 缺真实代理/控制面/集群，单上游relay不证明HA |
 | ENV04 / C08 plugin/KDC | 客户端分支存在，缺真实正负端点和逐插件服务端依据 | 不能列服务器已支持全部，也不能列明确不支持全部；逐项确认 |
 | ENV05 / C05 平台原生传输 | 真实Linux VC、系统GSSAPI、服务IPC/ACL前提未全验 | OS/tag/库/服务条件，不是普通SQL缺口 |
@@ -99,17 +102,17 @@ A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边�
 | V03 / C14–C15 路由/发现 | 地址选择、TNS/OCP、刷新/建连切换 | 实际租户身份/角色/硬过期/恢复，前提ENV03；已发业务不重放 |
 | V04 / P02–P05 协议/trace | 帧、CRC、协商/trace子集 | 实际layer/双向帧/控制/collector，前提ENV02，三类checksum分开 |
 | V05 / X03–X04 故障/XA | 正常XA、unknown分类/故障peer | 回执丢失、节点/代理/进程崩溃、独立查账/持久恢复，不是缺XA API |
-| V06 / C10/Q23/R01 长稳/性能 | 标准池、代际隔离、有限测试/peer benchmark | 真实长稳/句柄/服务端资源和实库吞吐；性能未测不算业务功能缺失 |
+| V06 / pool/endurance/performance | Four workers x128 rounds per mode: 512 transactions each, 256 committed, zero retained leases; acceptance tool and affected race checks pass | Finite roughly seven-second runs do not prove endurance, server handle trends or throughput; retain real workload acceptance |
 | V07 / M01/Q07 元数据 | 目录计划/历史子集 | 最小权限、overload、引用身份/precision等；A01/B12另列 |
 | V08 / T08–T11 时间/编码 | 精确时间、national与已有charset | 零日期SQL_MODE、DST/LTZ/地区/存储；B04/B09不变成待写codec |
 | V09 / Q10–Q11/T13–T15 资源组合 | cursor/LOB/OBJECT/OUT子集 | 提前Close/取消/尾包/预算/事务池代际/可见性；B02/B03/B06/B07/B08逐形状排除 |
 | V10 / C09/C11–C13/Q18/Q22 会话 | 初始化、属性、读超时、ChangeUser/导入/取消 | 真实身份/中断码/部分效果/借用者隔离；A02另列 |
-| V11 / R01 平台/版本/CI | 既有构建测试/历史CI | 当前发布源码适用OS/tag/Go/实库组合，不外推未来版本 |
+| V11 / platform/version/CI | Current Windows full suites pass on Go 1.26.0 and 1.27.2; native ABI fixtures/race checks and Linux amd64/arm64 plus Darwin arm64 cross-build pass | Native Linux/macOS runtime and hosted CI acceptance remain open; no WSL/Docker runtime available locally |
 | V13 / 原 G10、T05–T07 JSON/BIT/YEAR/GEOMETRY | `TestMySQLExtendedTypes` server/client、text/参数查询、NULL 实库通过 | JSON string、BIT(8) 整数、YEAR、GEOMETRY WKT 函数输入及完整 SRID/WKB bytes 回读/回绑已验；不声称所有几何类型/转换均通过；U07 指定子集关闭 |
-| V14 / 原 G11、T18 VECTOR | `TestMySQLExtendedTypes` VECTOR(3) string 存储/回读/NULL、CHAR/string metadata 实库通过 | server/client、text/参数路径已验；坏维数、极值和函数组合未全面覆盖 |
-| V15 / 原 G12、T25 SQL ARRAY | `TestMySQLExtendedTypes` ARRAY(INT) string 存储/回读/NULL、CHAR/string metadata 实库通过 | server/client、text/参数路径已验；嵌套数组/元素域/空数组边界未全面覆盖；不等同 Oracle Array |
-| V16 / 原 G13、T26 RoaringBitmap | `TestMySQLRoaringBitmap` 函数输入、结果 bytes、空/NULL/uint64 最大值、函数 bytes 回绑和 metadata 实库通过 | 直接 bytes 写列 B11 仍拒绝，不将 skip 算该方向通过 |
-| V17 / 原 G14、T22 SDO_GEOMETRY | `TestOracleSDOGeometry` generic Object/Array polygon 输入与显式 prepare 整列读取实库通过；修复 ownerless 结果在 local/synonym 均无匹配时回退 SYS | 本地同名类型/同义词优先，显式 schema 不回退，不污染限定名缓存；NULL SRID/POINT 与数组元素已验；非 NULL SRID/point/空间操作未全面验收 |
+| V14 / VECTOR | Server/client live boundaries cover short/long dimensions, NaN, overflow and extreme finite values in the 42-case extended suite | Exact target normalization/rejection is retained; independent storage and pinned-session recovery pass. No new dedicated codec needed |
+| V15 / SQL ARRAY | Server/client live empty/NULL-element arrays, INT extrema/overflow, malformed elements and nested/empty-inner arrays covered | Tested empty outer nested array returns 7602; independent no-effect checks and pinned-session recovery pass; default-value S03 is separate |
+| V16 / RoaringBitmap | Existing bytes/functions/NULL/empty/uint64 cases plus duplicate/negative normalization, invalid strings, overflow and malformed byte payloads pass | Direct raw bytes B11 remains a skip; negative function input normalizes to 4294967295 on this target, not a driver conversion |
+| V17 / SDO_GEOMETRY | Polygon plus native point X/Y/NULL Z and non-NULL SRID 0 pass binary and independent scalar checks | SRID 4326 fails with 13029 in both native and SQL controls (B17); other spatial functions remain workload-specific |
 
 ## 依据不足，暂不归因
 
@@ -119,9 +122,9 @@ This table separates confirmed client boundaries from missing protocol or deploy
 
 | ID / 原关联 | 尚不能下的结论 | 本次已确认的客户端/协议边界 | 关闭或升级条件 |
 | --- | --- | --- | --- |
-| U01 / native temporal/national/LOB collections | TIMESTAMP/NCHAR/NVARCHAR2 input and headers are implemented; LOB/locator and NCLOB remain separate | `TestOracleComplexTemporalNational`: 15 fixture configurations, zero failures/skips; named/anonymous IN/OUT, NULL/empty, mixed charsets, named nanosecond INOUT and nested OBJECT pass. Complex national input charset corruption fixed | Anonymous direct TIMESTAMP INOUT defaults to six-digit accuracy on this target; named types retain nine. See [focused evidence](complex-temporal-national-validation-2026-11-03.md). Anonymous LOB/locator headers still need successful wire evidence |
-| U02 / 原 G15 PL-only RECORD | 当前服务端支持普通 RECORD，不能再说缺字段目录 | `TestOraclePLTypeReadiness` VALID package、PL INOUT 调用和 ALL_PLSQL_TYPE_ATTRS 的 NUMBER/VARCHAR2 字段通过；目录在 PL 使用/编译后可见。Go 仍没有 RECORD descriptor/writer | 可继续做客户端原生绑定，但须取得成功 IN/OUT wire；普通 RECORD 成功不证明含 cursor 成员均可用 |
-| U03 / T23 ANYDATA PL、locator/cursor 成员输入 | 当前 SYS.ANYDATA 存在且 PL 数字构造/GetNumber 回读通过；不能沿用缺包结论 | Go 原生 ANYDATA descriptor/writer、locator/cursor 成员输入仍无成功协议依据；REF CURSOR IN/INOUT 按 X01 排除 | 可继续客户端协议调查；PL 标量内部运算成功不等于已实现 typed ANYDATA 参数；S02 持久列禁用独立 |
+| U01 / native temporal/national/LOB collections | TIMESTAMP/NCHAR/NVARCHAR2 input and headers are implemented; LOB/locator and NCLOB remain separate | `TestOracleComplexTemporalNational`: 15 fixture configurations, zero failures/skips; named/anonymous IN/OUT, NULL/empty, mixed charsets, named nanosecond INOUT and nested OBJECT pass. Complex national input charset corruption fixed | Anonymous direct TIMESTAMP INOUT defaults to six-digit accuracy on this target; named types retain nine. See [focused evidence](complex-temporal-national-validation-2026-11-03.md). Raw anonymous BLOB/CLOB headers 210/211 return 600/HY000 while named forms succeed (B18); locator input still lacks a successful writer contract |
+| U02 / PL-only RECORD | PL-local RECORD and member directory work; native OUT returns 600/0A000 (-4007) | Five conventional raw metadata layouts returned 600/HY000; no successful native input contract is established. Current OUT rejection is B16, not absence of PL RECORD | A supported native wire/version is required before adding a descriptor/writer; no scalar SQL wrapper is called native support |
+| U03 / ANYDATA and locator/cursor inputs | PL ANYDATA number operations work; native ANYDATA OUT returns 600/0A000 (-4007) | SYS.ANYDATA is a distinct ANYDATA typecode with no ordinary OBJECT attributes; no successful typed input/locator writer contract yet | B16 is the exact OUT rejection; S02 persistent-column and X01 cursor-IN exclusions remain separate. See [fresh evidence](remaining-validation-2026-11-03.md) |
 | U04 / C09 Oracle piece-data 流水化 | 关闭为 C09 的已知顺序协议范围，不列当前缺陷 | Go 每片等待 OK，Java 同样逐片 ACK；framed 流不走 pipeline | 只有新增无 ACK 协议成功依据才重开，不盲写无 ACK 发送 |
 | U05 / T24 SPARSEVECTOR | 基础 string 子集已验，撤销“正确语法/wire 未知”状态 | `TestMySQLExtendedTypes` 无维数 SPARSEVECTOR，`{1:1,3:2}` 存储/回读/NULL、CHAR/string metadata，server/client 与 text/参数路径通过 | 高维/非法输入/函数组合继续作为专项覆盖，不需要先新增专用 codec |
 | U06 / G01 additional charsets | Seven strict mappings implemented; tested MySQL subset complete | UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 encoders, decoders, handshake IDs and 14 result collation IDs; independent full mapping hashes; six connection charsets and all seven column/result charsets passed server/client live tests | SWE7 cannot encode ASCII `@`, so the supplied tenant-qualified identity is safely rejected for a SWE7 connection; use UTF8 for that identity and SWE7 columns/results. Other versions and Oracle initialization remain separate; see [focused evidence](charset-nul-validation-2026-11-03.md) |
@@ -149,3 +152,5 @@ This table separates confirmed client boundaries from missing protocol or deploy
 本轮已连接双模式 OceanBase 4.4.2.2，逐项复验 G 表中的明确子集；本地测试、静态检查和实库跳过项见 H03。V/U 尚未全部验收；未重新执行的参考 SDK 失败形状继续仅标 N，不提升为 Go 实测。
 
 上一版“15项功能差距”的汇总撤销：原G10–G14多数是通用路径验收/调查，G05/G06/G07按操作形状拆开，服务端/权限/环境也已拆开。后续G表按明确子集立项，C表按需求选择，V表补验收；S/B/A/ENV/U/X不直接转为实现待办。
+
+Fresh continuation: [remaining validation and exact external prerequisites](remaining-validation-2026-11-03.md). This report preserves unavailable and rejected shapes; it does not declare the complete matrix passed.

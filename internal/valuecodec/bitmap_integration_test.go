@@ -4,6 +4,7 @@ package valuecodec_test
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"os"
 	"reflect"
@@ -27,6 +28,7 @@ func TestMySQLRoaringBitmap(t *testing.T) {
 		}
 		t.Run(profile.Name, func(t *testing.T) {
 			db := integrationtest.OpenProfile(t, profile)
+			observer := integrationtest.OpenProfile(t, profile)
 			ctx := integrationtest.TestContext(t)
 			table := fmt.Sprintf("OBGBM_%d", time.Now().UnixNano())
 			if _, err := db.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V ROARINGBITMAP)"); err != nil {
@@ -81,6 +83,7 @@ func TestMySQLRoaringBitmap(t *testing.T) {
 			if err := db.QueryRowContext(ctx, "SELECT V,rb_to_string(V) FROM "+table+" WHERE ID=5").Scan(&raw, &text); err != nil || !bytes.Equal(raw, first) || text != bitmapMembers {
 				t.Fatal("bitmap byte round trip changed", err)
 			}
+			t.Run("function-boundaries", func(t *testing.T) { testBitmapBoundaries(t, db, observer, table) })
 			t.Run("direct-bytes", func(t *testing.T) {
 				_, err := db.ExecContext(ctx, "INSERT INTO "+table+" VALUES (6,?)", first)
 				if integrationtest.OnlyServerErrorCode(err, 1235) {
@@ -91,5 +94,48 @@ func TestMySQLRoaringBitmap(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+func testBitmapBoundaries(t *testing.T, db, observer *sql.DB, table string) {
+	t.Helper()
+	ctx := integrationtest.TestContext(t)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	for i, tc := range []extendedBoundary{
+		{"2,1,2", "1,2", 0}, {"-1", "4294967295", 0},
+		{"18446744073709551616", "", 4019}, {"abc", "", 1210},
+	} {
+		id := 10 + i
+		_, err := conn.ExecContext(ctx, "INSERT INTO "+table+" VALUES(?,rb_from_string(?))", id, tc.input)
+		if tc.code != 0 {
+			if !integrationtest.OnlyServerErrorCode(err, tc.code) {
+				integrationtest.FailOperation(t, "expected bitmap string rejection", err)
+			}
+			continue
+		}
+		if err != nil {
+			integrationtest.FailOperation(t, "store bitmap normalization", err)
+		}
+		var got string
+		if err := observer.QueryRowContext(ctx, "SELECT rb_to_string(V) FROM "+table+" WHERE ID=?", id).Scan(&got); err != nil || got != tc.want {
+			t.Fatal("stored bitmap normalization changed", got, err)
+		}
+	}
+	for i, data := range [][]byte{{}, {255}, {1, 2, 3}} {
+		_, err := conn.ExecContext(ctx, "INSERT INTO "+table+" VALUES(?,rb_build_varbinary(?))", 20+i, data)
+		if !integrationtest.OnlyServerErrorCode(err, 1210) {
+			integrationtest.FailOperation(t, "expected malformed bitmap rejection", err)
+		}
+	}
+	var count int
+	if err := observer.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table+" WHERE ID>=12").Scan(&count); err != nil || count != 0 {
+		t.Fatal("rejected bitmap left a row", count, err)
+	}
+	if err := conn.PingContext(ctx); err != nil {
+		integrationtest.FailOperation(t, "reuse after bitmap rejection", err)
 	}
 }

@@ -81,7 +81,12 @@ func testOracleTemporalNationalArray(t *testing.T, profile integrationtest.Profi
 	}
 	body := "(p IN " + typ + ",i IN NUMBER) IS BEGIN IF p IS NULL THEN INSERT INTO " + table + " VALUES(i,-1,NULL); ELSIF p.COUNT=0 THEN INSERT INTO " + table + " VALUES(i,0,NULL); ELSE IF p(2) IS NOT NULL THEN RAISE_APPLICATION_ERROR(-20001,'NULL element changed'); END IF; INSERT INTO " + table + " VALUES(i,p.COUNT," + expr + "); END IF; END;"
 	createTemporalNationalFixture(t, db, "PROCEDURE", proc, body)
-	stmt, err := db.PrepareContext(ctx, "BEGIN "+proc+"(?,?); END;")
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	stmt, err := conn.PrepareContext(ctx, "BEGIN "+proc+"(?,?); END;")
 	if err != nil {
 		integrationtest.FailOperation(t, "prepare temporal/national array", err)
 	}
@@ -114,7 +119,7 @@ func testOracleTemporalNationalArray(t *testing.T, profile integrationtest.Profi
 			t.Fatalf("array changed: id=%d count=%d text=%v", id, count, text)
 		}
 		var output oceanbase.Array
-		if _, err := db.ExecContext(ctx, "DECLARE a "+typ+" := ?; BEGIN ? := a; END;", input, sql.Out{Dest: &output}); err != nil {
+		if _, err := conn.ExecContext(ctx, "DECLARE a "+typ+" := ?; BEGIN ? := a; END;", input, sql.Out{Dest: &output}); err != nil {
 			integrationtest.FailOperation(t, "return temporal/national array", err)
 		}
 		sameElements := reflect.DeepEqual(output.Elements, tc.elements) || len(output.Elements) == 0 && len(tc.elements) == 0
@@ -144,13 +149,13 @@ func testOracleTemporalNationalArray(t *testing.T, profile integrationtest.Profi
 	if named {
 		inout.Type = typ
 	}
-	if _, err := db.ExecContext(ctx, "BEGIN "+base+"R(?); END;", sql.Out{Dest: &inout, In: true}); err != nil {
+	if _, err := conn.ExecContext(ctx, "BEGIN "+base+"R(?); END;", sql.Out{Dest: &inout, In: true}); err != nil {
 		integrationtest.FailOperation(t, "INOUT temporal/national array", err)
 	}
 	if !reflect.DeepEqual(inout.Elements, []any{nil, wantInout}) {
 		t.Fatalf("array INOUT changed: %#v", inout)
 	}
-	if err := db.PingContext(ctx); err != nil {
+	if err := conn.PingContext(ctx); err != nil {
 		integrationtest.FailOperation(t, "reuse temporal/national connection", err)
 	}
 }
