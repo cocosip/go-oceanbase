@@ -4,7 +4,7 @@
 
 ## 1. 当前状态（2026-11-04）
 
-- 本地可验证项已完成：全量单元测试通过；全量 `-race` 通过（Windows amd64、Go 1.27.3 + MinGW-w64 gcc 15.1.0、`CGO_ENABLED=1`，0 报告）；ordinary 与 integration-tag `golangci-lint` 均 0 issues。第三套直连 4.4.2.2 目标（2026-11-04）已实测：全量集成套件全部 `ok`，70 场景 `obtest` 为 **108 pass / 0 fail / 5 skip / 27 not applicable**（MySQL 52/0/3/15，Oracle 56/0/2/12）；新增的 `extended-types`/`geometry`/`oracle-spatial`/`oracle-urowid`/`oracle-xml`/`oracle-number-scale`/`mysql-charset`/`oracle-binary-float`/`mysql-utf16le`/`oracle-synonym`/`mysql-enum-set`/`mysql-generated-columns`/`char-padding`/`empty-lob`/`metadata-patterns`/`oracle-identity`/`metadata-indexes`/`metadata-routines`/`statement-parameters`/`metadata-type-info`/`views`/`floats` 场景首次实库通过，B16/B17/B11/B01/S01 复现。第二轮目标的历史结果仍是 79/0/3/14（48 场景，[报告](live-validation-2026-11-03-second-target.md)）；本轮详情见[第三套目标复验](live-validation-2026-11-04-third-target.md)。
+- 本地可验证项已完成：全量单元测试通过；全量 `-race` 通过（Windows amd64、Go 1.27.3 + MinGW-w64 gcc 15.1.0、`CGO_ENABLED=1`，0 报告）；ordinary 与 integration-tag `golangci-lint` 均 0 issues。第三套直连目标（2026-11-04）与恢复后复验均实跑：全量集成套件全部 `ok`；补充两个新场景后，72 场景 `obtest` 在恢复后达成 **112 pass / 0 fail / 5 skip / 27 not applicable**（MySQL 54/0/3/15，Oracle 58/0/2/12，[复验报告](live-validation-2026-11-04-recovery.md)）；恢复前 70 场景基线为 108/0/5/27；新增的 `extended-types`/`geometry`/`oracle-spatial`/`oracle-urowid`/`oracle-xml`/`oracle-number-scale`/`mysql-charset`/`oracle-binary-float`/`mysql-utf16le`/`oracle-synonym`/`mysql-enum-set`/`mysql-generated-columns`/`char-padding`/`empty-lob`/`metadata-patterns`/`oracle-identity`/`metadata-indexes`/`metadata-routines`/`statement-parameters`/`metadata-type-info`/`views`/`floats` 场景首次实库通过，B16/B17/B11/B01/S01 复现。第二轮目标的历史结果仍是 79/0/3/14（48 场景，[报告](live-validation-2026-11-03-second-target.md)）；本轮详情见[第三套目标复验](live-validation-2026-11-04-third-target.md)。
 - 剩余项均为环境或目标版本阻塞，已在 [缺失矩阵](go-driver-completeness.md) 与 [开发进度](go-driver-development-progress.md) 记录：
   - **U01–U03 / B16**：原生 PL RECORD / ANYDATA / LOB 协议形状在 4.4.2.2 目标返回 `600/0A000 (-4007)`，RECORD 五种常规元数据布局返回 `600/HY000`；需要支持相应 wire 的目标或官方成功 wire 依据，未确认是版本问题，归“依据不足 U + 指定目标拒绝 B16”。
   - **B19**：命名时区 `America/New_York` 返回 1882/HY000；显式 `-04:00` 等偏移可用。
@@ -43,8 +43,8 @@ go test -tags integration ./... -count=1 -timeout 30m
 
 # 双目标验收工具（配置文件示例见 docs/go-driver-test-tool.md）
 go run ./cmd/obtest -config obtest-dual.json -report obtest-report.json
-# 期望：第三套目标基线 pass=108 fail=0 skip=5 not_applicable=27（70 场景）；MySQL 52/0/3/15，Oracle 56/0/2/12
-# 待目标恢复：run identifier-length and topology-sources, then the full 72-scenario suite; expected 112/0/5/27
+# 历史基线：pass=108 fail=0 skip=5 not_applicable=27（70 场景）；恢复后 72 场景：112/0/5/27
+# 恢复后已执行：identifier-length、topology-sources 与全量 72 场景均通过（112/0/5/27）
 # 完整步骤、疑点排查与清理确认见 [待实库验证清单](pending-live-verification.md)
 
 # race（需要 CGO_ENABLED=1 与本机 MinGW gcc；已用 Go 1.27.3 + gcc 15.1.0 验证）

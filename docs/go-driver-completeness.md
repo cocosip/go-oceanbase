@@ -83,7 +83,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | B19 / named-region session timezone | Oracle session initialization and independent `ALTER SESSION SET TIME_ZONE='America/New_York'` both return 1882/HY000 | Explicit -04:00/-05:00 LTZ/TZ storage/readback retains nine digits; positive named-region DST acceptance remains open |
 | B20 / package OBJECT parameter owner | Raw `ALL_ARGUMENTS.TYPE_OWNER` for the tested package OBJECT parameter is a padded numeric identifier, confirmed independently of the public metadata API | Metadata preserves the raw field; TYPE_NAME and the actual ALL_TYPES owner are separately checked. The numeric token is not assumed to be a user ID or fabricated into a schema name |
 | B21 / C09 D30 Oracle 代理重认证 | Oracle 4.4.2.2（第二套直连目标）：初始 `ProxyUser` 登录正确；同一会话 `ChangeUser` 携带相同 `ProxyUser` 返回成功，但 `CURRENT_USER`/`SESSION_USER` 变为认证代理账号、`PROXY_USER` 仍为代理账号，代理目标未被应用 | 初始代理登录、`ProxyUser` 空值清除与普通 ChangeUser 仍独立可用；客户端确实重传 `__ob_client_proxy_user_name`（代码路径与本地 peer 用例覆盖），不是"未发送"；驱动已对确切 4.4.2.2 在发送前返回 `ErrUnsupported`（`TestChangeUserRejectsProxyTargetOnIgnoringVersion`），`TestProxyUserSessions` 在该目标跳过重认证段；只记录该目标/形状，不推断其他版本 |
-| B22 / V07 M01 Oracle 字典引用过滤 | Oracle 4.4.2.2 上带 `ReferencedSchemaPattern`/`ReferencedNamePattern` 的 `ALL_CONSTRAINTS` 四表连接接近或超过默认 10s `ob_query_timeout`（字面量约 9.7s，绑定值超时）；仅 k 侧过滤约 37ms | 驱动仍按契约下发引用过滤，不内联字面量、不改变查询语义；MySQL `information_schema` 的引用过滤已实库通过；Oracle 侧按目标优化器限制记录，测试在 Oracle 跳过该组合并保留正向 k 侧过滤 |
+| B22 / V07 M01 Oracle 字典引用过滤 | Oracle 4.4.2.2 上带 `ReferencedSchemaPattern`/`ReferencedNamePattern` 的 `ALL_CONSTRAINTS` 四表连接接近或超过默认 10s `ob_query_timeout`（字面量约 9.7s，绑定值超时）；仅 k 侧过滤约 37ms | 驱动仍按契约下发引用过滤，不内联字面量、不改变查询语义；MySQL `information_schema` 的引用过滤已实库通过；Oracle 侧按目标优化器限制记录，测试在 Oracle 跳过该组合并保留正向 k 侧过滤。2026-11-04 恢复后复测：同一四表连接仅加 r 侧 `LIKE` 谓词时 22.8ms 返回，加入 k 侧 `LIKE` 则 4.3s~超时（10s），改为 k 侧等值谓词 5.3–7.4s，提示均为目标优化器计划不稳定，不是驱动可单方面修复的语义问题 |
 
 ## 权限、身份与环境不足
 
@@ -163,7 +163,7 @@ This table separates confirmed client boundaries from missing protocol or deploy
 - N：obconnector-dotnet/docs/obconnector-dotnet-completeness.md及obconnector-dotnet-missing-features-roadmap.md的D-02d1～d3、D-04a1/a2/e、D-05、D-07、D-08m、D-09、D-12a/b/c、目录/RECORD段落；本次核对ComplexLobInputTests.cs、XmlProbeTests.cs、VectorArrayStringWireTests.cs的实际用例形状，不记作Go实测。
 - 参考 SDK 的 Java 侧仅用于核对协议形状（成员 writer、客户端拒绝、OB20 压缩长度拒绝），不作为 Go API、选项名或 JDBC 兼容目标。
 
-本轮已连接双模式 OceanBase 4.4.2.2，逐项复验 G 表中的明确子集；第 25/26 轮新增 `views`（已实库通过）与 `identifier-length`（12 个离线用例通过）、`topology-sources`（无数据库依赖的 TNS/OCP 源验证）两个已注册场景；后两者实库验证因目标返回 `wire: read after 0 bytes: EOF` 待补；第二轮独立直连目标再次通过全量集成与 79/0/3/14 工具结果，并新增 B21（代理重认证目标侧未生效）；第三轮独立直连目标通过全量集成与 70 场景 108/0/5/27 工具结果，二十二个新场景首次实库通过并复现 B16/B17/B11/B01/S01。本地测试、静态检查和实库跳过项见 H03/H03T/H03U。V/U 尚未全部验收；未重新执行的参考 SDK 失败形状继续仅标 N，不提升为 Go 实测。
+本轮已连接双模式 OceanBase 4.4.2.2，逐项复验 G 表中的明确子集；第 25/26 轮新增 `views`（已实库通过）、`identifier-length` 与 `topology-sources` 两个已注册场景；三者均在 2026-11-04 目标恢复后实库通过（`identifier-length` 首跑暴露的是场景大小写假设错误，已修正场景并补离线夹具，驱动无改动）。第二轮独立直连目标再次通过全量集成与 79/0/3/14 工具结果，并新增 B21（代理重认证目标侧未生效）；第三轮独立直连目标通过全量集成与 70 场景 108/0/5/27；目标恢复后 72 场景全量达成 **112 pass / 0 fail / 5 skip / 27 not applicable**，全量集成套件再次全部 `ok`，见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。本地测试、静态检查和实库跳过项见 H03/H03T/H03U。V/U 尚未全部验收（TLS/代理/压缩/插件/Linux 客户端等环境项与第二身份仍缺），未重新执行的参考 SDK 失败形状继续仅标 N，不提升为 Go 实测。
 
 上一版“15项功能差距”的汇总撤销：原G10–G14多数是通用路径验收/调查，G05/G06/G07按操作形状拆开，服务端/权限/环境也已拆开。后续G表按明确子集立项，C表按需求选择，V表补验收；S/B/A/ENV/U/X不直接转为实现待办。
 
@@ -184,4 +184,4 @@ Fresh continuation: [remaining validation and exact external prerequisites](rema
 | 环境 ENV | ENV01–ENV05 | TLS/mTLS、代理/多节点、压缩、插件/KDC、平台传输 | 否（需对应部署） |
 | 待验证 V | V01–V17 剩余组合 | 需实库/平台证据 | 否（需目标） |
 
-**结论**：缺失矩阵重载后，**Go 侧已没有可在离线环境实现的功能缺口**；剩余条目全部指向"可用目标/新环境/服务端新形状"。因此后续功能推进的最小条件是提供可用 DSN（或客户端 Linux 环境），届时按[待实库验证清单](pending-live-verification.md)执行（无 TLS 时可完成全部非 TLS 验收，见该清单 §8）；不存在可由实现自行定义契约的扩展项：C10 的普通列流式读取既非服务端能力，也无参考 SDK 对应接口，当前不实现、不定契约。
+**结论（2026-11-04 恢复后更新）**：缺失矩阵重载后，**Go 侧没有可在离线环境实现的功能缺口**，剩余条目全部指向"新环境/新部署/第二身份"；不存在可自行定义契约的扩展项：C10 的普通列流式读取既非服务端能力，也无参考客户端对应接口，不实现、不定契约。目标恢复后已完成直连复验：72 场景全量 **112 pass / 0 fail / 5 skip / 27 not applicable**（MySQL 54/0/3/15，Oracle 58/0/2/12），全量集成套件全部 `ok`，`identifier-length`/`topology-sources` 两个新场景实库通过；`identifier-length` 的首跑失败是验收场景的大小写假设问题（MySQL 折叠表标识符），已修正场景并补离线夹具，驱动无缺陷。仍未满足的只剩环境类：TLS/mTLS、压缩、OBProxy/多节点/OCP、插件/KDC、客户端 Linux 平台传输、`change-user` 第二身份、显式授权的权限行与 B21 代理重认证。详见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。后续按[待实库验证清单](pending-live-verification.md) §8 执行环境到位后的条目。

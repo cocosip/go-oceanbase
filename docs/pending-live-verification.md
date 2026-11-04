@@ -1,6 +1,8 @@
 # 待实库验证清单（目标恢复后执行）
 
-更新日期：2026-11-04。原第三套直连目标（OceanBase 4.4.2.2 双模式）在 2026-11-04 复验过程中开始对任意语句返回 `wire: read after 0 bytes: EOF`（TCP 2881 仍可建连），随后用户确认为**数据库服务器损坏、恢复时间未知**。本文档把恢复后需要补做的验证按顺序列出，避免遗漏；不含任何 DSN、口令或地址。
+> **执行状态（2026-11-04 恢复后）**：本文档 §2 两个场景、§4 全量回归与 §3 的疑点 1/2 已完成，结果见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。剩余未满足项是 §3 疑点 3（需被显式授权的第二账号）与 §8 的环境类条目。保留本文作为后续环境到位时的执行清单。
+
+更新日期：2026-11-04。原第三套直连目标（OceanBase 4.4.2.2 双模式）在 2026-11-04 复验过程中开始对任意语句返回 `wire: read after 0 bytes: EOF`（TCP 2881 仍可建连），随后用户确认为**数据库服务器损坏、恢复时间未知**；服务器修复后已完成恢复复验。本文档把恢复后需要补做的验证按顺序列出，避免遗漏；不含任何 DSN、口令或地址。
 
 ## 1. 前置条件
 
@@ -35,7 +37,7 @@ $cases = '{"targets":[{"name":"mysql","dsn_env":"OB_MYSQL_DSN"},{"name":"oracle"
    `SELECT PRIVILEGE FROM USER_COL_PRIVS WHERE ROWNUM=0`（能解析即列名正确）。
 3. **权限字典 0 行是否符合预期**：对象的隐式权限不在字典中，需用"被显式授予表/列权限的第二个账号"验证 `MetadataTablePrivileges`/`MetadataColumnPrivileges` 返回非空且 grantee/grantable 正确。
 
-上述疑点 1 若确认是字典截断，属于 `MetadataTables` 缺陷，需要修驱动并补离线测试；2、3 目前无证据表明是缺陷。
+疑点结论（2026-11-04 恢复后）：1 是**验收场景自身的假设错误**，不是字典截断——MySQL 模式下服务器把表标识符折叠为小写（探测：创建 64 字 `OBT_LLL…` 后 `information_schema.TABLES` 返回同样 64 字的小写名）；已把场景改为长度一致 + 大小写折叠比较并补离线夹具，驱动本身无需修改。2 已确认 `USER_COL_PRIVS`/`ALL_COL_PRIVS` 的列名都是 `PRIVILEGE`（OceanBase 文档该页 `PRIVILLEGE` 为笔误），`ALL_COL_PRIVS` 的属主列是 `OWNER`、`ALL_TAB_PRIVS` 用 `TABLE_SCHEMA`，与驱动投影一致。3 仍未验证：当前 `RISDB` 账号无 `CREATE USER` 权限（1031），无法建立被显式授权的第二账号；需要使用者提供一个第二 Oracle 账号或授权。
 
 ## 4. 全量回归
 
@@ -44,6 +46,8 @@ go run ./cmd/obtest -config <config.json> -report <不存在的路径>.json
 ```
 
 预期：**72 场景 × 2 目标 = 144 项 → 112 pass / 0 fail / 5 skip / 27 not applicable**（MySQL 54/0/3/15；Oracle 58/0/2/12）。其中 skip 仍是目标侧拒绝与缺失夹具：MySQL XA suspend/join 1398、Oracle NCLOB 902、两模式 `change-user`（缺第二身份）。
+
+**实际（2026-11-04 恢复后）**：第一次全量运行 111/1/5/27，唯一失败为 `mysql-direct identifier-length`（场景的大小写假设错误，见 §3 疑点 1）；修正场景后全量复跑达成 **112 pass / 0 fail / 5 skip / 27 not applicable**，与预期完全一致。
 
 ## 5. 清理确认
 

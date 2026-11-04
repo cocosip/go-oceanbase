@@ -21,6 +21,14 @@ type identifierFixtureCase struct {
 func identifierFixtureCases() []identifierFixtureCase {
 	return []identifierFixtureCase{
 		{name: caseRoundTrip, failAt: -1, wantOK: true},
+		{name: "folded-table", failAt: -1, wantOK: true, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+			if mode != oceanbase.ModeMySQL {
+				return
+			}
+			rows := newIdentifierTableRows(mode)
+			rows.values[0][2] = strings.ToLower(identifierFixtureTable(mode))
+			(*body)[5].rows = rows
+		}},
 		{name: "table-name", failAt: 5, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
 			rows := newIdentifierTableRows(mode)
 			rows.values[0][2] = identifierFixtureTable(mode) + "X"

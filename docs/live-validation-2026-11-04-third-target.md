@@ -13,7 +13,7 @@
 
 ## 2. 验收工具（`cmd/obtest`，实跑 71 个场景 × 2 目标；撤回后已注册 72 个）
 
-> 范围修正：本报告记录 2026-11-04 撤回前的运行，其中包含随后因属 Java 专有而被删除的 `jdbc-escapes` 场景。撤回后已注册场景为 72、实库基线为 **70 场景 108/0/5/27**（MySQL 52/0/3/15；Oracle 56/0/2/12）。
+> 范围修正：本报告记录 2026-11-04 撤回前的运行，其中包含随后因属 Java 专有而被删除的 `jdbc-escapes` 场景。撤回后已注册场景为 72、实库基线为 **70 场景 108/0/5/27**（MySQL 52/0/3/15；Oracle 56/0/2/12）。恢复后已补跑 `identifier-length`/`topology-sources` 并完成 72 场景全量（**112/0/5/27**），见[恢复后复验报告](live-validation-2026-11-04-recovery.md)。
 
 | 目标 | pass | fail | skip | not applicable | 说明 |
 | --- | --- | --- | --- | --- | --- |
@@ -50,7 +50,7 @@ skip 明细（均为既有边界，非本轮回归）：
 - `statement-parameters`（双模式）：`MetadataStatementParameters` 对 `SELECT ?+?`（Oracle 加 `FROM dual`）返回两个匿名占位符：物理/逻辑序号 1、2，`data_type=BIGINT`，`protocol_type=8`、`protocol_direction=0`，`name`/`direction` 为 NULL；`nullable` 仅 Oracle 为 1。同一语句按位置绑定 3/4 得 7，证明占位符可执行。
 - （已撤回）`jdbc-escapes`（双模式）：该场景随 Java 专有的 JDBC 转义能力一并删除；保留此条仅为记录当次运行内容。
 - `metadata-type-info`（双模式）：`MetadataTypeInfo` 十列内置类型家族 MySQL 29 行 / Oracle 19 行，类别（numeric/character/binary/datetime/interval/lob/rowid）与类型名唯一；抽样断言 `INT(name,precision 10,radix 10,auto 1)`、`DECIMAL(65,0,30,precision,scale)`、`BIT(b',64)`、`DATETIME(0,6)` 与 Oracle `NUMBER(38,-84,127)`、`TIMESTAMP(0,9)`、`ROWID`、`BLOB` 无前后缀。
-- `identifier-length`（双模式，**仅离线验证**）：最大长度表名（MySQL 64 / Oracle 128 字符）与 128 字符列名经 DDL、绑定插入、查询及表/列字典均不被截断；超限一个字符由目标以 1059 / 972 拒绝。该场景已注册并有 12 个离线用例，实库验证因目标不可用而**未完成**（见 §6）。
+- `identifier-length`（双模式，**仅离线验证**）：最大长度表名（MySQL 64 / Oracle 128 字符）与 128 字符列名经 DDL、绑定插入、查询及表/列字典均不被截断；超限一个字符由目标以 1059 / 972 拒绝。该场景已注册并有 13 个离线用例；恢复后实库验证通过（MySQL 侧需按服务器大小写折叠比较，见[恢复后复验报告](live-validation-2026-11-04-recovery.md)）。
 - `views`（双模式）：简单视图在两种模式下可经驱动 `INSERT`/`UPDATE`/`DELETE`，写入落到基表；视图谓词只约束读取——插入 `ID=0` 的行在基表存在、视图不可见；经视图删除后基表仅剩该行；`MetadataTables` 报告 `VIEW` 类型、`MetadataColumns` 返回视图两列且类型名非空。
 - `floats`（双模式）：DOUBLE/BINARY_DOUBLE 的 8 个边界行（1.5、1.1、±MaxFloat64、最小次正规、负零、NULL、float32 加宽）按位回读、后续参数不受污染；Oracle 负零与 `TO_BINARY_DOUBLE('-0')` 字面量的 `DUMP` 一致，另以 `TO_CHAR` 交叉核对存储文本。
 
@@ -100,4 +100,4 @@ go test -tags integration ./internal/valuecodec -run 'TestOraclePLTypeReadiness|
 在 `views` 全量复验（110/0/5/27）之后、`identifier-length` 实库验证期间，两模式目标开始对任意语句返回 `wire: read after 0 bytes: EOF`，包括 `SELECT 1` 与 `SELECT ob_version()`；2026-11-04 用户告知**数据库服务器已损坏、恢复时间未知**，因此本轮报告不再对该目标安排恢复重试，实库验收顺延到新目标提供后；同一时刻 TCP 2881 仍可建立连接（`Test-NetConnection` True），因此是服务端/转发后端拒绝而非网络不可达。连续 5 次重试（间隔 5 s）与 25 s 后复测均相同。
 
 - 期间一次 MySQL 模式 `identifier-length` 实跑在"表名字典被截断"断言处失败；该次运行与目标开始不可用的时间窗重合，**无法判定是驱动/字典行为还是目标降级**，在目标恢复前不作为驱动缺陷上报，也不作为通过。
-- 待目标恢复后需补做：`identifier-length` 与 `topology-sources` 双模式实跑、全量 72 场景复验（预期 112/0/5/27）并更新本节与计数。
+- 目标恢复后已补做：`identifier-length` 与 `topology-sources` 双模式通过；全量 72 场景复验达成 112/0/5/27（见[恢复后复验报告](live-validation-2026-11-04-recovery.md)）。
