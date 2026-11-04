@@ -272,6 +272,7 @@ Next step: one directly executable action
 - Query's AfterFunc covers the complete Rows lifecycle; stop/wait for its callback before release prevents stale cancellation affecting the next operation. Partial writes and lost responses retain wire.IOError/byte evidence; ErrBadConn automatic replay after sending is prohibited, and bad connections do not return to the pool.
 - All-package test/vet passed on Go 1.25.0/1.26.0 Windows amd64, and integration-helper lint reported 0 issues; cancellation/close/no-replay cases passed 20 consecutive runs. Independent rereview found no actionable findings; no database integration ran.
 - Go 1.25 race again returned `0xc0000139` during Windows process startup, with no detector result. CI adds Linux all-package race for both Go versions but has not run remotely. Real semantics/cross-platform validation remain awaiting acceptance.
+- 2026-11-03 V06 endurance: `TestConcurrentPoolTransactions` with `OB_TEST_STABILITY_ROUNDS=2000` ran four workers × 2000 rounds in both modes on the second direct target (8000 transactions each, 4000 committed) in 146s with zero worker errors, `pool_open=4`, `in_use=0` and four goroutines. `OB_TEST_STABILITY_ROUNDS` now allows up to 20000 and `OB_TEST_STABILITY_TIMEOUT` up to 1h so longer runs do not inherit the 3m default; the `-race` variant still cannot start on Windows (`0xc0000139`). Server handle trends and throughput remain unmeasured.
 
 #### D07 Lexical Binding and Parameter Conversion
 

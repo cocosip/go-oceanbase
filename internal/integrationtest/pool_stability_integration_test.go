@@ -17,15 +17,29 @@ import (
 	integrationtest "github.com/cocosip/go-oceanbase/internal/integrationtest"
 )
 
-func TestConcurrentPoolTransactions(t *testing.T) {
-	rounds := 16
+func stabilityWorkload(t *testing.T) (rounds int, timeout time.Duration) {
+	t.Helper()
+	rounds = 16
 	if value := os.Getenv("OB_TEST_STABILITY_ROUNDS"); value != "" {
 		n, err := strconv.Atoi(value)
-		if err != nil || n < 1 || n > 2000 {
-			t.Fatal("OB_TEST_STABILITY_ROUNDS must be 1..2000")
+		if err != nil || n < 1 || n > 20000 {
+			t.Fatal("OB_TEST_STABILITY_ROUNDS must be 1..20000")
 		}
 		rounds = n
 	}
+	timeout = 3 * time.Minute
+	if value := os.Getenv("OB_TEST_STABILITY_TIMEOUT"); value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err != nil || parsed <= 0 || parsed > time.Hour {
+			t.Fatal("OB_TEST_STABILITY_TIMEOUT must be a positive duration up to 1h")
+		}
+		timeout = parsed
+	}
+	return rounds, timeout
+}
+
+func TestConcurrentPoolTransactions(t *testing.T) {
+	rounds, timeout := stabilityWorkload(t)
 	selected, err := integrationtest.Profiles(os.Getenv("OB_TEST_PROFILE"))
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +57,7 @@ func TestConcurrentPoolTransactions(t *testing.T) {
 			const workers = 4
 			db.SetMaxOpenConns(workers)
 			db.SetMaxIdleConns(workers)
-			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
 			defer cancel()
 			table := fmt.Sprintf("OBGPL_%d", time.Now().UnixNano())
 			suffix := ""
