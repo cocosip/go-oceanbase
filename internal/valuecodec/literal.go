@@ -254,46 +254,42 @@ func clientFloat(v float64, mode config.Mode) (string, error) {
 }
 
 func quoteClientString(text string, encodedBytes int, limit int64) (string, error) {
-	if int64(encodedBytes) > limit-2 {
+	if limit < 2 || int64(encodedBytes) > limit-2 {
 		return "", wire.ErrMessageTooLarge
 	}
 	n := int64(encodedBytes) + 2
-	hasNUL := strings.ContainsRune(text, 0)
-	if hasNUL {
-		n += 2
-	}
-	for i := 0; i < len(text); i++ {
-		switch text[i] {
-		case '\'':
-			n++
-		case 0:
-			n += 11
-		}
-		if n > limit {
-			return "", wire.ErrMessageTooLarge
-		}
-	}
-	if n > limit {
+	quotes := int64(strings.Count(text, "'"))
+	if quotes > limit-n {
 		return "", wire.ErrMessageTooLarge
 	}
-	var b strings.Builder
-	if hasNUL {
-		b.WriteByte('(')
+	n += quotes
+	nuls := int64(strings.Count(text, "\x00"))
+	if nuls == 0 {
+		return oracleQuoted(text), nil
 	}
-	b.WriteByte('\'')
+	// REPLACE avoids the server's VARCHAR concatenation limit for long NUL values.
+	zeros, markerZeros := 0, 1
 	for i := 0; i < len(text); i++ {
-		switch text[i] {
-		case '\'':
-			b.WriteString("''")
-		case 0:
-			b.WriteString("'||CHR(0)||'")
-		default:
-			b.WriteByte(text[i])
+		if text[i] == '0' {
+			zeros++
+			continue
 		}
+		if text[i] == '1' && zeros >= markerZeros {
+			markerZeros = zeros + 1
+		}
+		zeros = 0
 	}
-	b.WriteByte('\'')
-	if hasNUL {
-		b.WriteByte(')')
+	// Zeroes ending in 1 form an absent marker that cannot overlap itself.
+	markerBytes := int64(markerZeros) + 1
+	overhead := int64(len("REPLACE(") + len(",'',CHR(0))"))
+	if overhead > limit-n || markerBytes > limit-n-overhead {
+		return "", wire.ErrMessageTooLarge
 	}
-	return b.String(), nil
+	n += overhead + markerBytes
+	if nuls > (limit-n)/(markerBytes-1) {
+		return "", wire.ErrMessageTooLarge
+	}
+	marker := strings.Repeat("0", markerZeros) + "1"
+	body := strings.ReplaceAll(text, "\x00", marker)
+	return "REPLACE(" + oracleQuoted(body) + "," + oracleQuoted(marker) + ",CHR(0))", nil
 }

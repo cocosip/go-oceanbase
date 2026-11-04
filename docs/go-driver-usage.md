@@ -1,6 +1,6 @@
 # OceanBase Go driver usage guide
 
-This guide describes the current public API. See [development progress](go-driver-development-progress.md) for implementation status and the [compatibility matrix](go-driver-compatibility-matrix.md) for target-specific limits. The minimum Go version is 1.26. Live database connections were deferred during this development stage; the networked examples below have compilation evidence only.
+This guide describes the current public API. See [development progress](go-driver-development-progress.md) for implementation status and the [compatibility matrix](go-driver-compatibility-matrix.md) for target-specific limits. The minimum Go version is 1.26. Networked examples have compilation evidence; live acceptance is limited to the explicitly recorded tests in the [direct-target report](live-validation-2026-11-03.md) and [charset/NUL follow-up](charset-nul-validation-2026-11-03.md).
 
 ## 1. Connections, compatibility modes and logging
 
@@ -263,4 +263,12 @@ _, err := db.ExecContext(ctx,
     sql.Named("v", value))
 ```
 
-2026-11-03 后续复验：MySQL JSON/BIT/YEAR/GEOMETRY、VECTOR(3)、ARRAY(INT)、无维数 SPARSEVECTOR 的指定 server/client、text/参数查询和 NULL 子集通过；RoaringBitmap 函数/bytes 回绑、空/NULL/uint64 最大值通过，直接 bytes 写列 B11 仍返回 1235。Oracle SDO_GEOMETRY 可用 generic Object/Array 输入 polygon 并显式 prepare 整列读取，ownerless 元数据只在本地类型及同义词缺失后回退 SYS，不改变限定名解析。普通 RECORD 的服务端 PL 调用与字段目录、ANYDATA 的 PL 数字构造/回读通过；这不声明已实现 Go 原生 typed RECORD/ANYDATA 参数。七种新增字符集当前 MySQL 已有 ID/SET NAMES 支持，Go 严格映射仍未实现，详见[缺失矩阵](go-driver-completeness.md)。
+2026-11-03 follow-up: MySQL JSON/BIT/YEAR/GEOMETRY, VECTOR(3), ARRAY(INT) and dimensionless SPARSEVECTOR passed the specified server/client, text/parameter and NULL checks. RoaringBitmap function/bytes rebinding, empty/NULL/max-uint64 values passed; direct bytes column binding still returns 1235 (B11). Oracle SDO_GEOMETRY generic Object/Array polygon input and explicitly prepared whole-column reads passed; ownerless metadata falls back to SYS only after local types and synonyms are absent. Ordinary RECORD PL calls/field metadata and ANYDATA PL numeric construction/readback passed; native Go RECORD/ANYDATA parameters remain open. U06 strict charset mappings are now implemented; see below and the [classified matrix](go-driver-completeness.md).
+
+### Additional charsets and Oracle NUL parameters (2026-11-03)
+
+`Session.Charset` also accepts `cp850`, `hp8`, `macroman`, `swe7`, `ujis`, `cp932` and `eucjpms`, with strict encoding and result decoding. Undefined bytes and unrepresentable/lossy Unicode input fail instead of substituting characters. SWE7 replaces ASCII punctuation, including `@` and backslash; the driver therefore rejects a tenant-qualified `user@tenant` identity when SWE7 cannot represent it. Use a UTF8 connection for that identity and SWE7 columns/results. Do not assume SWE7 preserves arbitrary ASCII SQL or identifiers.
+
+For raw bytes already encoded in a target MySQL charset, explicit SQL such as `CONVERT(CAST(? AS BINARY) USING cp850)` establishes binary-to-text conversion. On the tested target, `CONVERT(? USING cp850)` with a native bytes parameter on a UTF8 connection still applies the parameter's UTF8 collation: byte `82` becomes `3F`, although `HEX(?)` returns `82`. The driver preserves bytes and does not rewrite SQL automatically.
+
+Oracle client preparation renders NUL-containing string parameters using collision-free `REPLACE(...,marker,CHR(0))`, avoiding the long VARCHAR concatenation failure of the earlier literal. Encoded SQL and message budgets still apply. Single/double SELECT scripts and independent CLOB storage checks passed at 12003, 98304 and 196608 bytes; larger values and other targets remain unverified. No retry, truncation or automatic CLOB conversion is introduced. See [test evidence](charset-nul-validation-2026-11-03.md).

@@ -59,7 +59,7 @@ RECORD 字段目录在 PL 编译/使用该类型后才返回布局；使用前�
 | cp932 | 95 / 96 |
 | eucjpms | 97 / 98 |
 
-这只是服务端就绪探针，Go 对这七种编码的严格非 ASCII encoder/collation 映射尚未实现；不能将 ASCII 转换通过当成完整编码验收。`have_ssl=YES` 只表示能力，不能证明 TLS 已配置启用；按本次实际部署不提供 TLS 正向证据。
+The table above records the initial server-readiness probe, not complete charset acceptance. The later [charset/NUL follow-up](charset-nul-validation-2026-11-03.md) implements strict Go mappings and validates non-ASCII storage/results; its SWE7 authentication boundary remains explicit. `have_ssl=YES` indicates capability only and does not prove TLS is enabled; this deployment provides no positive TLS acceptance evidence.
 
 ## 检查与复现
 
@@ -89,13 +89,13 @@ go test -tags=integration ./internal/valuecodec -run '^(TestOracleURowID|TestOra
 
 | 条目 | 当前判断 | 下一步/能否由客户端独立完成 |
 | --- | --- | --- |
-| U06 七种字符集 | 当前 MySQL 服务端具备 ID/SET NAMES；Go 映射缺失 | 可继续实现严格非 ASCII 映射、握手/结果/参数；这是客户端工作，不是服务端缺失 |
+| U06 additional charsets | Updated: seven strict Go mappings implemented | Six connection charsets and all seven column/result charsets passed live; SWE7 `@tenant` identity rejection is preserved. See [focused evidence](charset-nul-validation-2026-11-03.md) |
 | U02 普通 RECORD | 服务端 PL 与成员目录可用；Go 缺原生 descriptor/writer | 可继续做客户端协议工作；须先取得成功 typed IN/OUT wire，不能用 PL 内部变量测试代替绑定验收 |
 | U03 ANYDATA / locator 成员 | ANYDATA PL 已可用，Go typed writer 与 locator/cursor 成员输入仍无成功依据 | 可以继续调查原生描述和输入协议；没有证据称当前服务端全面不支持；持久 ANYDATA 列 S02、REF CURSOR IN/INOUT X01 独立排除 |
 | U01 TIMESTAMP/national/LOB collection 头 | 当前客户端发送前拒绝部分 native 元素头；尚无成功 wire | 需要逐 named/anonymous、方向和元素形状验证；暂不能承诺客户端补码即可，也不能归服务端缺失 |
 | U04 piece-data 无 ACK pipeline | 现有协议逐片 ACK，Java 同样如此 | 归 C09 可选性能范围，不盲写无 ACK pipeline；未来有协议依据再重开 |
 | U05/U07/V13–V17 | 上述基础子集已通过，SDO 已修复 | 不再将全部类型列为待开发；坏维数/空嵌套数组/非 NULL SRID/其他 GIS 形状等边界仍可补验 |
-| U08 超长 NUL Oracle 脚本 | 本地 NUL→CHR(0) 与字节预算已有；本轮未测 Go 实库长度阈值 | 可继续有限长度实测；不能从参考 SDK 超时推断服务端不支持，不能承诺无限长度 |
+| U08 Oracle long NUL scripts | Updated: old concatenation failure reproduced and fixed with REPLACE | 12003/98304/196608-byte single/double queries and independent CLOB storage/control checks passed; larger sizes remain unverified. See [focused evidence](charset-nul-validation-2026-11-03.md) |
 | C02 自动 PREPARE 1295 回退 | 实现与 peer 回归已有，实库触发 1295 形状缺 fixture | 需合适 SQL/版本重现；不重放已执行业务 SQL |
 | C08 多语句 LongData | 指定 MySQL 组合实库已通过 | 已关闭该组合验收；其他方向不是同一承诺 |
 | C09/C10/C11 | pipeline 资格、普通列流 API、Oracle warning 详情的已知范围 | 可选客户端/API 扩展；warning 详情仍须服务端接口依据，不是已确认“服务端无 warning 能力” |

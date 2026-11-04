@@ -84,7 +84,7 @@ func TestComplexConstructorScalarIdentity(t *testing.T) {
 		value any
 		want  string
 	}{
-		{valueformat.TypeNameVarchar2, "x'\x00\\", "('x'''||CHR(0)||'\\')"},
+		{valueformat.TypeNameVarchar2, "x'\x00\\", "REPLACE('x''01\\','01',CHR(0))"},
 		{valueformat.TypeNameRaw, types.Raw{0, 255}, "HEXTORAW('00ff')"},
 		{valueformat.TypeNameDate, wall, "TO_DATE('2026-11-02 03:04:05','YYYY-MM-DD HH24:MI:SS')"},
 		{valueformat.TypeNameTimestamp, "2026-11-02 03:04:05.123456789", "TIMESTAMP '2026-11-02 03:04:05.123456789'"},

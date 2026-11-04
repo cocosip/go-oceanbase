@@ -22,7 +22,7 @@
 
 ## 已确认的客户端实现差距
 
-本轮确认的 G01/G03/G04/G05a/G07a/G07b 六个客户端实现子集均已补齐，并完成对应 Go 实库验收，初始 G 表没有尚待编码项；后续已确认新字符集仍缺客户端映射（U06），普通 RECORD/ANYDATA 原生参数路径仍待协议实现与验证（U02/U03），详见下表。这不表示全部类型、方向、版本或部署均已支持；实库结果只覆盖表中明确的形状。C 类仍是客户端范围限制/可选扩展，U 类已拆出可确认的客户端边界，S/B/A/ENV/V/X 不合并为客户端缺实现。
+The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database evidence. U06 now adds seven strict charset mappings, with the SWE7 identity boundary documented below; U08 now passes finite long-NUL query and storage checks. Native RECORD/ANYDATA binding (U02/U03) and U01 protocol shapes remain open. These results do not imply support for every type, direction, version or deployment. C/U/S/B/A/ENV/V/X retain their separate classifications.
 
 ## 已补实现并完成指定实库验收
 
@@ -114,7 +114,7 @@ A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边�
 
 <a id="u-series-status"></a>
 
-本表把“客户端已经能确认的边界”和“仍然需要目标端点才能判断的事实”分开。U04 已归 C09，U05/U07 的指定子集已关闭；U06 当前目标服务端前提已满足，仍需客户端编码映射。U02/U03 不能再按旧的目录/包缺失结论阻塞，原生绑定仍缺实现与成功 wire。U01/U08 保留未知边界。
+This table separates confirmed client boundaries from missing protocol or deployment evidence. U04 is C09; U05/U07 have verified subsets. U06 mappings are implemented, with a SWE7 authentication constraint; U08 has finite-size live evidence. U02/U03 still need native binding implementation and successful wire evidence; available server packages and directories no longer block that investigation. U01 remains open.
 
 | ID / 原关联 | 尚不能下的结论 | 本次已确认的客户端/协议边界 | 关闭或升级条件 |
 | --- | --- | --- | --- |
@@ -123,9 +123,9 @@ A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边�
 | U03 / T23 ANYDATA PL、locator/cursor 成员输入 | 当前 SYS.ANYDATA 存在且 PL 数字构造/GetNumber 回读通过；不能沿用缺包结论 | Go 原生 ANYDATA descriptor/writer、locator/cursor 成员输入仍无成功协议依据；REF CURSOR IN/INOUT 按 X01 排除 | 可继续客户端协议调查；PL 标量内部运算成功不等于已实现 typed ANYDATA 参数；S02 持久列禁用独立 |
 | U04 / C09 Oracle piece-data 流水化 | 关闭为 C09 的已知顺序协议范围，不列当前缺陷 | Go 每片等待 OK，Java 同样逐片 ACK；framed 流不走 pipeline | 只有新增无 ACK 协议成功依据才重开，不盲写无 ACK 发送 |
 | U05 / T24 SPARSEVECTOR | 基础 string 子集已验，撤销“正确语法/wire 未知”状态 | `TestMySQLExtendedTypes` 无维数 SPARSEVECTOR，`{1:1,3:2}` 存储/回读/NULL、CHAR/string metadata，server/client 与 text/参数路径通过 | 高维/非法输入/函数组合继续作为专项覆盖，不需要先新增专用 codec |
-| U06 / G01 新编码/版本 | 当前 MySQL 服务端已有支持，客户端扩展可做，不能归服务端缺失 | H03 确认 UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 的 14 个 collation ID，SET NAMES 与 ASCII 转换均接受；Go 没有这些 encoder/collation 映射 | 仍需逐种严格非 ASCII 编解码、握手/结果/参数验收；ASCII 探针不是编码实现完成；其他版本/Oracle 用途另验 |
+| U06 / G01 additional charsets | Seven strict mappings implemented; tested MySQL subset complete | UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 encoders, decoders, handshake IDs and 14 result collation IDs; independent full mapping hashes; six connection charsets and all seven column/result charsets passed server/client live tests | SWE7 cannot encode ASCII `@`, so the supplied tenant-qualified identity is safely rejected for a SWE7 connection; use UTF8 for that identity and SWE7 columns/results. Other versions and Oracle initialization remain separate; see [focused evidence](charset-nul-validation-2026-11-03.md) |
 | U07 / 原 G10 native 参数码 | V13 指定子集关闭：真实列已接受通用 string/bytes/整数 | JSON/BIT/YEAR/GEOMETRY server/client 存储回读通过，GEOMETRY bytes 回绑通过 | 未发现必须增加 type245/16/13/255 专用 writer 的依据；以后遇确切通用路径失败再立项 |
-| U08 / Oracle超长NUL脚本 | Java/.NET 特定大脚本超时不能证明服务端不支持，也不能单独证明 Go parser 有缺陷 | 客户端准备路径已将 Oracle 文本 NUL 转为 `CHR(0)`，并对 SQL 编码字节和累计预算做边界检查；[`TestClientPrepareEncoding`](../internal/command/client_prepare_test.go)已覆盖该转换，未覆盖目标执行效果 | 在真实 Oracle 上按确切长度分别验证发送、prepare/execute、消费和独立效果，记录成功/失败阈值；不得为绕过失败而静默截断或重放 |
+| U08 / Oracle long NUL scripts | Confirmed concatenation failure fixed; finite tested subset complete | Client literals use collision-free `REPLACE(...,marker,CHR(0))` with encoded-byte budgets. At 12003/98304/196608 bytes, single/double SELECTs pass full result consumption and connection reuse; NUL and equal-length control CLOB writes pass independent length/content checks | Old concatenation failed at 98304/196608 bytes with 1489/HY000. Larger sizes, other versions and deployments remain unverified; no truncation, replay or unlimited-size promise. See [focused evidence](charset-nul-validation-2026-11-03.md) |
 
 ## 明确排除与生态差异
 

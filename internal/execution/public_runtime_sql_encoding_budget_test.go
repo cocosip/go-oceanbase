@@ -166,7 +166,7 @@ func TestClientSQLTextEncodedBudget(t *testing.T) {
 	}{
 		{"spans", localFilenameCharset, "SELECT '测测', ?, '测测', ?", "SELECT '\xb2\xe2\xb2\xe2',  1 , '\xb2\xe2\xb2\xe2',  2 ", oceanbase.ModeMySQL, []driver.NamedValue{{Value: int64(1)}, {Value: int64(2)}}},
 		{"tail", localFilenameCharset, "SELECT ?, '测测'", "SELECT  1 , '\xb2\xe2\xb2\xe2'", oceanbase.ModeOracle, []driver.NamedValue{{Value: int64(1)}}},
-		{"oracle-literal", localFilenameCharset, selectBindSQL, "SELECT  ('" + strings.Repeat(parameterBudgetGBK, 10) + "''\\'||CHR(0)||'') ", oceanbase.ModeOracle, []driver.NamedValue{{Value: strings.Repeat(parameterBudgetText, 10) + "'\\\x00"}}},
+		{"oracle-literal", localFilenameCharset, selectBindSQL, "SELECT  REPLACE('" + strings.Repeat(parameterBudgetGBK, 10) + "''\\01','01',CHR(0)) ", oceanbase.ModeOracle, []driver.NamedValue{{Value: strings.Repeat(parameterBudgetText, 10) + "'\\\x00"}}},
 		{"mysql-literal", identityCharsetLatin, selectBindSQL, "SELECT  _latin1 X'" + strings.Repeat("80", 30) + "' ", oceanbase.ModeMySQL, []driver.NamedValue{{Value: strings.Repeat("€", 30)}}},
 		{"named", localFilenameCharset, "SELECT :v, '测测', :v", "SELECT  '\xb2\xe2\xb2\xe2' , '\xb2\xe2\xb2\xe2',  '\xb2\xe2\xb2\xe2' ", oceanbase.ModeOracle, []driver.NamedValue{{Name: "v", Value: parameterBudgetText}}},
 		{"expansion", testAttributeGB18030, selectBindSQL, "SELECT  '" + parameterBudgetExpansion + "' ", oceanbase.ModeOracle, []driver.NamedValue{{Value: "\u0080\u0080"}}},

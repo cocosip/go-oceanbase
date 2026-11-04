@@ -56,7 +56,7 @@ func TestClientPrepareEncoding(t *testing.T) {
 		{"oracle-large-double", config.ModeOracle, 6, float64(1e200), "1e+200d"},
 		{"mysql-double", config.ModeMySQL, 2, float64(0.1), "0.1e0"},
 		{"date", config.ModeOracle, 6, time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC), "TIMESTAMP '2026-01-02 03:04:05.123456'"},
-		{"oracle-nul", config.ModeOracle, 6, "a\x00b", "('a'||CHR(0)||'b')"},
+		{"oracle-nul", config.ModeOracle, 6, "a\x00b", "REPLACE('a01b','01',CHR(0))"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			op := clientOperation(t, config.Config{Session: config.SessionOptions{Charset: testClientCharset, Location: time.UTC}, Limits: config.Limits{MaxMessageBytes: 1024, MaxLOBBytes: 1024}}, session.Negotiated{Mode: tc.mode, OK: wire.OK{Status: tc.status}})
