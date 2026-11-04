@@ -54,3 +54,16 @@ The limiting factor is the number of long-data pieces per parameter, not bytes: 
 - A known `Length` now marks the last data piece final, so exactly 1024 pieces are sent without an empty terminator; an unknown `Length` still needs the terminator when the input ends exactly on a piece boundary (MySQL tolerates the dropped terminator, Oracle counts it and rejects 1025 wire pieces).
 
 The upload plan counts data pieces and rejects the 1025th before sending it (`streaminput.ErrTooManyPieces`, joined with `ErrLongData`; the session is discarded and no statement executes). Live verification: MySQL 32 MiB and Oracle 16 MiB store intact (previously 16 MiB and 8 MiB bounds under smaller chunks), both exact 1024-piece cases succeed, and both 1025-piece cases return a client error without inserting a row. Payloads above the piece bound must use the native LOB APIs; the driver does not retry, truncate or switch mechanisms.
+
+## Second direct target (2026-11-03 continuation)
+
+An independently supplied direct OceanBase 4.4.2.2 MySQL/Oracle target was verified out-of-band (no DSNs stored). Results:
+
+- Full integration suite: both modes `ok`, no failures. Offline baseline (build/vet/test/lint) and the cross-compilation matrix were green.
+- `cmd/obtest` dual target: **78 pass / 0 fail / 3 skip / 13 not applicable** (MySQL 37/0/2/8; Oracle 41/0/1/5) after supplying `change_user_dsn_env` for both targets. Remaining skips are MySQL XA SUSPEND/JOIN (1398, B01) and Oracle NCLOB (902, S01).
+- ChangeUser: disposable MySQL and Oracle second identities passed `TestChangeUserSessions`, `TestChangeUserFailure` and `obtest change-user` in both modes.
+- Oracle ProxyUser: a disposable proxy account plus `ALTER USER ... GRANT CONNECT THROUGH` was granted. Initial proxy login returned the target as `CURRENT_USER`/`SESSION_USER` and the authenticating account as `PROXY_USER`. Reauthentication with the same credentials returned success but left `CURRENT_USER`/`SESSION_USER` as the authenticating account, so this target does not apply the proxy target on `COM_CHANGE_USER` (B21). The driver does resend `__ob_client_proxy_user_name`; this is a target behavior, not a send-path gap.
+- Rejection shapes re-confirmed: RECORD/ANYDATA native OUT 600/0A000 (B16), anonymous LOB headers 600/HY000 (B18), NCLOB DDL 902 (S01), MySQL XA SUSPEND/JOIN 1398 (B01).
+- Still not covered: TLS/mTLS (endpoint plaintext), required compression, OBProxy/multi-node/OCP/TNS, Linux/macOS native runs, Oracle combined-XA receipt loss, named-region timezone initialization (1882).
+
+See the [second-target report](live-validation-2026-11-03-second-target.md).

@@ -229,11 +229,24 @@ func ServeOK(ctx context.Context, t testing.TB, p *wire.PacketIO, want []byte, s
 
 // ServeBaseline handles the driver's initial session setup commands.
 func ServeBaseline(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, deprecate ...bool) bool {
-	return ServeOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && ServeOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status) && ServeVersion(ctx, t, p, status, len(deprecate) > 0 && deprecate[0]) && ServeOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status)
+	return ServeBaselineVersion(ctx, t, p, status, defaultServerVersion, deprecate...)
 }
+
+// ServeBaselineVersion handles the initial session setup with an explicit
+// ob_version() result, so version-gated client behavior can be exercised.
+func ServeBaselineVersion(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, version string, deprecate ...bool) bool {
+	return ServeOK(ctx, t, p, append([]byte{3}, []byte("SET NAMES utf8mb4")...), status) && ServeOK(ctx, t, p, append([]byte{3}, []byte("SET autocommit=1")...), status) && ServeVersionText(ctx, t, p, status, version, len(deprecate) > 0 && deprecate[0]) && ServeOK(ctx, t, p, []byte("\x03SET SESSION time_zone = '+00:00'"), status)
+}
+
+const defaultServerVersion = "4.3.5.1"
 
 // ServeVersion handles the server version query using the selected EOF capability.
 func ServeVersion(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, deprecate bool) bool {
+	return ServeVersionText(ctx, t, p, status, defaultServerVersion, deprecate)
+}
+
+// ServeVersionText serves the server version query with the supplied version text.
+func ServeVersionText(ctx context.Context, t testing.TB, p *wire.PacketIO, status byte, version string, deprecate bool) bool {
 	query := "SELECT ob_version()"
 	if status&4 != 0 {
 		query += sessionReadDualSuffix
@@ -251,7 +264,7 @@ func ServeVersion(ctx context.Context, t testing.TB, p *wire.PacketIO, status by
 	if deprecate {
 		terminal = []byte{254, 0, 0, status, 0, 0, 0}
 	}
-	return SendPackets(ctx, t, p, []byte{7, '4', '.', '3', '.', '5', '.', '1'}, terminal)
+	return SendPackets(ctx, t, p, append([]byte{byte(len(version))}, version...), terminal)
 }
 
 // Await waits up to two seconds for a fixture lifecycle transition.

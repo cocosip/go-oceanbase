@@ -70,6 +70,9 @@ func testProxyUserSession(t *testing.T, p integrationtest.Profile) {
 	assertProxyIdentity(ctx, t, pinned, target, authenticated)
 	credentials := oceanbase.Credentials{User: cfg.User, Password: cfg.Password, ProxyUser: cfg.ProxyUser}
 	if err = oceanbase.ChangeUser(ctx, pinned, credentials, cfg.Database); err != nil {
+		if errors.Is(err, oceanbase.ErrUnsupported) {
+			t.Skip("driver rejects proxy identity on COM_CHANGE_USER for this target version (B21)")
+		}
 		integrationtest.FailOperation(t, "reauthenticate proxy identity", err)
 	}
 	assertProxyIdentity(ctx, t, pinned, target, authenticated)

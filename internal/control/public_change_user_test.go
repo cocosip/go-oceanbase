@@ -364,3 +364,37 @@ func TestChangeUserFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestChangeUserRejectsProxyTargetOnIgnoringVersion(t *testing.T) {
+	status := byte(6)
+	cfg := config.Config{User: testUser, Mode: config.ModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaselineVersion(ctx, t, p, status, "4.4.2.2") {
+			return
+		}
+		// The proxy-target gate must reject before sending; the next command is PING.
+		if !testpeer.ServeOK(context.Background(), t, p, []byte{14}, status) {
+			return
+		}
+		p.ResetSequence()
+		testpeer.ServeQuit(t, p)
+	})}
+	connector, err := oceanbase.NewConnector(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sql.OpenDB(connector)
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	pinned, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = pinned.Close() }()
+	err = oceanbase.ChangeUser(ctx, pinned, config.Credentials{User: changeUserName, Password: changeUserPassword, ProxyUser: "target_user"}, "")
+	if !errors.Is(err, dberrors.ErrUnsupported) {
+		t.Fatalf("proxy change-user on ignoring version=%v", err)
+	}
+	if err = pinned.PingContext(ctx); err != nil {
+		t.Fatalf("pre-send rejection poisoned the session: %v", err)
+	}
+}

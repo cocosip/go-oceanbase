@@ -12,6 +12,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/authentication"
 	"github.com/cocosip/go-oceanbase/internal/catalog"
 	"github.com/cocosip/go-oceanbase/internal/command"
+	"github.com/cocosip/go-oceanbase/internal/configspec"
 	"github.com/cocosip/go-oceanbase/internal/connect"
 	"github.com/cocosip/go-oceanbase/internal/cursor"
 	"github.com/cocosip/go-oceanbase/internal/lob"
@@ -26,6 +27,9 @@ func (m *Manager) ChangeUser(ctx context.Context, op *session.Operation, cache *
 		return fmt.Errorf("%w: ChangeUser requires autocommit without a transaction", dberrors.ErrUnsupported)
 	}
 	cfg, identity := op.Config(), op.Protocol()
+	if err = rejectUnappliedProxyTarget(credentials, identity); err != nil {
+		return err
+	}
 	cfg.User, cfg.Password, cfg.Credentials = credentials.User, credentials.Password, nil
 	cfg.ProxyUser = credentials.ProxyUser
 	cfg.Database, cfg.Mode = database, identity.Mode
@@ -131,4 +135,15 @@ func (m *Manager) ChangeUser(ctx context.Context, op *session.Operation, cache *
 	}
 	m.ResetWarnings()
 	return ctx.Err()
+}
+
+// rejectUnappliedProxyTarget refuses a proxy identity the target silently
+// ignores on COM_CHANGE_USER. OceanBase 4.4.2.2 accepts the command but keeps
+// the authenticating account effective; recording the requested target would be
+// false. Initial proxy login and clearing the target remain available.
+func rejectUnappliedProxyTarget(credentials config.Credentials, identity session.Negotiated) error {
+	if credentials.ProxyUser == "" || identity.Mode != config.ModeOracle || !configspec.IsVersion(identity.OBVersion, "4.4.2.2") {
+		return nil
+	}
+	return fmt.Errorf("%w: proxy identity on COM_CHANGE_USER", dberrors.ErrUnsupported)
 }

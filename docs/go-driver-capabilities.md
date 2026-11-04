@@ -25,6 +25,7 @@ Oracle 模式相关能力以具有该模式的产品版本/租户为前提；官
 | H20 | [历史实库报告](release-validation-2026-10-20.md)：OceanBase 4.4.2.2 双模式直连；仅限报告列明场景 |
 | H24 | [浮点专项报告](binary-double-live-validation-2026-10-24.md)：双模式直连 float64 参数及 Oracle 数组绑定子集 |
 | H03 | [2026-11-03 Go 直连复验](live-validation-2026-11-03.md)：OceanBase 4.4.2.2 双模式；B14 规避无 skip、SDO 修复、扩展类型与 PL 前提按指定子集验收 |
+| H03T | [第二套直连目标复验](live-validation-2026-11-03-second-target.md)：独立 OceanBase 4.4.2.2 双模式；全量集成测试通过、`obtest` 78/0/3/13、MySQL/Oracle ChangeUser 通过、Oracle 初始代理登录通过、COM_CHANGE_USER 代理目标未应用（B21） |
 | V | 尚缺对应真实部署、类型形状或故障验收；可以与 H20/H24 同时存在 |
 
 H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**、Oracle **38 pass / 0 fail / 2 skip / 5 不适用**，每模式选择 45 场景。不能由此推导下表每行均通过。报告中的旧测试目录已经调整，当前集成测试分布在各 `internal/*` 包及其子目录；复验使用当前入口，不直接照搬历史路径。
@@ -41,10 +42,10 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | C06 TLS、主机名验证、mTLS | 有实现 | 有实现 | `Config.TLSConfig` 使用 Go `crypto/tls`/`x509`；拒绝未验证 TLS 授权敏感认证；JKS/PKCS12 转换由应用/部署负责 | TLS是部署能力；ENV01/V01，不是官方不支持 | SRC/L/V；H20 仅真实端点拒绝/未开启边界 |
 | C07 native password | 有实现 | 有实现 | [认证流程](../internal/connect/authentication.go)、[native](../internal/auth/native.go)；不因 Oracle SQL 模式改用 Oracle Net/OCI | H20指定native账号，不外推插件 | SRC/L/H20 |
 | C08 SHA256、caching-SHA2、old、clear、Ed25519、PAM、GSSAPI | 受限 | 受限 | [认证配置](../config/authentication.go)、[认证扩展](../internal/authentication)；old 显式开启，clear/PAM 要求已验证 TLS，非 TLS RSA 只用预先固定公钥；GSSAPI 依 OS/tag/票据 | 逐插件服务端支持未证实，ENV04/U | SRC/L/V；客户端实现不证明 OceanBase 安装相应插件 |
-| C09 凭据回调、认证扩展、代理身份 | 有实现 | 受限 | `Credentials`/`Auth.Plugins`；[ProxyUser 配置](../config/proxy_user_test.go)仅 Oracle，MySQL 拒绝；连接器固定逻辑 User/ProxyUser，允许密码变化，不在活动事务中自动换身份 | ProxyUser依Oracle授权A02；凭据回调为Go契约 | SRC/L/V |
+| C09 凭据回调、认证扩展、代理身份 | 有实现 | 受限 | `Credentials`/`Auth.Plugins`；[ProxyUser 配置](../config/proxy_user_test.go)仅 Oracle，MySQL 拒绝；连接器固定逻辑 User/ProxyUser，允许密码变化，不在活动事务中自动换身份；确切 4.4.2.2 的代理重认证在发送前 `ErrUnsupported`（B21） | ProxyUser 初始登录 H03T 通过；Oracle 代理重认证目标侧未应用（B21），驱动已拒绝；凭据回调为Go契约 | SRC/L/H03T |
 | C10 标准连接池与资源隔离 | 有实现 | 有实现 | 使用 `database/sql` 容量/等待/空闲/寿命/统计；[reset](../internal/control/reset.go)及资源代际隔离；不是另建私有连接池，也没有标准库未提供的最小连接数保证 | H20有限并发；长期资源V06 | SRC/L/H20（有限并发）/V（长稳） |
 | C11 初始化、属性、超时 | 有实现 | 有实现 | `Session.InitSQL/Variables`、`ConnectionAttributes`、`Interactive`、`ConnectTimeout/ReadTimeout`；调用总预算使用 context；读超时逐次计算，不保证服务器已停止 SQL | 逐选项/服务端参数V10，不推定都已验 | SRC/L/V |
-| C12 database/schema、ChangeUser、会话变量 | 有实现 | 受限 | [会话 API](../session.go)、[会话控制](../internal/control/session.go)；MySQL 切 database、Oracle 切 current schema；Oracle catalog 不适用；更改身份/状态影响池复用和资源代际 | MySQL H20子集；Oracle身份权限A02 | SRC/L/H20（指定会话场景）/V |
+| C12 database/schema、ChangeUser、会话变量 | 有实现 | 受限 | [会话 API](../session.go)、[会话控制](../internal/control/session.go)；MySQL 切 database、Oracle 切 current schema；Oracle catalog 不适用；更改身份/状态影响池复用和资源代际 | MySQL H20 子集；Oracle ChangeUser 第二身份 H03T；其余身份/代理边界 A02/B21 | SRC/L/H20/H03T/V |
 | C13 自动创建缺失数据库 | 受限 | — | `CreateDatabaseIfMissing` 显式启用，仅新建 MySQL 物理连接；先创建/选择再 InitSQL；不是迁移或 schema 管理器 | MySQL且需CREATE权限；Oracle不适用 | SRC/L/H20（指定创建场景）/V |
 | C14 多地址、角色、负载分配、连接故障转移 | 有实现 | 有实现 | [路由](../internal/routing/selector.go)；只在建连阶段切候选，角色来自配置；TLS/auth/已发 SQL 不作为业务重试理由，不自动识别 SELECT 并分流 | 真实拓扑/角色ENV03/V03 | SRC/L/V |
 | C15 DESCRIPTION/TNS、OCP、拓扑刷新 | 有实现 | 有实现 | [TNS](../internal/routing/tns.go)、[OCP](../internal/routing/ocp.go)、[拓扑](../internal/routing/topology.go)；TNS 是地址描述解析，不是 Oracle Net；同租户/主备身份需部署证明 | 服务发现/身份ENV03/V03，不是Oracle Net | SRC/L/V |

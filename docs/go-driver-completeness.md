@@ -1,6 +1,6 @@
 # Go 驱动功能缺失与限制矩阵
 
-更新日期：2026-11-03。已重新核对[能力矩阵](go-driver-capabilities.md)、Go 实现、官方文档及 Java/.NET 的成功和失败记录，并使用指定 OceanBase 4.4.2.2 直连实库复验 G 项。**客户端缺实现、客户端范围限制、服务端明确不支持、指定目标拒绝、权限不足、环境未具备、尚未验证、依据不足**分别列出，不合并计算“缺失功能数”。
+更新日期：2026-11-03。已重新核对[能力矩阵](go-driver-capabilities.md)、Go 实现、官方文档及 Java/.NET 的成功和失败记录，并使用指定 OceanBase 4.4.2.2 直连实库复验 G 项；第二轮独立直连 4.4.2.2 目标的 78/0/3/13 工具结果、全量集成测试与 Oracle ChangeUser-/代理身份结论见[第二套目标复验](live-validation-2026-11-03-second-target.md)。**客户端缺实现、客户端范围限制、服务端明确不支持、指定目标拒绝、权限不足、环境未具备、尚未验证、依据不足**分别列出，不合并计算“缺失功能数”。
 
 ## 分类规则
 
@@ -22,7 +22,7 @@
 
 ## 已确认的客户端实现差距
 
-The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database evidence. U06 now adds seven strict charset mappings, with the SWE7 identity boundary documented below; U08 now passes finite long-NUL query and storage checks. Native RECORD/ANYDATA binding (U02/U03) and U01 protocol shapes remain open. These results do not imply support for every type, direction, version or deployment. C/U/S/B/A/ENV/V/X retain their separate classifications.
+The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database evidence. U06 now adds seven strict charset mappings, with the SWE7 identity boundary documented below; U08 now passes finite long-NUL query and storage checks. Native RECORD/ANYDATA binding (U02/U03) and U01 protocol shapes remain open. These results do not imply support for every type, direction, version or deployment. C/U/S/B/A/ENV/V/X retain their separate classifications. A second independently supplied direct 4.4.2.2 target re-ran the full integration suite and the acceptance tool (78 pass / 0 fail / 3 skip / 13 not applicable) on 2026-11-03, re-verifying the same G subsets and the B16/B18/B01/S01 rejection shapes.
 
 ## 已补实现并完成指定实库验收
 
@@ -80,13 +80,14 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | B18 / anonymous LOB collection headers | Raw Oracle codes 210/211 with inline BLOB/CLOB member bodies return 600/HY000 | The same named collection payloads succeed and store independent expected content; rejection is specific to the tested anonymous headers |
 | B19 / named-region session timezone | Oracle session initialization and independent `ALTER SESSION SET TIME_ZONE='America/New_York'` both return 1882/HY000 | Explicit -04:00/-05:00 LTZ/TZ storage/readback retains nine digits; positive named-region DST acceptance remains open |
 | B20 / package OBJECT parameter owner | Raw `ALL_ARGUMENTS.TYPE_OWNER` for the tested package OBJECT parameter is a padded numeric identifier, confirmed independently of the public metadata API | Metadata preserves the raw field; TYPE_NAME and the actual ALL_TYPES owner are separately checked. The numeric token is not assumed to be a user ID or fabricated into a schema name |
+| B21 / C09 D30 Oracle 代理重认证 | Oracle 4.4.2.2（第二套直连目标）：初始 `ProxyUser` 登录正确；同一会话 `ChangeUser` 携带相同 `ProxyUser` 返回成功，但 `CURRENT_USER`/`SESSION_USER` 变为认证代理账号、`PROXY_USER` 仍为代理账号，代理目标未被应用 | 初始代理登录、`ProxyUser` 空值清除与普通 ChangeUser 仍独立可用；客户端确实重传 `__ob_client_proxy_user_name`（代码路径与本地 peer 用例覆盖），不是"未发送"；驱动已对确切 4.4.2.2 在发送前返回 `ErrUnsupported`（`TestChangeUserRejectsProxyTargetOnIgnoringVersion`），`TestProxyUserSessions` 在该目标跳过重认证段；只记录该目标/形状，不推断其他版本 |
 
 ## 权限、身份与环境不足
 
 | ID / 关联能力 | 已记录的前提不足 | 分类边界 |
 | --- | --- | --- |
 | A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000 | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
-| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权用一次性第二身份实库验收：MySQL 成功路径+错误密码 1045、Oracle 成功路径+错误密码 600/42000 均通过，失败均弃用连接且池恢复 | MySQL 与 Oracle 的 ChangeUser 已验收（fixture 已删除，复跑需外部第二身份）；ProxyUser 的 O7L/CONNECT THROUGH 授权与目标身份仍缺 fixture；不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md) |
+| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权用一次性第二身份实库验收：MySQL 成功路径+错误密码 1045、Oracle 成功路径+错误密码 600/42000 均通过，失败均弃用连接且池恢复。第二套目标复验：一次性 MySQL/Oracle 第二身份下 ChangeUser 与 `obtest` change-user 再次通过；经 SYS 授权创建一次性代理账号/`GRANT CONNECT THROUGH` 后，Oracle 初始 ProxyUser 登录通过（`CURRENT_USER`=目标、`PROXY_USER`=代理账号），但 `COM_CHANGE_USER` 未应用代理目标（B21） | MySQL 与 Oracle 的 ChangeUser 已验收；ProxyUser 初始登录已验收，代理重认证是目标侧限制；不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md)与[第二套目标复验](live-validation-2026-11-03-second-target.md) |
 | ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
 | ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [fresh results](remaining-validation-2026-11-03.md) |
 | ENV03 / C14–C15 ODP/多节点/OCP/TNS | H20仅直连单端点 | 缺真实代理/控制面/集群，单上游relay不证明HA |
@@ -150,10 +151,11 @@ This table separates confirmed client boundaries from missing protocol or deploy
 - H03：[2026-11-03 Go直连复验](live-validation-2026-11-03.md)：G01/G03/G04/G05a/G07a/G07b、B14 规避、SDO 修复、MySQL 扩展类型、PL 前提及本地检查；不包括所有代理/平台组合。
 - H03R：[原生重置与剩余探测复验](native-reset-and-probe-validation-2026-11-03.md)：COM_RESET_CONNECTION 双模式成功但驱动保持淘汰、C02 44 条语句无 1295、Oracle warning 无明细入口、本轮 obtest/集成基线。
 - H03I：[ChangeUser 第二身份验收](change-user-acceptance-2026-11-03.md)：经授权创建并删除一次性 MySQL 只读身份；ChangeUser 成功/错误密码 1045 实库通过，obtest 37/0/2/8；Oracle 仍 1031 无 CREATE USER。
+- H03T：[第二套直连目标复验](live-validation-2026-11-03-second-target.md)：独立 4.4.2.2 双模式全量集成测试通过；obtest 78/0/3/13；一次性第二身份下 MySQL/Oracle ChangeUser 通过；Oracle 初始代理登录通过、`COM_CHANGE_USER` 未应用代理目标（B21）；B16/B18/B01/S01 拒绝形状复现。
 - N：obconnector-dotnet/docs/obconnector-dotnet-completeness.md及obconnector-dotnet-missing-features-roadmap.md的D-02d1～d3、D-04a1/a2/e、D-05、D-07、D-08m、D-09、D-12a/b/c、目录/RECORD段落；本次核对ComplexLobInputTests.cs、XmlProbeTests.cs、VectorArrayStringWireTests.cs的实际用例形状，不记作Go实测。
 - Java：核对ComplexUtil.storeComplexAttrData成员writer、createSQLXML客户端拒绝和OB20 reader压缩长度拒绝；没有把Java拒绝当服务端不支持证明。
 
-本轮已连接双模式 OceanBase 4.4.2.2，逐项复验 G 表中的明确子集；本地测试、静态检查和实库跳过项见 H03。V/U 尚未全部验收；未重新执行的参考 SDK 失败形状继续仅标 N，不提升为 Go 实测。
+本轮已连接双模式 OceanBase 4.4.2.2，逐项复验 G 表中的明确子集；第二轮独立直连目标再次通过全量集成与 78/0/3/13 工具结果，并新增 B21（代理重认证目标侧未生效）。本地测试、静态检查和实库跳过项见 H03/H03T。V/U 尚未全部验收；未重新执行的参考 SDK 失败形状继续仅标 N，不提升为 Go 实测。
 
 上一版“15项功能差距”的汇总撤销：原G10–G14多数是通用路径验收/调查，G05/G06/G07按操作形状拆开，服务端/权限/环境也已拆开。后续G表按明确子集立项，C表按需求选择，V表补验收；S/B/A/ENV/U/X不直接转为实现待办。
 
