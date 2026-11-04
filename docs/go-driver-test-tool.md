@@ -65,7 +65,7 @@ Each target supports:
 | `dsn_env` / `dsn` | Exactly one: DSN environment-variable name or inline DSN; prefer environment sources for credentials |
 | `change_user_dsn_env` | Optional second-identity DSN environment name; only identity/default schema are read, not address/protocol. Must use the same endpoint, tenant and mode, and differ from the primary identity |
 | `local_import_sql` | Optional deployment-specific LOCAL import SQL containing {table}, requesting filename input; both modes generate LOAD DATA LOCAL INFILE by default |
-| `warning_sql` | Optional successful SQL producing nonzero warnings; MySQL defaults to a nonnumeric CAST; Oracle skips the positive warning case if absent |
+| `warning_sql` | Optional successful SQL producing nonzero warnings; MySQL defaults to a nonnumeric CAST. Oracle creates a uniquely named invalid procedure, registers its cleanup, and recompiles it on the pinned session to produce a compilation warning; this default needs CREATE PROCEDURE permission |
 | `cancel_sql` | Optional long-running SQL; by default, create a table and hold a row lock, then cancel another session's waiting UPDATE |
 | `cancel_code` | Optional expected explicit-cancellation server code; defaults to MySQL 1317 / Oracle 1013, also recognizing the exact Oracle 600/70100/-5065 interruption envelope through the complete error chain; other mappings require an explicit override |
 

@@ -44,7 +44,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | C08 / 原 G08、Q05/Q19 多语句 LongData | MySQL `PrepareClient` + `AllowMultiStatements` 支持有界一次性读入后字面量编码 | peer 及 `TestMySQLMultiStatementLongData` 实库通过：含引号、反斜杠、NUL、中文的长参数和第二结果；不扩展 Oracle PL/其他准备路径 |
 | C09 / 原 G09、Q20 pipeline | [TryNative](../internal/batch/native.go)仅选限定 scalar DML；SELECT/复杂值/流/framed 等顺序执行 | 性能/组合范围差距，不是 SQL 不能执行；N 对应子集可供扩展依据，Oracle piece-data 另见 U04 |
 | C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值受消息与物化预算限制；大对象另有 LOB/TableBlob 流式 API | 这是 Go `database/sql` Rows 与当前协议边界，不计为已确认客户端缺实现；如要新增普通列流 API，必须先定义独立的读取顺序、所有权、取消和消息分片契约 |
-| C11 / C17 Oracle warning 详情 | count 已有，[ReadWarnings](../internal/control/warnings.go)只给 MySQL 详情 | 客户端/参考接口范围；当前依据不能证明“数据库没有任何 Oracle warning 详情能力” |
+| C11 / C17 Oracle warning 详情 | count 已有；automatic Oracle compilation-warning fixture now verifies positive count/preservation/clear in the acceptance tool; [ReadWarnings](../internal/control/warnings.go) only provides MySQL details | 客户端/参考接口范围；当前依据不能证明“数据库没有任何 Oracle warning 详情能力” |
 
 ## 官方明确不支持的形态
 
@@ -75,7 +75,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | B13 / T08 TIME极限小数 | MySQL，N：指定permissive binary截整秒，strict text1292而binary仍截断成功 | 路径相关服务端语义记录，尚非Go复现缺陷；不静默截断/CAST来制造一致 |
 | B14 / T17 + P04 XMLTYPE combined 结果形状 | Oracle 4.4.2.2，H03：原始 combined 响应一个行包后结束，遗漏 NULL 行且无错误 | 驱动已对确切版本禁用通用可选 combined 优化，所有六种配置返回完整两行，删除 B14 skip；必需 OUT/RETURNING 保持并实库通过。版本范围外未推断同故障 |
 | B15 / anonymous TIMESTAMP collection INOUT | Oracle 4.4.2.2, current Go live fixture: anonymous element metadata has no accuracy; direct INOUT rounds `.123456789` to `.123457` | Named native collection and independent SQL constructor control retain nine digits; fixed named metadata preserves dictionary precision. Anonymous IN/OUT through a typed local variable is independently verified; see [evidence](complex-temporal-national-validation-2026-11-03.md) |
-| B16 / native PL RECORD and ANYDATA OUT | Current target returns 600/0A000 (-4007) before typed output, confirmed by raw wire and public `sql.Out` regressions | PL-local RECORD/ANYDATA and RECORD metadata work. This does not classify every native input shape unsupported |
+| B16 / native PL RECORD and ANYDATA OUT | The tested combined calls with NULL output placeholders return 600/0A000 (-4007) before typed output, confirmed by raw wire and public `sql.Out` regressions | PL-local RECORD/ANYDATA and RECORD metadata work. Other output binding contracts and native input shapes remain unverified |
 | B17 / spatial reference 4326 | Oracle SDO point insert returns 13029/HY000; MySQL GIS functions return 3548/SR001; both reproduce with pure SQL controls | SRID 0 point/GIS round trips work; no driver conversion or dictionary modification is applied |
 | B18 / anonymous LOB collection headers | Raw Oracle codes 210/211 with inline BLOB/CLOB member bodies return 600/HY000 | The same named collection payloads succeed and store independent expected content; rejection is specific to the tested anonymous headers |
 

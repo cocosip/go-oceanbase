@@ -108,4 +108,6 @@ B 表中只有标 H03 的条目可算本次 Go 复验；仅 N/H20 的失败形�
 
 ## Continuation after native temporal/national support
 
-See [fresh continuation results](remaining-validation-2026-11-03.md): acceptance 75 pass / 0 fail / 6 skip / 13 not applicable; 42 extended boundaries; 16 GIS cases with explicit positive and negative counts; native PL output and anonymous LOB restrictions; 12 protocol positives and two required-compression negotiation failures; finite concurrent transactions; current local gates. This updates the earlier protocol/environment snapshot without claiming missing deployments passed.
+See [fresh continuation results](remaining-validation-2026-11-03.md): acceptance 76 pass / 0 fail / 5 skip / 13 not applicable; 42 extended boundaries; 16 GIS cases with explicit positive and negative counts; native PL output and anonymous LOB restrictions; 12 protocol positives and two required-compression negotiation failures; finite concurrent transactions; current local gates. This updates the earlier protocol/environment snapshot without claiming missing deployments passed.
+
+Oracle warning follow-up: `cmd/obtest` now creates and cleans its own compilation-warning fixture; the fresh full run verifies count > 0, detail-API rejection without overwriting count, and clear-to-zero. No caller-supplied warning SQL is required on the tested privileged account.

@@ -73,9 +73,16 @@ func runWarnings(ctx context.Context, s *scenario) error {
 	query := s.target.WarningSQL
 	if query == "" {
 		if s.mode == oceanbase.ModeOracle {
-			return skipped("positive Oracle warning fixture requires warning_sql")
+			definition := "IS BEGIN " + s.prefix + "_M; END;"
+			name, err := s.create(ctx, "PROCEDURE", "W", definition)
+			if err != nil {
+				return err
+			}
+			// Recompile on the pinned session so the compilation warning belongs to this borrower.
+			query = "CREATE OR REPLACE PROCEDURE " + name + " " + definition
+		} else {
+			query = "SELECT CAST('obtest-not-numeric' AS SIGNED)"
 		}
-		query = "SELECT CAST('obtest-not-numeric' AS SIGNED)"
 	}
 	return withSession(ctx, s.db, func(c *sql.Conn) error {
 		if _, err := c.ExecContext(ctx, query); err != nil {
