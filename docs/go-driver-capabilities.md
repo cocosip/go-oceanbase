@@ -126,7 +126,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | P04 Oracle PrepareExecute、SQL checksum | PrepareExecute 依真实版本 ≥2.2.76；确切 4.4.2.2 通用可选优化禁用以规避 B14；普通 SQL checksum 依 ≥4.1.2 | 必需 native OUT/RETURNING 保留原版本 gate，实库回归通过；可选开关不绕过门槛 | [执行选项](../internal/statement/options.go)；SRC/L/H03/B14/V |
 | P05 Full Link Trace | 有协商/extra-info/采样控制/trace-span 信息子集；需 OB20 与目标支持；客户端事件不是服务器 trace 或 collector 验收 | 服务端/代理FLT与collector前提ENV02 | [trace](../internal/diagnostic/trace.go)、[wire trace](../internal/wire/trace.go)；SRC/L/V |
 | P06 压缩OB20、proxy reroute | 当前客户端/协议范围排除X03；Java压缩长度拒绝只证明该Java reader的边界，不能据此断言OceanBase产品整体不支持 | X03当前范围，服务端普遍结论未建立 | [兼容性条件](go-driver-compatibility-matrix.md)；SRC/U |
-| M01 数据库、列、键、索引、权限、过程、UDT 元数据 | 双模式目录计划有实现，Oracle UDT/同义词与 MySQL 目录差异保留；不存在的 Oracle catalog 返回空；权限错误不伪造为空成功 | 权限A01/目录参考B12；受限账号双模式 H03T；其余元数据 V07 | [Metadata API](../metadata.go)、[catalog](../internal/catalog)；SRC/L/H20（子集）/H03T/V |
+| M01 数据库、列、键、索引、权限、过程、UDT 元数据 | 双模式目录计划有实现，Oracle UDT/同义词与 MySQL 目录差异保留；不存在的 Oracle catalog 返回空；权限错误不伪造为空成功；列名/通配/引用过滤组合实库通过（Oracle 引用连接受 B22 限制） | 权限A01/目录参考B12；受限账号与过滤组合 H03T；其余元数据 V07 | [Metadata API](../metadata.go)、[catalog](../internal/catalog)；SRC/L/H20（子集）/H03T/V |
 | M02 日志、慢请求、包/请求诊断 | slog 注入和有界 callback；不记录原始 SQL、参数、凭据和包体；Rows 时长包含消费时间 | 客户端诊断；服务器trace另见P05 | [诊断配置](../config/diagnostic.go)、[诊断实现](../internal/diagnostic)；SRC/L/V（负载） |
 | M03 池指标、OpenTelemetry 接入 | `sql.DB.Stats` 有池统计，callback 可供应用接入观测；无内置 OTel exporter、.NET Activity/Meter 或 Java JMX 等价承诺 | 标准库/应用观测，不是服务器协议能力 | [池示例](../pool_example_test.go)、[诊断配置](../config/diagnostic.go)；标准库/应用适配，非协议缺失 |
 | R01 Go 版本、平台、CI、性能/长稳 | Go 1.26+；已有 Windows 本地及历史 hosted 检查记录，当前所有 OS/tag/真实部署组合尚未全验；本地 peer benchmark 不代表实库吞吐或长期稳定性 | 按Go/OS/tag/实际服务端组合验V11 | [go.mod](../go.mod)、[历史发布检查](release-validation-2026-10-20.md)、[benchmarks](go-driver-benchmarks.md)；H20/V |
@@ -168,3 +168,4 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 [O13]: https://github.com/oceanbase/oceanbase-doc/blob/2a5ae3a23a51729d065cec716508eb26cb064106/zh-CN/700.reference/500.sql-reference/100.sql-syntax/200.common-tenant-of-mysql-mode/100.basic-elements-of-mysql-mode/100.data-type-of-mysql-mode/1000.roaring-bitmap-data-type-of-mysql-mode/100.roaring-bitmap-data-type-overview-of-mysql-mode.md
 
 Current continuation evidence and external prerequisites: [remaining validation](remaining-validation-2026-11-03.md). Native RECORD/ANYDATA OUT and anonymous LOB header rejections are target-specific; current direct OB20/query success is separate from unavailable compression, proxy topology and trace collection.
+

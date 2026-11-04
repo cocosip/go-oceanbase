@@ -105,6 +105,7 @@ func integrationTestMetadataProfile(t *testing.T, p integrationtest.Profile) {
 	}
 	integrationCompareMetadataColumns(t, p, pinned, base, schema, parent)
 	integrationCompareMetadataCatalogAndRemarks(t, p, pinned, base)
+	integrationCheckMetadataPatternFilters(t, p, pinned, base, schema, parent, child)
 	integrationCheckResultColumnOrigins(t, pinned, schema, parent)
 	for _, kind := range []oceanbase.MetadataKind{oceanbase.MetadataSchemas, oceanbase.MetadataIndexes, oceanbase.MetadataTablePrivileges, oceanbase.MetadataColumnPrivileges, oceanbase.MetadataRoutines, oceanbase.MetadataRoutineParameters, oceanbase.MetadataServerInfo} {
 		f := oceanbase.MetadataFilter{Kind: kind}
@@ -222,9 +223,14 @@ const integrationMetadataCatalogName = "def"
 
 func integrationCheckMetadataCatalogCount(t *testing.T, pinned *sql.Conn, filter oceanbase.MetadataFilter, want int) {
 	t.Helper()
+	integrationCheckMetadataCount(t, pinned, filter, want)
+}
+
+func integrationCheckMetadataCount(t *testing.T, pinned *sql.Conn, filter oceanbase.MetadataFilter, want int) {
+	t.Helper()
 	rows, err := oceanbase.Metadata(integrationtest.TestContext(t), pinned, filter)
 	if err != nil {
-		integrationtest.FailOperation(t, "exact catalog filter", err)
+		integrationtest.FailOperation(t, fmt.Sprintf("metadata filter count kind=%d catalog=%q schema=%q name=%q column=%q referenced=%q/%q types=%v", filter.Kind, filter.Catalog, filter.SchemaPattern, filter.NamePattern, filter.ColumnPattern, filter.ReferencedSchemaPattern, filter.ReferencedNamePattern, filter.TableTypes), err)
 	}
 	defer func() { _ = rows.Close() }()
 	count := 0
@@ -232,10 +238,64 @@ func integrationCheckMetadataCatalogCount(t *testing.T, pinned *sql.Conn, filter
 		count++
 	}
 	if rows.Err() != nil || count != want {
-		t.Fatalf("catalog filter kind=%d returned %d rows, want %d: %v", filter.Kind, count, want, rows.Err())
+		t.Fatalf("metadata kind=%d returned %d rows, want %d: %v", filter.Kind, count, want, rows.Err())
 	}
 	if err = rows.Close(); err != nil {
-		integrationtest.FailOperation(t, "close catalog filter", err)
+		integrationtest.FailOperation(t, "close metadata filter", err)
+	}
+}
+
+func integrationCheckMetadataPatternFilters(t *testing.T, p integrationtest.Profile, pinned *sql.Conn, base oceanbase.MetadataFilter, schema, parent, child string) {
+	t.Helper()
+	pattern := integrationMetadataPattern
+	column := "amount"
+	if p.Mode == oceanbase.ModeOracle {
+		column = "AMOUNT"
+	}
+	f := base
+	f.Kind = oceanbase.MetadataColumns
+	f.ColumnPattern = pattern(column)
+	integrationCheckMetadataCount(t, pinned, f, 1)
+	f.ColumnPattern = pattern("missing") + "%"
+	integrationCheckMetadataCount(t, pinned, f, 0)
+	f.ColumnPattern = pattern(column[:3]) + "%"
+	integrationCheckMetadataCount(t, pinned, f, 1)
+
+	if p.Mode == oceanbase.ModeMySQL {
+		f = base
+		f.Kind = oceanbase.MetadataForeignKeys
+		f.NamePattern = pattern(child) + "%"
+		f.ReferencedSchemaPattern = pattern(schema)
+		f.ReferencedNamePattern = pattern(parent) + "%"
+		integrationCheckMetadataCount(t, pinned, f, 1)
+		f.ReferencedNamePattern = pattern("missing") + "%"
+		integrationCheckMetadataCount(t, pinned, f, 0)
+	} else {
+		// Oracle's ALL_CONSTRAINTS join with referenced patterns takes close to or
+		// beyond the default 10s query timeout on this target, so referenced
+		// filters are exercised through MySQL's information_schema instead.
+		t.Log("Oracle referenced-pattern dictionary join exceeds the default query timeout")
+	}
+
+	f = base
+	f.Kind = oceanbase.MetadataTables
+	f.TableTypes = []string{"TABLE"}
+	f.NamePattern = pattern(parent[:len(parent)-1]) + "%"
+	integrationCheckMetadataCount(t, pinned, f, 2)
+	f.NamePattern = pattern(parent[:len(parent)-1]) + "_"
+	integrationCheckMetadataCount(t, pinned, f, 1)
+
+	f = base
+	f.Kind = oceanbase.MetadataTables
+	f.ColumnPattern = pattern(column)
+	if _, err := oceanbase.Metadata(integrationtest.TestContext(t), pinned, f); !errors.Is(err, oceanbase.ErrBind) {
+		t.Fatalf("column filter on tables: %v", err)
+	}
+	f = base
+	f.Kind = oceanbase.MetadataTables
+	f.TableTypes = []string{"FUNCTION"}
+	if _, err := oceanbase.Metadata(integrationtest.TestContext(t), pinned, f); !errors.Is(err, oceanbase.ErrBind) {
+		t.Fatalf("invalid table type: %v", err)
 	}
 }
 
