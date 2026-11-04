@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/config"
+	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -68,6 +69,19 @@ func (p *UploadPlan) Next() (Piece, error) {
 	if err != nil && !final {
 		return Piece{}, err
 	}
+	if !final && p.value.Length >= 0 && p.source.ReadCount() == p.value.Length {
+		// The declared length is consumed; confirm the reader is exhausted so a
+		// shorter Length cannot silently drop trailing bytes relative to it.
+		var probe [1]byte
+		m, perr := ReadChunk(p.source, probe[:])
+		if m > 0 {
+			return Piece{}, dberrors.ErrLongData
+		}
+		if perr != nil && perr != io.EOF {
+			return Piece{}, perr
+		}
+		final = true
+	}
 	if final && p.value.Length >= 0 && p.source.ReadCount() != p.value.Length {
 		return Piece{}, io.ErrUnexpectedEOF
 	}
@@ -112,15 +126,13 @@ func (p *UploadPlan) Next() (Piece, error) {
 }
 
 // ChunkSize computes a mode-specific bounded upload chunk size.
-func ChunkSize(mode config.Mode, text bool, maxMessageBytes int64) int64 {
-	size := min(int64(65536), maxMessageBytes-7)
+// Oracle pieces reserve half the message for binary hex encoding; text pieces
+// stay within the same bounded frame and therefore need no further division.
+func ChunkSize(mode config.Mode, _ bool, maxMessageBytes int64) int64 {
 	if mode == config.ModeOracle {
-		size = (min(int64(65536), maxMessageBytes) - 17) / 2
+		return (min(int64(65536), maxMessageBytes) - 17) / 2
 	}
-	if text {
-		size /= 4
-	}
-	return size
+	return min(int64(65536), maxMessageBytes-7)
 }
 
 // TextBoundary retains an incomplete UTF-8 suffix until the next source chunk.

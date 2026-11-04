@@ -105,9 +105,9 @@ func TestUploadPlan(t *testing.T) {
 		input string
 		want  []string
 	}{
-		{config.ModeMySQL, false, testChunkText, []string{testChunkText, ""}},
-		{config.ModeOracle, false, testChunkText, []string{"61626364", ""}},
-		{config.ModeMySQL, true, "a你🙂", []string{"a你", "🙂", ""}},
+		{config.ModeMySQL, false, testChunkText, []string{testChunkText}},
+		{config.ModeOracle, false, testChunkText, []string{"61626364"}},
+		{config.ModeMySQL, true, "a你🙂", []string{"a你🙂"}},
 	} {
 		s := Source{Reader: strings.NewReader(tc.input), Length: int64(len(tc.input)), Text: tc.text, State: new(atomic.Bool)}
 		maxMessage := int64(11)
@@ -141,7 +141,7 @@ func TestUploadPlanPartialRuneAndBudgets(t *testing.T) {
 	var calls int
 	reader := strings.NewReader("a你🙂")
 	s := Source{Reader: readerFunc(func(p []byte) (int, error) { calls++; return reader.Read(p) }), Length: 8, Text: true}
-	p := NewUploadPlan(context.Background(), s, config.ModeMySQL, "utf8mb4", 100, 27)
+	p := NewUploadPlan(context.Background(), s, config.ModeMySQL, "utf8mb4", 100, 12)
 	if calls != 0 {
 		t.Fatal("planning read input")
 	}

@@ -261,7 +261,8 @@ func TestLongDataNamedFanout(t *testing.T) {
 }
 
 func TestLongDataSmallTextLimit(t *testing.T) {
-	_, op := statementOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 30, MaxLOBBytes: 100}}, &session.Negotiated{Mode: config.ModeOracle, OBVersion: "4.3.5"})
+	// The bounded frame guard rejects a message limit that cannot hold a rune.
+	_, op := statementOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 24, MaxLOBBytes: 100}}, &session.Negotiated{Mode: config.ModeOracle, OBVersion: "4.3.5"})
 	if _, err := statement.LongDataParameter(op, streamSource(&oceanbase.LongData{Reader: strings.NewReader("你"), Text: true, Length: -1})); !errors.Is(err, wire.ErrMessageTooLarge) {
 		t.Fatal(err)
 	}
@@ -375,11 +376,14 @@ func TestLongDataChunks(t *testing.T) {
 						for offset := 0; ; offset += chunk {
 							n := min(chunk, len(data)-offset)
 							body := data[offset : offset+n]
-							piece := byte(2)
-							if offset == 0 {
-								piece = 1
+							piece := byte(1)
+							if offset > 0 {
+								piece = 2
 							}
-							if n < chunk {
+							// A known length marks the last data piece final directly;
+							// an unknown length still needs one empty terminator.
+							final := n < chunk || (known && n > 0 && offset+n == len(data))
+							if final {
 								piece = 3
 							}
 							if mode == oceanbase.ModeOracle {
@@ -392,7 +396,7 @@ func TestLongDataChunks(t *testing.T) {
 							if mode == oceanbase.ModeOracle && !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
 								return
 							}
-							if n < chunk {
+							if final {
 								break
 							}
 						}
