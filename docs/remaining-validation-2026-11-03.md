@@ -43,3 +43,9 @@ Oracle positive warning count, count preservation while the unsupported detail A
 The established C08/C09/C10/C11 boundaries remain intentional: bounded MySQL multi-statement LongData, eligible scalar DML pipeline, row/message ownership under `database/sql`, and Oracle warning count without a verified detail API. They are not expanded into speculative APIs. U01's proven temporal/national shapes are implemented; unavailable native shapes and deployment acceptance remain explicitly open.
 
 The temporal fixtures change only their own connection-local SQL_MODE and restore its original value. No global SQL_MODE, timezone dictionary or grants are modified. The numeric TYPE_OWNER token is not assumed to be a user ID or translated into an owner name.
+
+## Long-parameter target boundary (2026-11-03 continuation)
+
+Oracle-mode piece data (`LongData`) on the direct target accepts text up to at least 8,000,000 bytes; 8,385,536 bytes and above fail with server 600/-4019 "Size overflow" plus the driver's joined `ErrLongData`, and the pool recovers with a fresh session. The failing totals exceed an 8 MiB (8,388,608-byte) internal piece buffer once the 17-byte per-piece headers are counted: 8,000,000 + 977×17 = 8,016,609 passes; 8,385,536 + 1,024×17 = 8,402,944 fails; 7,340,032 and 7,864,320 also pass. `@@max_allowed_packet` on this target is 16 MiB, so the limit is not that variable.
+
+Oracle binary piece data is hex-encoded on the wire, so the raw BLOB payload limit is roughly half the text limit (about 4 MiB). MySQL-mode long data is unaffected: 1/2/4/8 MiB text uploads all pass. Larger Oracle payloads should use the native LOB APIs instead of one bound parameter; the driver does not retry, truncate or silently switch mechanisms. This is a target/version boundary, not a client implementation gap; no production code change is made.
