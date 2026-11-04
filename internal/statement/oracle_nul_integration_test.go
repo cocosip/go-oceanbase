@@ -24,7 +24,7 @@ func TestOracleClientLongNUL(t *testing.T) {
 		if profile.Mode != oceanbase.ModeOracle {
 			continue
 		}
-		for _, length := range []int{12003, 98304, 196608} {
+		for _, length := range []int{12003, 98304, 196608, 1048576} {
 			for _, count := range []int{1, 2} {
 				t.Run(fmt.Sprintf("%s/bytes=%d/selects=%d", profile.Name, length, count), func(t *testing.T) {
 					cfg := integrationtest.ProfileConfig(t, profile)
@@ -134,16 +134,15 @@ func TestOracleClientLongNULStorage(t *testing.T) {
 
 func checkOracleNULStorage(t *testing.T, db *sql.DB, table string, id int, want string) {
 	t.Helper()
-	ctx := integrationtest.TestContext(t)
 	var length int
-	if err := db.QueryRowContext(ctx, "SELECT DBMS_LOB.GETLENGTH(V) FROM "+table+" WHERE ID=?", id).Scan(&length); err != nil || length != len(want) {
+	if err := db.QueryRowContext(integrationtest.TestContext(t), "SELECT DBMS_LOB.GETLENGTH(V) FROM "+table+" WHERE ID=?", id).Scan(&length); err != nil || length != len(want) {
 		t.Fatal("independent NUL storage length", length, err)
 	}
 	// Keep below DBMS_LOB.SUBSTR's character-set-dependent return limit.
 	const chunkSize = 2000
 	for offset := 0; offset < len(want); offset += chunkSize {
 		var got string
-		if err := db.QueryRowContext(ctx, "SELECT DBMS_LOB.SUBSTR(V,2000,?) FROM "+table+" WHERE ID=?", offset+1, id).Scan(&got); err != nil {
+		if err := db.QueryRowContext(integrationtest.TestContext(t), "SELECT DBMS_LOB.SUBSTR(V,2000,?) FROM "+table+" WHERE ID=?", offset+1, id).Scan(&got); err != nil {
 			integrationtest.FailOperation(t, "read independent NUL storage chunk", err)
 		}
 		if got != want[offset:min(offset+chunkSize, len(want))] {
@@ -153,5 +152,70 @@ func checkOracleNULStorage(t *testing.T, db *sql.DB, table string, id int, want 
 			}
 			t.Fatalf("independent NUL storage content: id=%d offset=%d got=%d want=%d firstDifference=%d", id, offset, len(got), min(chunkSize, len(want)-offset), mismatch)
 		}
+	}
+}
+
+// TestOracleClientLongNULStorageBoundary verifies the largest client literal the
+// tested target accepts (exactly 1 MiB) without reading every 2000-byte chunk.
+func TestOracleClientLongNULStorageBoundary(t *testing.T) {
+	profiles, err := integrationtest.Profiles(os.Getenv("OB_TEST_PROFILE"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range profiles {
+		if profile.Mode != oceanbase.ModeOracle {
+			continue
+		}
+		t.Run(profile.Name, func(t *testing.T) {
+			cfg := integrationtest.ProfileConfig(t, profile)
+			cfg.PrepareMode, cfg.AllowMultiStatements = oceanbase.PrepareClient, true
+			connector, err := oceanbase.NewConnector(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			db := sql.OpenDB(connector)
+			defer func() { _ = db.Close() }()
+			table := fmt.Sprintf("OBGNB_%d", time.Now().UnixNano())
+			if _, err := db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V CLOB)"); err != nil {
+				integrationtest.FailOperation(t, "create NUL boundary storage", err)
+			}
+			defer func() {
+				if _, err := db.ExecContext(integrationtest.TestContext(t), "DROP TABLE "+table); err != nil {
+					integrationtest.FailOperation(t, "drop NUL boundary storage", err)
+				}
+			}()
+			observer := integrationtest.OpenProfile(t, profile)
+			const length = 1 << 20
+			want := strings.Repeat("a", length/2) + "\x00" + strings.Repeat("b", length-length/2-1)
+			writeCtx, cancel := context.WithTimeout(integrationtest.TestContext(t), 20*time.Second)
+			_, err = db.ExecContext(writeCtx, "INSERT INTO "+table+" VALUES (:a,:v)", sql.Named("a", 1), sql.Named("v", want))
+			cancel()
+			if err != nil {
+				integrationtest.FailOperation(t, "store 1 MiB NUL value", err)
+			}
+			var storedLength, nulPosition int
+			if err := observer.QueryRowContext(integrationtest.TestContext(t), "SELECT DBMS_LOB.GETLENGTH(V),INSTR(V,CHR(0)) FROM "+table+" WHERE ID=1").Scan(&storedLength, &nulPosition); err != nil {
+				integrationtest.FailOperation(t, "read 1 MiB NUL metadata", err)
+			}
+			if storedLength != len(want) || nulPosition != length/2+1 {
+				t.Fatalf("1 MiB NUL shape changed: length=%d nul=%d", storedLength, nulPosition)
+			}
+			for name, query := range map[string]string{
+				"prefix": "SELECT DBMS_LOB.SUBSTR(V,2000,1) FROM " + table + " WHERE ID=1",
+				"suffix": "SELECT DBMS_LOB.SUBSTR(V,2000," + fmt.Sprint(length-1999) + ") FROM " + table + " WHERE ID=1",
+			} {
+				var got string
+				if err := observer.QueryRowContext(integrationtest.TestContext(t), query).Scan(&got); err != nil {
+					integrationtest.FailOperation(t, "read 1 MiB NUL "+name, err)
+				}
+				wantPart := want[:2000]
+				if name == "suffix" {
+					wantPart = want[len(want)-2000:]
+				}
+				if got != wantPart {
+					t.Fatalf("1 MiB NUL %s changed", name)
+				}
+			}
+		})
 	}
 }

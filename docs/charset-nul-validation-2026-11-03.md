@@ -50,6 +50,21 @@ The independent reader initially requested 8192 characters from DBMS_LOB.SUBSTR 
 
 These results cover only the listed lengths, shapes and target. Larger statements, other server versions, native complex parameter formats and deployment acceptance remain open; U02/U03 native RECORD/ANYDATA support is not implied.
 
+## U08 continuation: the 1 MiB client-literal boundary
+
+The exact client-literal boundary on the direct Oracle 4.4.2.2 target is 1 MiB (1,048,576 bytes):
+
+| Probe | Result |
+| --- | --- |
+| `REPLACE(literal, marker, CHR(0))` at exactly 1,048,576 bytes | Returns the expected NUL-bearing value |
+| Same form at 1,048,577 / 1,049,600 / 1,100,000 / 1,572,864 / 3,145,728 bytes | Server 600/22001, arguments `-5098`, "Varchar value is too long for the column" |
+| Pure SQL literal of 3 MiB without NUL substitution | Succeeds, and a 3 MiB `REPLACE` with an absent marker also succeeds |
+| Server preparation (`PrepareServer`) with 1.5/2/3 MiB NUL values | Passes via segmented long data (positional and named) |
+
+The rejection is the target's VARCHAR2 literal limit for the NUL-bearing `REPLACE` result, not the SQL text size. The driver keeps the current rendering: silently switching to server preparation would violate the explicit `PrepareClient` contract, and truncating or retrying would change data. Callers that need more than 1 MiB of text with NUL bytes should use server preparation (long data) or split the value.
+
+Verification added for the boundary: `TestOracleClientLongNUL` now also runs single and double scripts at exactly 1,048,576 bytes; `TestOracleClientLongNULStorageBoundary` stores a 1 MiB NUL CLOB through client preparation and independently checks length, `INSTR` NUL position, and the 2000-byte prefix and suffix. Full byte-for-byte chunk comparison stays at 12,003/98,304/196,608 bytes to keep the suite runtime bounded.
+
 ## Review and completion checks
 
 An independent code review found one stale mixed-charset budget fixture, which was updated to the new REPLACE expression while retaining exact-limit/one-byte-short assertions. No remaining production-code finding was reported. A separate exhaustive model checked marker reconstruction and byte budgets over 320001 short inputs.
