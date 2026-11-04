@@ -3,6 +3,7 @@ package streaminput
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"io"
 	"unicode/utf8"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/charset"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
+
+// MaxPieces is the per-parameter long-data piece limit of the target protocol.
+// OceanBase 4.4.2.2 silently drops MySQL pieces beyond it and fails Oracle
+// pieces with 600/-4019, so a plan rejects the exceeding piece before sending.
+const MaxPieces = 1024
+
+// ErrTooManyPieces reports input that would exceed the protocol piece limit.
+var ErrTooManyPieces = errors.New("streaminput: parameter exceeds the long-data piece limit")
 
 // Piece remains valid until the next call to UploadPlan.Next.
 type Piece struct {
@@ -28,6 +37,7 @@ type UploadPlan struct {
 	size, pending, tailStart int
 	buf                      []byte
 	first, done              bool
+	pieces                   int
 }
 
 // NewUploadPlan neither claims the input nor reads it. Its caller performs the
@@ -77,6 +87,12 @@ func (p *UploadPlan) Next() (Piece, error) {
 		return Piece{}, wire.ErrMessageTooLarge
 	}
 	p.encoded += int64(len(data))
+	if len(data) > 0 {
+		p.pieces++
+		if p.pieces > MaxPieces {
+			return Piece{}, ErrTooManyPieces
+		}
+	}
 	if p.mode == config.ModeOracle && !p.value.Text {
 		data = []byte(hex.EncodeToString(data))
 	}

@@ -46,6 +46,12 @@ The temporal fixtures change only their own connection-local SQL_MODE and restor
 
 ## Long-parameter target boundary (2026-11-03 continuation)
 
-Oracle-mode piece data (`LongData`) on the direct target accepts text up to at least 8,000,000 bytes; 8,385,536 bytes and above fail with server 600/-4019 "Size overflow" plus the driver's joined `ErrLongData`, and the pool recovers with a fresh session. The failing totals exceed an 8 MiB (8,388,608-byte) internal piece buffer once the 17-byte per-piece headers are counted: 8,000,000 + 977×17 = 8,016,609 passes; 8,385,536 + 1,024×17 = 8,402,944 fails; 7,340,032 and 7,864,320 also pass. `@@max_allowed_packet` on this target is 16 MiB, so the limit is not that variable.
+The limiting factor is the number of long-data pieces per parameter, not bytes: OceanBase 4.4.2.2 accepts at most 1024 wire pieces.
 
-Oracle binary piece data is hex-encoded on the wire, so the raw BLOB payload limit is roughly half the text limit (about 4 MiB). MySQL-mode long data is unaffected: 1/2/4/8 MiB text uploads all pass. Larger Oracle payloads should use the native LOB APIs instead of one bound parameter; the driver does not retry, truncate or silently switch mechanisms. This is a target/version boundary, not a client implementation gap; no production code change is made.
+- Oracle text (8189-byte pieces): 7,864,320 bytes (961 pieces) and 8,000,000 bytes (977 pieces) pass; 8,385,535 bytes (1024 pieces, last partial) passes; 8,385,536 bytes (1024 full pieces plus the empty terminator, 1025 wire pieces) fails with server 600/-4019.
+- Oracle binary (32,759-byte pieces, hex on the wire): 4 MiB + 1 raw bytes (129 pieces) passes.
+- MySQL text (16,384-byte pieces): exactly 16,777,216 bytes (1024 pieces) stores intact with a matching MD5; 17 MiB and 32 MiB are silently truncated to 16,777,216 bytes with no server error and a mismatching MD5.
+- The active `@@max_allowed_packet` is 64 MiB on the MySQL tenant and 16 MiB on the Oracle tenant, so the cap is not that variable.
+- An empty terminator piece is sent when the input ends exactly on a piece boundary; MySQL tolerates dropping it (all data was already stored), Oracle counts it and rejects 1025 wire pieces.
+
+The driver now counts data pieces in the upload plan and rejects the 1025th before sending it (`streaminput.ErrTooManyPieces`, joined with `ErrLongData`; the session is discarded and no statement executes). Live verification: MySQL 17 MiB now returns an error and inserts no row while exactly 16 MiB still stores intact; Oracle 8,385,535 bytes still passes. Payloads above 1024 pieces must use the native LOB APIs; the driver does not retry, truncate or switch mechanisms. This boundary is a target/protocol limit; the production change only prevents silent loss and leaves valid uploads unchanged.
