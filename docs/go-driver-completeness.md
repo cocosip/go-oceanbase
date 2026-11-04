@@ -40,11 +40,11 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 
 | ID / 原关联 | 已有能力与限制 | 正确处理 |
 | --- | --- | --- |
-| C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后仅独立 server PREPARE 的 1295 回退到 client 插值 | [配置/DSN](../config/dsn.go) 与 [执行回退](../internal/execution/execute.go) 已有本地协议回归；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL；真实服务端 1295 覆盖仍待 N |
+| C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后仅独立 server PREPARE 的 1295 回退到 client 插值 | [配置/DSN](../config/dsn.go) 与 [执行回退](../internal/execution/execute.go) 已有本地协议回归；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL；2026-11-03 在 4.4.2.2 MySQL 对 44 条语句做 server PREPARE，SHOW/SET/DDL/GRANT/XA 等全部成功，仅见 1146/1235，无 1295，见[复验](native-reset-and-probe-validation-2026-11-03.md)；真实服务端 1295 覆盖仍待外部 fixture，不扩展其他错误码 |
 | C08 / 原 G08、Q05/Q19 多语句 LongData | MySQL `PrepareClient` + `AllowMultiStatements` 支持有界一次性读入后字面量编码 | peer 及 `TestMySQLMultiStatementLongData` 实库通过：含引号、反斜杠、NUL、中文的长参数和第二结果；不扩展 Oracle PL/其他准备路径 |
 | C09 / 原 G09、Q20 pipeline | [TryNative](../internal/batch/native.go)仅选限定 scalar DML；SELECT/复杂值/流/framed 等顺序执行 | 性能/组合范围差距，不是 SQL 不能执行；N 对应子集可供扩展依据，Oracle piece-data 另见 U04 |
 | C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值受消息与物化预算限制；大对象另有 LOB/TableBlob 流式 API | 这是 Go `database/sql` Rows 与当前协议边界，不计为已确认客户端缺实现；如要新增普通列流 API，必须先定义独立的读取顺序、所有权、取消和消息分片契约 |
-| C11 / C17 Oracle warning 详情 | count 已有；automatic Oracle compilation-warning fixture now verifies positive count/preservation/clear in the acceptance tool; [ReadWarnings](../internal/control/warnings.go) only provides MySQL details | 客户端/参考接口范围；当前依据不能证明“数据库没有任何 Oracle warning 详情能力” |
+| C11 / C17 Oracle warning 详情 | count 已有；automatic Oracle compilation-warning fixture now verifies positive count/preservation/clear in the acceptance tool; [ReadWarnings](../internal/control/warnings.go) only provides MySQL details | 客户端/参考接口范围；2026-11-03 探测：Oracle 模式 `SHOW WARNINGS`/`SHOW COUNT(*) WARNINGS` 返回 900/42000，`DBA_ERRORS` 返回 942/42S02，本目标没有可读明细入口（见[复验](native-reset-and-probe-validation-2026-11-03.md)）；不新增猜测式实现 |
 
 ## 官方明确不支持的形态
 
@@ -78,6 +78,8 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | B16 / native PL RECORD and ANYDATA OUT | The tested combined calls with NULL output placeholders return 600/0A000 (-4007) before typed output, confirmed by raw wire and public `sql.Out` regressions | PL-local RECORD/ANYDATA and RECORD metadata work. Other output binding contracts and native input shapes remain unverified |
 | B17 / spatial reference 4326 | Oracle SDO point insert returns 13029/HY000; MySQL GIS functions return 3548/SR001; both reproduce with pure SQL controls | SRID 0 point/GIS round trips work; no driver conversion or dictionary modification is applied |
 | B18 / anonymous LOB collection headers | Raw Oracle codes 210/211 with inline BLOB/CLOB member bodies return 600/HY000 | The same named collection payloads succeed and store independent expected content; rejection is specific to the tested anonymous headers |
+| B19 / named-region session timezone | Oracle session initialization and independent `ALTER SESSION SET TIME_ZONE='America/New_York'` both return 1882/HY000 | Explicit -04:00/-05:00 LTZ/TZ storage/readback retains nine digits; positive named-region DST acceptance remains open |
+| B20 / package OBJECT parameter owner | Raw `ALL_ARGUMENTS.TYPE_OWNER` for the tested package OBJECT parameter is a padded numeric identifier, confirmed independently of the public metadata API | Metadata preserves the raw field; TYPE_NAME and the actual ALL_TYPES owner are separately checked. The numeric token is not assumed to be a user ID or fabricated into a schema name |
 
 ## 权限、身份与环境不足
 
@@ -103,8 +105,8 @@ A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边�
 | V04 / P02–P05 协议/trace | 帧、CRC、协商/trace子集 | 实际layer/双向帧/控制/collector，前提ENV02，三类checksum分开 |
 | V05 / X03–X04 故障/XA | Both modes pass real local COMMIT receipt loss with independent committed effects; MySQL XA PREPARE/COMMIT receipt loss and explicit recovery pass | Oracle combined-XA receipt loss, node/proxy/process crashes and durable coordinator restart remain open; a real complete OK is consumed before EOF, not a simulated server acknowledgement |
 | V06 / pool/endurance/performance | Four workers x128 rounds per mode: 512 transactions each, 256 committed, zero retained leases; acceptance tool and affected race checks pass | Finite roughly seven-second runs do not prove endurance, server handle trends or throughput; retain real workload acceptance |
-| V07 / M01/Q07 元数据 | 目录计划/历史子集 | 最小权限、overload、引用身份/precision等；A01/B12另列 |
-| V08 / T08–T11 时间/编码 | 精确时间、national与已有charset | 零日期SQL_MODE、DST/LTZ/地区/存储；B04/B09不变成待写codec |
+| V07 / M01/Q07 元数据 | Live package overload identities, parameter/return directions, named type references and OBJECT/collection precision pass | Restricted-account and remaining reference/filter combinations remain open; package parameter TYPE_OWNER has raw numeric server shape B20; A01/B12 remain separate |
+| V08 / T08–T11 时间/编码 | Both prepare modes pass MySQL zero-date SQL_MODE boundaries and Oracle LTZ/TZ nine-digit independent storage around DST dates under numeric offsets | Named-region initialization and pure SQL reject with 1882 (B19), so positive region/DST deployment acceptance remains open; B04/B09 remain separate |
 | V09 / Q10–Q11/T13–T15 资源组合 | cursor/LOB/OBJECT/OUT子集 | 提前Close/取消/尾包/预算/事务池代际/可见性；B02/B03/B06/B07/B08逐形状排除 |
 | V10 / C09/C11–C13/Q18/Q22 会话 | Both modes pass the automatic locked-row network-read-timeout fixture, rejected reuse of the old pinned session and replacement connection | Other identity/interruption/partial-effect and borrower-isolation combinations remain open; A02 is separate |
 | V11 / platform/version/CI | Current Windows full suites pass on Go 1.26.0 and 1.27.2; native ABI fixtures/race checks and Linux amd64/arm64 plus Darwin arm64 cross-build pass | Native Linux/macOS runtime and hosted CI acceptance remain open; no WSL/Docker runtime available locally |
@@ -146,6 +148,7 @@ This table separates confirmed client boundaries from missing protocol or deploy
 - 官方链接见[能力矩阵依据](go-driver-capabilities.md#依据与维护)；本次重新读取MySQL字符集、Oracle类型、XMLTYPE、ANYDATA、向量、ARRAY相关正文。
 - H20：[Go发布实库报告](release-validation-2026-10-20.md)；H24：[Go浮点专项](binary-double-live-validation-2026-10-24.md)。只引用明确子集，历史成功不是本次重跑。
 - H03：[2026-11-03 Go直连复验](live-validation-2026-11-03.md)：G01/G03/G04/G05a/G07a/G07b、B14 规避、SDO 修复、MySQL 扩展类型、PL 前提及本地检查；不包括所有代理/平台组合。
+- H03R：[原生重置与剩余探测复验](native-reset-and-probe-validation-2026-11-03.md)：COM_RESET_CONNECTION 双模式成功但驱动保持淘汰、C02 44 条语句无 1295、Oracle warning 无明细入口、本轮 obtest/集成基线。
 - N：obconnector-dotnet/docs/obconnector-dotnet-completeness.md及obconnector-dotnet-missing-features-roadmap.md的D-02d1～d3、D-04a1/a2/e、D-05、D-07、D-08m、D-09、D-12a/b/c、目录/RECORD段落；本次核对ComplexLobInputTests.cs、XmlProbeTests.cs、VectorArrayStringWireTests.cs的实际用例形状，不记作Go实测。
 - Java：核对ComplexUtil.storeComplexAttrData成员writer、createSQLXML客户端拒绝和OB20 reader压缩长度拒绝；没有把Java拒绝当服务端不支持证明。
 
