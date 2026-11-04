@@ -22,9 +22,6 @@ func TestChangeUserFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeMySQL {
-			continue
-		}
 		t.Run(p.Name, func(t *testing.T) { integrationTestChangeUserFailure(t, p) })
 	}
 }
@@ -45,20 +42,30 @@ func integrationTestChangeUserFailure(t *testing.T, p integrationtest.Profile) {
 	}
 	db := integrationtest.OpenProfile(t, p)
 	ctx := integrationtest.TestContext(t)
+	probe := sessionProbeSQL
+	if p.Mode == oceanbase.ModeOracle {
+		probe += integrationtest.OracleDualSuffix
+	}
 	pinned, err := db.Conn(ctx)
 	if err != nil {
 		integrationtest.FailOperation(t, "pin identity session", err)
 	}
 	defer func() { _ = pinned.Close() }()
 	var alive int
-	if err = pinned.QueryRowContext(ctx, "SELECT 1").Scan(&alive); err != nil {
+	if err = pinned.QueryRowContext(ctx, probe).Scan(&alive); err != nil {
 		integrationtest.FailOperation(t, "probe original session", err)
 	}
 	err = oceanbase.ChangeUser(ctx, pinned, oceanbase.Credentials{User: next.User, Password: next.Password + "-wrong"}, next.Database)
-	if !integrationtest.OnlyServerErrorCode(err, 1045) {
+	// MySQL maps invalid credentials to 1045; the Oracle-mode target reports
+	// OBE-01017 as server code 600 with state 42000.
+	want := uint32(1045)
+	if p.Mode == oceanbase.ModeOracle {
+		want = 600
+	}
+	if !integrationtest.OnlyServerErrorCode(err, want) {
 		t.Fatal("rejected reauthentication did not preserve the server code:", err)
 	}
-	if err = pinned.QueryRowContext(ctx, "SELECT 1").Scan(&alive); !errors.Is(err, driver.ErrBadConn) {
+	if err = pinned.QueryRowContext(ctx, probe).Scan(&alive); !errors.Is(err, driver.ErrBadConn) {
 		t.Fatal("failed reauthentication kept the pinned session usable:", err)
 	}
 	if err = db.PingContext(ctx); err != nil {

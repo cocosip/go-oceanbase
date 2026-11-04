@@ -16,6 +16,9 @@ import (
 	integrationtest "github.com/cocosip/go-oceanbase/internal/integrationtest"
 )
 
+// sessionProbeSQL is the mode-neutral scalar query; Oracle mode appends OracleDualSuffix.
+const sessionProbeSQL = "SELECT 42"
+
 func integrationTestWarningDetails(t *testing.T, p integrationtest.Profile) {
 	t.Helper()
 	key := strings.TrimSuffix(p.Env, "_DSN") + "_WARNING_SQL"
@@ -98,9 +101,9 @@ func integrationTestChangeUserSession(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "pin identity session", err)
 	}
 	defer func() { _ = pinned.Close() }()
-	identitySQL, probe := "SELECT CURRENT_USER()", "SELECT 42"
+	identitySQL, probe := "SELECT CURRENT_USER()", sessionProbeSQL
 	if p.Mode == oceanbase.ModeOracle {
-		identitySQL, probe = "SELECT USER FROM dual", "SELECT 42 FROM dual"
+		identitySQL, probe = "SELECT USER FROM dual", sessionProbeSQL+integrationtest.OracleDualSuffix
 	}
 	var original string
 	if err = pinned.QueryRowContext(ctx, identitySQL).Scan(&original); err != nil {
@@ -188,7 +191,7 @@ func integrationTestSessionOperations(t *testing.T, p integrationtest.Profile) {
 	if err != nil || got != info {
 		integrationtest.FailOperation(t, "read client info", err)
 	}
-	query := "SELECT 42"
+	query := sessionProbeSQL
 	if p.Mode == oceanbase.ModeOracle {
 		query += integrationtest.OracleDualSuffix
 	}

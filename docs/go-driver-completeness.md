@@ -86,7 +86,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 | ID / 关联能力 | 已记录的前提不足 | 分类边界 |
 | --- | --- | --- |
 | A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000 | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
-| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权由 MySQL root 创建一次性只读身份：ChangeUser 成功路径与错误密码 1045（弃用连接、池恢复）实库通过；Oracle 租户 RISDB 的 CREATE USER 仍返回 1031 | MySQL 身份切换已验收（fixture 已删除，复跑需外部第二身份）；Oracle/ProxyUser 仍缺授权 fixture，不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md) |
+| A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权用一次性第二身份实库验收：MySQL 成功路径+错误密码 1045、Oracle 成功路径+错误密码 600/42000 均通过，失败均弃用连接且池恢复 | MySQL 与 Oracle 的 ChangeUser 已验收（fixture 已删除，复跑需外部第二身份）；ProxyUser 的 O7L/CONNECT THROUGH 授权与目标身份仍缺 fixture；不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md) |
 | ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
 | ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [fresh results](remaining-validation-2026-11-03.md) |
 | ENV03 / C14–C15 ODP/多节点/OCP/TNS | H20仅直连单端点 | 缺真实代理/控制面/集群，单上游relay不证明HA |
