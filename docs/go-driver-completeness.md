@@ -87,7 +87,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 
 | ID / 关联能力 | 已记录的前提不足 | 分类边界 |
 | --- | --- | --- |
-| A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000 | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
+| A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000；用户表同义词已实库验收：`TestOracleSynonymUsage` 创建、经同义词读写、`MetadataSynonyms`/`MetadataTables` 均通过（2026-11-03） | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
 | A02 / C09/C12 另一身份/代理 | 2026-11-03 经授权用一次性第二身份实库验收：MySQL 成功路径+错误密码 1045、Oracle 成功路径+错误密码 600/42000 均通过，失败均弃用连接且池恢复。第二套目标复验：一次性 MySQL/Oracle 第二身份下 ChangeUser 与 `obtest` change-user 再次通过；经 SYS 授权创建一次性代理账号/`GRANT CONNECT THROUGH` 后，Oracle 初始 ProxyUser 登录通过（`CURRENT_USER`=目标、`PROXY_USER`=代理账号），但 `COM_CHANGE_USER` 未应用代理目标（B21） | MySQL 与 Oracle 的 ChangeUser 已验收；ProxyUser 初始登录已验收，代理重认证是目标侧限制；不修改业务账号权限来制造通过；见[身份验收](change-user-acceptance-2026-11-03.md)与[第二套目标复验](live-validation-2026-11-03-second-target.md) |
 | ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
 | ENV02 / P02-P05 protocol/trace | Current direct targets pass standard/auto, OB20/checksum, new metadata and proxy-checksum query subsets in both modes; required compression fails negotiation | Compression needs an offering endpoint; ODP/collector and broader framed workloads remain separate. See [fresh results](remaining-validation-2026-11-03.md) |
