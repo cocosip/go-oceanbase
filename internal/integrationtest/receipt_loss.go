@@ -23,7 +23,7 @@ import (
 type ReceiptLossConn struct {
 	net.Conn
 	armed, acknowledged atomic.Bool
-	combined            atomic.Bool
+	combined, text      atomic.Bool
 	pending             []byte
 	terminated          bool
 }
@@ -36,6 +36,13 @@ func (c *ReceiptLossConn) Arm() { c.armed.Store(true) }
 // prepare/execute response whose trailing native OK is the receipt to drop.
 func (c *ReceiptLossConn) ArmCombined() {
 	c.combined.Store(true)
+	c.armed.Store(true)
+}
+
+// ArmTextResult selects the next read and expects a text-protocol SELECT
+// response whose final rowset EOF is the receipt to drop.
+func (c *ReceiptLossConn) ArmTextResult() {
+	c.text.Store(true)
 	c.armed.Store(true)
 }
 
@@ -56,7 +63,9 @@ func (c *ReceiptLossConn) Read(p []byte) (int, error) {
 		return c.Conn.Read(p)
 	}
 	var err error
-	if c.combined.Load() {
+	if c.text.Load() {
+		err = c.captureTextResult()
+	} else if c.combined.Load() {
 		err = c.captureCombined()
 	} else {
 		err = c.captureCommandOK()
@@ -180,6 +189,62 @@ func (c *ReceiptLossConn) captureCombined() error {
 	}
 	c.acknowledged.Store(true)
 	return nil
+}
+
+// captureTextResult consumes a text-protocol SELECT response and drops only the
+// final rowset EOF. The column-count, definition and optional metadata EOF are
+// forwarded so the driver can decode the rows.
+func (c *ReceiptLossConn) captureTextResult() error {
+	defer func() { _ = c.Close() }()
+	type packet struct{ raw, body []byte }
+	var held *packet
+	read := func() (packet, error) {
+		if held != nil {
+			p := *held
+			held = nil
+			return p, nil
+		}
+		raw, body, err := readFixturePacket(c.Conn)
+		if err != nil {
+			return packet{}, err
+		}
+		return packet{raw: raw, body: body}, nil
+	}
+	appendPacket := func(p packet) { c.pending = append(c.pending, p.raw...) }
+	isEOF := func(p packet) bool { return len(p.body) > 0 && p.body[0] == 0xfe }
+	count, err := read()
+	if err != nil {
+		return err
+	}
+	if len(count.body) != 1 || count.body[0] == 0 || count.body[0] == 0xfe {
+		return errors.New("receipt-loss fixture expected a text column count")
+	}
+	appendPacket(count)
+	for i := 0; i < int(count.body[0]); i++ {
+		p, err := read()
+		if err != nil {
+			return err
+		}
+		appendPacket(p)
+	}
+	if p, err := read(); err != nil {
+		return err
+	} else if isEOF(p) {
+		appendPacket(p)
+	} else {
+		held = &p
+	}
+	for {
+		p, err := read()
+		if err != nil {
+			return err
+		}
+		if isEOF(p) {
+			c.acknowledged.Store(true)
+			return nil
+		}
+		appendPacket(p)
+	}
 }
 
 func readFixturePacket(conn net.Conn) (raw, body []byte, err error) {
