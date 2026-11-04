@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/cocosip/go-oceanbase/config"
+	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/command"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/testpeer"
 	"github.com/cocosip/go-oceanbase/internal/valuecodec"
+	"github.com/cocosip/go-oceanbase/internal/valueformat"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 	"github.com/cocosip/go-oceanbase/metadata"
 )
@@ -87,8 +89,8 @@ func TestDescriptorSynonymAndBoundary(t *testing.T) {
 	entries := []dictionaryEntry{
 		{metadata.MetadataTypes, "S", descriptorAlias, nil},
 		{metadata.MetadataSynonyms, "S", descriptorAlias, [][]string{{"", "S", descriptorAlias, "S", "T", ""}}},
-		{metadata.MetadataTypes, "S", "T", [][]string{{"", "S", "T", "OBJECT", "1", "1", "1"}}},
-		{metadata.MetadataTypeAttributes, "S", "T", [][]string{{"", "S", "T", "N", "1", "NUMBER", "SYS", "", "", ""}}},
+		{metadata.MetadataTypes, "S", "T", [][]string{{"", "S", "T", valueformat.TypeNameObject, "1", "1", "1"}}},
+		{metadata.MetadataTypeAttributes, "S", "T", [][]string{{"", "S", "T", "N", "1", "NUMBER", descriptorSystemSchema, "", "", ""}}},
 	}
 	ctx, _, op := dictionaryOperation(t, 1<<16, entries)
 	var r Resolver
@@ -116,10 +118,10 @@ func TestDescriptorSynonymAndBoundary(t *testing.T) {
 func TestDescriptorBudget(t *testing.T) {
 	fields := make([][]string, 40)
 	for i := range fields {
-		fields[i] = []string{"", "S", "T", fmt.Sprintf("F%d", i), fmt.Sprint(i + 1), "NUMBER", "SYS", "", "", ""}
+		fields[i] = []string{"", "S", "T", fmt.Sprintf("F%d", i), fmt.Sprint(i + 1), "NUMBER", descriptorSystemSchema, "", "", ""}
 	}
 	ctx, s, op := dictionaryOperation(t, 10500, []dictionaryEntry{
-		{metadata.MetadataTypes, "S", "T", [][]string{{"", "S", "T", "OBJECT", "40", "1", "1"}}},
+		{metadata.MetadataTypes, "S", "T", [][]string{{"", "S", "T", valueformat.TypeNameObject, "40", "1", "1"}}},
 		{metadata.MetadataTypeAttributes, "S", "T", fields},
 	})
 	var r Resolver
@@ -152,4 +154,83 @@ func TestDescriptorResourceGuard(t *testing.T) {
 	}
 }
 
-const descriptorAlias = "ALIAS"
+const (
+	descriptorAlias        = "ALIAS"
+	descriptorSystemSchema = "SYS"
+	descriptorSDO          = "SDO_GEOMETRY"
+)
+
+func TestDescriptorSDOFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		unqualified bool
+		synonym     string
+		want        string
+	}{
+		{"ownerless", true, "", descriptorSystemSchema},
+		{"qualified", false, "", ""},
+		{"private-synonym", true, "S", "S"},
+		{"public-synonym", true, "PUBLIC", "S"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := []dictionaryEntry{{metadata.MetadataSynonyms, "S", descriptorSDO, nil}}
+			if tc.synonym != "S" {
+				entries = append(entries, dictionaryEntry{metadata.MetadataSynonyms, "PUBLIC", descriptorSDO, nil})
+			}
+			if tc.synonym != "" {
+				entries[len(entries)-1].rows = [][]string{{"", tc.synonym, descriptorSDO, "S", "T", ""}}
+			}
+			ctx, _, op := dictionaryOperation(t, 0, entries)
+			key := valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: descriptorSDO}
+			sys := key
+			sys.Schema = descriptorSystemSchema
+			local := key
+			local.Name = "T"
+			r := Resolver{cache: map[valuecodec.Key]*valuecodec.Descriptor{sys: {Key: sys}, local: {Key: local}}}
+			d, err := r.descriptorSynonymLocked(ctx, op, key, 0, make(map[valuecodec.Key]bool), tc.unqualified)
+			if tc.want == "" {
+				if !errors.Is(err, dberrors.ErrComplex) {
+					t.Fatal(d, err)
+				}
+			} else if err != nil || d.Key.Schema != tc.want {
+				t.Fatal(d, err)
+			}
+			if tc.synonym == "" && r.cache[key] != nil {
+				t.Fatal("SYS fallback polluted qualified lookup cache")
+			}
+		})
+	}
+}
+
+func TestDescriptorLocalSDOPrecedesFallback(t *testing.T) {
+	ctx, _, op := dictionaryOperation(t, 0, []dictionaryEntry{
+		{metadata.MetadataTypes, "S", descriptorSDO, [][]string{{"", "S", descriptorSDO, valueformat.TypeNameObject, "0", "1", "1"}}},
+		{metadata.MetadataTypeAttributes, "S", descriptorSDO, nil},
+	})
+	var r Resolver
+	d, err := r.Resolve(ctx, op, valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: descriptorSDO})
+	if err != nil || d.Key.Schema != "S" {
+		t.Fatal(d, err)
+	}
+}
+
+func TestDescriptorFieldBuiltinIdentity(t *testing.T) {
+	ctx, _, op := dictionaryOperation(t, 0, nil)
+	for _, schema := range []string{"", descriptorSystemSchema, "S"} {
+		const typ = "VARCHAR2(80)"
+		key := valuecodec.Key{Mode: config.ModeOracle, Schema: schema, Name: typ}
+		child := &valuecodec.Descriptor{Key: key}
+		r := Resolver{cache: map[valuecodec.Key]*valuecodec.Descriptor{key: child}}
+		f, err := r.descriptorFieldLocked(ctx, op, "V", typ, schema, 0, make(map[valuecodec.Key]bool))
+		if err != nil {
+			t.Fatal(schema, err)
+		}
+		if schema == "S" {
+			if f.Type != typ || f.Child != child {
+				t.Fatal("qualified user type identity changed", f)
+			}
+		} else if f.Type != "VARCHAR2" || f.Child != nil {
+			t.Fatal("parameterized builtin was not normalized", f)
+		}
+	}
+}

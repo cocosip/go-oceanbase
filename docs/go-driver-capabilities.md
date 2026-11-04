@@ -1,6 +1,6 @@
 # Go 驱动能力矩阵
 
-更新日期：2026-11-02。本文描述 **go-oceanbase 自身的公开能力与支持边界**；依据 OceanBase 官方文档、Connector/J 实现、.NET 驱动已有功能矩阵和本项目源码核对。归因与待办见[功能缺失与限制矩阵](go-driver-completeness.md)。已按本次复核拆分客户端、服务端、权限、部署与未知前提。
+更新日期：2026-11-03。本文描述 **go-oceanbase 自身的公开能力与支持边界**；依据 OceanBase 官方文档、Connector/J 实现、.NET 驱动已有功能矩阵、本项目源码及 OceanBase 4.4.2.2 直连实库核对。归因与待办见[功能缺失与限制矩阵](go-driver-completeness.md)。已按本次复核拆分客户端、服务端、权限、部署与未知前提。
 
 ## 阅读口径
 
@@ -20,10 +20,11 @@ Oracle 模式相关能力以具有该模式的产品版本/租户为前提；官
 
 | 标记 | 含义与限制 |
 | --- | --- |
-| SRC | 本次源码核对，入口见各行；没有执行该行实库用例 |
+| SRC | 源码核对，入口见各行；单独不能证明实库通过 |
 | L | 仓库存在本地单测、协议 peer 或故障用例；不是本次重跑结果，也不是服务端兼容性证明 |
 | H20 | [历史实库报告](release-validation-2026-10-20.md)：OceanBase 4.4.2.2 双模式直连；仅限报告列明场景 |
 | H24 | [浮点专项报告](binary-double-live-validation-2026-10-24.md)：双模式直连 float64 参数及 Oracle 数组绑定子集 |
+| H03 | [2026-11-03 Go 直连复验](live-validation-2026-11-03.md)：OceanBase 4.4.2.2 双模式；B14 规避无 skip、SDO 修复、扩展类型与 PL 前提按指定子集验收 |
 | V | 尚缺对应真实部署、类型形状或故障验收；可以与 H20/H24 同时存在 |
 
 H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**、Oracle **38 pass / 0 fail / 2 skip / 5 不适用**，每模式选择 45 场景。不能由此推导下表每行均通过。报告中的旧测试目录已经调整，当前集成测试分布在各 `internal/*` 包及其子目录；复验使用当前入口，不直接照搬历史路径。
@@ -62,7 +63,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | Q06 过程、函数、OUT/INOUT、RETURNING | 有实现 | 受限 | [Out / CursorOut](../call.go)、[调用实现](../internal/call)；MySQL 用同会话私有变量；Oracle 原生输出要求真实版本门槛；结果排空/清理后发布输出 | H20标量/过程子集；复杂方向逐项核实 | SRC/L/H20/V |
 | Q07 过程/语句参数元数据 | 有实现 | 受限 | [Metadata](../metadata.go)、[目录计划](../internal/catalog/metadata_sql_oracle.go)；语句元数据实际 prepare/close；不提供 .NET 式 DeriveParameters 自动创建参数对象，PL-only RECORD 不等于命名 SQL OBJECT | 目录V07、缺列参考B12、PL RECORD U02 | SRC/L/H20（目录子集）/V |
 | Q08 Rows、Scan、ColumnTypes、计数与自增 ID | 有实现 | 有实现 | [Rows](../internal/execution/rows.go)、[Execute](../execution.go)；扩展结果保留列标签/原始列与表身份；完整 uint64 ID 保留文本；聚合结果不猜逐项 ID；Oracle 不接受 ChangedRows | 模式决定计数/ID语义；历史子集H20 | SRC/L/H20 |
-| Q09 流式 Rows 与大字段 | 受限 | 受限 | 行迭代流式；普通字段/复杂值受消息及物化限额约束；大对象使用 [LOB](../lob.go)/[TableBlob](../internal/lob/table.go)，不能据此宣称任意列无限流式 | 客户端预算C10；大值目标能力另验 | SRC/L/H20/V |
+| Q09 流式 Rows 与大字段 | 受限 | 受限 | 行迭代流式；普通字段/复杂值受消息及物化限额约束；大对象使用 [LOB](../lob.go)/[TableBlob](../internal/lob/table.go)。Go `database/sql` Rows 不提供逐列无限流接口，因此该边界不计为已确认客户端缺实现 | 当前协议与标准 Rows 契约的客户端边界；大值目标能力另验 | SRC/L/H20/V |
 | Q10 显式 cursor、分页、滚动、可更新结果 | 受限 | 受限 | [OpenCursor](../cursor.go)、[游标实现](../internal/cursor)；静态快照有界；敏感游标仅指定 Oracle 版本/单表形状，以 ROWID 重查；更新要求可写事务、完整 PK 等 | H20敏感游标子集；锁/PK/版本有前提 | SRC/L/H20（含 Oracle 敏感刷新）/V |
 | Q11 REF CURSOR OUT / 子结果 | — | 受限 | [资源输出](../internal/call)、[物化](../internal/materialize/decoder.go)；OUT与binary子cursor有实现；text客户端拒绝；SELECT CURSOR指定服务端失败形状B03单列，不能推导所有cursor表达式不可用 | 过程OUT H20；SELECT CURSOR仅B03形状受限 | SRC/L/H20（过程OUT）/V |
 | Q12 REF CURSOR IN/INOUT | — | 当前范围排除 | 无参考输入writer契约，按X01排除；不能从OUT或scalar INOUT推导输入支持，也不能说服务器全面不支持 | X01/U03：无writer依据，不断言服务端无输入 | SRC/L（拒绝） |
@@ -87,28 +88,28 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | T02 DECIMAL / NUMBER / FLOAT 精度 | 有实现 | 有实现 | [Number](../types/number.go) 保留精确文本，Scan/元数据分开；不是用 float64 覆盖任意 NUMBER | 官方支持；实际precision/scale V07 | SRC/L/H20/V |
 | T03 FLOAT/DOUBLE、BINARY_FLOAT/BINARY_DOUBLE | 有实现 | 有实现 | float64 输入 DOUBLE wire 与握手能力配合；[专项](binary-double-live-validation-2026-10-24.md)验证存储/回读；旧服务器协商组合另验 | H24双模式float64子集，旧版本另验 | SRC/L/H20/H24/V |
 | T04 字符串、二进制、RAW、BLOB/TEXT 内容 | 有实现 | 有实现 | string/[]byte/[Raw](../types/scalar.go)，严格编码；Oracle 空串和目标容量由服务端语义决定；内容与 locator 分开 | 官方支持；空串/容量/编码按模式 | SRC/L/H20/V |
-| T05 ENUM/SET/GEOMETRY | 通用映射有实现 | — | [结果映射](../internal/valuecodec/text.go)：ENUM/SET文本、GEOMETRY原始bytes；通用输入与实际列/SRID归V13，无GIS领域模型不单独算缺失 | 官方MySQL类型；通用路径V13/SRID另验 | SRC/L/V |
-| T06 JSON | 通用映射有实现 | 专用映射未承诺 | MySQL type245结果校验UTF-8返回string，string输入交给服务端转换；没有Json专用Go类型/DOM不是缺功能；Oracle原生类型/wire不由MySQL通过推导 | MySQL官方类型；Oracle专用wire未证实 | SRC/L/H20（报告子集）/V |
-| T07 BIT / YEAR | 通用映射有实现 | — | BIT返回bytes、YEAR整数；[公开测试](../internal/valuecodec/public_scalar_compatibility_test.go)覆盖三执行路径/三种流；是否需要独立native输入身份归U07，先验V13真实存储 | MySQL官方类型；真实列/转换V13 | SRC/L/V |
+| T05 ENUM/SET/GEOMETRY | 通用映射有实现；GEOMETRY 指定实库通过 | — | ENUM/SET 文本、GEOMETRY 原始 bytes；H03 server/client 验 WKT 函数输入、完整 SRID/WKB 结果及 bytes 回绑、NULL；其他几何形状保留 V13 | 官方 MySQL 类型；无 GIS 模型不等于缺功能 | SRC/L/H03/V |
+| T06 JSON | string 通用映射；指定实库通过 | 专用映射未承诺 | MySQL type245 结果 UTF-8 string，输入由服务端转换；H03 server/client 的 JSON 列、JSON_EXTRACT、NULL 通过；Oracle 专用 wire 不由此推导 | 无专用 DOM 不算缺功能 | SRC/L/H03/V |
+| T07 BIT / YEAR | 通用映射；指定实库通过 | — | BIT bytes/YEAR 整数结果，H03 BIT(8) 整数输入、YEAR 存储与 NULL 通过；U07 指定子集不需要新增 writer | MySQL 官方类型；V13 边界保留 | SRC/L/H03/V |
 | T08 DATE/DATETIME/TIME、零日期 | 受限 | 受限 | [时间编码](../internal/valuecodec/temporal.go)、[time.Time 输入](../internal/valuecodec/binary.go)；MySQL 精度上限为微秒、Oracle DATE 含时间；ParseTime 不能表示的值拒绝；零日期依配置与服务端 SQL_MODE | 零日期SQL_MODE；TIME参考形状B13 | SRC/L/H20/V |
 | T09 TIMESTAMP、TZ/LTZ | TIMESTAMP有实现 | 受限 | [精确时间值](../types/temporal.go)；Oracle时间保留纳秒/偏移/地区，LTZ用会话墙钟；N指定named-region binary失败B09不否定数字偏移/text/LTZ | 官方支持；指定named-region binary参考B09 | SRC/L/H20/V |
 | T10 INTERVAL YM/DS | — | 有实现 | [IntervalYM/DS](../types/temporal.go)，原生与 client literal 路径；区分精度、符号和 NULL | 官方Oracle类型；精度/方向分别验 | SRC/L/H20/V |
 | T11 NCHAR/NVARCHAR2 | — | 受限 | [NString](../types/scalar.go)、`Session.NCharset`，scalar 输入/结果和限定复杂成员；不能覆盖任意 national collection 头 | 官方Oracle national类型；collection头U01 | SRC/L/H20/V |
-| T12 ROWID / UROWID | — | 有实现；实库待验收 | type209 结果仍按 ROWID 文本读取；`RowID` 保持 type253/CHARTOROWID；`URowID` 显式 type209/CAST，含 typed NULL、OUT/INOUT；G03 本地实现已补，结果元数据不猜 UROWID 名称 | 官方支持；新增长值存储/PL INOUT Go 入口未配置 DSN | SRC/L/H20（仅原 ROWID 子集）/V |
+| T12 ROWID / UROWID | — | 有实现；指定实库通过 | type209 结果仍按 ROWID 文本读取；`RowID` 保持 type253/CHARTOROWID；`URowID` 显式 type209/CAST，含 typed NULL、OUT/INOUT；G03 实库测试通过，结果元数据不猜 UROWID 名称 | 官方支持；证据覆盖 Oracle 4.4.2.2 直连子集 | SRC/L/H20/H03 |
 | T13 原生 BLOB/CLOB locator | — | 受限 | [OpenBlob/OpenClob](../lob.go)、[DBMS_LOB](../internal/lob/native.go)；固定 Conn/Tx、版本/locator 门槛；可分块读写/截断/临时释放，字符偏移有明确 Unicode 规则 | BLOB/CLOB支持；locator/版本/资源V09 | SRC/L/H20/V |
-| T14 命名 OBJECT/collection、描述缓存 | — | 受限 | [Object/Array](../types/complex.go)、[绑定](../internal/parameters/complex.go)、[codec](../internal/valuecodec/complex.go)有NUMBER/字符/RAW/DATE/嵌套等；已补命名BLOB/CLOB内容输入G05a（本地通过、Go实库待验）；已补 PrepareClient 命名复杂构造输入 G07b；原生binary TIMESTAMP/collection头先查U01；持久nested列B02、BLOB成员写列B06、根NULL输出B08分开 | 指定PL子集可用；持久列B02/写列B06/根NULL B08分开 | SRC/L/H20（binary/PL子集）/V |
-| T15 复杂值text、LOB/cursor成员 | — | 受限 | binary nested LOB结果物化已有；[入口](../internal/materialize/decoder.go)已补scalar/nested named OBJECT text结果G07a（本地通过、实库待验）；RAW/日期/LOB成员等坏payload或身份B07继续拒绝；locator/cursor专门输入尚缺依据U03 | scalar/nested text可用；坏成员形状B07分开 | SRC/L/H20（指定结果）/V |
+| T14 命名 OBJECT/collection、描述缓存 | — | 受限；指定实库子集通过 | [Object/Array](../types/complex.go)、[绑定](../internal/parameters/complex.go)、[codec](../internal/valuecodec/complex.go)有NUMBER/字符/RAW/DATE/嵌套等；命名BLOB/CLOB内容输入G05a、PrepareClient命名复杂构造输入G07b及复杂 OBJECT/collection PL 均完成实库验收；原生binary TIMESTAMP/collection头先查U01；持久nested列B02、BLOB成员写列B06、根NULL输出B08分开 | 指定 PL/构造器子集可用；持久列B02/写列B06/根NULL B08分开 | SRC/L/H20/H03 |
+| T15 复杂值text、LOB/cursor成员 | — | 受限；指定实库子集通过 | binary nested LOB结果物化已有；[入口](../internal/materialize/decoder.go)已补 scalar/nested named OBJECT text 结果 G07a，Oracle 实库测试通过；RAW/日期/LOB成员等坏 payload 或身份 B07 继续拒绝；locator/cursor 专门输入尚缺依据 U03 | scalar/nested text 可用；坏成员形状 B07 分开 | SRC/L/H20/H03 |
 | T16 LONG/LONG RAW/BFILE/NCLOB | — | 不承诺原生支持；兼容分支不作支持证据 | 官方[类型表][O4]明确不支持，归S01；现有NCLOB名称/locator分支和GetTypeInfo不表示目标可建列；H20 NCLOB902是负向记录 | S01官方明确不支持四个原生类型 | SRC/L/H20（负向） |
-| T17 XMLTYPE String列/函数结果 | — | 有实现；实库待验收 | ownerless/SYS XMLTYPE type160 按严格 UTF-8 string/NULL 解码，支持 text/binary，结果类型名 XMLTYPE；不误识别用户同名 OBJECT；G04 本地适配已补；string 参数仍沿既有路径 | 官方支持；Go 列/函数新入口未配置 DSN；PL OUT/INOUT 指定 B05 保留 | SRC/L/V；N仅参考 |
-| T18 VECTOR稠密向量 | 通用string路径已有，专项待验 | — | [官方类型][O11]；N列值/metadata为CHAR/String，Go的string绑定/文本解码可承载，归V14；没有专用向量codec不算已确认缺功能 | 官方支持；N的CHAR/String无需专用codec | SRC/V；N仅参考 |
-| T19 SQL/握手字符集 | 受限 | 受限 | [字符集实现](../internal/charset/charset.go)支持 utf8mb4、utf8/mb3、latin1、ASCII、binary、GBK、GB18030、GB18030_2022、HKSCS/HKSCS31、SJIS、Big5、DEC8、TIS620、GB2312、EUCKR；不在白名单的 client 编码拒绝 | G01本地映射已补；新实库待验；Oracle B04分开 | SRC/L/H20（指定编码）/V |
-| T20 结果/national编码 | 受限 | 受限 | [collation映射](../internal/charset/charset.go)、UTF16大端/小端及GB2312/EUCKR/SJIS/Big5/DEC8/TIS620严格映射已补（G01）；client、result、national和Oracle失败初始化B04分别判断 | G01已补本地路径，实库逐用途验；B04保留 | SRC/L/V |
+| T17 XMLTYPE String 列/函数结果 | — | 有实现；指定实库通过 | ownerless/SYS type160 严格 UTF-8 string/NULL，text/binary 与 XMLTYPE 元数据；H03 六种配置完整返回 XML+NULL 两行；B14 通过确切 4.4.2.2 通用 combined 版本 gate 规避；PL 输出 B05 独立 | 必需 OUT/RETURNING 路径保留；不根据 SQL 猜测/重放 | SRC/L/H03/B14 |
+| T18 VECTOR 稠密向量 | string 路径指定实库通过 | — | H03 VECTOR(3) string 存储/NULL、text/参数查询、CHAR/string metadata，server/client 均通过；维数坏值/函数组合仍属 V14 | [官方类型][O11]；不需先新增专用 codec | SRC/L/H03/V |
+| T19 SQL/握手字符集 | 受限 | 受限；MySQL 指定实库通过 | [字符集实现](../internal/charset/charset.go)支持 utf8mb4、utf8/mb3、latin1、ASCII、binary、GBK、GB18030、GB18030_2022、HKSCS/HKSCS31、SJIS、Big5、DEC8、TIS620、GB2312、EUCKR；`TestMySQLCharsets` 覆盖的字符集实库通过；不在白名单的 client 编码拒绝 | G01 实库证据覆盖 MySQL 列存储；Oracle B04 分开 | SRC/L/H20/H03 |
+| T20 结果/national编码 | 受限 | 受限；MySQL UTF16LE 结果实库通过 | [collation映射](../internal/charset/charset.go)、UTF16大端/小端及GB2312/EUCKR/SJIS/Big5/DEC8/TIS620严格映射已补（G01）；`TestMySQLUTF16LEResult` 通过；client、result、national和Oracle失败初始化B04分别判断 | G01 实库证据覆盖 MySQL UTF16LE 结果；Oracle B04 保留 | SRC/L/H20/H03 |
 | T21 表 BLOB 随机分块访问 | 受限 | 受限 | [OpenTableBlob](../lob.go)、[表 BLOB 实现](../internal/lob/table.go)；要求可确定 schema/基表/完整 PK，MySQL 用长度/子串读写，Oracle 复用 native Blob；修改要求可写事务及适用锁/引擎条件，普通 Conn 跨块读取不承诺快照 | H20子集；基表/PK/锁/引擎为前提 | SRC/L/H20（指定子集）/V |
-| T22 SDO_GEOMETRY | — | 通用Object/Array待验 | 官方[复合类型][O9]；N有generic OBJECT/ARRAY整列读取/受限输入，先验Go描述符/成员/NULL/SRID，归V17；无GIS专用模型本身不算缺失 | 官方复合类型，N通用路径可用，Go V17 | SRC/V；N仅参考 |
-| T23 ANYDATA | — | 无独立映射；前提待核实 | 官方[ANYDATA][O10]仅PL，不允许持久表列S02；N目标缺SYS.ANYDATA为B10；PL writer/描述归[U03](go-driver-completeness.md#u-series-status)，不把全部ANYDATA列为确定缺功能 | S02禁持久列；B10目标缺包；PL U03 | SRC/U；N仅参考 |
-| T24 SPARSEVECTOR | 目标语法/wire待核实 | — | 官方[向量文档][O11]示例是无维数SPARSEVECTOR，自V4.3.5 BP2起支持；N的SPARSEVECTOR(3)1064不证明类型不支持，归[U05](go-driver-completeness.md#u-series-status)，尚不确认需专用codec | 官方有支持；错误DDL不能证伪；U05 | SRC/U |
-| T25 MySQL SQL ARRAY | 通用string路径已有，专项待验 | — | 官方[ARRAY][O12]；N的ARRAY(INT)为CHAR/String，归V15；Go Array是Oracle collection而非此类型；默认值是官方限制S03 | 官方有支持；S03禁默认值；Go V15 | SRC/V；N仅参考 |
-| T26 RoaringBitmap | 通用bytes/SQL函数路径已有，专项待验 | — | 官方[位图][O13]；N为BLOB/bytes结果，rb_build_varbinary等函数写入可用，归V16；直接bytes绑定的1235是指定形状B11，不要求codec绕过 | 函数/bytes可用；直接bytes指定绑定B11 | SRC/V；N仅参考 |
+| T22 SDO_GEOMETRY | — | generic Object/Array 指定实库通过 | H03 polygon 输入、显式 prepare 整列读取、NULL SRID/POINT、数组成员通过；ownerless 仅在本地/同义词均不存在时回退 SYS；本地边界回归通过 | [复合类型][O9]；point/非 NULL SRID/空间操作保留 V17 | SRC/L/H03/V |
+| T23 ANYDATA | — | PL 服务端前提已验；无独立 typed 映射 | H03 SYS.ANYDATA 存在，PL ConvertNumber/GetNumber 数字回读通过；指定 SQL SELECT 形状 942 为 B10；Go typed descriptor/writer 仍归 U03 | [ANYDATA][O10] 限 PL；持久列 S02；不能再说当前目标缺包 | SRC/H03/U |
+| T24 SPARSEVECTOR | string 路径指定实库通过 | — | H03 无维数 SPARSEVECTOR、`{1:1,3:2}` 存储/NULL、CHAR/string metadata，server/client 与 text/参数路径通过；U05 基础子集关闭 | [向量文档][O11]；高维/非法输入/函数组合另验 | SRC/L/H03/V |
+| T25 MySQL SQL ARRAY | string 路径指定实库通过 | — | H03 ARRAY(INT) 存储/NULL、CHAR/string metadata，server/client 与 text/参数路径通过；不是 Oracle Array API；空/嵌套/域边界保留 V15 | [ARRAY][O12]；默认值限制 S03 | SRC/L/H03/V |
+| T26 RoaringBitmap | bytes/SQL 函数路径指定实库通过 | — | H03 BLOB/bytes、函数输入与回绑、空/NULL/uint64 最大值通过；直接 bytes 绑定返回 1235，B11 skip 单列 | [位图][O13]；函数路径可用 | SRC/L/H03/B11 |
 
 ## 事务、协议、元数据与交付
 
@@ -121,7 +122,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | P01 标准包、EOF、逻辑包边界 | 双模式有实现，校验序号/长度/截断，资源与结果预算有界 | 标准协议已用；不是所有畸形路径实库验收 | [wire](../internal/wire/packet.go)、[command](../internal/command)；SRC/L/H20 |
 | P02 标准 zlib 压缩 | 依真实协商，auto 可回退；有帧编码/解码及 Java 互操作证据，不等于真实服务已使用压缩 | 历史端点未提供压缩ENV02，不是产品不支持 | [compress](../internal/wire/compress.go)、[互操作用例](../internal/wire/compression_java_test.go)；SRC/L/H20（回退）/V |
 | P03 OB20、CRC、proxy checksum、新 metadata | 有实现，各能力分别协商；OB20 CRC、proxy checksum、SQL checksum 是不同能力 | 真实协商端点ENV02；常量不等于部署通过 | [OB20](../internal/wire/ob20.go)、[协议配置](../config/protocol.go)；SRC/L/V |
-| P04 Oracle PrepareExecute、SQL checksum | 受限：PrepareExecute 依真实版本 ≥2.2.76，普通执行 SQL checksum 依 ≥4.1.2；相关开关显式开启，不绕过版本/模式检查 | 真实版本/能力门槛，不以配置覆盖 | [执行选项](../config/execution_options.go)、[native statement](../internal/statement/native.go)；SRC/L/H20/H24/V |
+| P04 Oracle PrepareExecute、SQL checksum | PrepareExecute 依真实版本 ≥2.2.76；确切 4.4.2.2 通用可选优化禁用以规避 B14；普通 SQL checksum 依 ≥4.1.2 | 必需 native OUT/RETURNING 保留原版本 gate，实库回归通过；可选开关不绕过门槛 | [执行选项](../internal/statement/options.go)；SRC/L/H03/B14/V |
 | P05 Full Link Trace | 有协商/extra-info/采样控制/trace-span 信息子集；需 OB20 与目标支持；客户端事件不是服务器 trace 或 collector 验收 | 服务端/代理FLT与collector前提ENV02 | [trace](../internal/diagnostic/trace.go)、[wire trace](../internal/wire/trace.go)；SRC/L/V |
 | P06 压缩OB20、proxy reroute | 当前客户端/协议范围排除X03；Java压缩长度拒绝只证明该Java reader的边界，不能据此断言OceanBase产品整体不支持 | X03当前范围，服务端普遍结论未建立 | [兼容性条件](go-driver-compatibility-matrix.md)；SRC/U |
 | M01 数据库、列、键、索引、权限、过程、UDT 元数据 | 双模式目录计划有实现，Oracle UDT/同义词与 MySQL 目录差异保留；不存在的 Oracle catalog 返回空；权限错误不伪造为空成功 | 权限A01/目录参考B12/元数据V07 | [Metadata API](../metadata.go)、[catalog](../internal/catalog)；SRC/L/H20（子集）/V |

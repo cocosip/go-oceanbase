@@ -64,6 +64,14 @@ func TestPrepareExecuteGate(t *testing.T) {
 	}{
 		{config.ModeOracle, "2.2.76", true, true}, {config.ModeOracle, "2.2.74", true, false},
 		{config.ModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", true, true},
+		{config.ModeOracle, "4.4.2.2", true, false},
+		{config.ModeOracle, "v4.4.2.2", true, false},
+		{config.ModeOracle, "5.7.25-OceanBase-v4.4.2.2", true, false},
+		{config.ModeOracle, "OceanBase 4.4.2.2 (build)", true, false},
+		{config.ModeOracle, "4.4.2.2.1", true, true},
+		{config.ModeOracle, "4.4.2.20", true, true},
+		{config.ModeOracle, "4.4.2.3", true, true},
+		{config.ModeOracle, "4.4.2", true, true},
 		{config.ModeOracle, "", true, false}, {config.ModeMySQL, testNativeVersion, true, false}, {config.ModeOracle, testNativeVersion, false, false},
 	} {
 		op := testOperation(t, config.Config{Execution: config.ExecutionOptions{PrepareExecute: tc.enabled}}, tc.mode, tc.version)

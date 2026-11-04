@@ -73,3 +73,20 @@ func TestComplexScalarDecode(t *testing.T) {
 		t.Fatal("RAW aliases response data", value, err)
 	}
 }
+
+func TestComplexBuiltinName(t *testing.T) {
+	for _, tc := range []struct {
+		input, want string
+	}{
+		{valueformat.TypeNameNumber + "(38,9)", valueformat.TypeNameNumber},
+		{valueformat.TypeNameVarchar2 + "(80)", valueformat.TypeNameVarchar2},
+		{valueformat.TypeNameRaw + "(20)", valueformat.TypeNameRaw},
+		{valueformat.TypeNameTimestamp + "(9)", valueformat.TypeNameTimestamp},
+		{valueformat.TypeNameTimestamp + " WITH TIME ZONE", ""},
+		{"USER_DEFINED_TYPE", ""},
+	} {
+		if got := ComplexBuiltinName(tc.input); got != tc.want || ComplexBuiltinType(tc.input) != (tc.want != "") {
+			t.Fatalf("ComplexBuiltinName(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}

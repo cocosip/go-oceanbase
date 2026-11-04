@@ -17,6 +17,8 @@ import (
 	"github.com/cocosip/go-oceanbase/metadata"
 )
 
+const systemTypeSchema = "SYS"
+
 // Resolver caches immutable descriptors for one outer command on one session.
 type Resolver struct {
 	cache map[valuecodec.Key]*valuecodec.Descriptor
@@ -121,7 +123,8 @@ func (r *Resolver) descriptorLocked(ctx context.Context, op *session.Operation, 
 	if depth > valueformat.MaxComplexDepth || visiting[key] || !valueformat.Identifier(key.Name) {
 		return nil, dberrors.ErrComplex
 	}
-	if key.Schema == "" {
+	unqualified := key.Schema == ""
+	if unqualified {
 		sets, err := QueryRows(ctx, op, Query{SQL: "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL"})
 		if err != nil {
 			return nil, err
@@ -148,7 +151,7 @@ func (r *Resolver) descriptorLocked(ctx context.Context, op *session.Operation, 
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return r.descriptorSynonymLocked(ctx, op, key, depth, visiting)
+		return r.descriptorSynonymLocked(ctx, op, key, depth, visiting, unqualified)
 	}
 	if len(rows) != 1 || Text(rows[0][1]) != key.Schema || Text(rows[0][2]) != key.Name {
 		return nil, dberrors.ErrComplex
@@ -196,12 +199,15 @@ func (r *Resolver) cacheDescriptor(key valuecodec.Key, d *valuecodec.Descriptor)
 
 func (r *Resolver) descriptorFieldLocked(ctx context.Context, op *session.Operation, name, typ, schema string, depth int, visiting map[valuecodec.Key]bool) (valuecodec.Field, error) {
 	f := valuecodec.Field{Name: name, Type: typ}
-	if schema != "" && schema != "SYS" || !valuecodec.ComplexBuiltinType(typ) {
-		var err error
-		f.Child, err = r.descriptorLocked(ctx, op, valuecodec.Key{Mode: op.Protocol().Mode, Schema: schema, Name: typ, Version: 0}, depth+1, visiting)
-		return f, err
+	if schema == "" || schema == systemTypeSchema {
+		if builtin := valuecodec.ComplexBuiltinName(typ); builtin != "" {
+			f.Type = builtin
+			return f, nil
+		}
 	}
-	return f, nil
+	var err error
+	f.Child, err = r.descriptorLocked(ctx, op, valuecodec.Key{Mode: op.Protocol().Mode, Schema: schema, Name: typ, Version: 0}, depth+1, visiting)
+	return f, err
 }
 
 // AnonymousDescriptor constructs a supported builtin collection descriptor.
@@ -262,7 +268,7 @@ func (r *Resolver) DescribeColumns(ctx context.Context, op *session.Operation, c
 	return nil
 }
 
-func (r *Resolver) descriptorSynonymLocked(ctx context.Context, op *session.Operation, key valuecodec.Key, depth int, visiting map[valuecodec.Key]bool) (*valuecodec.Descriptor, error) {
+func (r *Resolver) descriptorSynonymLocked(ctx context.Context, op *session.Operation, key valuecodec.Key, depth int, visiting map[valuecodec.Key]bool, unqualified bool) (*valuecodec.Descriptor, error) {
 	// Local types precede private and PUBLIC synonyms. Remote links are never followed.
 	for _, schema := range []string{key.Schema, "PUBLIC"} {
 		synonyms, e := r.metadata(ctx, op, metadata.MetadataSynonyms, schema, key.Name)
@@ -281,6 +287,12 @@ func (r *Resolver) descriptorSynonymLocked(ctx context.Context, op *session.Oper
 			r.cacheDescriptor(key, d)
 		}
 		return d, e
+	}
+	// Ownerless SDO metadata uses SYS only after local types and synonyms are absent.
+	if unqualified && key.Name == "SDO_GEOMETRY" && key.Schema != systemTypeSchema {
+		target := key
+		target.Schema = systemTypeSchema
+		return r.descriptorLocked(ctx, op, target, depth+1, visiting)
 	}
 	return nil, dberrors.ErrComplex
 }

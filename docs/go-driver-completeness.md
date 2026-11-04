@@ -1,6 +1,6 @@
 # Go 驱动功能缺失与限制矩阵
 
-更新日期：2026-11-02。已重新核对[能力矩阵](go-driver-capabilities.md)、Go 实现、官方文档及 Java/.NET 的成功和失败记录。**客户端缺实现、客户端范围限制、服务端明确不支持、指定目标拒绝、权限不足、环境未具备、尚未验证、依据不足**分别列出，不合并计算“缺失功能数”。
+更新日期：2026-11-03。已重新核对[能力矩阵](go-driver-capabilities.md)、Go 实现、官方文档及 Java/.NET 的成功和失败记录，并使用指定 OceanBase 4.4.2.2 直连实库复验 G 项。**客户端缺实现、客户端范围限制、服务端明确不支持、指定目标拒绝、权限不足、环境未具备、尚未验证、依据不足**分别列出，不合并计算“缺失功能数”。
 
 ## 分类规则
 
@@ -18,22 +18,22 @@
 
 两个维度独立：Go 没有 writer 与目标拒绝某操作可同时成立，但后者不能作为盲目开发理由。同名类型、错误码、单个 SDK 前置拒绝均不能证明全部服务端形态不支持。没有专用 Go 类型/codec，也不等于 string/bytes 通用路径不能完成工作。
 
-**来源口径**：H20/H24 为 Go 历史实库报告；N 为 .NET 文档和用例中的参考实测记录，必要时含 Java 对照，**本次没有用 Go 重跑**。N 可证明某个子集可实现或限定服务端前提，不能记作 Go 实测通过/失败。索引见文末。
+**来源口径**：H20/H24 为 Go 历史实库报告；H03 为 [2026-11-03 Go 直连实库复验](live-validation-2026-11-03.md)。N 为 .NET 文档和用例中的参考实测记录，必要时含 Java 对照；仅标 N 的服务端失败形状本次没有用 Go 重跑。N 可证明某个子集可实现或限定服务端前提，不能记作 Go 实测通过/失败。索引见文末。
 
 ## 已确认的客户端实现差距
 
-本轮确认的 G01/G03/G04/G05a/G07a/G07b 六个客户端实现子集均已补齐，当前没有尚待编码的已确认 G 项，详见下表。这不表示全部类型、方向、版本或部署均已支持；参考 SDK 成功和本地测试不能替代 Go 实库验收。C 类仍是客户端范围限制/可选扩展，U 类已拆出可确认的客户端边界，但服务端归因仍需调查，S/B/A/ENV/V/X 不合并为客户端缺实现。
+本轮确认的 G01/G03/G04/G05a/G07a/G07b 六个客户端实现子集均已补齐，并完成对应 Go 实库验收，初始 G 表没有尚待编码项；后续已确认新字符集仍缺客户端映射（U06），普通 RECORD/ANYDATA 原生参数路径仍待协议实现与验证（U02/U03），详见下表。这不表示全部类型、方向、版本或部署均已支持；实库结果只覆盖表中明确的形状。C 类仍是客户端范围限制/可选扩展，U 类已拆出可确认的客户端边界，S/B/A/ENV/V/X 不合并为客户端缺实现。
 
-## 已补实现，实库待验收
+## 已补实现并完成指定实库验收
 
-| ID / 关联能力 | 本次实现与本地证据 | 服务端/验收边界 |
+| ID / 关联能力 | 本次实现与本地/实库证据 | 服务端/验收边界 |
 | --- | --- | --- |
-| G01 / T19–T20 字符集 | 已补 SJIS/Big5/DEC8/TIS620/GB2312/EUCKR 严格编码、握手和结果 collation，UTF16LE 结果解码及列长度；修正 x/text 与 OceanBase 映射/别名差异，完整单字节/双字节解码摘要及所有有效字符无损回编码、本地公开 SQL/参数/national/握手路径覆盖 | 新增 MySQL 存储/UTF16LE 实库测试入口，当前未配置 DSN，未获得新实库通过；Oracle 指定会话初始化拒绝仍归 B04，未知新字符集仍归 U06；UTF16LE 不开放 SQL client |
-| G03 / T12 显式 UROWID 参数 | 已补 `URowID`/`sql.Null[URowID]`/nil `*URowID`、Oracle type209 typed NULL、client CAST、OUT/INOUT 推导与显式 Type；公开 SQL peer 覆盖普通 prepare 类型复用、client/combined 及输出方向；MySQL/坏值/长度在发送前拒绝 | 新增直连/代理长 ROWID 回绑 UROWID 列、NULL 复用和 PL INOUT 入口，当前 DSN 未配置全部跳过；type209 结果仍按 ROWID 元数据读取，未猜测 UROWID 结果名；批处理沿既有资格判定顺序回退 |
-| G04 / T17 XMLTYPE String 结果 | 已补 ownerless/SYS XMLTYPE type160 身份识别、text/binary 长度编码和严格 UTF-8 string/NULL、XMLTYPE 元数据；跳过 UDT 描述且不误识别用户同名类型，覆盖 mixed OBJECT/XML 结果 | 直连/代理列存储/函数结果测试入口未配置 DSN，未获得 Go 实库通过；无 XML DOM/SQLXML API；PL OUT/INOUT 指定目标限制 B05 继续独立保留 |
-| G05a / T14 命名 LOB 内容输入 | 已补命名 flat/nested OBJECT 和 named collection 的 BLOB bytes/Raw、CLOB 严格 UTF-8 内容输入；保留命名 LOB collection 身份，普通 prepare/combined、NULL/empty、大值和预算本地通过 | PL 读取成员的直连/代理测试入口全部因 DSN 未配置跳过；不包含匿名 LOB 元素头、NCLOB、locator 回绑；B06 持久 BLOB 成员写列限制继续保留 |
-| G07a / T15 named OBJECT text 结果 | 已补描述符驱动的 NUMBER、普通/national 字符、递归命名 OBJECT 文本解码及 UTF-8、NULL、引号/分隔符、身份/字段数/深度/节点/字节预算校验；全响应结束后查询描述符，公开 text/client、混合 XML、多结果、尾包/连接复用通过 | 只支持已证明可解析的 named OBJECT 子集；RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符继续拒绝，包括整列 NULL；普通 VARCHAR2 不走 parser；新增直连/代理实库用例均缺 DSN 跳过，B07/B08 继续独立保留 |
-| G07b / Q05、T14 命名复杂构造输入 | 已补显式 PrepareClient 的命名 OBJECT/递归 OBJECT/named collection 构造器；按目录字段类型处理 NUMBER、字符/national、RAW、DATE/TIMESTAMP，安全转义限定类型身份并限制编码字节/节点/深度；普通调用、显式 client Stmt、重复命名参数、多语句及发送前拒绝本地通过 | 匿名类型、LOB/locator/cursor、集合内部 NULL OBJECT 子树仍拒绝；嵌套输入须用确切目录名称；含 DDL/动态 EXECUTE 的复杂输入命令拒绝；多语句仍显式启用。新增真实对象列/PL collection 独立连接存储验证入口，直连/代理均无 DSN 跳过；不替代原生 binary TIMESTAMP/collection 头证据 |
+| G01 / T19–T20 字符集 | 已补 SJIS/Big5/DEC8/TIS620/GB2312/EUCKR 严格编码、握手和结果 collation，UTF16LE 结果解码及列长度；`TestMySQLCharsets` 和 `TestMySQLUTF16LEResult` 在 MySQL 4.4.2.2 实库通过 | 证据覆盖列存储和 UTF16LE 结果子集；Oracle 指定会话初始化拒绝仍归 B04，未知新字符集仍归 U06；UTF16LE 不开放 SQL client |
+| G03 / T12 显式 UROWID 参数 | 已补 `URowID`/`sql.Null[URowID]`/nil `*URowID`、Oracle type209 typed NULL、client CAST、OUT/INOUT 推导与显式 Type；`TestOracleURowID` 在 Oracle 4.4.2.2 实库通过 | type209 结果仍按 ROWID 元数据读取，未猜测 UROWID 结果名；批处理沿既有资格判定顺序回退 |
+| G04 / T17 XMLTYPE String 结果 | ownerless/SYS XMLTYPE string/NULL text/binary 解码已有；`TestOracleXMLType` 六种执行配置的列/函数结果实库通过 | B14 静默丢行已规避：确切 4.4.2.2 关闭通用可选 combined 优化，使用独立 PREPARE/EXECUTE；OUT/RETURNING 必需路径保留，B05 独立 |
+| G05a / T14 命名 LOB 内容输入 | 已补命名 flat/nested OBJECT 和 named collection 的 BLOB bytes/Raw、CLOB 严格 UTF-8 内容输入；`TestOracleNamedLOBContent` 的普通/combined、对象/嵌套/collection 路径在 Oracle 实库通过 | 不包含匿名 LOB 元素头、NCLOB、locator 回绑；B06 持久 BLOB 成员写列限制继续保留 |
+| G07a / T15 named OBJECT text 结果 | 已补描述符驱动的 NUMBER、普通/national 字符、递归命名 OBJECT 文本解码及 UTF-8、NULL、身份/字段数/深度/节点/字节预算校验；`TestOracleNamedObjectText` 在 Oracle 实库通过 | 只支持已证明可解析的 named OBJECT 子集；RAW/DATE/TIMESTAMP/LOB/cursor/collection 描述符继续拒绝，B07/B08 继续独立保留 |
+| G07b / Q05、T14 命名复杂构造输入 | 已补显式 PrepareClient 的命名 OBJECT/递归 OBJECT/named collection 构造器；`TestOracleClientConstructors`、复杂 OBJECT/collection PL 测试在 Oracle 实库通过；参数化 builtin descriptor 解析缺陷已修复 | 匿名类型、LOB/locator/cursor、集合内部 NULL OBJECT 子树仍拒绝；嵌套输入须用确切目录名称；不替代原生 binary TIMESTAMP/collection 头证据 |
 
 
 ## 客户端范围限制与可选扩展
@@ -41,9 +41,9 @@
 | ID / 原关联 | 已有能力与限制 | 正确处理 |
 | --- | --- | --- |
 | C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后仅独立 server PREPARE 的 1295 回退到 client 插值 | [配置/DSN](../config/dsn.go) 与 [执行回退](../internal/execution/execute.go) 已有本地协议回归；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL；真实服务端 1295 覆盖仍待 N |
-| C08 / 原 G08、Q05/Q19 多语句 LongData | MySQL 顶层多语句在 `PrepareClient` + `AllowMultiStatements` 下支持一次性有界读入后复用现有字面量编码；其他路径仍按原边界处理 | [客户端展开](../internal/execution/interpolate.go)与 peer 回归已覆盖；只读入 `MaxBytes/MaxLOBBytes` 范围，不拼接 piece-data，不覆盖 Oracle PL/单语句/未启用多语句；真实服务端多结果仍待验收 |
+| C08 / 原 G08、Q05/Q19 多语句 LongData | MySQL `PrepareClient` + `AllowMultiStatements` 支持有界一次性读入后字面量编码 | peer 及 `TestMySQLMultiStatementLongData` 实库通过：含引号、反斜杠、NUL、中文的长参数和第二结果；不扩展 Oracle PL/其他准备路径 |
 | C09 / 原 G09、Q20 pipeline | [TryNative](../internal/batch/native.go)仅选限定 scalar DML；SELECT/复杂值/流/framed 等顺序执行 | 性能/组合范围差距，不是 SQL 不能执行；N 对应子集可供扩展依据，Oracle piece-data 另见 U04 |
-| C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值有限额，大对象另有 LOB/TableBlob | 已定义资源契约；如需普通列流 API，另定顺序/所有权/取消契约 |
+| C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值受消息与物化预算限制；大对象另有 LOB/TableBlob 流式 API | 这是 Go `database/sql` Rows 与当前协议边界，不计为已确认客户端缺实现；如要新增普通列流 API，必须先定义独立的读取顺序、所有权、取消和消息分片契约 |
 | C11 / C17 Oracle warning 详情 | count 已有，[ReadWarnings](../internal/control/warnings.go)只给 MySQL 详情 | 客户端/参考接口范围；当前依据不能证明“数据库没有任何 Oracle warning 详情能力” |
 
 ## 官方明确不支持的形态
@@ -56,7 +56,7 @@
 
 ## 指定目标的服务端拒绝或返回形状限制
 
-仅限记录中的 OceanBase **4.4.2.2** 指定模式/形状。H20 为 Go 历史实测；N 为参考记录，**不是 Go 复现**。不外推其他版本或全部同名能力。
+仅限记录中的 OceanBase **4.4.2.2** 指定模式/形状。H20 为 Go 历史实测；H03 为本次 Go 复验；N 为参考记录，**不是 Go 复现**。不外推其他版本或全部同名能力。
 
 | ID / 能力 | 模式、来源与确切限制 | 必须分开的可用能力/边界 |
 | --- | --- | --- |
@@ -69,24 +69,25 @@
 | B07 / T15 指定复杂text成员 | Oracle，N：RAW/DATE/TIMESTAMP形状重复RAW文本；BLOB/CLOB text缺可靠成员身份，Java同形状不能正常解码complex对象 | NUMBER/字符/递归named OBJECT可解析子集为G07a；binary LOB另有路径 |
 | B08 / T14 根NULL OBJECT身份 | Oracle，N：指定OBJECT/嵌套OBJECT外层NULL bit=false，Java不报告外层NULL | 不能把全NULL属性对象猜成根NULL；collection NULL、输入NULL另验 |
 | B09 / T09 named timezone输入 | Oracle，N：指定非空地区名binary输入1882，强制Java server prepare同错 | 数字偏移/text/LTZ为其他路径，不是无TZ类型 |
-| B10 / T23 ANYDATA包 | Oracle，N：该目标缺SYS.ANYDATA，Java/.NET同SQL失败 | 只限该目标包前提；不覆盖官方PL支持，不开发猜测codec |
-| B11 / T26 Bitmap直接bytes绑定 | MySQL，N：byte[]直接写ROARINGBITMAP列1235/0A000 | rb_from_string/rb_build_varbinary路径可用、结果BLOB/bytes，归V16；不要求codec“修复”拒绝的绑定 |
-| B12 / M01 参数目录字符长度 | Oracle，N：ALL_ARGUMENTS.CHAR_LENGTH/CHAR_USED查询904/42S22，Java同SQL同码 | Go[当前参数计划](../internal/catalog/metadata_sql_oracle.go)读DATA_LENGTH，未查询这两列；不是Go当前查询已失败，也不能把字节长度当字符长度 |
+| B10 / T23 ANYDATA SQL 形状 | 历史 N 缺 SYS.ANYDATA 的判断不适用于当前目标；H03 字典存在，PL ConvertNumber/GetNumber 数字回读通过；指定 `SELECT SYS.ANYDATA.ConvertNumber(1) FROM DUAL` 返回 942/42S02 | 只记录此 SQL 形状拒绝；不称 PL 缺包。Go 原生 typed 参数 descriptor/writer 仍归 U03 |
+| B11 / T26 Bitmap 直接 bytes 绑定 | MySQL，H03 `TestMySQLRoaringBitmap` 直接写 ROARINGBITMAP 列返回 1235/0A000，明确 skip | rb_from_string/rb_build_varbinary、BLOB/bytes 结果、空/NULL/uint64 最大元素均实库通过；不要求 codec 绕过拒绝 |
+| B12 / M01 参数目录字符长度 | Oracle，H03 再次确认 ALL_ARGUMENTS.CHAR_LENGTH/CHAR_USED 查询 904/42S22；N/Java 同 SQL 同码 | 当前 Go 参数计划读 DATA_LENGTH，不查询这两列；不是当前查询故障，也不把字节长度当字符长度 |
 | B13 / T08 TIME极限小数 | MySQL，N：指定permissive binary截整秒，strict text1292而binary仍截断成功 | 路径相关服务端语义记录，尚非Go复现缺陷；不静默截断/CAST来制造一致 |
+| B14 / T17 + P04 XMLTYPE combined 结果形状 | Oracle 4.4.2.2，H03：原始 combined 响应一个行包后结束，遗漏 NULL 行且无错误 | 驱动已对确切版本禁用通用可选 combined 优化，所有六种配置返回完整两行，删除 B14 skip；必需 OUT/RETURNING 保持并实库通过。版本范围外未推断同故障 |
 
 ## 权限、身份与环境不足
 
 | ID / 关联能力 | 已记录的前提不足 | 分类边界 |
 | --- | --- | --- |
-| A01 / M01 Oracle VIEW/SYNONYM | H20缺CREATE VIEW；N另有VIEW/SYNONYM 1031 | 账号授权不足，不是无视图/同义词或无元数据接口 |
+| A01 / M01 Oracle VIEW/SYNONYM | 历史 H20/N 的权限记录不代表当前账号；H03 CREATE VIEW 成功，指定 CREATE SYNONYM ... FOR SYS.DUAL 返回 900/42000 | 当前 VIEW 权限阻塞已解除；SYNONYM 是确切语法/目标拒绝，不是 1031 权限证据；其他同义词用法仍待验 |
 | A02 / C09/C12 另一身份/代理 | H20缺第二身份/代理grant，CREATE USER探针1031 | 缺授权fixture；保留ChangeUser/ProxyUser实现，不修改业务账号权限来制造通过 |
-| ENV01 / C06 TLS/mTLS | H20指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
+| ENV01 / C06 TLS/mTLS | H20及本次指定直连SSL未开 | 缺正向部署，不是OceanBase产品不支持TLS；本地证书peer不是实库通过 |
 | ENV02 / P02–P05 协议端点 | 历史直连缺压缩/OB20正向目标与FLT/collector组合 | 缺协商环境，不把合成帧当实库，也不把拒绝协商扩大为产品无此协议 |
 | ENV03 / C14–C15 ODP/多节点/OCP/TNS | H20仅直连单端点 | 缺真实代理/控制面/集群，单上游relay不证明HA |
 | ENV04 / C08 plugin/KDC | 客户端分支存在，缺真实正负端点和逐插件服务端依据 | 不能列服务器已支持全部，也不能列明确不支持全部；逐项确认 |
 | ENV05 / C05 平台原生传输 | 真实Linux VC、系统GSSAPI、服务IPC/ACL前提未全验 | OS/tag/库/服务条件，不是普通SQL缺口 |
 
-这些是历史或参考材料，不声明本次已探测当前部署状态。
+A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边界，不声明本次已重新部署验证。
 
 ## 有路径但缺 Go 专项验收
 
@@ -103,27 +104,27 @@
 | V09 / Q10–Q11/T13–T15 资源组合 | cursor/LOB/OBJECT/OUT子集 | 提前Close/取消/尾包/预算/事务池代际/可见性；B02/B03/B06/B07/B08逐形状排除 |
 | V10 / C09/C11–C13/Q18/Q22 会话 | 初始化、属性、读超时、ChangeUser/导入/取消 | 真实身份/中断码/部分效果/借用者隔离；A02另列 |
 | V11 / R01 平台/版本/CI | 既有构建测试/历史CI | 当前发布源码适用OS/tag/Go/实库组合，不外推未来版本 |
-| V13 / 原G10、T05–T07 JSON/BIT/YEAR/GEOMETRY | [string/bytes/整数绑定](../internal/valuecodec/binary.go)与结果解码 | 先验真实列/转换；无专用Json/Bit/Year/Geometry类型本身不算缺功能，native writer必要性见U07 |
-| V14 / 原G11、T18 VECTOR | N的wire为CHAR/String，Go已有[文本结果](../internal/valuecodec/text.go)/string参数 | Go专项存储/NULL/维数/metadata/坏值，无专用codec不列缺失；稀疏另见U05 |
-| V15 / 原G12、T25 SQL ARRAY | N的ARRAY(INT)为CHAR/String，Go string可承载；Oracle某些collection构造text结果也只是VARCHAR2 | Go专项空/NULL/元素/metadata/存储；不把Oracle Array API等同MySQL ARRAY，不对普通string强用complex parser |
-| V16 / 原G13、T26 RoaringBitmap | N的BLOB/bytes结果与SQL函数写入，Go已有bytes/string | Go专项64位元素/空NULL/序列化/函数回绑；直接bytes绑定B11不算客户端缺失 |
-| V17 / 原G14、T22 SDO_GEOMETRY | 官方复合类型，N用generic OBJECT/ARRAY有整列读取/受限输入 | 先验Go描述符/成员/NULL/SRID；无GIS领域模型不算缺功能 |
+| V13 / 原 G10、T05–T07 JSON/BIT/YEAR/GEOMETRY | `TestMySQLExtendedTypes` server/client、text/参数查询、NULL 实库通过 | JSON string、BIT(8) 整数、YEAR、GEOMETRY WKT 函数输入及完整 SRID/WKB bytes 回读/回绑已验；不声称所有几何类型/转换均通过；U07 指定子集关闭 |
+| V14 / 原 G11、T18 VECTOR | `TestMySQLExtendedTypes` VECTOR(3) string 存储/回读/NULL、CHAR/string metadata 实库通过 | server/client、text/参数路径已验；坏维数、极值和函数组合未全面覆盖 |
+| V15 / 原 G12、T25 SQL ARRAY | `TestMySQLExtendedTypes` ARRAY(INT) string 存储/回读/NULL、CHAR/string metadata 实库通过 | server/client、text/参数路径已验；嵌套数组/元素域/空数组边界未全面覆盖；不等同 Oracle Array |
+| V16 / 原 G13、T26 RoaringBitmap | `TestMySQLRoaringBitmap` 函数输入、结果 bytes、空/NULL/uint64 最大值、函数 bytes 回绑和 metadata 实库通过 | 直接 bytes 写列 B11 仍拒绝，不将 skip 算该方向通过 |
+| V17 / 原 G14、T22 SDO_GEOMETRY | `TestOracleSDOGeometry` generic Object/Array polygon 输入与显式 prepare 整列读取实库通过；修复 ownerless 结果在 local/synonym 均无匹配时回退 SYS | 本地同名类型/同义词优先，显式 schema 不回退，不污染限定名缓存；NULL SRID/POINT 与数组元素已验；非 NULL SRID/point/空间操作未全面验收 |
 
 ## 依据不足，暂不归因
 
 <a id="u-series-status"></a>
 
-本表把“客户端已经能确认的边界”和“仍然需要目标端点才能判断的事实”分开。当前没有任何 U 项可以直接升级为 G、S 或 B；其中 U04 的客户端顺序协议已经明确，U07 的通用参数路径也已有本地依据，后续应优先补实库证据而不是先写新的 codec。
+本表把“客户端已经能确认的边界”和“仍然需要目标端点才能判断的事实”分开。U04 已归 C09，U05/U07 的指定子集已关闭；U06 当前目标服务端前提已满足，仍需客户端编码映射。U02/U03 不能再按旧的目录/包缺失结论阻塞，原生绑定仍缺实现与成功 wire。U01/U08 保留未知边界。
 
 | ID / 原关联 | 尚不能下的结论 | 本次已确认的客户端/协议边界 | 关闭或升级条件 |
 | --- | --- | --- | --- |
 | U01 / 原G05 TIMESTAMP、G06 collection头 | 不能由 Go 的拒绝点推出服务端不支持，也不能把所有 native binary TIMESTAMP/NCHAR/NVARCHAR2/LOB 元素合并成一个缺口 | [`ComplexElementWireType`](../internal/valuecodec/complex.go) 只映射 NUMBER/DATE/VARCHAR/CHAR/RAW；[`TestComplexArrayUnsupportedHeader`](../internal/parameters/complex_native_test.go) 已确认 named/anonymous 数组的 TIMESTAMP、NCHAR、NVARCHAR2、NCLOB 在描述查询/发送前拒绝。PL LOB 内容 G05a、命名构造器 G07b 不覆盖这些元素头 | 按 named/anonymous、元素头/成员体、方向、NULL/empty 分形状抓取成功 wire；服务端拒绝才转 B/S，成功且 Go 无法发送才新增对应 G 子项 |
-| U02 / 原G15 PL-only RECORD | 缺目录字段或 Java 前置拒绝，不能证明数据库不能声明/使用 RECORD | [Oracle 目录计划](../internal/catalog/metadata_sql_oracle.go)只保留 DATA_TYPE/TYPE_NAME/DATA_LEVEL 等描述字段；当前[绑定入口](../internal/call/binding.go)没有 RECORD 的 descriptor/writer，已确认 Go 侧没有可发送的 RECORD 输入路径 | 用有效 package 中的普通 RECORD 取得 ALL_ARGUMENTS、描述和 IN/OUT wire；含 cursor 成员的 INVALID package 只能作为形状前提失败 |
-| U03 / T23 ANYDATA PL、locator/cursor成员输入 | 官方 PL 支持、已有 OUT 或标量 locator，不能证明 ANYDATA/locator/cursor 成员的专门输入协议 | B10 的 `SYS.ANYDATA` 包前提失败仍是已确认的目标限制；[`EncodeComplexScalar`](../internal/valuecodec/complex.go) 没有 locator/cursor writer，REF CURSOR IN/INOUT 继续按 X01 排除，已有 native locator 仅覆盖输出/资源路径 | 在满足 B10 包前提的目标上分别取得 ANYDATA 描述/writer/方向和 locator/cursor 成员 wire；每个方向单独归类 |
-| U04 / C09 Oracle piece-data流水化 | 尚无证据证明目标协议允许多片无 ACK，不能把“Go 没有无 ACK 流水”算成服务端缺陷 | [Oracle 长参数上传](../internal/statement/upload.go)每片发送后读取并校验 OK，再发送下一片；Java 参考也逐片 ACK；[批处理选择](../internal/batch/native.go)在 shared-memory 等不满足独立流条件时回退顺序，[Pipeline](../internal/wire/pipeline.go)拒绝 framed 流 | 只有抓到目标协议允许多片无 ACK 的证据才继续设计流水化；否则把 U04 降为 C09 的明确协议限制，不新增实现待办 |
-| U05 / T24 SPARSEVECTOR | `SPARSEVECTOR(3)` 的 1064 不能证明类型不支持，Go 也没有专用 codec 可供推断 | 当前没有 SPARSEVECTOR 专用输入、结果或 metadata 路径；通用 string 路径不能证明维数、NULL、函数语义正确 | 在版本 ≥4.3.5 BP2 的目标上按官方无维数语法验 DDL、值、metadata 和函数；正确语法仍失败才记录确切 B/S |
-| U06 / G01 新编码/版本 | 官方列出的 UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 受版本和用途影响，不能以 Go 未识别直接归服务端不支持 | 当前[字符集映射](../internal/charset/charset.go)没有这些名称的 encoder/collation 映射；这只确认客户端配置会拒绝未知名称，不确认目标没有对应 ID 或部署 | 逐版本、模式、用途确认 collation ID/握手/结果/参数；需要支持且目标有 ID 时新增 G，否则按 ENV/S 保留确切范围 |
-| U07 / 原G10 native参数码 | 没有 type245/16/13/255 专用 writer，不等于 JSON/BIT/YEAR/GEOMETRY 必须使用这些身份 | [`EncodeParameter`](../internal/valuecodec/binary.go)已覆盖通用 string/bytes/整数等输入，公开测试确认其类型头和结果路径；当前没有证据表明 V13 的真实列要求专用输入身份 | 在真实列/转换上抓取参数类型、metadata、存储/回读；只有通用路径确实不能满足时，按具体 type/形状新增 G |
+| U02 / 原 G15 PL-only RECORD | 当前服务端支持普通 RECORD，不能再说缺字段目录 | `TestOraclePLTypeReadiness` VALID package、PL INOUT 调用和 ALL_PLSQL_TYPE_ATTRS 的 NUMBER/VARCHAR2 字段通过；目录在 PL 使用/编译后可见。Go 仍没有 RECORD descriptor/writer | 可继续做客户端原生绑定，但须取得成功 IN/OUT wire；普通 RECORD 成功不证明含 cursor 成员均可用 |
+| U03 / T23 ANYDATA PL、locator/cursor 成员输入 | 当前 SYS.ANYDATA 存在且 PL 数字构造/GetNumber 回读通过；不能沿用缺包结论 | Go 原生 ANYDATA descriptor/writer、locator/cursor 成员输入仍无成功协议依据；REF CURSOR IN/INOUT 按 X01 排除 | 可继续客户端协议调查；PL 标量内部运算成功不等于已实现 typed ANYDATA 参数；S02 持久列禁用独立 |
+| U04 / C09 Oracle piece-data 流水化 | 关闭为 C09 的已知顺序协议范围，不列当前缺陷 | Go 每片等待 OK，Java 同样逐片 ACK；framed 流不走 pipeline | 只有新增无 ACK 协议成功依据才重开，不盲写无 ACK 发送 |
+| U05 / T24 SPARSEVECTOR | 基础 string 子集已验，撤销“正确语法/wire 未知”状态 | `TestMySQLExtendedTypes` 无维数 SPARSEVECTOR，`{1:1,3:2}` 存储/回读/NULL、CHAR/string metadata，server/client 与 text/参数路径通过 | 高维/非法输入/函数组合继续作为专项覆盖，不需要先新增专用 codec |
+| U06 / G01 新编码/版本 | 当前 MySQL 服务端已有支持，客户端扩展可做，不能归服务端缺失 | H03 确认 UJIS/EUCJPMS/CP932/CP850/HP8/MACROMAN/SWE7 的 14 个 collation ID，SET NAMES 与 ASCII 转换均接受；Go 没有这些 encoder/collation 映射 | 仍需逐种严格非 ASCII 编解码、握手/结果/参数验收；ASCII 探针不是编码实现完成；其他版本/Oracle 用途另验 |
+| U07 / 原 G10 native 参数码 | V13 指定子集关闭：真实列已接受通用 string/bytes/整数 | JSON/BIT/YEAR/GEOMETRY server/client 存储回读通过，GEOMETRY bytes 回绑通过 | 未发现必须增加 type245/16/13/255 专用 writer 的依据；以后遇确切通用路径失败再立项 |
 | U08 / Oracle超长NUL脚本 | Java/.NET 特定大脚本超时不能证明服务端不支持，也不能单独证明 Go parser 有缺陷 | 客户端准备路径已将 Oracle 文本 NUL 转为 `CHR(0)`，并对 SQL 编码字节和累计预算做边界检查；[`TestClientPrepareEncoding`](../internal/command/client_prepare_test.go)已覆盖该转换，未覆盖目标执行效果 | 在真实 Oracle 上按确切长度分别验证发送、prepare/execute、消费和独立效果，记录成功/失败阈值；不得为绕过失败而静默截断或重放 |
 
 ## 明确排除与生态差异
@@ -140,9 +141,10 @@
 
 - 官方链接见[能力矩阵依据](go-driver-capabilities.md#依据与维护)；本次重新读取MySQL字符集、Oracle类型、XMLTYPE、ANYDATA、向量、ARRAY相关正文。
 - H20：[Go发布实库报告](release-validation-2026-10-20.md)；H24：[Go浮点专项](binary-double-live-validation-2026-10-24.md)。只引用明确子集，历史成功不是本次重跑。
+- H03：[2026-11-03 Go直连复验](live-validation-2026-11-03.md)：G01/G03/G04/G05a/G07a/G07b、B14 规避、SDO 修复、MySQL 扩展类型、PL 前提及本地检查；不包括所有代理/平台组合。
 - N：obconnector-dotnet/docs/obconnector-dotnet-completeness.md及obconnector-dotnet-missing-features-roadmap.md的D-02d1～d3、D-04a1/a2/e、D-05、D-07、D-08m、D-09、D-12a/b/c、目录/RECORD段落；本次核对ComplexLobInputTests.cs、XmlProbeTests.cs、VectorArrayStringWireTests.cs的实际用例形状，不记作Go实测。
 - Java：核对ComplexUtil.storeComplexAttrData成员writer、createSQLXML客户端拒绝和OB20 reader压缩长度拒绝；没有把Java拒绝当服务端不支持证明。
 
-本轮运行 `go test ./internal/parameters ./internal/valuecodec ./internal/streaminput ./internal/batch`，全部通过；覆盖复杂值头拒绝、通用参数类型、NUL 文本转换、分片上传和批处理回退。这只证明所选本地用例，不是实库兼容性验收。本次未连接数据库，也未重新验证当前部署、权限或参考 SDK 的服务端失败形状。
+本轮已连接双模式 OceanBase 4.4.2.2，逐项复验 G 表中的明确子集；本地测试、静态检查和实库跳过项见 H03。V/U 尚未全部验收；未重新执行的参考 SDK 失败形状继续仅标 N，不提升为 Go 实测。
 
 上一版“15项功能差距”的汇总撤销：原G10–G14多数是通用路径验收/调查，G05/G06/G07按操作形状拆开，服务端/权限/环境也已拆开。后续G表按明确子集立项，C表按需求选择，V表补验收；S/B/A/ENV/U/X不直接转为实现待办。

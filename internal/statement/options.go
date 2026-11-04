@@ -22,7 +22,8 @@ func SupportsPrepareExecute(version string) bool { return SupportsVersion(versio
 // UsePrepareExecute applies the configured Oracle native-command gate.
 func UsePrepareExecute(op *session.Operation) bool {
 	p := op.Protocol()
-	return op.Config().Execution.PrepareExecute && p.Mode == config.ModeOracle && SupportsPrepareExecute(p.OBVersion)
+	// 4.4.2.2 can silently omit XMLTYPE rows; separate preparation/execution is safe.
+	return op.Config().Execution.PrepareExecute && p.Mode == config.ModeOracle && SupportsPrepareExecute(p.OBVersion) && !configspec.IsVersion(p.OBVersion, "4.4.2.2")
 }
 
 // ExecuteOptions applies the SQL checksum compatibility gate.

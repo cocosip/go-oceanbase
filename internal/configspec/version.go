@@ -9,9 +9,15 @@ import (
 
 var (
 	oceanBaseMarker  = regexp.MustCompile(`(?i)oceanbase`)
-	oceanBaseVersion = regexp.MustCompile(`(?i)oceanbase[^0-9]*v?([0-9]+)\.([0-9]+)\.([0-9]+)(?:\.[0-9]+)*(?:[^0-9.]|$)`)
-	plainVersion     = regexp.MustCompile(`(?i)(?:^|[^0-9a-z])v?([0-9]+)\.([0-9]+)\.([0-9]+)(?:\.[0-9]+)*(?:[^0-9.]|$)`)
+	oceanBaseVersion = regexp.MustCompile(`(?i)oceanbase[^0-9]*v?([0-9]+)\.([0-9]+)\.([0-9]+)((?:\.[0-9]+)*)(?:[^0-9.]|$)`)
+	plainVersion     = regexp.MustCompile(`(?i)(?:^|[^0-9a-z])v?([0-9]+)\.([0-9]+)\.([0-9]+)((?:\.[0-9]+)*)(?:[^0-9.]|$)`)
 )
+
+// IsVersion matches the full parsed OceanBase version, excluding build suffixes.
+func IsVersion(version, want string) bool {
+	parts := versionParts(version)
+	return parts != nil && strings.Join(parts[1:4], ".")+parts[4] == want
+}
 
 // SupportsPrepareExecute reports support for the combined prepare/execute command.
 func SupportsPrepareExecute(version string) bool { return SupportsVersion(version, 2, 2, 76) }

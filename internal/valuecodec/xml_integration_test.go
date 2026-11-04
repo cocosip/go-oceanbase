@@ -16,6 +16,9 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/integrationtest"
 )
 
+const testXMLAutomatic = "combined-automatic"
+const testXMLCached = "combined-cached"
+
 func TestOracleXMLType(t *testing.T) {
 	profiles, err := integrationtest.Profiles(os.Getenv("OB_TEST_PROFILE"))
 	if err != nil {
@@ -25,10 +28,14 @@ func TestOracleXMLType(t *testing.T) {
 		if profile.Mode != oceanbase.ModeOracle {
 			continue
 		}
-		for _, path := range []string{testTextStrategy, testServerStrategy, testClientStrategy, testURowIDCombined} {
+		for _, path := range []string{testTextStrategy, testServerStrategy, testClientStrategy, testURowIDCombined, testXMLAutomatic, testXMLCached} {
 			t.Run(profile.Name+"/"+path, func(t *testing.T) {
 				cfg := integrationtest.ProfileConfig(t, profile)
-				cfg.Execution.PrepareExecute = path == testURowIDCombined
+				cfg.Execution.PrepareExecute = strings.HasPrefix(path, testURowIDCombined)
+				if path == testXMLCached {
+					cfg.Execution.StatementCacheSize = 4
+					cfg.Execution.ReuseParameterTypes = true
+				}
 				if path == testClientStrategy {
 					cfg.PrepareMode = oceanbase.PrepareClient
 				}
@@ -70,31 +77,41 @@ func TestOracleXMLType(t *testing.T) {
 				}()
 
 				for shape, query := range []string{"SELECT X FROM " + table + " WHERE ID>=? ORDER BY ID", "SELECT " + function + "() FROM dual WHERE ?=1"} {
-					var rows *sql.Rows
-					var stmt *sql.Stmt
-					switch path {
-					case testTextStrategy:
-						rows, err = db.QueryContext(ctx, strings.Replace(query, "?", "1", 1))
-					case testClientStrategy:
-						rows, err = db.QueryContext(ctx, query, 1)
-					default:
-						stmt, err = db.PrepareContext(ctx, query)
-						if err == nil {
-							rows, err = stmt.QueryContext(ctx, 1)
+					t.Run([]string{"column", "function"}[shape], func(t *testing.T) {
+						attempts := 1
+						if path == testXMLCached {
+							attempts = 2
 						}
-					}
-					if err != nil {
-						integrationtest.FailOperation(t, "query XML", err)
-					}
-					verifyOracleXMLRows(t, rows, shape == 0)
-					if err := rows.Close(); err != nil {
-						integrationtest.FailOperation(t, "close XML rows", err)
-					}
-					if stmt != nil {
-						if err := stmt.Close(); err != nil {
-							integrationtest.FailOperation(t, "close XML statement", err)
+						for attempt := 0; attempt < attempts; attempt++ {
+							var rows *sql.Rows
+							var stmt *sql.Stmt
+							switch path {
+							case testTextStrategy:
+								rows, err = db.QueryContext(ctx, strings.Replace(query, "?", "1", 1))
+							case testClientStrategy, testXMLAutomatic, testXMLCached:
+								rows, err = db.QueryContext(ctx, query, 1)
+							default:
+								stmt, err = db.PrepareContext(ctx, query)
+								if err == nil {
+									rows, err = stmt.QueryContext(ctx, 1)
+								}
+							}
+							if err != nil {
+								integrationtest.FailOperation(t, "query XML", err)
+							}
+							defer func() {
+								if err := rows.Close(); err != nil {
+									integrationtest.FailOperation(t, "close XML rows", err)
+								}
+								if stmt != nil {
+									if err := stmt.Close(); err != nil {
+										integrationtest.FailOperation(t, "close XML statement", err)
+									}
+								}
+							}()
+							verifyOracleXMLRows(t, rows, shape == 0)
 						}
-					}
+					})
 				}
 			})
 		}
@@ -104,7 +121,7 @@ func TestOracleXMLType(t *testing.T) {
 func verifyOracleXMLRows(t *testing.T, rows *sql.Rows, wantNull bool) {
 	t.Helper()
 	columns, err := rows.ColumnTypes()
-	if err != nil || columns[0].DatabaseTypeName() != "XMLTYPE" || columns[0].ScanType() != reflect.TypeFor[string]() {
+	if err != nil || len(columns) != 1 || columns[0].DatabaseTypeName() != "XMLTYPE" || columns[0].ScanType() != reflect.TypeFor[string]() {
 		t.Fatal("XML metadata mismatch")
 	}
 	var got sql.Null[string]

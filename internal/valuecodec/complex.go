@@ -144,11 +144,29 @@ func ComplexElementWireType(typ string) byte {
 
 // ComplexBuiltinType reports whether a dictionary name denotes a builtin scalar.
 func ComplexBuiltinType(typ string) bool {
-	switch strings.ToUpper(typ) {
-	case valueformat.TypeNameNumber, valueformat.TypeNameDecimal, valueformat.TypeNameInteger, valueformat.TypeNameNumeric, valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar, valueformat.TypeNameChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameRaw, valueformat.TypeNameDate, valueformat.TypeNameTimestamp, valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob:
-		return true
+	return ComplexBuiltinName(typ) != ""
+}
+
+// ComplexBuiltinName strips dictionary length or precision suffixes from
+// supported scalar type names. Oracle dictionaries report declarations such
+// as VARCHAR2(80), RAW(20), and TIMESTAMP(9), while the value encoder uses the
+// base type to choose its literal and wire representation.
+func ComplexBuiltinName(typ string) string {
+	name := strings.TrimSpace(strings.ToUpper(typ))
+	base := name
+	if open := strings.IndexByte(name, '('); open >= 0 && strings.HasSuffix(name, ")") {
+		base = strings.TrimSpace(name[:open])
 	}
-	return false
+	switch base {
+	case valueformat.TypeNameNumber, valueformat.TypeNameDecimal, valueformat.TypeNameInteger, valueformat.TypeNameNumeric,
+		valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar, valueformat.TypeNameChar,
+		valueformat.TypeNameNVarchar2, valueformat.TypeNameNChar, valueformat.TypeNameRaw,
+		valueformat.TypeNameDate, valueformat.TypeNameTimestamp, valueformat.TypeNameBlob,
+		valueformat.TypeNameClob, valueformat.TypeNameNClob:
+		return base
+	default:
+		return ""
+	}
 }
 
 // ComplexCharset chooses the session charset for a complex scalar field.
