@@ -45,7 +45,7 @@ func TestMySQLScalarsWorkflow(t *testing.T) {
 			{name: "empty-is-not-null", change: func(r *mysqlScalarFixtureRows) { r.values[1][7] = nil }},
 			{name: "fixed-padding", change: func(r *mysqlScalarFixtureRows) { r.values[0][8] = []byte{0, 255} }},
 			{name: "missing-null-row", change: func(r *mysqlScalarFixtureRows) { r.values = r.values[:3] }},
-			{name: "extra-row", change: func(r *mysqlScalarFixtureRows) { r.values = append(r.values, r.values[0]) }},
+			{name: caseExtraRow, change: func(r *mysqlScalarFixtureRows) { r.values = append(r.values, r.values[0]) }},
 			{name: "null-unsigned", change: func(r *mysqlScalarFixtureRows) { r.values[3][2] = "0" }},
 			{name: "null-time", change: func(r *mysqlScalarFixtureRows) { r.values[3][0] = mysqlFixtureZeroTime }},
 			{name: "unsigned-metadata", change: func(r *mysqlScalarFixtureRows) { r.types[2] = reflect.TypeFor[int64]() }},
@@ -140,7 +140,7 @@ func newMySQLScalarFixtureRows() *mysqlScalarFixtureRows {
 			{mysqlFixtureZeroTime, int64(2155), "9223372036854775808", int64(-1), int64(127), []byte{1}, []byte{1, 255}, []byte{0, 0}, []byte{0, 1, 2, 3}},
 			{nil, nil, nil, nil, nil, nil, nil, nil, nil},
 		}},
-		names:       []string{"TIME", "YEAR", "BIGINT", "BIGINT", "TINYINT", "BIT", "BIT", "VARBINARY", "BINARY"},
+		names:       []string{"TIME", "YEAR", statementParameterType, statementParameterType, "TINYINT", "BIT", "BIT", "VARBINARY", "BINARY"},
 		types:       []reflect.Type{reflect.TypeFor[string](), reflect.TypeFor[int64](), reflect.TypeFor[uint64](), reflect.TypeFor[int64](), reflect.TypeFor[int64](), reflect.TypeFor[[]byte](), reflect.TypeFor[[]byte](), reflect.TypeFor[[]byte](), reflect.TypeFor[[]byte]()},
 		fixedLength: 4,
 	}

@@ -121,4 +121,3 @@ func TestBlobTarget(t *testing.T) {
 		_ = pinned.Close()
 	})
 }
-

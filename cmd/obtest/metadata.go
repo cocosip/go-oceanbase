@@ -94,9 +94,11 @@ func checkDictionaryInteger(mode oceanbase.Mode, name, typeName string, nullable
 	return nil
 }
 
+const metadataFixtureNumber = "NUMBER"
+
 func metadataScalarTypes(mode oceanbase.Mode) (idType, textType string, precision int64) {
 	if mode == oceanbase.ModeOracle {
-		return "NUMBER", "VARCHAR2", 38
+		return metadataFixtureNumber, typeNameVarchar2, 38
 	}
-	return "INT", "VARCHAR", 10
+	return "INT", typeNameVarchar, 10
 }

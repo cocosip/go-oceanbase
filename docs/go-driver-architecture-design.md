@@ -9,7 +9,7 @@ Status: architecture and interface contracts. Refer to development progress for 
 Confirmed requirements:
 
 1. Target OceanBase with unified support for Oracle and MySQL compatibility modes.
-2. Account for the Java driver's complete functionality in the Go architecture, explaining the implementation approach and verification conditions for every capability.
+2. Account for OceanBase's documented capabilities (types, protocols, limits, error shapes) in the Go architecture, explaining the implementation approach and verification conditions for every capability. The Java Connector/J implementation is read only as protocol/behavior evidence; its classes, option names and JDBC surfaces are not Go contracts.
 3. Follow Go conventions, keep ordinary application APIs simple, and avoid reproducing the JDBC class hierarchy.
 4. The minimum Go version is **1.26**; this design does not depend on interfaces introduced in Go 1.27.
 5. Use the caller-provided `*slog.Logger`; do not use the global default logger.
@@ -17,9 +17,8 @@ Confirmed requirements:
 
 Reference baseline:
 
-- [Java Source Structure and Feature Outline](obconnector-j-architecture-outline.md).
 - See the [Development Plan](go-driver-development-plan.md) for implementation tasks. Maintain task status and verification evidence in [Development Progress](go-driver-development-progress.md).
-- Java source: [oceanbase/obconnector-j](https://github.com/oceanbase/obconnector-j), version `2.4.14`, commit `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`.
+- Java source (protocol/error-shape evidence only, not an API or option target): [oceanbase/obconnector-j](https://github.com/oceanbase/obconnector-j), version `2.4.14`, commit `6adc311ba5db8b2f19f98f3e6e4734667fdfdda1`.
 - Standard library source reference: Go `1.27.2`. The `database/sql` and `database/sql/driver` interface contracts have been reviewed; the selected interfaces already exist in Go 1.26. Compilation and testing must use a genuine Go 1.26 toolchain.
 - Historical Go API lists have also been checked: `RowsNextResultSet` dates from Go 1.8, `sql.Out` / `NamedValueChecker` from Go 1.9, and `slog` / `context.AfterFunc` from Go 1.21. None of these core mechanisms requires Go 1.26 or 1.27.
 - The API names, package layout, default policies, and resource limits below are proposals in this design, not published compatibility commitments.
@@ -264,7 +263,7 @@ Pinned Java evidence: CLIENT_CONNECT_WITH_DB conditions in AbstractConnectProtoc
 
 ### 6.5 D32 Java Configuration Migration Boundary
 
-The [Options Mapping](go-driver-options-mapping.md) lists initial values for all 160 canonical fields in pinned Java, separately listing 10 historical aliases, DBNAME/port, driver-selection markers, and plugin parameters. Aliases do not increase canonical counts. Defaults follow actual Options initializers, DefaultOptions.parse, postOptionProcess, and UrlParser branches; descriptions alone cannot establish final behavior.
+Configuration fields and defaults follow the Go `Config` structure, DSN parser and documented option names. Java Connector/J option names, aliases and defaults are not compatibility targets; unknown or Java-only keys are rejected instead of being mapped, and behavior is established from the Go implementation and OceanBase protocol evidence rather than from another driver's option semantics.
 
 Go keeps one Config and a strict URL entry point. Historical aliases, Properties, Java stores/class names, and unknown options are not admitted into DSNs. Existing Go configuration, standard library facilities, or application closures carry capabilities; see the mapping for entry points. To override parsed values, ParseDSN, modify Config, then call NewConnector, which revalidates and copies it. There are no competing parameter-merge precedence systems. Query names are case-sensitive; duplicates/empty values are rejected. Booleans accept only true/false, without automatic conversion of Java bare milliseconds or quoted booleans.
 
@@ -532,9 +531,9 @@ Reject mixed positional/named binding, missing parameters, duplicate supplied na
 
 Lexical plans cover single/double quotes, backticks, comments, escapes, Oracle q-quotes, and `:=`. Never replace colons textually or treat anonymous-block semicolons as multi-statement separators.
 
-Ordinary SQL uses native server syntax. Explicit compatibility conversion functions provide Java JDBC escape equivalents through lexical state machines; Go SQL is not rewritten by default.
+Ordinary SQL uses native server syntax. JDBC escapes (`{d ...}`, `{ts ...}`, `{fn ...}`) are Java Connector/J-specific and intentionally out of scope: the Go driver neither rewrites nor emulates them, so Go users write the target dialect SQL directly. An earlier experimental `RewriteJDBCEscapes` API and its tests were withdrawn.
 
-MySQL `CONVERT` boolean/floating expressions from `RewriteJDBCEscapes` always parenthesize complete operands, retaining OR/XOR/bitwise/comparison precedence; boolean conversion retains existing comparison-to-1 semantics. Both modes preserve newline after trailing operand line comments so generated parentheses/CAST suffixes are not commented out. Whitespace/comment-only missing operands return ErrBind. `TestJDBCConvertOperandBoundaries`, `TestJDBCConvertMissingOperand`, and `TestJDBCEscapes` check text, nesting, and argument counts, not real server evaluation.
+Client preparation therefore covers binding and interpolation only; there is no escape-rewriting surface to keep aligned with Java semantics.
 
 Pinned Java `encloseParamInParentheses` defaults true but since 2.4.10 merely inserts a space before Oracle text parameters, without parentheses; see [ComQuery.addParenthesesArroundValue](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/ComQuery.java#L366). Go client preparation/batch rewriting always preserves spaces around each literal, preventing negative values plus preceding minus from forming comments or numbers plus aliases from becoming exponents. Always enabled in both modes; no switch disables boundary protection. Server preparation sends separate binary parameters without SQL-parenthesis/precedence changes. TestClientParameterBoundaries exercises public ExecContext/sql.Stmt in both modes/three streams, repeated names, negatives/numeric aliases, and semicolons in quoted strings. These prove encoding boundaries; live SQL interpretation still needs integration.
 

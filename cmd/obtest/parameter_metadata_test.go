@@ -44,7 +44,7 @@ func TestParameterMetadataWorkflow(t *testing.T) {
 			{name: "reported-description", pass: true},
 			{name: "unknown-description", pass: true, edit: func(r *metadataFixtureRows) { r.values[0][4], r.values[0][6], r.values[0][9] = nil, nil, int64(6) }},
 			{name: "reported-number", pass: true, edit: func(r *metadataFixtureRows) {
-				typeName, scale := "NUMBER", int64(-2)
+				typeName, scale := metadataFixtureNumber, int64(-2)
 				if mode == oceanbase.ModeMySQL {
 					typeName, scale = "DECIMAL", 2
 				}
@@ -70,8 +70,8 @@ func TestParameterMetadataWorkflow(t *testing.T) {
 			{name: "partial-precision", edit: func(r *metadataFixtureRows) { r.values[0][7] = int64(10) }},
 			{name: "protocol-type", edit: func(r *metadataFixtureRows) { r.values[0][9] = int64(256) }},
 			{name: "protocol-direction", edit: func(r *metadataFixtureRows) { r.values[0][10] = int64(-1) }},
-			{name: "missing-row", edit: func(r *metadataFixtureRows) { r.values = r.values[:1] }},
-			{name: "extra-row", edit: func(r *metadataFixtureRows) { r.values = append(r.values, r.values[0]) }},
+			{name: caseMissingRow, edit: func(r *metadataFixtureRows) { r.values = r.values[:1] }},
+			{name: caseExtraRow, edit: func(r *metadataFixtureRows) { r.values = append(r.values, r.values[0]) }},
 			{name: "column-name", edit: func(r *metadataFixtureRows) { r.labels[1] = "wrong_logical_ordinal" }},
 			{name: "read-error", edit: func(r *metadataFixtureRows) { r.readErr = errors.New("metadata read failed") }},
 			{name: "close-error", edit: func(r *metadataFixtureRows) { r.closeErr = errors.New("metadata close failed") }},

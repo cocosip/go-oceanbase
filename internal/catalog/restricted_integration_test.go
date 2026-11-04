@@ -120,4 +120,3 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 		}
 	}
 }
-

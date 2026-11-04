@@ -346,4 +346,3 @@ func integrationTestCancelQuerySession(t *testing.T, p integrationtest.Profile) 
 		t.Fatal("completed target accepted another cancellation")
 	}
 }
-

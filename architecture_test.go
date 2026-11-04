@@ -191,7 +191,7 @@ func dependencyViolations(module string, packages []listedPackage) []string {
 }
 
 func TestRootFacadeFiles(t *testing.T) {
-	expected := strings.Fields("doc.go driver.go connector.go conn.go stmt.go tx.go config.go types.go errors.go metadata.go obproxy.go execution.go batch.go cursor.go lob.go call.go long_data.go local_infile.go session.go xa.go trace.go escape.go")
+	expected := strings.Fields("doc.go driver.go connector.go conn.go stmt.go tx.go config.go types.go errors.go metadata.go obproxy.go execution.go batch.go cursor.go lob.go call.go long_data.go local_infile.go session.go xa.go trace.go")
 	allowed := make(map[string]bool, len(expected))
 	for _, name := range expected {
 		allowed[name] = true

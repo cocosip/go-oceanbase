@@ -47,7 +47,7 @@ func runPrepareFallback(ctx context.Context, s *scenario) error {
 	if err = stmt.Close(); err != nil {
 		return err
 	}
-	s.objects = append(s.objects, &objectRecord{Kind: "PROCEDURE", Name: name, State: "created"})
+	s.objects = append(s.objects, &objectRecord{Kind: "PROCEDURE", Name: name, State: objectStateCreated})
 	if err = expectRoutineCount(ctx, s.db, name, 1); err != nil {
 		return err
 	}

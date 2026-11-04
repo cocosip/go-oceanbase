@@ -13,7 +13,7 @@
 | ProxyUser | Oracle 初始代理登录通过（`CURRENT_USER`=目标、`PROXY_USER`=认证代理账号）；`COM_CHANGE_USER` 重认证后代理目标未生效，驱动已对该确切版本在发送前拒绝（B21），见下节 |
 | 受限账号元数据 | MySQL SELECT-only 与 Oracle `CREATE SESSION`+按表授权身份下，`TestMetadataRestrictedVisibility` 双模式通过：只看到被授权表的 1 表/3 列/1 主键，读取不可见 schema 返回 0 行 |
 | 元数据过滤组合 | `TestMetadataCatalog` 双模式通过：`ColumnPattern` exact/前缀、表名 `%`/`_` 通配、kind 不适用过滤与非法表类型的 `ErrBind`；MySQL 另验证外键引用 schema/name 过滤；Oracle 引用连接约 9.7s 并超默认 10s 超时（B22），该组合在 Oracle 跳过 |
-| 长稳/耐力 | `TestConcurrentPoolTransactions`（`OB_TEST_STABILITY_ROUNDS=2000`）双模式各 4 worker×2000 轮 = 8000 事务/4000 提交，146s 完成，零 worker 错误、`pool_open=4`/`in_use=0`/goroutines=4；`OB_TEST_STABILITY_TIMEOUT` 可放宽 3m 默认上限；`-race` 在 Windows 仍启动失败（0xc0000139） |
+| 长稳/耐力 | `TestConcurrentPoolTransactions`（`OB_TEST_STABILITY_ROUNDS=2000`）双模式各 4 worker×2000 轮 = 8000 事务/4000 提交，146s 完成，零 worker 错误、`pool_open=4`/`in_use=0`/goroutines=4；`OB_TEST_STABILITY_TIMEOUT` 可放宽 3m 默认上限；`-race` 当时在 Windows 启动失败（0xc0000139），2026-11-04 已用 Go 1.27.3 + MinGW gcc 15.1.0 复跑全量数据竞争检查并全部通过（替换该历史限制） |
 | Prepare 回退 | `obtest prepare-fallback`：`CREATE/DROP PROCEDURE` 的独立 server PREPARE 返回 1295；关闭 `EmulateUnsupportedPstmts` 时保留 1295，开启后显式 `sql.Stmt` 回退为 client 插值并真实建/删过程；带占位符变体为 1064 |
 | G 项 | G01/G03/G04/G05a/G07a/G07b 指定子集在集成套件中复验通过 |
 | U 项与目标拒绝 | `TestOraclePLTypeReadiness` 仍按契约断言：RECORD/ANYDATA 原生 OUT 返回 600/0A000（B16）；匿名 LOB 头 600/HY000（B18）；NCLOB DDL 902（S01）；MySQL XA SUSPEND/JOIN 1398（B01） |

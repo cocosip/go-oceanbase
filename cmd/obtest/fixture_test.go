@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
@@ -18,6 +19,16 @@ const fixturePrefix = "OBT_OFFLINE"
 const fixtureCountSQL = "SELECT COUNT(*) FROM OBT_OFFLINE_T"
 const fixtureDroppedState = "dropped"
 const fixtureDropTableSQL = "DROP TABLE OBT_OFFLINE_T"
+
+const (
+	caseMissingRow    = "missing-row"
+	caseExtraRow      = "extra-row"
+	caseVarchar2      = typeNameVarchar2
+	caseRoundTrip     = "round-trip"
+	caseRejectionCode = "rejection-code"
+	caseMetadataType  = "metadata-type"
+	caseNullChanged   = "null-changed"
+)
 
 type fixtureStep struct {
 	query    string
@@ -45,8 +56,43 @@ func (fixtureDriver) Open(string) (driver.Conn, error) {
 
 type fixtureConn struct{ fixture *fixtureDB }
 
-func (*fixtureConn) Prepare(string) (driver.Stmt, error) {
-	return nil, errors.New("unexpected prepare")
+func (f *fixtureConn) Prepare(query string) (driver.Stmt, error) {
+	return &fixtureStmt{conn: f, query: query}, nil
+}
+
+type fixtureStmt struct {
+	conn  *fixtureConn
+	query string
+}
+
+func (*fixtureStmt) Close() error  { return nil }
+func (*fixtureStmt) NumInput() int { return -1 }
+
+func (s *fixtureStmt) Exec(args []driver.Value) (driver.Result, error) {
+	return s.conn.ExecContext(context.Background(), s.query, fixtureNamed(args))
+}
+
+func (s *fixtureStmt) Query(args []driver.Value) (driver.Rows, error) {
+	return s.conn.QueryContext(context.Background(), s.query, fixtureNamed(args))
+}
+
+func fixtureNamed(args []driver.Value) []driver.NamedValue {
+	named := make([]driver.NamedValue, len(args))
+	for i, arg := range args {
+		named[i] = driver.NamedValue{Ordinal: i + 1, Value: arg}
+	}
+	return named
+}
+
+// fixtureArgText renders an argument the way the driver would see it, unwrapping
+// driver.Valuer implementations such as sql.Null[T].
+func fixtureArgText(value any) string {
+	if valuer, ok := value.(driver.Valuer); ok {
+		if converted, err := valuer.Value(); err == nil {
+			value = converted
+		}
+	}
+	return fmt.Sprint(value)
 }
 func (f *fixtureConn) Begin() (driver.Tx, error) {
 	return f.BeginTx(context.Background(), driver.TxOptions{})
@@ -219,7 +265,7 @@ func fixtureScenario(t *testing.T, steps []fixtureStep) *scenario {
 	t.Helper()
 	f := &fixtureDB{t: t, steps: steps}
 	db := sql.OpenDB(f)
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(2) // a pinned session must not block the scenario's pooled DDL
 	s := &scenario{db: db, prefix: fixturePrefix, mode: oceanbase.ModeOracle, cleanupTimeout: time.Second}
 	t.Cleanup(func() {
 		if err := db.Close(); err != nil {

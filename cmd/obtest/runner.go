@@ -84,6 +84,8 @@ type scenario struct {
 	observations   map[string]string
 }
 
+const objectStateCreated = "created"
+
 type checkFailure string
 
 func (e checkFailure) Error() string { return string(e) }
@@ -282,7 +284,7 @@ func (s *scenario) create(ctx context.Context, kind, suffix, definition string) 
 	if _, err := s.db.ExecContext(ctx, "CREATE "+kind+" "+name+" "+definition); err != nil {
 		return "", err
 	}
-	record.State = "created"
+	record.State = objectStateCreated
 	s.cleanups = append(s.cleanups, cleanupAction{"drop " + kind + " " + name, func(ctx context.Context) error {
 		_, err := s.db.ExecContext(ctx, "DROP "+kind+" "+name)
 		if err != nil {
@@ -296,10 +298,14 @@ func (s *scenario) create(ctx context.Context, kind, suffix, definition string) 
 }
 
 func (s *scenario) table(ctx context.Context, definition string) (string, error) {
+	return s.tableNamed(ctx, "T", definition)
+}
+
+func (s *scenario) tableNamed(ctx context.Context, suffix, definition string) (string, error) {
 	if s.mode == oceanbase.ModeMySQL {
 		definition += " ENGINE=InnoDB"
 	}
-	return s.create(ctx, "TABLE", "T", definition)
+	return s.create(ctx, "TABLE", suffix, definition)
 }
 
 func (s *scenario) scalar(query string) string {

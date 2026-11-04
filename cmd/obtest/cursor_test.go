@@ -15,7 +15,7 @@ func TestCursorBatchAssertions(t *testing.T) {
 			wantOK bool
 		}{
 			{name: "exact-batch", wantOK: true},
-			{name: "missing-row", change: func(r *cursorBatchFixtureRows) { r.values = nil }},
+			{name: caseMissingRow, change: func(r *cursorBatchFixtureRows) { r.values = nil }},
 			{name: "duplicate-row", change: func(r *cursorBatchFixtureRows) { r.values = append(r.values, r.values[0]) }},
 			{name: "additional-row", change: func(r *cursorBatchFixtureRows) {
 				row := append([]driver.Value(nil), r.values[0]...)

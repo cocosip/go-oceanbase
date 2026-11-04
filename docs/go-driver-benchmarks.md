@@ -96,7 +96,7 @@ Reproduce with `go test . -run '^$' -bench '^BenchmarkDriver$/.*/batch-(rewrite|
 
 ## 5. Outstanding verification
 
-Live CRUD, caching, native batch optimization, streaming LOB/cursor performance in both modes over direct/OBProxy connections, network and multi-connection load, and long-term memory/handle/goroutine curves have not run. Actual Linux execution, remote CI and successful race evidence remain missing. D32 is not complete; implementation remains 28/32 and acceptance 0/32. See [development progress](go-driver-development-progress.md).
+Live CRUD, caching, native batch optimization, streaming LOB/cursor performance in both modes over direct/OBProxy connections, network and multi-connection load, and long-term memory/handle/goroutine curves have not run. Actual Linux execution and remote CI remain missing; the race detector does run on the local Windows host (full suite passed 2026-11-04 with `CGO_ENABLED=1`). D32 is not complete; implementation remains 28/32 and acceptance 0/32. See [development progress](go-driver-development-progress.md).
 
 ## 6. Offline resource stability checks
 
@@ -139,6 +139,17 @@ See §7 for a separate continuous mixed-operation check on the same physical ses
 | 1.26.0 | 8 | 113095 | 502216 | 1594 | 2 |
 
 Every quiescent sample had two goroutines. Heap/object counts still grew after warmup in both versions, so these results cannot be described as zero growth or proof of no leaks. Samples include fixed test-framework metadata and runtime caches. The resource assertions directly establish cleanup after each scenario. Production stability requires longer runs, long-lived sessions, multiple connections, faults and real socket/OS-handle/database environments.
+
+### 6.1a Iteration-scaling check of the observed growth (2026-11-04)
+
+To decide whether the growth above is per operation or per sample, `TestDriverResourceStability` ran twice on Windows/amd64 with Go 1.27.3, once at `OB_TEST_STABILITY_ITERATIONS=150` and once at `1000` (identical scenarios and sample count).
+
+| iterations/sample | heap objects sample 1 → 8 | heap bytes sample 1 → 8 | growth per sample |
+| --- | --- | --- | --- |
+| 150 | 1955 → 4387 | 985904 → 1306360 | ≈ +347 objects |
+| 1000 | 2136 → 4401 | 1059792 → 1381720 | ≈ +324 objects |
+
+A 6.7× increase in operations per sample leaves the per-sample growth essentially unchanged, so the observation tracks per-sample fixture/framework retention (each sample re-creates 16 scenarios × 2 modes as fresh fixtures and subtests) rather than accumulation per executed statement. This is still an observation, not a pass/fail threshold, and it does not establish zero growth for one long-lived session or production workloads.
 
 ### 6.2 Eighteen-scenario samples including native batches
 

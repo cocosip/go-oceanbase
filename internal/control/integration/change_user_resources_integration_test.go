@@ -112,4 +112,3 @@ func integrationTestChangeUserResourceInvalidation(t *testing.T, p integrationte
 		t.Fatal("pool did not restore the original identity", restored, original, err)
 	}
 }
-

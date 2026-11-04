@@ -164,7 +164,7 @@ func metadataContractFixtures(mode oceanbase.Mode) []metadataContractFixture {
 		columnQuery = `SELECT NULL AS "catalog",c.OWNER AS "schema",c.TABLE_NAME AS "table_name",c.COLUMN_NAME AS "name",c.COLUMN_ID AS "ordinal_position",c.DATA_TYPE AS "data_type",CASE WHEN c.CHAR_USED='C' THEN c.CHAR_LENGTH ELSE c.DATA_LENGTH END AS "length",c.DATA_PRECISION AS "precision",c.DATA_SCALE AS "scale",CASE c.NULLABLE WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END AS "nullable",c.DATA_DEFAULT AS "default_value",m.COMMENTS AS "remarks",c.DATA_TYPE_OWNER AS "type_owner" FROM ALL_TAB_COLUMNS c LEFT JOIN ALL_COL_COMMENTS m ON m.OWNER=c.OWNER AND m.TABLE_NAME=c.TABLE_NAME AND m.COLUMN_NAME=c.COLUMN_NAME WHERE 1=1 ORDER BY c.OWNER,c.TABLE_NAME,c.COLUMN_ID`
 	}
 	if mode == oceanbase.ModeOracle {
-		columnQuery = strings.Replace(columnQuery, ` FROM ALL_TAB_COLUMNS c`, `,NULL AS "auto_increment",CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END AS "generated" FROM ALL_TAB_COLS c`, 1)
+		columnQuery = strings.Replace(columnQuery, ` FROM ALL_TAB_COLUMNS c`, `,CASE WHEN UPPER(c.DATA_DEFAULT) LIKE '%SEQUENCE.NEXTVAL%' THEN 1 ELSE NULL END AS "auto_increment",CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END AS "generated" FROM ALL_TAB_COLS c`, 1)
 		columnQuery = strings.Replace(columnQuery, "WHERE 1=1 ORDER", "WHERE 1=1 AND (c.HIDDEN_COLUMN='NO') ORDER", 1)
 		columnQuery = strings.Replace(columnQuery, "c.COLUMN_ID AS", "c.ORDINAL_POSITION AS", 1)
 		columnQuery = strings.Replace(columnQuery, "FROM ALL_TAB_COLS c", "FROM (SELECT a.*,ROW_NUMBER() OVER(PARTITION BY a.OWNER,a.TABLE_NAME ORDER BY a.COLUMN_ID) AS ORDINAL_POSITION FROM ALL_TAB_COLS a WHERE a.HIDDEN_COLUMN='NO') c", 1)

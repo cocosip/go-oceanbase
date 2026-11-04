@@ -4,7 +4,7 @@
 
 ## 1. 当前状态（2026-11-04）
 
-- 本地可验证项已完成：全量单元测试通过；ordinary 与 integration-tag `golangci-lint` 均 0 issues；实库全量集成套件全部 `ok`；双目标 `obtest` 结果为 **79 pass / 0 fail / 3 skip / 14 not applicable**（MySQL 38/0/2/8，Oracle 41/0/1/6）。
+- 本地可验证项已完成：全量单元测试通过；全量 `-race` 通过（Windows amd64、Go 1.27.3 + MinGW-w64 gcc 15.1.0、`CGO_ENABLED=1`，0 报告）；ordinary 与 integration-tag `golangci-lint` 均 0 issues。第三套直连 4.4.2.2 目标（2026-11-04）已实测：全量集成套件全部 `ok`，70 场景 `obtest` 为 **108 pass / 0 fail / 5 skip / 27 not applicable**（MySQL 52/0/3/15，Oracle 56/0/2/12）；新增的 `extended-types`/`geometry`/`oracle-spatial`/`oracle-urowid`/`oracle-xml`/`oracle-number-scale`/`mysql-charset`/`oracle-binary-float`/`mysql-utf16le`/`oracle-synonym`/`mysql-enum-set`/`mysql-generated-columns`/`char-padding`/`empty-lob`/`metadata-patterns`/`oracle-identity`/`metadata-indexes`/`metadata-routines`/`statement-parameters`/`metadata-type-info`/`views`/`floats` 场景首次实库通过，B16/B17/B11/B01/S01 复现。第二轮目标的历史结果仍是 79/0/3/14（48 场景，[报告](live-validation-2026-11-03-second-target.md)）；本轮详情见[第三套目标复验](live-validation-2026-11-04-third-target.md)。
 - 剩余项均为环境或目标版本阻塞，已在 [缺失矩阵](go-driver-completeness.md) 与 [开发进度](go-driver-development-progress.md) 记录：
   - **U01–U03 / B16**：原生 PL RECORD / ANYDATA / LOB 协议形状在 4.4.2.2 目标返回 `600/0A000 (-4007)`，RECORD 五种常规元数据布局返回 `600/HY000`；需要支持相应 wire 的目标或官方成功 wire 依据，未确认是版本问题，归“依据不足 U + 指定目标拒绝 B16”。
   - **B19**：命名时区 `America/New_York` 返回 1882/HY000；显式 `-04:00` 等偏移可用。
@@ -43,7 +43,12 @@ go test -tags integration ./... -count=1 -timeout 30m
 
 # 双目标验收工具（配置文件示例见 docs/go-driver-test-tool.md）
 go run ./cmd/obtest -config obtest-dual.json -report obtest-report.json
-# 期望：pass=79 fail=0 skip=3 not_applicable=14
+# 期望：第三套目标基线 pass=108 fail=0 skip=5 not_applicable=27（70 场景）；MySQL 52/0/3/15，Oracle 56/0/2/12
+# 待目标恢复：run identifier-length and topology-sources, then the full 72-scenario suite; expected 112/0/5/27
+# 完整步骤、疑点排查与清理确认见 [待实库验证清单](pending-live-verification.md)
+
+# race（需要 CGO_ENABLED=1 与本机 MinGW gcc；已用 Go 1.27.3 + gcc 15.1.0 验证）
+$env:CGO_ENABLED='1'; go test -race ./... -count=1
 
 # 平台矩阵（无需实库）
 $env:GOOS='windows'; $env:GOARCH='386'; go test ./... -count=1
@@ -77,7 +82,7 @@ DROP USER RISDB_PROXY CASCADE;
 
 ## 5. 已知环境限制
 
-- Windows `-race` 无法启动（`exit status 0xc0000139`），已有记录；Linux/macOS 运行与托管 CI 未验收。
+- Windows `-race` 需要 `CGO_ENABLED=1` 与本机 MinGW gcc（2026-11-04 用 Go 1.27.3 + gcc 15.1.0 全量通过，0 报告）；历史上出现的 `exit status 0xc0000139` 是工具链/DLL 组合问题，不是驱动缺陷，换机后先用上方命令自检。
 - Go 1.27 的 closing mutex 在“事务连接被淘汰后、事务未 Rollback 时 Ping”可能死锁；实库事务中断测试先 Rollback 再 Ping（见进度文档 D09 条目）。
 - Oracle 元数据引用过滤 join 在本目标超时（B22），实库测试跳过该组合，绑定实现保留。
 - 服务器目标版本 4.4.2.2；U01–U03 所需更新目标暂不可提供（2026-11-03 确认）。

@@ -12,7 +12,7 @@ import (
 
 const metadataFixtureTable = "OBT_OFFLINE_T"
 const metadataFixtureMismatch = "UNEXPECTED_METADATA"
-const metadataFixtureNumber = "NUMBER"
+const metadataFixtureFloat = "FLOAT"
 
 func TestMySQLIntegerDictionaryPrecision(t *testing.T) {
 	for _, precision := range []int64{10, 11, 12} {
@@ -50,8 +50,8 @@ func TestMetadataContentWorkflow(t *testing.T) {
 			{name: "column-name", part: 1, change: func(r *metadataFixtureRows) { r.values[1][3] = "BAD_METADATA_COLUMN" }},
 			{name: "column-order", part: 1, change: func(r *metadataFixtureRows) { r.values[0], r.values[1] = r.values[1], r.values[0] }},
 			{name: "column-position", part: 1, change: func(r *metadataFixtureRows) { r.values[1][4] = int64(1) }},
-			{name: "column-type", part: 1, change: func(r *metadataFixtureRows) { r.values[1][5] = "BLOB" }},
-			{name: "integer-dictionary-type", part: 1, change: func(r *metadataFixtureRows) { r.values[0][5] = "FLOAT" }},
+			{name: "column-type", part: 1, change: func(r *metadataFixtureRows) { r.values[1][5] = blobType }},
+			{name: "integer-dictionary-type", part: 1, change: func(r *metadataFixtureRows) { r.values[0][5] = metadataFixtureFloat }},
 			{name: "character-length", part: 1, change: func(r *metadataFixtureRows) { r.values[1][6] = int64(99) }},
 			{name: "integer-precision", part: 1, change: func(r *metadataFixtureRows) { r.values[0][7] = int64(1) }},
 			{name: "integer-scale", part: 1, change: func(r *metadataFixtureRows) { r.values[0][8] = int64(1) }},
@@ -78,8 +78,8 @@ func TestMetadataContentWorkflow(t *testing.T) {
 			{name: "missing-key", part: 2, change: func(r *metadataFixtureRows) { r.values = nil }},
 			{name: "extra-key", part: 2, change: func(r *metadataFixtureRows) { r.values = append(r.values, r.values[0]) }},
 			{name: "result-column-label", part: 3, change: func(r *metadataFixtureRows) { r.labels[1] = "BAD_METADATA_COLUMN" }},
-			{name: "result-column-type", part: 3, change: func(r *metadataFixtureRows) { r.types[1] = "BLOB" }},
-			{name: "result-integer-type", part: 3, change: func(r *metadataFixtureRows) { r.types[0] = "FLOAT" }},
+			{name: "result-column-type", part: 3, change: func(r *metadataFixtureRows) { r.types[1] = blobType }},
+			{name: "result-integer-type", part: 3, change: func(r *metadataFixtureRows) { r.types[0] = metadataFixtureFloat }},
 			{name: "dictionary-read-error", part: 1, change: func(r *metadataFixtureRows) { r.readErr = errors.New("fixture dictionary read") }},
 			{name: "dictionary-close-error", part: 1, change: func(r *metadataFixtureRows) { r.closeErr = errors.New("fixture dictionary close") }},
 		} {
@@ -188,12 +188,12 @@ type metadataFixtureRows struct {
 
 func metadataFixtureParts(mode oceanbase.Mode) []*metadataFixtureRows {
 	var catalog, autoIncrement driver.Value
-	idType, textType, precision := metadataFixtureNumber, "VARCHAR2", int64(38)
-	resultTypes := []string{metadataFixtureNumber, "VARCHAR2"}
+	idType, textType, precision := metadataFixtureNumber, caseVarchar2, int64(38)
+	resultTypes := []string{metadataFixtureNumber, caseVarchar2}
 	if mode == oceanbase.ModeMySQL {
 		catalog, idType, textType, precision = "def", "int", "varchar", 10
 		autoIncrement = int64(0)
-		resultTypes = []string{"INTEGER", "VARCHAR"}
+		resultTypes = []string{generatedTypeName, typeNameVarchar}
 	}
 	return []*metadataFixtureRows{
 		{fixtureRows: fixtureRows{width: 5, values: [][]driver.Value{{catalog, "", metadataFixtureTable, "TABLE", nil}}}},

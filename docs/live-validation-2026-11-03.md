@@ -98,7 +98,7 @@ go test -tags=integration ./internal/valuecodec -run '^(TestOracleURowID|TestOra
 | U08 Oracle long NUL scripts | Updated: old concatenation failure reproduced and fixed with REPLACE | 12003/98304/196608-byte single/double queries and independent CLOB storage/control checks passed; larger sizes remain unverified. See [focused evidence](charset-nul-validation-2026-11-03.md) |
 | C02 自动 PREPARE 1295 回退 | 实现与 peer 回归已有，实库触发 1295 形状缺 fixture | 需合适 SQL/版本重现；不重放已执行业务 SQL |
 | C08 多语句 LongData | 指定 MySQL 组合实库已通过 | 已关闭该组合验收；其他方向不是同一承诺 |
-| C09/C10/C11 | pipeline 资格、普通列流 API、Oracle warning 详情的已知范围 | 可选客户端/API 扩展；warning 详情仍须服务端接口依据，不是已确认“服务端无 warning 能力” |
+| C09/C10/C11 | pipeline 资格、普通列流 API、Oracle warning 详情的已知范围 | 边界记录，不扩为自造契约/猜测 API；C10 无服务端逐列流原语、参考 SDK 仅覆盖 LOB 与游标；warning 详情仍须服务端接口依据 |
 | S01/S02/S03 | 文档明确不支持 LONG/LONG RAW/BFILE/原生 NCLOB、ANYDATA 持久列、ARRAY 默认值 | 不能靠驱动补齐；需要服务端产品支持或改用已支持形态 |
 | B01–B14 | 保留每项版本/模式/方向和证据来源；本轮新增 Go B11/B12 与 B14 规避证据 | 仅限确切形状；如 XA JOIN/SUSPEND、nested-table 持久列、XMLTYPE PL 输出、Bitmap 直接 bytes 等不能靠猜测 codec 绕过；B14 已由驱动安全规避 |
 | A01/A02 | 当前 view 权限已通过；同义词 900 不归权限；第二身份/代理 grant 仍无 fixture | 不改账号权限；补身份/授权后验收 ChangeUser/ProxyUser 等 |

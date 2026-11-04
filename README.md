@@ -79,7 +79,7 @@ oceanbase://app%40tenant:password@127.0.0.1:2881/demo?mode=mysql
 oceanbase://app%40tenant:password@127.0.0.1:2881/?mode=oracle
 ```
 
-These are placeholders. URL-escape credentials (`%40` represents `@`), or use `Config` to avoid constructing credential-bearing URLs. Supported DSN option names ignore case; duplicate names after case folding are rejected, while values keep their existing semantics. DSNs reject unknown options; JDBC settings are not interchangeable with Go settings. See the [usage guide](docs/go-driver-usage.md) and [option mapping](docs/go-driver-options-mapping.md) for supported configuration.
+These are placeholders. URL-escape credentials (`%40` represents `@`), or use `Config` to avoid constructing credential-bearing URLs. Supported DSN option names ignore case; duplicate names after case folding are rejected, while values keep their existing semantics. DSNs reject unknown options and option names borrowed from other drivers. See the [usage guide](docs/go-driver-usage.md) for supported configuration.
 
 Configure `TLSConfig` with trusted CAs and a server name when encryption is required; leaving it nil does not enable TLS. Use a context for each operation. Network timeouts or an uncertain commit outcome do not make writes safe to replay.
 
@@ -105,9 +105,7 @@ Availability depends on compatibility mode, server version, negotiated capabilit
 | [Capability matrix](docs/go-driver-capabilities.md) | Current Go driver capabilities and support boundaries |
 | [Feature gaps and limitations](docs/go-driver-completeness.md) | Driver gaps separated from server, permission, environment and verification limits |
 | [Compatibility matrix](docs/go-driver-compatibility-matrix.md) | Feature support, conditions and verification status |
-| [Option mapping](docs/go-driver-options-mapping.md) | Java-to-Go configuration mapping and migration differences |
 | [Architecture](docs/go-driver-architecture-design.md) | Public contracts, protocol design and package boundaries |
-| [Connector/J outline](docs/obconnector-j-architecture-outline.md) | Reference Java driver structure |
 | [Development plan](docs/go-driver-development-plan.md) | D01–D32 scope and delivery stages |
 | [Development progress](docs/go-driver-development-progress.md) | Implementation history and verification evidence |
 | [Benchmarks](docs/go-driver-benchmarks.md) | Local protocol-peer scenarios, commands, samples and limitations |
@@ -117,7 +115,7 @@ Availability depends on compatibility mode, server version, negotiated capabilit
 
 - [Comprehensive example](examples/usage/main.go): queries, transactions, prepared statements, batch execution, procedures, multiple results, LOBs, complex types and cursors.
 - [XA example](examples/xa/main.go): start, end and roll back a branch on a pinned session.
-- [Standalone acceptance tool](docs/go-driver-test-tool.md): 44 configured scenarios with fixture creation, cleanup and JSON reporting. Build with `go build -o bin/obtest ./cmd/obtest` (use `bin/obtest.exe` on Windows).
+- [Standalone acceptance tool](docs/go-driver-test-tool.md): 72 configured scenarios with fixture creation, cleanup and JSON reporting. Build with `go build -o bin/obtest ./cmd/obtest` (use `bin/obtest.exe` on Windows).
 
 The examples and acceptance suite require an explicitly configured test database. The comprehensive example creates, modifies and drops temporary tables, procedures and types. Read the usage guide before running it. Compilation and offline tests do not establish live database compatibility.
 

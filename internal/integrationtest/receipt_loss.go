@@ -326,4 +326,3 @@ func OpenReceiptLoss(t *testing.T, p Profile) (*sql.Conn, *ReceiptLossConn) {
 	t.Cleanup(func() { _ = pinned.Close() })
 	return pinned, fault
 }
-

@@ -59,6 +59,30 @@ func caseDefinitions() []caseDefinition {
 		{name: "cancel-query", description: "one-shot server cancellation of an automatically held row lock", run: runCancelQuery},
 		{name: "change-user", description: "change identity and verify original pool isolation; requires second DSN", run: runChangeUser},
 		{name: "local-import", description: "auto-seeded LOCAL INFILE import, rollback and commit", run: runLocalImport},
+		{name: "floats", description: "MySQL DOUBLE / Oracle BINARY_DOUBLE bit-exact round trips, extremes, negative zero and NULL", run: runFloats},
+		{name: "extended-types", description: "MySQL VECTOR/SPARSEVECTOR/ARRAY/ROARINGBITMAP/JSON text, NULL, metadata and rejection", mysqlOnly: true, run: runExtendedTypes},
+		{name: "geometry", description: "MySQL GEOMETRY SRID-0 text/bytes round trip and missing-SRS rejection", mysqlOnly: true, run: runGeometry},
+		{name: "mysql-charset", description: "MySQL strict legacy charset columns, frozen server bytes and legacy result decoding", mysqlOnly: true, run: runMySQLCharset},
+		{name: "mysql-utf16le", description: "MySQL utf16le result conversion, surrogate-pair bytes and VARCHAR metadata", mysqlOnly: true, run: runMySQLUTF16LE},
+		{name: "mysql-enum-set", description: "MySQL ENUM/SET text normalization, metadata and invalid member rejection", mysqlOnly: true, run: runMySQLEnumSet},
+		{name: "mysql-generated-columns", description: "MySQL STORED/VIRTUAL generated columns, recomputation and write rejection", mysqlOnly: true, run: runMySQLGeneratedColumns},
+		{name: "oracle-spatial", description: "Oracle SDO_GEOMETRY literal storage, member access, OBJECT decoding and invalid SRID", oracleOnly: true, run: runOracleSpatial},
+		{name: "oracle-urowid", description: "Oracle long UROWID capture, NULL/rebind round trips and IN OUT binding", oracleOnly: true, run: runOracleURowID},
+		{name: "oracle-xml", description: "Oracle XMLTYPE serialization, NULL and XMLTYPE/string metadata", oracleOnly: true, run: runOracleXML},
+		{name: "oracle-number-scale", description: "Oracle NUMBER(p,-s) rounding and NUMBER(p,s>p) limits with declared precision/scale", oracleOnly: true, run: runOracleNumberScale},
+		{name: "oracle-binary-float", description: "Oracle BINARY_FLOAT float32 precision with NaN/Inf and BINARY_DOUBLE exactness", oracleOnly: true, run: runOracleBinaryFloat},
+		{name: "oracle-synonym", description: "Oracle view/synonym reads, synonym writes and synonym dictionary identity", oracleOnly: true, run: runOracleSynonym},
+		{name: "char-padding", description: "CHAR blank padding per mode, comparisons, VARCHAR and over-length rejection", run: runCharPadding},
+		{name: "empty-lob", description: "empty LOB versus SQL NULL for plain scans, bound zero-length values and NULL flags", run: runEmptyLOB},
+		{name: "metadata-patterns", description: "dictionary exact-name escaping versus LIKE wildcard patterns", run: runMetadataPatterns},
+		{name: "oracle-identity", description: "Oracle identity keys, ALWAYS rejection and dictionary auto-increment flag", oracleOnly: true, run: runOracleIdentity},
+		{name: "metadata-indexes", description: "index uniqueness/column order and server-info dictionary identity", run: runMetadataIndexes},
+		{name: "metadata-routines", description: "routine kinds and IN/OUT/RETURN parameter dictionaries", run: runMetadataRoutines},
+		{name: "statement-parameters", description: "prepared statement placeholder ordinals, types and binding", run: runStatementParameters},
+		{name: "metadata-type-info", description: "built-in type families, documented limits and auto-increment flags", run: runMetadataTypeInfo},
+		{name: "views", description: "updatable view writes, read-only predicate and view dictionaries", run: runViews},
+		{name: "identifier-length", description: "maximum table/column identifiers through DDL, DML and metadata", run: runIdentifierLength},
+		{name: "topology-sources", description: "inline TNS, tnsnames file and OCP discovery sources without a database", run: runTopologySources},
 	}
 }
 
@@ -163,3 +187,5 @@ func withSession(ctx context.Context, db *sql.DB, run func(*sql.Conn) error) (er
 	defer closeInto(c, &err)
 	return run(c)
 }
+
+const typeNameVarchar = "VARCHAR"

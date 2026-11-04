@@ -1,6 +1,6 @@
 # Go 驱动能力矩阵
 
-更新日期：2026-11-03。本文描述 **go-oceanbase 自身的公开能力与支持边界**；依据 OceanBase 官方文档、Connector/J 实现、.NET 驱动已有功能矩阵、本项目源码及 OceanBase 4.4.2.2 直连实库核对。归因与待办见[功能缺失与限制矩阵](go-driver-completeness.md)。已按本次复核拆分客户端、服务端、权限、部署与未知前提。
+更新日期：2026-11-03。本文描述 **go-oceanbase 自身的公开能力与支持边界**；依据 OceanBase 官方文档、参考 SDK 的协议/失败形状记录、本项目源码及 OceanBase 4.4.2.2 直连实库核对。归因与待办见[功能缺失与限制矩阵](go-driver-completeness.md)。已按本次复核拆分客户端、服务端、权限、部署与未知前提。
 
 ## 阅读口径
 
@@ -12,7 +12,7 @@
 
 本表的 G/C/S/B/A/ENV/V/U/X 编号指向缺失与限制矩阵的独立分类：G=确认客户端差距，C=客户端范围，S=官方不支持形态，B=指定目标拒绝，A=权限，ENV=环境，V=待验，U=依据不足，X=范围排除。H20/H24 仅为 Go 历史记录；N 为参考 SDK 实测记录，未由 Go 复现。证据列 SRC 表示源码核对，与分类 S（官方不支持）不同；C/X 等能力行编号与缺失表分类编号分别使用。
 
-服务端支持一种 SQL 类型，不等于驱动支持它的专用编码；Java/.NET 存在接口，也不要求 Go 复制类名和配置项。SQL 引擎、索引、分区、向量搜索算法和运维管理能力由数据库提供，不单独计为驱动功能。
+服务端支持一种 SQL 类型，不等于驱动支持它的专用编码；其他语言客户端（含 JDBC）存在某接口，只是该语言生态的 API，不是 OceanBase 协议能力，也不要求 Go 复制其类名或配置项。SQL 引擎、索引、分区、向量搜索算法和运维管理能力由数据库提供，不单独计为驱动功能。
 
 Oracle 模式相关能力以具有该模式的产品版本/租户为前提；官方 ANYDATA 页面明确适用于企业版，社区版仅提供 MySQL 模式。不能将 Oracle 列视为所有 OceanBase 部署的通用承诺。
 
@@ -25,7 +25,8 @@ Oracle 模式相关能力以具有该模式的产品版本/租户为前提；官
 | H20 | [历史实库报告](release-validation-2026-10-20.md)：OceanBase 4.4.2.2 双模式直连；仅限报告列明场景 |
 | H24 | [浮点专项报告](binary-double-live-validation-2026-10-24.md)：双模式直连 float64 参数及 Oracle 数组绑定子集 |
 | H03 | [2026-11-03 Go 直连复验](live-validation-2026-11-03.md)：OceanBase 4.4.2.2 双模式；B14 规避无 skip、SDO 修复、扩展类型与 PL 前提按指定子集验收 |
-| H03T | [第二套直连目标复验](live-validation-2026-11-03-second-target.md)：独立 OceanBase 4.4.2.2 双模式；全量集成测试通过、`obtest` 78/0/3/13、MySQL/Oracle ChangeUser 通过、Oracle 初始代理登录通过、COM_CHANGE_USER 代理目标未应用（B21） |
+| H03T | [第二套直连目标复验](live-validation-2026-11-03-second-target.md)：独立 OceanBase 4.4.2.2 双模式；全量集成测试通过、`obtest` 79/0/3/14、MySQL/Oracle ChangeUser 通过、Oracle 初始代理登录通过、COM_CHANGE_USER 代理目标未应用（B21） |
+| H03U | [第三套直连目标复验](live-validation-2026-11-04-third-target.md)：独立 OceanBase 4.4.2.2 双模式；全量集成测试通过、`obtest` 70 场景 108/0/5/27（MySQL 52/0/3/15；Oracle 56/0/2/12）、新增 extended-types/geometry/oracle-spatial/oracle-urowid/oracle-xml 、oracle-number-scale、mysql-charset、oracle-binary-float、mysql-utf16le、oracle-synonym、mysql-enum-set、mysql-generated-columns、char-padding、empty-lob、metadata-patterns、oracle-identity、metadata-indexes、metadata-routines、statement-parameters、metadata-type-info、views 及 floats 场景首次实库通过、B16/B17/B11/B01/S01 复现；无第二身份与代理身份（ChangeUser 跳过） |
 | V | 尚缺对应真实部署、类型形状或故障验收；可以与 H20/H24 同时存在 |
 
 H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**、Oracle **38 pass / 0 fail / 2 skip / 5 不适用**，每模式选择 45 场景。不能由此推导下表每行均通过。报告中的旧测试目录已经调整，当前集成测试分布在各 `internal/*` 包及其子目录；复验使用当前入口，不直接照搬历史路径。
@@ -36,7 +37,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | --- | --- | --- | --- | --- | --- |
 | C01 连接、Ping、关闭、模式识别 | 有实现 | 有实现 | [Open / NewConnector](../connector.go)、[建连协调](../internal/connect/connector.go)；认证后识别模式，显式模式不符拒绝；同一连接不切换租户模式 | H20双模式连接子集；非全部署 | SRC/L/H20 |
 | C02 服务端版本与能力协商 | 有实现 | 有实现 | [配置](../config/config.go)、[协议](../internal/connect/protocol.go)；使用 `ob_version()`，不拿 MySQL 握手兼容版本代替；未知版本关闭依赖版本的扩展，无服务端版本覆盖开关 | 实际探测版本/协商，未知关闭扩展 | SRC/L/H20/V |
-| C03 DSN、配置快照和校验 | 有实现 | 有实现 | [ParseDSN](../config/dsn.go)；`oceanbase://`，键名不区分大小写，重复/未知键拒绝，值不改写；不直接接受 JDBC URL 或全部 Java 参数 | Go解析契约，数据库无关 | SRC/L |
+| C03 DSN、配置快照和校验 | 有实现 | 有实现 | [ParseDSN](../config/dsn.go)；`oceanbase://`，键名不区分大小写，重复/未知键拒绝，值不改写；不直接接受其它驱动的 URL 或参数名 | Go解析契约，数据库无关 | SRC/L |
 | C04 TCP、自定义拨号、SOCKS5 | 有实现 | 有实现 | [传输](../internal/transport/transport.go)、[传输配置](../config/transport.go)；TCP 调优通过 `DialContext`/标准库，SOCKS5 不替代 TLS | 普通TCP有H20；SOCKS部署另待验 | SRC/L/H20（普通 TCP）/V |
 | C05 Unix socket、Named Pipe、Shared Memory、VC | 受限 | 受限 | [传输目录](../internal/transport)、[OBProxy VC](../obproxy/dialer.go)；有 OS/build tag/运行库限制；共享内存分配等待不能保证硬取消；VC 是原生代理嵌入入口，另需真实 Linux 运行验收 | 真实OS/服务IPC/VC前提ENV05 | SRC/L/V |
 | C06 TLS、主机名验证、mTLS | 有实现 | 有实现 | `Config.TLSConfig` 使用 Go `crypto/tls`/`x509`；拒绝未验证 TLS 授权敏感认证；JKS/PKCS12 转换由应用/部署负责 | TLS是部署能力；ENV01/V01，不是官方不支持 | SRC/L/V；H20 仅真实端点拒绝/未开启边界 |
@@ -64,7 +65,7 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | Q06 过程、函数、OUT/INOUT、RETURNING | 有实现 | 受限 | [Out / CursorOut](../call.go)、[调用实现](../internal/call)；MySQL 用同会话私有变量；Oracle 原生输出要求真实版本门槛；结果排空/清理后发布输出 | H20标量/过程子集；复杂方向逐项核实 | SRC/L/H20/V |
 | Q07 过程/语句参数元数据 | 有实现 | 受限 | [Metadata](../metadata.go)、[目录计划](../internal/catalog/metadata_sql_oracle.go)；语句元数据实际 prepare/close；不提供 .NET 式 DeriveParameters 自动创建参数对象，PL-only RECORD 不等于命名 SQL OBJECT | 目录V07、缺列参考B12、PL RECORD U02 | SRC/L/H20（目录子集）/V |
 | Q08 Rows、Scan、ColumnTypes、计数与自增 ID | 有实现 | 有实现 | [Rows](../internal/execution/rows.go)、[Execute](../execution.go)；扩展结果保留列标签/原始列与表身份；完整 uint64 ID 保留文本；聚合结果不猜逐项 ID；Oracle 不接受 ChangedRows | 模式决定计数/ID语义；历史子集H20 | SRC/L/H20 |
-| Q09 流式 Rows 与大字段 | 受限 | 受限 | 行迭代流式；普通字段/复杂值受消息及物化限额约束；大对象使用 [LOB](../lob.go)/[TableBlob](../internal/lob/table.go)。Go `database/sql` Rows 不提供逐列无限流接口，因此该边界不计为已确认客户端缺实现 | 当前协议与标准 Rows 契约的客户端边界；大值目标能力另验 | SRC/L/H20/V |
+| Q09 流式 Rows 与大字段 | 受限 | 受限 | 行迭代流式；普通字段/复杂值受消息及物化限额约束；大对象使用 [LOB](../lob.go)/[TableBlob](../internal/lob/table.go)。OceanBase 协议无逐列流式原语；JDBC 等语言生态的流式接口只覆盖 LOB locator 与游标按批取行，且 JDBC 是 Java 专有 API、不构成协议依据（Go 已用 LOB/TableBlob 与 cursor API 覆盖），因此该边界不计为已确认客户端缺实现，也不定义自造契约 | 当前协议与标准 Rows 契约的客户端边界；大值目标能力另验 | SRC/L/H20/V |
 | Q10 显式 cursor、分页、滚动、可更新结果 | 受限 | 受限 | [OpenCursor](../cursor.go)、[游标实现](../internal/cursor)；静态快照有界；敏感游标仅指定 Oracle 版本/单表形状，以 ROWID 重查；更新要求可写事务、完整 PK 等 | H20敏感游标子集；锁/PK/版本有前提 | SRC/L/H20（含 Oracle 敏感刷新）/V |
 | Q11 REF CURSOR OUT / 子结果 | — | 受限 | [资源输出](../internal/call)、[物化](../internal/materialize/decoder.go)；OUT与binary子cursor有实现；text客户端拒绝；SELECT CURSOR指定服务端失败形状B03单列，不能推导所有cursor表达式不可用 | 过程OUT H20；SELECT CURSOR仅B03形状受限 | SRC/L/H20（过程OUT）/V |
 | Q12 REF CURSOR IN/INOUT | — | 当前范围排除 | 无参考输入writer契约，按X01排除；不能从OUT或scalar INOUT推导输入支持，也不能说服务器全面不支持 | X01/U03：无writer依据，不断言服务端无输入 | SRC/L（拒绝） |
@@ -76,16 +77,16 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | Q18 LOCAL INFILE / 导入 | 受限 | 受限 | [Import](../local_infile.go)、[导入校验](../internal/execution/import.go)；单次应用流授权，不按服务器文件名读取本地文件；两模式均要求 autocommit、无本地事务且未进入 XA 专用状态 | H20两模式导入成功；事务安全为客户端限制 | SRC/L/H20/V |
 | Q19 长参数分片上传 | 有实现 | 受限 | [LongData](../long_data.go)、[上传](../internal/statement/upload.go)；server prepare 使用 MySQL long-data / Oracle piece-data，Oracle 依版本；显式 client 多语句仅将 Reader 一次性有界展开为字面量，单语句仍拒绝；不自动回放 | MySQL long-data/Oracle逐片ACK；[U04确认状态](go-driver-completeness.md#u-series-status)不猜无 ACK pipeline；目标每参数最多 1024 个分片（非字节上限）：分片 text/binary 为 64 KiB（MySQL）/32 KiB（Oracle），有效容量约 64 MiB / 32 MiB；已知 Length 的末片直接 final，超限在发送第 1025 片前拒绝（ErrTooManyPieces），不再静默截断 | SRC/L/H20/V |
 | Q20 multi-send / pipelining | 受限 | 受限 | [批量 native 选择](../internal/batch/native.go)、[pipeline](../internal/batch/pipeline.go)；server prepare、标量 DML、ContinueOnError 等门槛；framed 传输/Shared Memory 或不合资格形状走顺序；不是 SELECT/复杂值/流的通用 pipeline | 客户端优化范围C09，不是服务器不能执行SELECT | SRC/L/H20（指定子集）/V |
-| Q21 MariaDB bulk 协议 | 排除 | — | 枚举 `BatchBulk` 不表示已有 bulk writer；当前不合资格策略走顺序；不能把 Java MariaDB 继承选项当 OceanBase 必需协议 | X03非当前OceanBase协议承诺 | SRC/L |
+| Q21 MariaDB bulk 协议 | 排除 | — | 枚举 `BatchBulk` 不表示已有 bulk writer；当前不合资格策略走顺序；不能把参考 SDK 的 MariaDB 继承选项当 OceanBase 必需协议 | X03非当前OceanBase协议承诺 | SRC/L |
 | Q22 context、读超时、显式 CancelQuery | 有实现 | 有实现 | [取消控制](../internal/control/cancel.go)；命令预算、单次目标及辅助连接 KILL；权限/代理路由影响实际中断；取消不保证无数据库效果 | 实际KILL权限/路由/中断码V10 | SRC/L/H20（报告子集）/V |
 | Q23 活动操作互斥、资源所有权 | 有实现 | 有实现 | [session](../internal/session)、[lifetime](../internal/lifetime)；LOB/cursor/输出绑定固定 Conn/Tx；不承诺同一连接多活动结果并行，跨连接并发交给池 | 客户端所有权；真实资源交错V09 | SRC/L/H20（有限并发）/V |
-| Q24 JDBC escape 转换与 SQL 词法 | 受限 | 受限 | [RewriteJDBCEscapes](../escape.go)、[sqltext](../internal/sqltext)；识别注释/引用/占位并按模式转换已有 escape 子集；不是任意 SQL 方言转换器 | 客户端转换，目标SQL函数仍需支持 | SRC/L/V |
+| Q24 JDBC escape 转换与 SQL 词法 | 不适用 | 不适用 | JDBC escape（`{d ...}`/`{ts ...}`/`{fn ...}`）是 Java Connector/J 专有语法；Go 驱动不重写、不模拟，已删除此前实验性的 `RewriteJDBCEscapes` API 及 `jdbc-escapes` 场景 | 无（Go 用户直接写目标方言 SQL） | — |
 
 ## 类型、编码与复杂值
 
 | ID / 能力 | Go实现：MySQL | Go实现：Oracle | Go映射与客户端边界 | 服务端/部署判定 | 证据 |
 | --- | --- | --- | --- | --- | --- |
-| T01 整数、unsigned、布尔 | 有实现 | 有实现 | [scalar codec](../internal/valuecodec/binary.go)；结果保持整数/精确文本；无符号超 int64 不经 float64；TINYINT/BIT/YEAR 不照搬 Java 可变返回类型 | 模式/列定义决定取值范围 | SRC/L/H20/V |
+| T01 整数、unsigned、布尔 | 有实现 | 有实现 | [scalar codec](../internal/valuecodec/binary.go)；结果保持整数/精确文本；无符号超 int64 不经 float64；TINYINT/BIT/YEAR 不照搬参考 SDK 的可变返回类型 | 模式/列定义决定取值范围 | SRC/L/H20/V |
 | T02 DECIMAL / NUMBER / FLOAT 精度 | 有实现 | 有实现 | [Number](../types/number.go) 保留精确文本，Scan/元数据分开；不是用 float64 覆盖任意 NUMBER | 官方支持；实际precision/scale V07 | SRC/L/H20/V |
 | T03 FLOAT/DOUBLE、BINARY_FLOAT/BINARY_DOUBLE | 有实现 | 有实现 | float64 输入 DOUBLE wire 与握手能力配合；[专项](binary-double-live-validation-2026-10-24.md)验证存储/回读；旧服务器协商组合另验 | H24双模式float64子集，旧版本另验 | SRC/L/H20/H24/V |
 | T04 字符串、二进制、RAW、BLOB/TEXT 内容 | 有实现 | 有实现 | string/[]byte/[Raw](../types/scalar.go)，严格编码；Oracle 空串和目标容量由服务端语义决定；内容与 locator 分开 | 官方支持；空串/容量/编码按模式 | SRC/L/H20/V |
@@ -121,25 +122,25 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 | X03 XA start/end/prepare/commit/rollback/recover | 双模式有实现，MySQL XA SQL / Oracle DBMS_XA；固定专用会话；Forget、RM timeout 不伪造支持，join/suspend 受目标限制 | 正常XA H20；JOIN/SUSPEND指定拒绝B01 | [XA 实现](../internal/xa/manager.go)；SRC/L/H20/V |
 | X04 unknown outcome 与连接淘汰 | 发送后的故障不自动重放；写入/提交未知保留分类，旧资源不能进入新租约；不等于已经证明真实节点崩溃恢复 | 真实故障恢复V05；客户端不重放 | [错误](../dberrors/errors.go)、[XA](../internal/xa)；SRC/L/H20（正常与指定故障子集）/V |
 | P01 标准包、EOF、逻辑包边界 | 双模式有实现，校验序号/长度/截断，资源与结果预算有界 | 标准协议已用；不是所有畸形路径实库验收 | [wire](../internal/wire/packet.go)、[command](../internal/command)；SRC/L/H20 |
-| P02 标准 zlib 压缩 | 依真实协商，auto 可回退；有帧编码/解码及 Java 互操作证据，不等于真实服务已使用压缩 | 历史端点未提供压缩ENV02，不是产品不支持 | [compress](../internal/wire/compress.go)、[互操作用例](../internal/wire/compression_java_test.go)；SRC/L/H20（回退）/V |
+| P02 标准 zlib 压缩 | 依真实协商，auto 可回退；有帧编码/解码及与参考客户端实现的协议互操作证据，不等于真实服务已使用压缩 | 历史端点未提供压缩ENV02，不是产品不支持 | [compress](../internal/wire/compress.go)、[互操作用例](../internal/wire/compression_java_test.go)；SRC/L/H20（回退）/V |
 | P03 OB20、CRC、proxy checksum、新 metadata | 有实现，各能力分别协商；OB20 CRC、proxy checksum、SQL checksum 是不同能力 | 真实协商端点ENV02；常量不等于部署通过 | [OB20](../internal/wire/ob20.go)、[协议配置](../config/protocol.go)；SRC/L/V |
 | P04 Oracle PrepareExecute、SQL checksum | PrepareExecute 依真实版本 ≥2.2.76；确切 4.4.2.2 通用可选优化禁用以规避 B14；普通 SQL checksum 依 ≥4.1.2 | 必需 native OUT/RETURNING 保留原版本 gate，实库回归通过；可选开关不绕过门槛 | [执行选项](../internal/statement/options.go)；SRC/L/H03/B14/V |
 | P05 Full Link Trace | 有协商/extra-info/采样控制/trace-span 信息子集；需 OB20 与目标支持；客户端事件不是服务器 trace 或 collector 验收 | 服务端/代理FLT与collector前提ENV02 | [trace](../internal/diagnostic/trace.go)、[wire trace](../internal/wire/trace.go)；SRC/L/V |
-| P06 压缩OB20、proxy reroute | 当前客户端/协议范围排除X03；Java压缩长度拒绝只证明该Java reader的边界，不能据此断言OceanBase产品整体不支持 | X03当前范围，服务端普遍结论未建立 | [兼容性条件](go-driver-compatibility-matrix.md)；SRC/U |
+| P06 压缩OB20、proxy reroute | 当前客户端/协议范围排除X03；参考客户端拒绝压缩长度只说明该客户端实现的边界，不能据此断言 OceanBase 产品整体不支持 | X03当前范围，服务端普遍结论未建立 | [兼容性条件](go-driver-compatibility-matrix.md)；SRC/U |
 | M01 数据库、列、键、索引、权限、过程、UDT 元数据 | 双模式目录计划有实现，Oracle UDT/同义词与 MySQL 目录差异保留；不存在的 Oracle catalog 返回空；权限错误不伪造为空成功；列名/通配/引用过滤组合实库通过（Oracle 引用连接受 B22 限制） | 权限A01/目录参考B12；受限账号与过滤组合 H03T；其余元数据 V07 | [Metadata API](../metadata.go)、[catalog](../internal/catalog)；SRC/L/H20（子集）/H03T/V |
 | M02 日志、慢请求、包/请求诊断 | slog 注入和有界 callback；不记录原始 SQL、参数、凭据和包体；Rows 时长包含消费时间 | 客户端诊断；服务器trace另见P05 | [诊断配置](../config/diagnostic.go)、[诊断实现](../internal/diagnostic)；SRC/L/V（负载） |
-| M03 池指标、OpenTelemetry 接入 | `sql.DB.Stats` 有池统计，callback 可供应用接入观测；无内置 OTel exporter、.NET Activity/Meter 或 Java JMX 等价承诺 | 标准库/应用观测，不是服务器协议能力 | [池示例](../pool_example_test.go)、[诊断配置](../config/diagnostic.go)；标准库/应用适配，非协议缺失 |
+| M03 池指标、OpenTelemetry 接入 | `sql.DB.Stats` 有池统计，callback 可供应用接入观测；无内置 OTel exporter，也不承诺其它生态的 Activity/Meter/JMX 等价物 | 标准库/应用观测，不是服务器协议能力 | [池示例](../pool_example_test.go)、[诊断配置](../config/diagnostic.go)；标准库/应用适配，非协议缺失 |
 | R01 Go 版本、平台、CI、性能/长稳 | Go 1.26+；已有 Windows 本地及历史 hosted 检查记录，当前所有 OS/tag/真实部署组合尚未全验；本地 peer benchmark 不代表实库吞吐或长期稳定性 | 按Go/OS/tag/实际服务端组合验V11 | [go.mod](../go.mod)、[历史发布检查](release-validation-2026-10-20.md)、[benchmarks](go-driver-benchmarks.md)；H20/V |
-| R02 JDBC/ADO.NET 专属 API 与容器集成 | 不复制 JDBC 类、ADO.NET factory/DI、DataAdapter、CommandBuilder、DbBatchReader；Go 用 sql.DB/Conn/Tx、Rows、ExecBatch 等自身契约 | 语言生态差异X04 | [用法](go-driver-usage.md)；生态接口差异 |
+| R02 参考 SDK 专属 API 与容器集成 | 不复制参考 SDK 的类/工厂/DI/DataAdapter/CommandBuilder/DbBatchReader；Go 用 sql.DB/Conn/Tx、Rows、ExecBatch 等自身契约 | 语言生态差异X04 | [用法](go-driver-usage.md)；生态接口差异 |
 | R03 原生数据库/运维产品功能 | 不实现 Oracle OCI/Oracle Net、binlog 复制、备份恢复管理器、Aurora/Galera 控制面；可执行目标支持的 SQL 不等于提供专用产品 API | 职责边界X05，不声明数据库无相关SQL | 排除 |
 
 ## 依据与维护
 
-能力状态以 Go 源码为准；细粒度版本/模式条件继续由[兼容性矩阵](go-driver-compatibility-matrix.md)维护，配置迁移见[选项映射](go-driver-options-mapping.md)。本表不沿用开发任务数计算“全功能完成率”，也不将范围排除/服务端限制计入客户端缺失数。
+能力状态以 Go 源码为准；细粒度版本/模式条件继续由[兼容性矩阵](go-driver-compatibility-matrix.md)维护。本表不沿用开发任务数计算“全功能完成率”，也不将范围排除/服务端限制计入客户端缺失数。
 
 参考材料：
 
-- Java 本地 `obconnector-j` 的 `OceanBaseConnection`、`JDBC4ServerPreparedStatement`、`JDBC4ServerCallableStatement`、`OceanBaseXaResource`、`DefaultOptions`、`ComplexUtil` 与协议实现；结构导航见[Java 功能分析](obconnector-j-architecture-outline.md)。Java 的 `createSQLXML()` 明确拒绝，复杂成员 reader 与 writer 也有不同范围，不能仅看枚举判断。
+- JDBC 只存在于 Java 生态，不是 OceanBase 协议的一部分；其他语言客户端（Java/.NET）仅可在失败形状与帧编码互操作上作旁证，不能用来定义 Go 能力、产物契约或配置项。Go 驱动不提供 JDBC 类、选项映射或 JDBC 转义兼容。
 - .NET 本地 `obconnector-dotnet/docs/obconnector-dotnet-progress.md`、`obconnector-dotnet-completeness.md`、`obconnector-dotnet-scope-audit.md`：用于检查功能域是否遗漏，尤其字符集、UROWID、XMLTYPE、复杂成员输入、批处理、新类型与验收分类；不将 .NET 的通过结果记为 Go 通过。
 - 以下 OceanBase 官方文档已在本次审计中读取。链接固定文档内容以便复核；其中“当前版本”是页面语境，不表示所有历史/未来 OceanBase 版本均有此能力。
 
@@ -168,4 +169,3 @@ H20 的独立工具结果为 MySQL **35 pass / 0 fail / 2 skip / 8 不适用**�
 [O13]: https://github.com/oceanbase/oceanbase-doc/blob/2a5ae3a23a51729d065cec716508eb26cb064106/zh-CN/700.reference/500.sql-reference/100.sql-syntax/200.common-tenant-of-mysql-mode/100.basic-elements-of-mysql-mode/100.data-type-of-mysql-mode/1000.roaring-bitmap-data-type-of-mysql-mode/100.roaring-bitmap-data-type-overview-of-mysql-mode.md
 
 Current continuation evidence and external prerequisites: [remaining validation](remaining-validation-2026-11-03.md). Native RECORD/ANYDATA OUT and anonymous LOB header rejections are target-specific; current direct OB20/query success is separate from unavailable compression, proxy topology and trace collection.
-

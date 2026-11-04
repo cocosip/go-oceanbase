@@ -493,4 +493,3 @@ func integrationTestMySQLNamedCall(t *testing.T, p integrationtest.Profile, prep
 		integrationtest.FailOperation(t, "reuse after missing procedure", err)
 	}
 }
-

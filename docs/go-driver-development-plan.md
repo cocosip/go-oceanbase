@@ -2,13 +2,14 @@
 
 > Execution notes: implement tasks in dependency order using the executing-plans workflow. First verify a failing case for each task, then implement, verify, and update progress. This document does not require branch creation, automatic commits, or a multi-agent workflow.
 
-Goal: fully adapt the observable features of obconnector-j into an idiomatic OceanBase Go driver, retaining implementation and verification evidence for every feature.
+Goal: implement OceanBase's observable capabilities in both compatibility modes as an idiomatic Go driver named `go-oceanbase`, using `database/sql` and standard Go mechanisms. Java Connector/J behavior is only protocol/error-shape evidence; its classes, option names and JDBC surfaces are not implementation targets.
 
 Architecture: use `database/sql` and its standard pool as the entry point. One public `oceanbase` package owns configuration, standard interfaces, and necessary extensions; share the protocol and session core, handling differences according to the actual Oracle/MySQL compatibility mode.
 
 Technical baseline: Go 1.26; standard-library `database/sql`, `net`, `crypto/tls`, and `log/slog`; prefer pure Go. Evaluate necessary character-set and platform-authentication dependencies in their owning tasks.
 
-Specification: [Architecture design](go-driver-architecture-design.md); feature basis: [Java architecture and feature outline](obconnector-j-architecture-outline.md); current status: [Development progress](go-driver-development-progress.md).
+Specification: [Architecture design](go-driver-architecture-design.md); feature basis: [capability matrix](go-driver-capabilities.md); current status: [Development progress](go-driver-development-progress.md).
+> **范围修订（2026-11-04）**：Java Connector/J 的类层次、选项名、默认值和 JDBC 转义不是本驱动的开发或验收目标。本文件中出现的 Java 依据仅保留为协议行为/失败形状证据；不再新增 Java 选项对照清单、Java API 兼容层或 JDBC 转义实现。已删除 `go-driver-options-mapping.md` 与 `obconnector-j-architecture-outline.md`。
 
 ## 1. Usage and Current Baseline
 
@@ -49,7 +50,7 @@ Before starting a task, read the relevant architecture sections, then the task a
 | `internal/auth/` | Independent authentication algorithms and stage state; root package orchestrates handshake and security gates | D03, D28 |
 | `transport*.go`, `shared_memory*.go`, `obproxy*.go`, `tools/obproxy-host/main.c` | Root-package platform dialing and standalone native OBProxy host; no additional public/internal packages | D28 |
 | `execute.go`, `prepare_execute.go`, `rows.go`, `result.go`, `stmt.go` | Text/binary execution, standard interfaces, mixed-result summaries, required combined protocol, and general strategies | D05, D08, D11, D14, D24 |
-| `bind.go`, `bind_oracle.go`, `sql_lexer.go`, `client_prepare.go` | Bind plans, lexing, client preparation, explicit JDBC escapes | D07, D10 |
+| `bind.go`, `bind_oracle.go`, `sql_lexer.go`, `client_prepare.go` | Bind plans, lexing and client preparation (no JDBC escape surface) | D07, D10 |
 | `codec*.go`, `types.go`, `internal/charset/` | Basic/extended types in both modes, encoding, and time | D07, D08, D12, D18 |
 | `tx.go`, `savepoint.go`, `xa.go` | Local transactions, savepoints, XA state and recovery | D09, D31 |
 | `call.go`, `batch.go`, `long_data.go` | OUT/RETURNING, batches, and single-use long parameters | D14, D20–D22 |
@@ -187,13 +188,13 @@ The following checkboxes are acceptance steps within tasks; **maintain global st
 
 Dependencies: none. Coverage: M01, M02, M15, M16; architecture §5–§7, §18.
 
-Files: add `go.mod`, `doc.go`, `driver.go`, `config.go`, `dsn.go`, `connector.go`, `logging.go`, `config_test.go`, `dsn_test.go`, `logging_test.go`, `.github/workflows/ci.yml`, and `docs/go-driver-options-mapping.md`.
+Files: add `go.mod`, `doc.go`, `driver.go`, `config.go`, `dsn.go`, `connector.go`, `logging.go`, `config_test.go`, `dsn_test.go`, `logging_test.go`, `.github/workflows/ci.yml`.
 
 Deliver: register `oceanbase`; implement ParseDSN/NewConnector, Mode, configuration enums and specified defaults, and configuration snapshots. Common Config fields follow the architecture; DialContext uses `func(context.Context, string, string) (net.Conn, error)`. This task does not claim connection support: Connect is completed in D04; earlier calls return an explicit unavailable error rather than a fabricated session.
 
 - [x] Test `TestConfigDefaults`, `TestDSNStrict`, `TestConnectorSnapshot`, `TestLoggerIsolation`: architecture defaults; reject unknown/duplicate sensitive parameters; later map/TLS changes cannot alter snapshots; nil logger is silent; two Connectors' output remains isolated; errors contain neither passwords nor full DSNs.
 - [x] Run `go test . -run 'Test(Config|DSN|ConnectorSnapshot|Logger)' -count=1` and confirm new assertions fail.
-- [x] Implement configuration/registration; NewConnector rejects InsecureSkipVerify; never call a user log handler under the internal network lock. Establish an option inventory pinned to a Java version, recording each owning Dxx, Go equivalent or Java-only purpose, and migration status; unimplemented fields must not be labeled supported.
+- [x] Implement configuration/registration; NewConnector rejects InsecureSkipVerify; never call a user log handler under the internal network lock. Configuration is defined by the Go `Config`/DSN contract: documented option names, defaults and rejections are covered by Go tests. A Java Connector/J option inventory is not a development or acceptance target; unimplemented fields must not be labeled supported.
 - [ ] Pass the same command; establish §5.3 test/vet/list/lint CI for both Go versions and Linux/Windows, recording actual toolchains and execution links. D01 acceptance must not be described as “the driver is usable.”
 
 ### D02 Standard Packet Streams and Fault Peers
@@ -302,22 +303,22 @@ Deliver: ConnBeginTx/driver.Tx, §3.2 savepoint functions, Managed/Full reset; d
 - [x] Implement transaction state/recovery, quoted savepoint identifiers, and statement-generation checks; never swap physical connections to finish a transaction.
 - [ ] Pass the same command; run `TestLocalTx`, `TestSavepoints`, `TestStmtAfterReset` in both modes; verify state/resource cleanup during pool reuse.
 
-### D10 Client Preparation and Explicit Escape Rewriting
+### D10 Client Preparation (explicit JDBC escapes withdrawn)
 
 Dependencies: D07, D08. Coverage: M06, M07; architecture §10.1–§10.2.
 
-Files: add `client_prepare.go`, `escape.go`, `client_prepare_test.go`, `escape_test.go`; modify `execute.go`.
+Files: add `client_prepare.go`, `client_prepare_test.go`; modify `execute.go`. JDBC escape files were withdrawn because the syntax is Java Connector/J-specific.
 
-Deliver: explicit client-prepare strategy; public `RewriteJDBCEscapes(query string, mode Mode) (string, error)`; reject rewriting with insufficient ModeAuto context rather than guessing a mode.
+Deliver: explicit client-prepare strategy with mode-correct interpolation and no silent fallback. Java JDBC escape rewriting was withdrawn and is not a Go API.
 
-- [x] Test `TestClientPrepareEncoding`, `TestJDBCEscapes`: quotes/backslashes/multibyte/binary values, modes/session escape settings, JDBC date/function/call syntax; ordinary SQL is unchanged by default; placeholders in comments are not replaced.
-- [ ] Run `go test . -run 'Test(ClientPrepare|JDBC)' -count=1` and confirm failure; historical failure is not recorded in current progress and cannot be inferred from present passing results.
+- [x] Test `TestClientPrepareEncoding`: quotes/backslashes/multibyte/binary values, modes/session escape settings; ordinary SQL is unchanged by default; placeholders in comments are not replaced.
+- [ ] Run `go test . -run 'TestClientPrepare' -count=1` and confirm failure; historical failure is not recorded in current progress and cannot be inferred from present passing results.
 - [x] Reuse D07 lexing/bind plans and actual session encoding; allow configured fallback only when unsupported preparation is established before sending.
 - [ ] Pass the same command; compare client/server values and errors in both modes with `TestPrepareEquivalence`; string similarity cannot prove execution equivalence.
 
 SQL/client budget supplement: TestSQLTextEncodedBudget, TestClientSQLTextEncodedBudget, TestSQLBudgetStrictEncoding, TestSQLExecutionEncodedBudget, and TestOutputSQLTextEncodedBudget cover actual encoded sizes, cumulative fragments, literal escaping, public text/server/client preparation in both modes/three packet streams, and Oracle OUT: 58 local scenarios. Parsing prechecks bound source code-point counts; full-message limits include transcoded content, command/protocol overhead, and spaces. Reject before sending when over budget; the original session remains Ping-capable. GBK/latin1 contraction false rejections were reproduced and fixed; real SQL equivalence/server acceptance remain separate.
 
-JDBC CONVERT boundary supplement: MySQL boolean/floating emulation preserves compound-operand precedence; both modes preserve newlines after trailing line comments. Blank/comment-only operands return ErrBind before sending. Regressions cover OR/XOR/comparison/bitwise operations, NULL, nested conversions, and argument counts; real SQL equivalence remains subject to the integration item above.
+JDBC escape/CONVERT supplements were withdrawn with the feature: the syntax is Java Connector/J-specific, so no Go behavior or regression is retained.
 
 ### D11 Execute, Multiple-Result Summaries, and Count Policies
 
@@ -697,11 +698,11 @@ D31 local implementation: xa.go / xa_protocol.go added; native OUT reuses intern
 
 Dependencies: D01–D31. Coverage: M01–M16, LOCAL INFILE, Java ecosystem mappings; architecture §19–§21.
 
-Files: complete `docs/go-driver-options-mapping.md`, `docs/go-driver-compatibility-matrix.md`, `README.md`, `examples/`, `.github/workflows/ci.yml`, `tests/integration/`, and benchmarks.
+Files: complete `docs/go-driver-compatibility-matrix.md`, `README.md`, `examples/`, `.github/workflows/ci.yml`, `tests/integration/`, and benchmarks.
 
-Deliver: Go configuration/standard-library alternatives/platform adaptations/Java-only API purposes for each Java option; full verification lists for both modes, Go 1.26/platform CI, runnable examples, benchmarks, and resource-stability evidence. Maintain configuration tables as features arrive from D01; CI starts in D01 and this task extends/checks the full matrix rather than introducing it. Check all required D01–D31 entries against progress §5; do not reduce targets to obtain a green final result.
+Deliver: Go configuration/standard-library alternatives/platform adaptations; full verification lists for both modes, Go 1.26/platform CI, runnable examples, benchmarks, and resource-stability evidence. Configuration tables cover the documented Go options as features arrive from D01; a Java Connector/J option inventory is out of scope. CI starts in D01 and this task extends/checks the full matrix rather than introducing it. Check all required D01–D31 entries against progress §5; do not reduce targets to obtain a green final result.
 
-- [ ] Compare pinned Java DefaultOptions, registration entry points, and tests item by item: every option has a category, owning task, actual Go field/alternative, default differences, and tests; renaming alone is not feature completion.
+- [ ] Compare the documented Go option set against the implementation and tests item by item: every option has a category, owning task, actual Go field/alternative, default difference, and tests; renaming alone is not feature completion. Java option names are not required to appear.
 - [ ] Execute §5 toolchain/platform checks, full integration, fault cases, and targeted fuzzing; explicitly require environments so SKIP cannot impersonate a complete pass.
 - [ ] Compile/run standard query/transaction, preparation, procedure, multiple-result, batch, LOB/complex-type, cursor, and XA examples; document restrictions/evidence for inapplicable OB20/HA/authentication combinations.
 - [ ] Collect correctness-checked CRUD/prepare/cache/batch/LOB/fetch benchmarks and long-running resource curves; mark G6 complete only after confirming all M01–M16/options are covered. Release/commit/push only on a separate user request.
@@ -803,7 +804,7 @@ Existing integration complex-type cases adopt the same content/position checks. 
 | M15 Logging/diagnostics/OB20/FLT | D01, D23–D25 | Silent nil, redaction, trace isolation |
 | M16 Build/platform/performance | D01, D28, D32 | Go1.26 and each supported platform |
 | LOCAL INFILE | D29 | Controlled Readers, failures, and transactions |
-| JDBC scroll/updatable | D19 | Separate acceptance for static/sensitive/update positioning |
-| Java OSGi/JMX/serialization/legacy class names | D01, D25, D32 | Go module/DB.Stats/explicit value-contract mappings; no Java runtime |
+| Scroll/updatable cursors | D19 | Separate acceptance for static/sensitive/update positioning |
+| Reference-SDK OSGi/JMX/serialization/legacy class names | D01, D25, D32 | Go module/DB.Stats/explicit value-contract mappings; no other-runtime compatibility |
 
 Progress documentation retains current task status, verification combinations, and next steps; code/tests and ordinary documentation retain change rationale, without separate walkthrough reports. When adding/splitting tasks, update this table, dependencies, and the progress denominator together; never raise completion rates by deleting unfinished items.

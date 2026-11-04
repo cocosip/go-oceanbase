@@ -108,7 +108,7 @@ func complexFixtureCollection() oceanbase.Array {
 
 func complexFixtureValue(number string, raw oceanbase.Raw) oceanbase.Object {
 	return oceanbase.Object{Schema: complexFixtureSchema, Type: complexFixtureObject, Fields: []oceanbase.Attribute{
-		{Name: "N", Type: "NUMBER", Value: oceanbase.Number(number)},
+		{Name: "N", Type: metadataFixtureNumber, Value: oceanbase.Number(number)},
 		{Name: "B", Type: "RAW", Value: raw},
 	}}
 }

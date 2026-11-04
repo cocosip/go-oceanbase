@@ -89,4 +89,3 @@ func integrationTestChangeUserGuard(t *testing.T, p integrationtest.Profile) {
 		t.Fatal("guarded identity session unusable", err)
 	}
 }
-

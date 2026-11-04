@@ -43,7 +43,9 @@ func OraclePlan(f metadata.MetadataFilter) (Query, error) {
 		s.column = metadataColumnName
 		s.order = "c.OWNER,c.TABLE_NAME,c.COLUMN_ID"
 		s.expressions = []string{sqlNullLiteral, s.schema, s.name, s.column, "c.ORDINAL_POSITION", "c.DATA_TYPE", "CASE WHEN c.CHAR_USED='C' THEN c.CHAR_LENGTH ELSE c.DATA_LENGTH END", "c.DATA_PRECISION", "c.DATA_SCALE", "CASE c.NULLABLE WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END", "c.DATA_DEFAULT", "m.COMMENTS", "c.DATA_TYPE_OWNER"}
-		s.expressions = append(s.expressions, sqlNullLiteral, "CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END")
+		s.expressions = append(s.expressions,
+			`CASE WHEN UPPER(c.DATA_DEFAULT) LIKE '%SEQUENCE.NEXTVAL%' THEN 1 ELSE NULL END`,
+			"CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END")
 	case metadata.MetadataPrimaryKeys:
 		s.from = "ALL_CONSTRAINTS k JOIN ALL_CONS_COLUMNS c ON c.OWNER=k.OWNER AND c.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND c.TABLE_NAME=k.TABLE_NAME"
 		s.where = "k.CONSTRAINT_TYPE='P'"

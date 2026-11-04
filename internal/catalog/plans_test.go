@@ -12,6 +12,19 @@ import (
 	"github.com/cocosip/go-oceanbase/metadata"
 )
 
+func TestOracleColumnAutoIncrementMapping(t *testing.T) {
+	plan, err := Plan(config.ModeOracle, "4.3.5.0", metadata.MetadataFilter{Kind: metadata.MetadataColumns})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.SQL, `UPPER(c.DATA_DEFAULT) LIKE '%SEQUENCE.NEXTVAL%'`) {
+		t.Fatalf("identity default is not reported as auto-increment: %s", plan.SQL)
+	}
+	if strings.Contains(plan.SQL, `NULL AS "auto_increment"`) {
+		t.Fatal("auto-increment flag is still a constant NULL")
+	}
+}
+
 func TestMetadataFilters(t *testing.T) {
 	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
 		for kind := metadata.MetadataCatalogs; kind <= metadata.MetadataServerInfo; kind++ {

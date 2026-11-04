@@ -39,7 +39,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 			call = "BEGIN " + p + "(?,?,?); END;"
 		}
 		for i := range 2 {
-			if _, err := c.ExecContext(ctx, call, 2, sql.Out{Dest: &y, In: true}, oceanbase.Out{Dest: &z, Type: "VARCHAR", Length: 40}); err != nil {
+			if _, err := c.ExecContext(ctx, call, 2, sql.Out{Dest: &y, In: true}, oceanbase.Out{Dest: &z, Type: typeNameVarchar, Length: 40}); err != nil {
 				return err
 			}
 			if err := expect(y == 42+int64(i*2) && z == "ok", "routine INOUT/OUT mismatch"); err != nil {
