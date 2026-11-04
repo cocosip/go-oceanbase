@@ -15,7 +15,7 @@ func TestSessionCharsetValidation(t *testing.T) {
 			t.Fatalf("charset %q was not rejected before connecting: %v", name, err)
 		}
 	}
-	for _, name := range []string{"", "UTF8MB4", "utf8", "utf8mb3", "latin1", localFilenameCharset, "gb18030", "gb18030_2022", "hkscs", "hkscs31", testCharsetASCII, "binary", "SJIS", "big5", "gb2312", "euckr", "dec8", "tis620"} {
+	for _, name := range []string{"", "UTF8MB4", "utf8", "utf8mb3", "latin1", localFilenameCharset, "gb18030", "gb18030_2022", "hkscs", "hkscs31", testCharsetASCII, "binary", "SJIS", "big5", "gb2312", "euckr", "dec8", "tis620", "UJIS", "eucjpms", "CP932", "cp850", "hp8", "macroman", "swe7"} {
 		if _, err := Normalize(Config{User: testUser, Session: SessionOptions{Charset: name}}); err != nil {
 			t.Fatalf("supported connection charset %q was rejected: %v", name, err)
 		}

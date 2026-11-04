@@ -25,6 +25,9 @@ func TestMySQLCharsets(t *testing.T) {
 				{"gbk", "中文"}, {"gb18030", "中文🙂"}, {"ascii", "ascii;\\'"},
 				{"sjis", "日本語ｱ〜;\\'"}, {"big5", "中文;\\'"}, {"gb2312", "中文;\\'"},
 				{"euckr", "한글;\\'"}, {"dec8", "ŒŸœÿ;\\'"}, {"tis620", "กข฿;\\'"},
+				{"cp850", "caféÄ;\\'"}, {"hp8", "ÄÖé;\\'"}, {"macroman", "ÄéΩ;\\'"},
+				{"ujis", "日本語ｱ〜˘\ue000\ue3ac;\\'"},
+				{"cp932", "日本語ｱ～①髙\ue000;\\'"}, {"eucjpms", "日本語ｱ～①髙\ue000\ue3ac;\\'"},
 			} {
 				t.Run(tc.charset, func(t *testing.T) { integrationTestMySQLCharset(t, p, tc.charset, tc.text) })
 			}

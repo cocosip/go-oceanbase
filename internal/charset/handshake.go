@@ -37,6 +37,20 @@ func HandshakeID(name string) (byte, bool) {
 		return 3, true
 	case nameTIS620:
 		return 18, true
+	case nameCP850:
+		return 4, true
+	case nameHP8:
+		return 6, true
+	case nameMacRoman:
+		return 39, true
+	case nameSWE7:
+		return 10, true
+	case nameUJIS:
+		return 12, true
+	case nameCP932:
+		return 95, true
+	case nameEUCJPMS:
+		return 97, true
 	default:
 		return 0, false
 	}

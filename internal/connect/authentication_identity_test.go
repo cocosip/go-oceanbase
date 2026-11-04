@@ -32,6 +32,7 @@ func TestHandshakeIdentityEncoding(t *testing.T) {
 			{localFilenameCharset, identityUser, "应用", testAttributeGBKValue + "@tenant", identityGBKDatabase, 28},
 			{testAttributeGB18030, "\u0080@tenant", "\u0080", "\x81\x30\x81\x30@tenant", "\x81\x30\x81\x30", 248},
 			{identityCharsetLatin, "é@tenant", "café", "\xe9@tenant", "caf\xe9", 8},
+			{"swe7", "ÅÄÖ", "åäö", "\x5d\x5b\x5c", "\x7d\x7b\x7c", 10},
 		} {
 			for _, dynamic := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%d/%s/callback-%t", mode, tc.charset, dynamic), func(t *testing.T) {
@@ -75,6 +76,7 @@ func TestHandshakeIdentityEncodingRejected(t *testing.T) {
 			{identityCharsetASCII, identityCharsetASCII, identityPrivate + "测"},
 			{localFilenameCharset, localFilenameCharset, identityPrivate + "😀"},
 			{"utf8mb3", "utf8", identityPrivate + "😀"},
+			{"swe7-identity", "swe7", identityPrivate + "@tenant"},
 		} {
 			t.Run(field+"/"+tc.name, func(t *testing.T) {
 				pluginCalls := 0

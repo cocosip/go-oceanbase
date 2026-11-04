@@ -15,13 +15,20 @@ import (
 )
 
 const (
-	nameSJIS    = "sjis"
-	nameBig5    = "big5"
-	nameGB2312  = "gb2312"
-	nameEUCKR   = "euckr"
-	nameDEC8    = "dec8"
-	nameTIS620  = "tis620"
-	nameUTF16LE = "utf16le"
+	nameSJIS     = "sjis"
+	nameBig5     = "big5"
+	nameGB2312   = "gb2312"
+	nameEUCKR    = "euckr"
+	nameDEC8     = "dec8"
+	nameTIS620   = "tis620"
+	nameUTF16LE  = "utf16le"
+	nameCP850    = "cp850"
+	nameHP8      = "hp8"
+	nameMacRoman = "macroman"
+	nameSWE7     = "swe7"
+	nameUJIS     = "ujis"
+	nameCP932    = "cp932"
+	nameEUCJPMS  = "eucjpms"
 
 	nameUTF8MB4     = "utf8mb4"
 	nameUTF8MB3     = "utf8mb3"
@@ -73,6 +80,8 @@ func Encode(name, text string) ([]byte, error) {
 		return []byte(text), nil
 	case nameSJIS, nameBig5, nameGB2312, nameEUCKR, nameDEC8, nameTIS620:
 		return encodeLegacy(strings.ToLower(name), text)
+	case nameCP850, nameHP8, nameMacRoman, nameSWE7, nameUJIS, nameCP932, nameEUCJPMS:
+		return encodeAdditional(strings.ToLower(name), text)
 	default:
 		enc := textEncoding(name)
 		if enc == nil {
@@ -91,6 +100,8 @@ func Decode(name string, data []byte) (string, error) {
 	switch strings.ToLower(name) {
 	case nameSJIS, nameBig5, nameGB2312, nameEUCKR, nameDEC8, nameTIS620:
 		return decodeLegacy(strings.ToLower(name), data)
+	case nameCP850, nameHP8, nameMacRoman, nameSWE7, nameUJIS, nameCP932, nameEUCJPMS:
+		return decodeAdditional(strings.ToLower(name), data)
 	}
 	if strings.EqualFold(name, nameGB180302022) {
 		return decodeGB180302022(data)
@@ -190,6 +201,9 @@ func validReplacement(enc encoding.Encoding, data []byte) bool {
 
 // Collation identifies supported OceanBase result encodings; unknown IDs are rejected.
 func Collation(id uint16) (string, bool) {
+	if name, ok := additionalCollations[id]; ok {
+		return name, true
+	}
 	if name, ok := legacyResultCollations[id]; ok {
 		return name, true
 	}
