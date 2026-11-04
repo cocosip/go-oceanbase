@@ -47,9 +47,9 @@ func integrationTestChangeUserGuard(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "pin guarded identity session", err)
 	}
 	defer func() { _ = pinned.Close() }()
-	identitySQL := "SELECT CURRENT_USER()"
+	identitySQL := identityMySQLSQL
 	if p.Mode == oceanbase.ModeOracle {
-		identitySQL = "SELECT USER FROM dual"
+		identitySQL = identityOracleSQL
 	}
 	var original string
 	if err = pinned.QueryRowContext(ctx, identitySQL).Scan(&original); err != nil {
@@ -89,3 +89,4 @@ func integrationTestChangeUserGuard(t *testing.T, p integrationtest.Profile) {
 		t.Fatal("guarded identity session unusable", err)
 	}
 }
+

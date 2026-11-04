@@ -19,6 +19,11 @@ import (
 // sessionProbeSQL is the mode-neutral scalar query; Oracle mode appends OracleDualSuffix.
 const sessionProbeSQL = "SELECT 42"
 
+const (
+	identityMySQLSQL  = "SELECT CURRENT_USER()"
+	identityOracleSQL = "SELECT USER FROM dual"
+)
+
 func integrationTestWarningDetails(t *testing.T, p integrationtest.Profile) {
 	t.Helper()
 	key := strings.TrimSuffix(p.Env, "_DSN") + "_WARNING_SQL"
@@ -101,9 +106,9 @@ func integrationTestChangeUserSession(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "pin identity session", err)
 	}
 	defer func() { _ = pinned.Close() }()
-	identitySQL, probe := "SELECT CURRENT_USER()", sessionProbeSQL
+	identitySQL, probe := identityMySQLSQL, sessionProbeSQL
 	if p.Mode == oceanbase.ModeOracle {
-		identitySQL, probe = "SELECT USER FROM dual", sessionProbeSQL+integrationtest.OracleDualSuffix
+		identitySQL, probe = identityOracleSQL, sessionProbeSQL+integrationtest.OracleDualSuffix
 	}
 	var original string
 	if err = pinned.QueryRowContext(ctx, identitySQL).Scan(&original); err != nil {
@@ -341,3 +346,4 @@ func integrationTestCancelQuerySession(t *testing.T, p integrationtest.Profile) 
 		t.Fatal("completed target accepted another cancellation")
 	}
 }
+
