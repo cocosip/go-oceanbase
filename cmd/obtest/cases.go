@@ -18,6 +18,7 @@ func caseDefinitions() []caseDefinition {
 		{name: "generated-keys", description: "MySQL generated IDs, uint64 summaries, int64 overflow and absent IDs", mysqlOnly: true, run: runGeneratedKeys},
 		{name: "prepare-server", description: "server prepared statement reuse, NULL and named binds", configure: serverPrepare, run: runPrepared},
 		{name: "prepare-client", description: "client prepared statement reuse and escaping", configure: clientPrepare, run: runPrepared},
+		{name: "prepare-fallback", description: "explicit server PREPARE 1295 falls back to client execution", mysqlOnly: true, run: runPrepareFallback},
 		{name: "scalars", description: "exact decimal, Unicode, binary, date/time and NULL", configure: scalarConfig, run: runScalars},
 		{name: "mysql-scalars", description: "MySQL TIME/YEAR, integer boundaries, BIT, binary padding and metadata", mysqlOnly: true, configure: scalarConfig, run: runMySQLScalars},
 		{name: "oracle-scalars", description: "Oracle national text, TZ/LTZ, intervals, ROWID and typed NULL", oracleOnly: true, configure: oracleScalarConfig, run: runOracleScalars},

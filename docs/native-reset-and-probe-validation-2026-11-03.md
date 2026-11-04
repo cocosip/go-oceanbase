@@ -21,12 +21,14 @@ Go `database/sql` 为 `*sql.Stmt` 保存 (物理连接, 服务端语句 id) 绑�
 
 因此 D09 保持：默认 Managed 只修复驱动管理的事务/autocommit 状态；Full 淘汰物理连接；不使用 COM_RESET_CONNECTION。这是标准库语句所有权造成的客户端边界，不是服务端能力不足。若将来 `database/sql` 提供语句失效通知，可重新评估。
 
-## 3. C02：真实 PREPARE 1295 fixture 在当前目标不存在
+## 3. C02：真实 PREPARE 1295 与回退入口
 
 MySQL 模式枚举 44 条语句做独立 server PREPARE（SHOW WARNINGS/SHOW COUNT(*) WARNINGS/SHOW VARIABLES/SHOW TABLES/SHOW DATABASES/SET autocommit/SET NAMES/SET SESSION/USE/事务/SAVEPOINT/锁/DDL/EXPLAIN/DESC/ANALYZE/OPTIMIZE/FLUSH/KILL/HELP/DO/查询/INSERT/REPLACE/TRUNCATE/GRANT/SET GLOBAL/XA/多语句）：
 
-- 除 1146（对象不存在）与 1235（多语句 prepare 不支持）外，全部成功获得语句 id，**没有任何 1295**。
-- 结论：当前目标无法提供真实 1295 回退 fixture；C02 的“真实 1295 覆盖”继续等待外部目标，现有实现与 peer 回归保持不变，不因此扩展回退到其他错误码或 SQL 形状。
+- 除 1146（对象不存在）与 1235（多语句 prepare 不支持）外，全部成功获得语句 id，该列表内没有 1295。
+- 补充 26 条过程/事件/复制/权限等语句后，`CREATE PROCEDURE` 与 `DROP PROCEDURE` 返回 **1295**；`CREATE FUNCTION`、`CREATE TRIGGER`、`CREATE VIEW`、`CREATE EVENT` 可正常 prepare。
+- 带占位符的同名变体（`LOCK/ANALYZE/TRUNCATE/DESCRIBE/SHOW/USE/RENAME/GRANT/CREATE USER/CALL/SAVEPOINT/XA/HANDLER/PREPARE/EXECUTE/SET GLOBAL/LOAD DATA/CREATE PROCEDURE/DROP PROCEDURE/CREATE EVENT/DROP EVENT`）全部返回 1064，没有“带参数且 1295”的语句。
+- 结论：1295 只出现在无参数命令上；这类命令在没有参数时走文本协议，因此有参数的自动 prepare 回退在本目标不可达。显式 `sql.Prepare` 路径已扩展为同一 1295 回退，并实库验证 `CREATE/DROP PROCEDURE`（`obtest prepare-fallback`，2026-11-03 第二套目标）。
 
 ## 4. Oracle warning 详情：目标没有可用明细入口
 

@@ -89,7 +89,7 @@ If the target does not expose the initialization version query, explicitly set `
 
 Use `QueryRowContext` / `QueryContext` for queries and `ExecContext` for writes. Both modes support `?`; Oracle also supports `:name` with `sql.Named`. Placeholders bind values, not table names, column names or keywords. Validate dynamic identifiers independently using trusted rules; do not concatenate application values into SQL.
 
-`PrepareMode` defaults to server-side preparation. Explicitly select `PrepareClient` when client interpolation is required; parameterized operations still use the same standard-library API. `EmulateUnsupportedPstmts` is opt-in and only falls back from an independent server `PREPARE` returning error 1295 to that client path; output, stream, combined and other-error cases remain server errors. Close `sql.Stmt` before its owning transaction/connection, and never retain server statement IDs across sessions.
+`PrepareMode` defaults to server-side preparation. Explicitly select `PrepareClient` when client interpolation is required; parameterized operations still use the same standard-library API. `EmulateUnsupportedPstmts` is opt-in and only falls back from a standalone server `PREPARE` returning error 1295, on both the execution path and an explicit `sql.Stmt`, to that client path; output, stream, combined and other-error cases remain server errors. Close `sql.Stmt` before its owning transaction/connection, and never retain server statement IDs across sessions.
 
 For MySQL top-level multi-statements, `PrepareClient` plus `AllowMultiStatements` may materialize a `LongData` reader once within `MaxBytes`/`MaxLOBBytes` and encode it through the normal client literal path. Single statements, Oracle blocks, and disabled multi-statements keep rejecting client-side streams; the reader is never replayed.
 
@@ -250,6 +250,7 @@ The four TestReadTimeoutSessions profiles require OB_MYSQL_READ_TIMEOUT_SQL, OB_
 
 2026-11-02 G07b：设置 `PrepareMode: PrepareClient` 后，命名 `Object`/`Array` 输入可按当前连接的目录描述生成 SQL 构造器；多语句另外启用 `AllowMultiStatements`。字段名称/顺序和可选 Type 必须匹配目录，嵌套值使用确切目录类型名称；支持 NUMBER、普通/national 字符、RAW、DATE/TIMESTAMP 叶子。类型身份双引号转义，内容复用已有字面量编码，受编码字节及复杂值预算限制。匿名类型、LOB/locator/cursor、集合内部 NULL OBJECT 子树及同命令中的 DDL/动态 EXECUTE 均拒绝。默认 server prepare 不变，也没有自动回退或 SQL 重放。2026-11-03 Oracle 4.4.2.2 直连存储、重复命名参数、多语句和 PL collection 实库测试通过；代理另验。
 2026-11-02 C02：新增 `EmulateUnsupportedPstmts`/`emulateUnsupportedPstmts`，默认关闭。开启后，独立 server `PREPARE` 返回 1295 且参数可走现有 client 插值时才回退；不覆盖 combined、输出、流参数、其他错误或已执行响应，也不重放业务命令。本地协议回归通过，真实服务端 1295 仍待 N 验证。
+2026-11-03 C02 实库：4.4.2.2 MySQL 上 `CREATE/DROP PROCEDURE` 的独立 PREPARE 返回 1295；开启后显式 `sql.Prepare` 回退为 client 插值并真实建/删过程，关闭时保留 1295。带占位符的同名变体为 1064，因此有参数的自动 prepare 回退在本目标不可达；两条回退入口现均有实库证据。
 2026-11-02 C08：`PrepareClient` 与 `AllowMultiStatements=true` 的 MySQL 顶层多语句现在可将 `LongData` reader 在 `MaxBytes`/`MaxLOBBytes` 内一次性展开，并复用现有字面量编码；单语句、Oracle PL、未启用多语句及超限输入仍拒绝，reader 不回放。本地协议回归及 `TestMySQLMultiStatementLongData` 在 MySQL 4.4.2.2 直连通过（长文本含 NUL/中文/引号/反斜杠及第二结果）。
 
 ```go

@@ -59,6 +59,46 @@ func TestUnsupportedPrepareFallbackOnlyMatches1295(t *testing.T) {
 	}
 }
 
+func TestUnsupportedPrepareFallbackExplicitPrepare(t *testing.T) {
+	db := publictest.ConfiguredDB(t, config.Config{EmulateUnsupportedPstmts: true}, func(ctx context.Context, p *wire.PacketIO) {
+		if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, "CREATE PROCEDURE p() SELECT 1"...)) || !testpeer.SendPackets(ctx, t, p, prepareError(1295, "unsupported")) {
+			return
+		}
+		if !testpeer.ServeOK(ctx, t, p, []byte("\x03CREATE PROCEDURE p() SELECT 1"), 2) {
+			return
+		}
+		p.ResetSequence()
+		testpeer.ServeQuit(t, p)
+	})
+	defer func() { _ = db.Close() }()
+	ctx := context.Background()
+	stmt, err := db.PrepareContext(ctx, "CREATE PROCEDURE p() SELECT 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = stmt.ExecContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = stmt.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnsupportedPrepareFallbackExplicitPrepareDisabled(t *testing.T) {
+	db := publictest.ConfiguredDB(t, config.Config{}, func(ctx context.Context, p *wire.PacketIO) {
+		if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, "CREATE PROCEDURE p() SELECT 1"...)) || !testpeer.SendPackets(ctx, t, p, prepareError(1295, "unsupported")) {
+			return
+		}
+		p.ResetSequence()
+		testpeer.ServeQuit(t, p)
+	})
+	defer func() { _ = db.Close() }()
+	var serverErr *oceanbase.Error
+	if _, err := db.PrepareContext(context.Background(), "CREATE PROCEDURE p() SELECT 1"); !errors.As(err, &serverErr) || serverErr.Code != 1295 {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func prepareError(code uint16, message string) []byte {
 	return append([]byte{255, byte(code), byte(code >> 8), '#', 'H', 'Y', '0', '0', '0'}, message...)
 }

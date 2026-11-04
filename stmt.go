@@ -3,7 +3,9 @@ package oceanbase
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 
+	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/execution"
 	"github.com/cocosip/go-oceanbase/internal/statement"
 )
@@ -30,6 +32,15 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}
 	s, err := c.engine.Prepare(ctx, query)
 	if err != nil {
+		if c.engine.Config().EmulateUnsupportedPstmts {
+			var server *dberrors.Error
+			if errors.As(err, &server) && server != nil && server.Code == 1295 {
+				client, clientErr := c.engine.PrepareClient(ctx, query)
+				if clientErr == nil {
+					return &clientStmt{conn: c, client: client}, nil
+				}
+			}
+		}
 		return nil, err
 	}
 	return &stmt{conn: c, server: s}, nil

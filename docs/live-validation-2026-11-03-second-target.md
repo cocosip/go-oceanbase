@@ -7,11 +7,12 @@
 | 项 | 结果 |
 | --- | --- |
 | 离线基线 | `go build ./...`、`go vet ./...`、全量 `go test ./...`、`golangci-lint run ./...`（0 issues）；linux/amd64、linux/arm64、darwin/arm64、windows/386 及 integration/gssapi/obproxy tag 交叉编译通过 |
-| `cmd/obtest` 双目标 | **78 pass / 0 fail / 3 skip / 13 not applicable**（MySQL 37/0/2/8；Oracle 41/0/1/5）。非零退出仅来自既有 skip 保留策略 |
+| `cmd/obtest` 双目标 | **79 pass / 0 fail / 3 skip / 14 not applicable**（MySQL 38/0/2/8；Oracle 41/0/1/6）。非零退出仅来自既有 skip 保留策略 |
 | 全量集成测试 | `go test -tags integration ./...` 在双模式全部 `ok`，无 FAIL |
 | ChangeUser | 一次性第二身份下 MySQL 与 Oracle 均通过：`obtest` change-user 2 pass；`TestChangeUserSessions`、`TestChangeUserFailure` 双模式通过 |
 | ProxyUser | Oracle 初始代理登录通过（`CURRENT_USER`=目标、`PROXY_USER`=认证代理账号）；`COM_CHANGE_USER` 重认证后代理目标未生效，驱动已对该确切版本在发送前拒绝（B21），见下节 |
 | 受限账号元数据 | MySQL SELECT-only 与 Oracle `CREATE SESSION`+按表授权身份下，`TestMetadataRestrictedVisibility` 双模式通过：只看到被授权表的 1 表/3 列/1 主键，读取不可见 schema 返回 0 行 |
+| Prepare 回退 | `obtest prepare-fallback`：`CREATE/DROP PROCEDURE` 的独立 server PREPARE 返回 1295；关闭 `EmulateUnsupportedPstmts` 时保留 1295，开启后显式 `sql.Stmt` 回退为 client 插值并真实建/删过程；带占位符变体为 1064 |
 | G 项 | G01/G03/G04/G05a/G07a/G07b 指定子集在集成套件中复验通过 |
 | U 项与目标拒绝 | `TestOraclePLTypeReadiness` 仍按契约断言：RECORD/ANYDATA 原生 OUT 返回 600/0A000（B16）；匿名 LOB 头 600/HY000（B18）；NCLOB DDL 902（S01）；MySQL XA SUSPEND/JOIN 1398（B01） |
 | 收据丢失 | 双模式普通 COMMIT、MySQL XA PREPARE/COMMIT 与新增的 **Oracle combined-PL XA PREPARE/COMMIT**（保留 OUT 行、丢弃尾部 native OK）均通过；`ErrXAOutcomeUnknown`/`ErrCommitUnknown` 分类、独立恢复与效果可见性断言通过 |

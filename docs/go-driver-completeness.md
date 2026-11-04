@@ -40,7 +40,7 @@ The G01/G03/G04/G05a/G07a/G07b implementation subsets have direct Go database ev
 
 | ID / 原关联 | 已有能力与限制 | 正确处理 |
 | --- | --- | --- |
-| C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后仅独立 server PREPARE 的 1295 回退到 client 插值 | [配置/DSN](../config/dsn.go) 与 [执行回退](../internal/execution/execute.go) 已有本地协议回归；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL；2026-11-03 在 4.4.2.2 MySQL 对 44 条语句做 server PREPARE，SHOW/SET/DDL/GRANT/XA 等全部成功，仅见 1146/1235，无 1295，见[复验](native-reset-and-probe-validation-2026-11-03.md)；真实服务端 1295 覆盖仍待外部 fixture，不扩展其他错误码 |
+| C02 / 原 G02、Q04 prepare 回退 | 显式 PrepareClient 已有；`EmulateUnsupportedPstmts` 默认关闭，开启后独立 server PREPARE 的 1295 回退到 client 插值（执行路径与显式 `sql.Stmt` 两条入口） | 本地协议回归覆盖两条入口；2026-11-03 在 4.4.2.2 MySQL 实测 `CREATE/DROP PROCEDURE` 返回 1295：关闭时显式 prepare 保留 1295，开启后回退为 client 执行并真实建/删过程（`obtest prepare-fallback`）；其余 44 条语句及占位符变体无 1295（占位符变体为 1064），因此自动 prepare 回退（有参数时）在本目标不可达；不处理 combined、输出、流参数、其他错误或已执行响应，不重放业务 SQL |
 | C08 / 原 G08、Q05/Q19 多语句 LongData | MySQL `PrepareClient` + `AllowMultiStatements` 支持有界一次性读入后字面量编码 | peer 及 `TestMySQLMultiStatementLongData` 实库通过：含引号、反斜杠、NUL、中文的长参数和第二结果；不扩展 Oracle PL/其他准备路径 |
 | C09 / 原 G09、Q20 pipeline | [TryNative](../internal/batch/native.go)仅选限定 scalar DML；SELECT/复杂值/流/framed 等顺序执行 | 性能/组合范围差距，不是 SQL 不能执行；N 对应子集可供扩展依据，Oracle piece-data 另见 U04 |
 | C10 / Q09 字段无限流式读取 | Rows 按行读取，普通字段/复杂值受消息与物化预算限制；大对象另有 LOB/TableBlob 流式 API | 这是 Go `database/sql` Rows 与当前协议边界，不计为已确认客户端缺实现；如要新增普通列流 API，必须先定义独立的读取顺序、所有权、取消和消息分片契约 |

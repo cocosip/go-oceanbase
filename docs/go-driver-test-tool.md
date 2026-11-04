@@ -52,7 +52,7 @@ The [minimal example](obtest.example.json) needs only OB_DSN. Configuration is l
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `targets` | Required in files | One or more targets, executed sequentially without concurrent target-object modification |
-| `cases` | All 45 | Optional scenario-name array; unknown or duplicate names fail instead of silently reducing coverage |
+| `cases` | All 46 | Optional scenario-name array; unknown or duplicate names fail instead of silently reducing coverage |
 | `timeout` | `2m` | Independent timeout per scenario and target probe; maximum 1h |
 | `cleanup_timeout` | `30s` | Independent timeout per cleanup action; maximum 1h; outside the execution budget |
 | `require_all` | `false` | Treat missing-fixture skips as failures; mode-inapplicable cases remain separate |
@@ -99,6 +99,7 @@ Each scenario uses an independent pool and random uppercase OBT_ object names to
 | `counts-matched`, `counts-changed` | Create integer tables with fixed MatchedRows/ChangedRows. Ordinary Exec, completed Execute summaries and single-item sequential batches check known counts for INSERT, unchanged/changed/unmatched UPDATE and DELETE/empty DELETE; MySQL also checks insert/unchanged/changed upsert branches. Verify no remaining rows and clean up. ChangedRows is MySQL-only; Oracle uses native matched counts. Reseed each entry point; do not compare different products' counts |
 | `generated-keys` | MySQL unsigned BIGINT auto-increment table. Exec LastInsertId must equal the stored ID; Execute retains full uint64 decimal IDs. Raise this table's start value and check standard int64 overflow versus exact Execute IDs. UPDATE after every INSERT must not retain generated IDs; verify four rows and clean up. No assumed increment/first ID. Oracle returns are covered by returning |
 | `prepare-server`, `prepare-client` | Server/client preparation, repeated reuse, Unicode/quotes/backslashes/NULL and repeated Oracle named parameters |
+| `prepare-fallback` | Explicit server PREPARE 1295 preserved by default; with EmulateUnsupportedPstmts the client path creates and drops a real procedure (MySQL only) |
 | `scalars` | Exact NUMBER/DECIMAL, Unicode, RAW/binary, leap day, microseconds and NULL through text/parameterized queries. Compare complete dates/times, accepting equivalent trailing zeros but rejecting extra nonzero nanoseconds, fractions beyond nine digits and trailing data. Explicit server prepare, ParseTime off, input wall time from configured location |
 | `mysql-scalars` | Three boundary rows plus all-NULL row: positive/negative >24-hour and zero TIME(6), YEAR, full unsigned/signed BIGINT, integer TINYINT(1), BIT(1/9), empty/NUL VARBINARY and padded BINARY(4). Text/parameterized reads check exact values/NULL/counts, database type/ScanType and binary byte length; explicit server prepare and ParseTime=false |
 | `oracle-scalars` | NVARCHAR2, TIMESTAMP(9) WITH TIME ZONE/LOCAL TIME ZONE and interval columns. Public-type binding/reads, nanoseconds/original TZ offset, equivalent LTZ instant, maximum negative intervals, ROWID rebinding/location and typed NULLs. Text/parameterized reads; server prepare, UTF-16 national charset, configured location retained |
@@ -190,3 +191,4 @@ The generated-key scenario executes `ALTER TABLE ... AUTO_INCREMENT=922337203685
 The current minimum Go version is 1.26. Before the upgrade, full-package builds, unit tests, vet and integration compilation passed on Windows amd64 with Go 1.25.0/1.26.0. See [development progress](go-driver-development-progress.md) for successive evidence covering repeated tool regressions, repository-wide golangci-lint with ordinary/integration tags, Windows/386, `-list`, configuration `-check` and documentation checks. The tool provides 47 scenarios; CI only adds the database-free `-list` check.
 
 The new temporal scenarios have offline workflow coverage only. TestParsedTemporalTypes skipped all 24 target cases because no DSNs were configured for this change; compilation, offline checks and unit tests must not increase the database acceptance count. Earlier live results retain their historical scope.
+
