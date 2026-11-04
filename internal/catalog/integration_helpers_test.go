@@ -24,7 +24,7 @@ func integrationTestMetadataProfile(t *testing.T, p integrationtest.Profile) {
 	}
 	defer func() { _ = pinned.Close() }()
 	var schema string
-	schemaSQL := "SELECT DATABASE()"
+	schemaSQL := integrationDatabaseQuery
 	if p.Mode == oceanbase.ModeOracle {
 		schemaSQL = "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual"
 	}
@@ -433,3 +433,4 @@ func integrationTestMySQLNamedCall(t *testing.T, p integrationtest.Profile, prep
 		integrationtest.FailOperation(t, "reuse after missing procedure", err)
 	}
 }
+

@@ -11,6 +11,7 @@
 | 全量集成测试 | `go test -tags integration ./...` 在双模式全部 `ok`，无 FAIL |
 | ChangeUser | 一次性第二身份下 MySQL 与 Oracle 均通过：`obtest` change-user 2 pass；`TestChangeUserSessions`、`TestChangeUserFailure` 双模式通过 |
 | ProxyUser | Oracle 初始代理登录通过（`CURRENT_USER`=目标、`PROXY_USER`=认证代理账号）；`COM_CHANGE_USER` 重认证后代理目标未生效，驱动已对该确切版本在发送前拒绝（B21），见下节 |
+| 受限账号元数据 | MySQL SELECT-only 与 Oracle `CREATE SESSION`+按表授权身份下，`TestMetadataRestrictedVisibility` 双模式通过：只看到被授权表的 1 表/3 列/1 主键，读取不可见 schema 返回 0 行 |
 | G 项 | G01/G03/G04/G05a/G07a/G07b 指定子集在集成套件中复验通过 |
 | U 项与目标拒绝 | `TestOraclePLTypeReadiness` 仍按契约断言：RECORD/ANYDATA 原生 OUT 返回 600/0A000（B16）；匿名 LOB 头 600/HY000（B18）；NCLOB DDL 902（S01）；MySQL XA SUSPEND/JOIN 1398（B01） |
 | 收据丢失 | 双模式普通 COMMIT、MySQL XA PREPARE/COMMIT 与新增的 **Oracle combined-PL XA PREPARE/COMMIT**（保留 OUT 行、丢弃尾部 native OK）均通过；`ErrXAOutcomeUnknown`/`ErrCommitUnknown` 分类、独立恢复与效果可见性断言通过 |

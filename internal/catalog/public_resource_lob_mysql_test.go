@@ -15,6 +15,8 @@ import (
 	wire "github.com/cocosip/go-oceanbase/internal/wire"
 )
 
+const integrationDatabaseQuery = "SELECT DATABASE()"
+
 func TestBlobTargetRejections(t *testing.T) {
 	for _, kind := range []string{"view", "generated", "key-column", "missing-key", "extra-key", "unsupported-key-type", publictest.TestUnknownEngine} {
 		t.Run(kind, func(t *testing.T) {
@@ -81,7 +83,7 @@ func TestBlobTarget(t *testing.T) {
 	t.Run("immutable-composite-key", func(t *testing.T) {
 		v := &tableKeyValuer{value: []byte{1, 2}}
 		db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
-			if !publictest.ServeTableRows(ctx, t, p, 2, []string{"SELECT DATABASE()"}, []byte{253}, []any{"s"}) {
+			if !publictest.ServeTableRows(ctx, t, p, 2, []string{integrationDatabaseQuery}, []byte{253}, []any{"s"}) {
 				return
 			}
 			dict := publictest.TableDictionary()
@@ -119,3 +121,4 @@ func TestBlobTarget(t *testing.T) {
 		_ = pinned.Close()
 	})
 }
+

@@ -23,9 +23,6 @@ func TestMetadataRestrictedVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeMySQL {
-			continue
-		}
 		t.Run(p.Name, func(t *testing.T) { integrationTestRestrictedVisibility(t, p) })
 	}
 }
@@ -44,8 +41,8 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 	if err != nil {
 		t.Fatal("invalid restricted DSN for profile: " + p.Name)
 	}
-	if restrictedCfg.Mode != oceanbase.ModeMySQL && restrictedCfg.Mode != oceanbase.ModeAuto {
-		t.Fatal("restricted identity must use MySQL compatibility mode")
+	if restrictedCfg.Mode != oceanbase.ModeAuto && restrictedCfg.Mode != p.Mode {
+		t.Fatal("restricted identity mode differs from profile: " + p.Name)
 	}
 	connector, err := oceanbase.NewConnector(restrictedCfg)
 	if err != nil {
@@ -57,11 +54,21 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 	admin := integrationtest.OpenProfile(t, p)
 	ctx := integrationtest.TestContext(t)
 	var schema string
-	if err = admin.QueryRowContext(ctx, "SELECT DATABASE()").Scan(&schema); err != nil {
+	schemaSQL := integrationDatabaseQuery
+	unreadable := "mysql"
+	if p.Mode == oceanbase.ModeOracle {
+		schemaSQL = "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual"
+		unreadable = "SYS"
+	}
+	if err = admin.QueryRowContext(ctx, schemaSQL).Scan(&schema); err != nil {
 		integrationtest.FailOperation(t, "read admin schema", err)
 	}
 	table := fmt.Sprintf("OBGR_%d", time.Now().UnixNano())
-	if _, err = admin.ExecContext(ctx, "CREATE TABLE "+table+" (ID INT PRIMARY KEY,AMOUNT DECIMAL(10,2),NOTE VARCHAR(12))"); err != nil {
+	definition := "ID INT PRIMARY KEY,AMOUNT DECIMAL(10,2),NOTE VARCHAR(12)"
+	if p.Mode == oceanbase.ModeOracle {
+		definition = "ID INTEGER PRIMARY KEY,AMOUNT NUMBER(10,2),NOTE VARCHAR2(12)"
+	}
+	if _, err = admin.ExecContext(ctx, "CREATE TABLE "+table+" ("+definition+")"); err != nil {
 		integrationtest.FailOperation(t, "create restricted metadata table", err)
 	}
 	defer func() {
@@ -69,6 +76,13 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 			integrationtest.FailOperation(t, "drop restricted metadata table", err)
 		}
 	}()
+	// Oracle has no schema-wide SELECT grant, so the owner grants the created table.
+	if p.Mode == oceanbase.ModeOracle {
+		user, _, _ := strings.Cut(restrictedCfg.User, "@")
+		if _, err = admin.ExecContext(ctx, "GRANT SELECT ON "+table+" TO "+user); err != nil {
+			integrationtest.FailOperation(t, "grant restricted metadata table", err)
+		}
+	}
 	pinned, err := restricted.Conn(ctx)
 	if err != nil {
 		integrationtest.FailOperation(t, "pin restricted session", err)
@@ -83,8 +97,8 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 		{"table", oceanbase.MetadataFilter{Kind: oceanbase.MetadataTables, SchemaPattern: schema, NamePattern: table}, 1},
 		{"columns", oceanbase.MetadataFilter{Kind: oceanbase.MetadataColumns, SchemaPattern: schema, NamePattern: table}, 3},
 		{"primary-key", oceanbase.MetadataFilter{Kind: oceanbase.MetadataPrimaryKeys, SchemaPattern: schema, NamePattern: table}, 1},
-		{"unreadable-schema-tables", oceanbase.MetadataFilter{Kind: oceanbase.MetadataTables, SchemaPattern: "mysql"}, 0},
-		{"unreadable-schema-columns", oceanbase.MetadataFilter{Kind: oceanbase.MetadataColumns, SchemaPattern: "mysql", NamePattern: "user"}, 0},
+		{"unreadable-schema-tables", oceanbase.MetadataFilter{Kind: oceanbase.MetadataTables, SchemaPattern: unreadable}, 0},
+		{"unreadable-schema-columns", oceanbase.MetadataFilter{Kind: oceanbase.MetadataColumns, SchemaPattern: unreadable, NamePattern: "user"}, 0},
 	} {
 		rows, err := oceanbase.Metadata(ctx, pinned, tc.filter)
 		if err != nil {
@@ -106,3 +120,4 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 		}
 	}
 }
+
