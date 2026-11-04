@@ -24,6 +24,7 @@ type ReceiptLossConn struct {
 	net.Conn
 	armed, acknowledged atomic.Bool
 	combined, text      atomic.Bool
+	command             atomic.Bool
 	pending             []byte
 	terminated          bool
 }
@@ -46,6 +47,13 @@ func (c *ReceiptLossConn) ArmTextResult() {
 	c.armed.Store(true)
 }
 
+// ArmCommand selects the next read and expects any standard-protocol command
+// OK, including one with affected rows or a changed session state.
+func (c *ReceiptLossConn) ArmCommand() {
+	c.command.Store(true)
+	c.armed.Store(true)
+}
+
 // Acknowledged reports that a complete successful receipt was consumed, not
 // just a header.
 func (c *ReceiptLossConn) Acknowledged() bool { return c.acknowledged.Load() }
@@ -65,6 +73,8 @@ func (c *ReceiptLossConn) Read(p []byte) (int, error) {
 	var err error
 	if c.text.Load() {
 		err = c.captureTextResult()
+	} else if c.command.Load() {
+		err = c.captureAnyCommandOK()
 	} else if c.combined.Load() {
 		err = c.captureCombined()
 	} else {
@@ -92,6 +102,21 @@ func (c *ReceiptLossConn) captureCommandOK() error {
 	// Transaction OKs have zero affected rows/insert ID, then two-byte status/warnings.
 	if raw[3] != 1 || len(body) < 7 || body[0] != 0 || body[1] != 0 || body[2] != 0 || body[3]&8 != 0 {
 		return errors.New("receipt-loss fixture expected a bounded command OK")
+	}
+	c.acknowledged.Store(true)
+	return nil
+}
+
+// captureAnyCommandOK consumes one complete standard-protocol OK packet with
+// any affected-rows or session-state payload.
+func (c *ReceiptLossConn) captureAnyCommandOK() error {
+	defer func() { _ = c.Close() }()
+	_, body, err := readFixturePacket(c.Conn)
+	if err != nil {
+		return err
+	}
+	if len(body) < 3 || body[0] != 0 {
+		return errors.New("receipt-loss fixture expected a command OK")
 	}
 	c.acknowledged.Store(true)
 	return nil
