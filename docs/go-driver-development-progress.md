@@ -103,6 +103,8 @@ A milestone completes only after all its tasks pass acceptance and prerequisite 
 
 ## 5. Validation Combinations and Evidence
 
+> 编号范围：本节 `V01–V14` 是**验收组合**编号；[缺失矩阵](go-driver-completeness.md)的 `V01–V17` 是**待验收项**编号，两套命名空间独立，跨文档引用时须带文档名。
+
 ### 5.1 Targets and Mandatory Validation Sets
 
 The four fixed real-environment target IDs are P-MD (direct MySQL compatibility mode), P-OD (direct Oracle compatibility mode), P-MP (MySQL compatibility mode + OBProxy), and P-OP (Oracle compatibility mode + OBProxy). These correspond to the plan's mysql/oracle/proxy-mysql/proxy-oracle profiles; all four currently have **unconfirmed versions and are unverified**. D03 establishes the compatibility matrix; before D04 integration acceptance, register the first exact OceanBase/OBProxy versions and platforms. When later capabilities start, register their positive support targets and mandatory rejection targets. Do not select targets after seeing test results.

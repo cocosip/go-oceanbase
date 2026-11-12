@@ -10,7 +10,7 @@
   - **B19**：命名时区 `America/New_York` 返回 1882/HY000；显式 `-04:00` 等偏移可用。
   - **B22**：Oracle `ALL_CONSTRAINTS` 引用过滤 join 在目标上约 9.7s 字面量 / >10s 绑定，实库测试跳过该组合，保留绑定实现。
   - **ENV01–ENV05**：TLS/mTLS、required compression、OBProxy/OCP/多节点、Linux/macOS 原生传输、托管 CI；2026-11-03 已确认暂无法提供。
-  - **V11**：原生 Linux/macOS 运行与托管 CI 未验收；Windows/386、linux/amd64、linux/arm64、darwin/arm64 交叉编译与 CI tag vet 已通过。
+  - **V11**（[缺失矩阵](go-driver-completeness.md)编号）：原生 Linux/macOS 运行与托管 CI 未验收；Windows/386、linux/amd64、linux/arm64、darwin/arm64 交叉编译与 CI tag vet 已通过。
 - 2026-11-03 的受限确认见缺失矩阵“环境确认”段与进度文档同条目。
 
 ## 2. 换机后需要的环境变量（只列名称）

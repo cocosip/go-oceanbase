@@ -74,8 +74,8 @@ The extension layer reuses the same core, connections, and error rules; it does 
 | Some Java LOB paths open another connection to avoid active streaming results | Go does not copy implicit auxiliary connections; large objects use explicit session ownership and cursor batch boundaries.[J06] |
 | Java considers some SELECT statements replayable | Go does not infer safety from the first SQL word; SELECT statements with functions, side effects, or locking semantics cannot safely be replayed on that basis.[J07] |
 | Java PrepareExecute and offset fetch have additional version requirements | Gate features using mode, options, version, and capabilities; one `isOracle` boolean cannot represent every capability.[J08] |
-| Go `ErrBadConn` triggers standard library retries | When a business operation might have executed, return its original error and discard the connection through Validator.[G01][G02] |
-| Go Rows and Scanner primarily exchange standard values | Complex values require explicit lossless representations; connection-bound handles use separate extension entry points.[G03][G04] |
+| Go `ErrBadConn` triggers standard library retries | When a business operation might have executed, return its original error and discard the connection through Validator.[E01][E02] |
+| Go Rows and Scanner primarily exchange standard values | Complex values require explicit lossless representations; connection-bound handles use separate extension entry points.[E03][E04] |
 
 ## 4. Package and File Organization
 
@@ -287,7 +287,7 @@ Local TestDSNJava* covers alias/implicit-entry rejection, ParseDSN/sql.Open conf
 | rows | Five `RowsColumnType*` interfaces | Support `Rows.ColumnTypes()`; unknown attributes return `ok=false` |
 | result | `driver.Result` | Check int64 overflow; LastInsertId errors without reliable generated IDs |
 
-Go 1.26 provides neither `RowsColumnScanner` nor `sql.ConvertAssign`; ordinary `Rows.Next` does not return custom structs. Future Go 1.27 scanning improvements are internal optimizations only and must not change public value semantics.[G03][G05]
+Go 1.26 provides neither `RowsColumnScanner` nor `sql.ConvertAssign`; ordinary `Rows.Next` does not return custom structs. Future Go 1.27 scanning improvements are internal optimizations only and must not change public value semantics.[E03][E05]
 
 ## 8. Mode, Version, Capabilities, and Session State
 
@@ -551,7 +551,7 @@ The standard library cannot directly express batch, scroll fetch, or locator ope
 
 ### 11.1 Ordinary Results
 
-`Rows.Next` yields `nil`, `int64`, `float64`, `bool`, `string`, `[]byte`, `time.Time`, and standard-protocol child-cursor `driver.Rows` where needed. Never pass arbitrary structs directly to `database/sql`.[G03]
+`Rows.Next` yields `nil`, `int64`, `float64`, `bool`, `string`, `[]byte`, `time.Time`, and standard-protocol child-cursor `driver.Rows` where needed. Never pass arbitrary structs directly to `database/sql`.[E03]
 
 Buffers may be reused between Next calls subject to `[]byte`/`sql.RawBytes` lifetime rules. Copy caller-owned values and data retained by type Scanners; Close must not overwrite independent memory still referenced by callers.
 
@@ -581,7 +581,7 @@ Parsers handle complete ordinary-result, update-count, and callable-OUT boundari
 
 `BIGINT UNSIGNED` has `ColumnTypes().ScanType()` uint64, covering 0–18446744073709551615; signed BIGINT uses int64. ScanType recommends a target and need not equal each row's actual driver.Value: unsigned values use int64 when possible, otherwise exact decimal strings, allowing lossless database/sql scanning into uint64. Nullable columns use pointers or `sql.Null[uint64]`; ScanType never encodes NULL as zero.
 
-`Number` provides lossless representation, validation, and Scanner/Valuer, not a decimal arithmetic library. `NamedValueChecker` first recognizes extension values and preserves protocol identity; ordinary third-party `driver.Valuer` conversion then follows standard contracts.[G04]
+`Number` provides lossless representation, validation, and Scanner/Valuer, not a decimal arithmetic library. `NamedValueChecker` first recognizes extension values and preserves protocol identity; ordinary third-party `driver.Valuer` conversion then follows standard contracts.[E04]
 
 Ordinary Scan representations of complex values must describe format version, schema/type name, field order/types, NULL, exact numbers, temporal values, and binary explicitly. The implemented `encoding/json` format=1 uses type tags, decimal text for numbers, and base64 for binary; `Object.Scan`/`Array.Scan` parse it. This is a documented public representation, not an in-process handle or fallback for unknown types.
 
@@ -730,7 +730,7 @@ Session is defined in §14.1. Execute accepts only non-nil `*sql.Conn` or `*sql.
 - At MaxResultItems, stop unbounded allocation, return a resource-limit error, retain recorded prefixes, and perform bounded cleanup. Never assume later items did not execute or silently discard them and report success.
 - Publish column origins atomically after complete verified row-set metadata. Incomplete metadata, hidden OUT, commands, and Failure have no Columns. Execution metadata cumulatively obeys MaxMessageBytes using conservative row-set memory estimates including structs/extended descriptors. Excess preserves prior results and discards connections. Ordinary Query Rows stores no extra summaries.
 
-Ordinary `sql.Result` still exposes standard LastInsertId/RowsAffected only. Multi-statement Exec returns the final command's known count/ID; without a usable command result, methods return explicit errors rather than adding counts across statements. Use Execute for per-item information; driver.Result methods cannot pass through standard-library wrapping.[G10]
+Ordinary `sql.Result` still exposes standard LastInsertId/RowsAffected only. Multi-statement Exec returns the final command's known count/ID; without a usable command result, methods return explicit errors rather than adding counts across statements. Use Execute for per-item information; driver.Result methods cannot pass through standard-library wrapping.[E10]
 
 Count policy is fixed independently of the reading method:
 
@@ -768,7 +768,7 @@ Standard queries hold connections until Rows finishes. Extension cursors allow r
 | COMMIT response lost | Return `ErrCommitUnknown`, including cancellation/timeouts after full write before response read; retain underlying context errors without recommitting or rolling back and claiming reversal |
 | Server error received | Return server error; connection retention depends on synchronization/session state |
 
-Discarding bad connections and allowing retries are independent decisions. Validator discards connections; never convert every error to ErrBadConn merely to discard them.[G01][G02]
+Discarding bad connections and allowing retries are independent decisions. Validator discards connections; never convert every error to ErrBadConn merely to discard them.[E01][E02]
 
 ### 12.3 Local Transactions and Savepoints
 
@@ -810,7 +810,7 @@ Never reset arbitrarily between fixed `sql.Conn` calls or within transactions. G
 - Every network operation considers context deadlines and configured I/O/cleanup budgets.
 - Check cancellation before operations; combine deadlines and `context.AfterFunc` to interrupt blocked I/O.
 - Default cancellation closes/invalidates underlying connections so residual responses cannot become the next response.
-- If AfterFunc stop returns false, coordinate callback completion so old callbacks cannot close reused connections during new requests.[G06]
+- If AfterFunc stop returns false, coordinate callback completion so old callbacks cannot close reused connections during new requests.[E06]
 - QueryContext context lasts through Rows reading/closure; Connect/Prepare contexts never persist in long-lived connections/statements.
 - Rows.Close, Stmt.Close, and Conn.Close network cleanup is bounded. Close undrainable sessions, avoiding unlimited drains or unbounded Background network calls.
 - Explicit CancelQuery provides active server `KILL QUERY` using previously obtained identity/generation. Auxiliary channels use caller-configured Connector and identical authentication/TLS policy. Separate from default context cancellation; successful KILL does not prove the original operation never executed.
@@ -844,7 +844,7 @@ _, err := db.ExecContext(ctx,
 )
 ```
 
-INOUT uses `sql.Out{Dest: &value, In: true}`. Validate non-nil writable Dest before sending, read initial values, then write back after consuming all required responses.[G07]
+INOUT uses `sql.Out{Dest: &value, In: true}`. Validate non-nil writable Dest before sending, read initial values, then write back after consuming all required responses.[E07]
 
 Use small `Out` extension values for types not inferable from Go pointers, specifying database types/required lengths/precision. Prefer direct sql.`Out` for inferable ordinary types.
 
@@ -1793,18 +1793,18 @@ Detailed Java references:
 - [J16: Plain-password SSL requirements/handshake gates][J16]
 - [J17: Explicit Oracle RETURNING PrepareExecute requirement][J17]
 
-Go contracts, pinned to Go 1.27.2 source while restricting design to APIs already in Go 1.26:
+Go contracts, pinned to Go 1.27.2 source while restricting design to APIs already in Go 1.26. The `E` prefix marks evidence tags; it does not collide with the `G01`–`G14` client-gap IDs in the [completeness matrix](go-driver-completeness.md).
 
-- [G01: ErrBadConn duplicate-execution constraints][G01]
-- [G02: database/sql ErrBadConn retries][G02]
-- [G03: driver.Value and child cursors][G03]
-- [G04: NamedValueChecker contract][G04]
-- [G05: Go 1.27 RowsColumnScanner, not required here][G05]
-- [G06: context.AfterFunc stop/race rules][G06]
-- [G07: Scanner/sql.Out][G07]
-- [G08: ResetSession/Validator][G08]
-- [G09: Raw must not leak driverConn][G09]
-- [G10: sql.Result/driver.Result wrapping][G10]
+- [E01: ErrBadConn duplicate-execution constraints][E01]
+- [E02: database/sql ErrBadConn retries][E02]
+- [E03: driver.Value and child cursors][E03]
+- [E04: NamedValueChecker contract][E04]
+- [E05: Go 1.27 RowsColumnScanner, not required here][E05]
+- [E06: context.AfterFunc stop/race rules][E06]
+- [E07: Scanner/sql.Out][E07]
+- [E08: ResetSession/Validator][E08]
+- [E09: Raw must not leak driverConn][E09]
+- [E10: sql.Result/driver.Result wrapping][E10]
 
 [J01]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractConnectProtocol.java#L823
 [J02]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/protocol/AbstractQueryProtocol.java#L470
@@ -1823,16 +1823,16 @@ Go contracts, pinned to Go 1.27.2 source while restricting design to APIs alread
 [J15]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/BlobFromLocator.java#L90
 [J16]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/internal/com/send/authentication/ClearPasswordPlugin.java#L80
 [J17]: https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/JDBC4ServerPreparedStatement.java#L328
-[G01]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L152
-[G02]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L1579
-[G03]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L49
-[G04]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L404
-[G05]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L458
-[G06]: https://github.com/golang/go/blob/go1.27.2/src/context/context.go#L315
-[G07]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L452
-[G08]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L299
-[G09]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L2072
-[G10]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L3581
+[E01]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L152
+[E02]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L1579
+[E03]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L49
+[E04]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L404
+[E05]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L458
+[E06]: https://github.com/golang/go/blob/go1.27.2/src/context/context.go#L315
+[E07]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L452
+[E08]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/driver/driver.go#L299
+[E09]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L2072
+[E10]: https://github.com/golang/go/blob/go1.27.2/src/database/sql/sql.go#L3581
 
 ### 2026-10-19 Charset Compatibility Addendum
 

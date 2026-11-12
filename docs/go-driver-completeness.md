@@ -103,6 +103,8 @@ A01 与 ENV01 已结合本次部署复核；其他条目保留历史/参考边�
 
 ## 有路径但缺 Go 专项验收
 
+> 编号范围：本表 `V01–V17` 是**待验收项**编号，与[开发进度 §5](go-driver-development-progress.md#5-validation-combinations-and-evidence)的 `V01–V14`（验收组合）独立。本表不设 `V12`：进度文档的 V12（D28 逐算法/逐平台传输清单）在这里拆为 V02（平台/认证路径）与 ENV05（环境未具备）。
+
 | ID / 关联能力 | 已有路径 | 待确认的Go证据；不应误列的缺失 |
 | --- | --- | --- |
 | V01 / C06 TLS/mTLS | tls.Config、证书校验、正负peer | 实际CA/主机名/mTLS/轮换，前提ENV01；不是再写TLS |
