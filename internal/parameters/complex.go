@@ -107,7 +107,7 @@ func (e *complexEncoder) value(d *valuecodec.Descriptor, value any, depth int, c
 		return dberrors.ErrComplex
 	}
 	if d.Array {
-		if err := e.append(wire.AppendComplexLenEnc(nil, uint64(len(values))), false); err != nil {
+		if err := e.append(wire.AppendLenEnc(nil, uint64(len(values))), false); err != nil {
 			return err
 		}
 	}

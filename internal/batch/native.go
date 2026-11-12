@@ -1,7 +1,6 @@
 package batch
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -252,18 +251,6 @@ func (n *native) clearWarnings() {
 }
 func (n *native) recordWarnings(ok wire.OK) {
 	n.outcome.WarningsChanged, n.outcome.WarningCount, n.outcome.WarningsKnown = true, ok.Warnings, true
-}
-
-func sameParameterTypes(a, b []wire.Parameter) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, p := range a {
-		if p.Type != b[i].Type || !bytes.Equal(p.TypeMetadata, b[i].TypeMetadata) {
-			return false
-		}
-	}
-	return true
 }
 
 func (n *native) batchRewriteUnknown(items []Item, err error) error {

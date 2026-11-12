@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/internal/charset"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 // ProtocolAttributes builds the declared client and proxy capability attributes.
@@ -104,15 +105,11 @@ func ConnectionAttributes(base, configured map[string]string, proxyUser, charset
 	return attrs, ""
 }
 
+// attributeLengthBytes derives the encoded length prefix from the wire encoder so
+// the budget check cannot drift from the bytes that are actually written.
 func attributeLengthBytes(n int64) int64 {
-	switch {
-	case n < 251:
+	if n < 0 {
 		return 1
-	case n < 1<<16:
-		return 3
-	case n < 1<<24:
-		return 4
-	default:
-		return 9
 	}
+	return int64(len(wire.AppendLenEnc(nil, uint64(n))))
 }

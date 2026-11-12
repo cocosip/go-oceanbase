@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -19,10 +20,28 @@ type listedPackage struct {
 }
 
 func TestPackageDependencies(t *testing.T) {
+	// Platform files carry platform-only imports, so one GOOS listing would skip
+	// them entirely. Cover every OS the driver builds for.
+	const module = "github.com/cocosip/go-oceanbase"
+	checked := make(map[string]bool)
+	for _, goos := range []string{runtime.GOOS, "windows", "linux"} {
+		if checked[goos] {
+			continue
+		}
+		checked[goos] = true
+		if violations := dependencyViolations(module, listedPackages(t, goos)); len(violations) > 0 {
+			t.Fatalf("%s: %s", goos, strings.Join(violations, "\n"))
+		}
+	}
+}
+
+func listedPackages(t *testing.T, goos string) []listedPackage {
+	t.Helper()
 	cmd := exec.Command("go", "list", "-deps", "-json", "-test", "-tags=integration", "./...")
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "CGO_ENABLED=0")
 	data, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("package graph: %v", err)
+		t.Fatalf("%s package graph: %v", goos, err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	var packages []listedPackage
@@ -36,9 +55,7 @@ func TestPackageDependencies(t *testing.T) {
 		}
 		packages = append(packages, p)
 	}
-	if violations := dependencyViolations("github.com/cocosip/go-oceanbase", packages); len(violations) > 0 {
-		t.Fatal(strings.Join(violations, "\n"))
-	}
+	return packages
 }
 
 func TestPackageDependencyRules(t *testing.T) {

@@ -202,7 +202,7 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...co
 	}
 	name, known := charset.Collation(c.Charset)
 	if !known {
-		return nil, fmt.Errorf("%w: result character set", dberrors.ErrUnsupported)
+		return nil, fmt.Errorf("%w: result character set %d", dberrors.ErrUnsupported, c.Charset)
 	}
 	return charset.Decode(name, data)
 }

@@ -76,6 +76,10 @@ func (e *Engine) Close() error {
 	}
 	defer e.release(op)
 	e.physical.EndCancellation(true)
+	// A pre-send cleanup failure returns here without any earlier discard and would
+	// leave the socket open. Reaching it needs the cleanup context to expire after
+	// Acquire's re-check, so the guard is verified by inspection, not by a test.
+	defer e.Discard()
 	if err = e.statements.Clear(ctx, op); err != nil {
 		return err
 	}

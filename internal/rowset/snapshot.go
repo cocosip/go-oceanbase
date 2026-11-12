@@ -4,31 +4,16 @@ import (
 	"context"
 	"database/sql/driver"
 
+	"github.com/cocosip/go-oceanbase/internal/valuecodec"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-// ValuesSize counts variable-width values using the original materialization budget.
-func ValuesSize(values []driver.Value) int64 {
-	var n int64
-	for _, value := range values {
-		switch v := value.(type) {
-		case []byte:
-			n += int64(len(v))
-		case string:
-			n += int64(len(v))
-		}
-	}
-	return n
-}
+// ValuesSize and MetadataSize share the buffered-response budget that valuecodec
+// owns; keeping one formula prevents the two accounting paths from drifting.
+func ValuesSize(values []driver.Value) int64 { return valuecodec.SnapshotValuesSize(values) }
 
 // MetadataSize counts a result's column metadata using the original snapshot budget.
-func MetadataSize(columns []wire.Column) int64 {
-	n := int64(32)
-	for _, col := range columns {
-		n += 128 + int64(len(col.Catalog)+len(col.Schema)+len(col.Table)+len(col.OriginalTable)+len(col.Name)+len(col.OriginalName)+len(col.Extra)+len(col.ComplexSchema)+len(col.ComplexName)+len(col.ElementSchema)+len(col.ElementName))
-	}
-	return n
-}
+func MetadataSize(columns []wire.Column) int64 { return valuecodec.SnapshotMetadataSize(columns) }
 
 // SnapshotSize includes row storage, values, and nested materialized child results.
 func SnapshotSize(rows [][]driver.Value) int64 {

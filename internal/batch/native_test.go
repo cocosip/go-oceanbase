@@ -72,8 +72,8 @@ func serveNativePrepare(ctx context.Context, t *testing.T, p *wire.PacketIO, sta
 }
 
 func nativeOK(affected, id uint64, status byte) []byte {
-	b := wire.AppendComplexLenEnc([]byte{0}, affected)
-	b = wire.AppendComplexLenEnc(b, id)
+	b := wire.AppendLenEnc([]byte{0}, affected)
+	b = wire.AppendLenEnc(b, id)
 	return append(b, status, 0, 3, 0)
 }
 

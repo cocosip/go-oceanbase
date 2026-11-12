@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 )
@@ -27,6 +28,20 @@ type Parameter struct {
 	LengthEncoded bool
 	LongData      bool // A separate upload supplies the body; bitmap and type remain present.
 	Null          bool // SQL NULL retaining an explicit type, rather than type 6.
+}
+
+// SameParameterTypes reports whether a server may decode b with a's declared
+// types, which is the only precondition for omitting fresh type headers.
+func SameParameterTypes(a, b []Parameter) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, p := range a {
+		if p.Type != b[i].Type || !bytes.Equal(p.TypeMetadata, b[i].TypeMetadata) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsNull reports both untyped and explicitly typed SQL NULL parameters.
@@ -123,7 +138,7 @@ func EncodeStmtExecuteOptions(id uint32, params []Parameter, limit int64, option
 			continue
 		}
 		if p.LengthEncoded {
-			b = appendLenEnc(b, uint64(len(p.Data)))
+			b = AppendLenEnc(b, uint64(len(p.Data)))
 		}
 		b = append(b, p.Data...)
 	}

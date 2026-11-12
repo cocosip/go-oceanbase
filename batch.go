@@ -16,7 +16,9 @@ type Execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-// BatchStrategy is a preferred strategy; unsafe or unavailable optimizations fall back to sequential.
+// BatchStrategy is a preferred strategy; optimizations that are structurally
+// unavailable fall back to sequential before any business send. A failure that
+// makes availability unknowable is reported instead of silently degrading.
 type BatchStrategy uint8
 
 // Batch execution strategies. BatchResult reports the strategy actually used.

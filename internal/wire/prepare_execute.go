@@ -47,7 +47,7 @@ func EncodePrepareExecuteOptions(id uint32, query []byte, params []Parameter, li
 	b := make([]byte, 10, len(execute)+int(overhead))
 	copy(b, execute[:10])
 	b[0] = 161
-	b = appendLenEnc(b, uint64(len(query)))
+	b = AppendLenEnc(b, uint64(len(query)))
 	b = append(b, query...)
 	b = binary.LittleEndian.AppendUint32(b, uint32(len(params)))
 	b = append(b, execute[10:]...)

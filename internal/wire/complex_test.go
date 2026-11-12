@@ -46,7 +46,7 @@ func TestComplexBinaryRowNodeBudget(t *testing.T) {
 	shape := &ComplexShape{Fields: []*ComplexShape{{Array: true, Fields: []*ComplexShape{nil}}, nil}}
 	for _, count := range []int{65533, 65534} {
 		// Root + array + count NULL elements + one trailing NULL.
-		data := appendLenEnc([]byte{8}, uint64(count))
+		data := AppendLenEnc([]byte{8}, uint64(count))
 		bitmap := make([]byte, (count+9)/8)
 		for i := range count {
 			bitmap[(i+2)/8] |= 1 << uint((i+2)%8)

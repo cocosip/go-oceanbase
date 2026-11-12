@@ -135,7 +135,7 @@ func EncodeHandshakeResponse(h HandshakeResponse) ([]byte, error) {
 	data = append(data, h.User...)
 	data = append(data, 0)
 	if h.Capabilities&ClientPluginAuthLenEnc != 0 {
-		data = appendLenEnc(data, uint64(len(h.Auth)))
+		data = AppendLenEnc(data, uint64(len(h.Auth)))
 		data = append(data, h.Auth...)
 	} else if h.Capabilities&ClientSecureConnection != 0 {
 		data = append(data, byte(len(h.Auth)))
@@ -163,13 +163,13 @@ func EncodeHandshakeResponse(h HandshakeResponse) ([]byte, error) {
 		}
 		slices.Sort(keys)
 		for _, key := range keys {
-			attributes = appendLenEnc(attributes, uint64(len(key)))
+			attributes = AppendLenEnc(attributes, uint64(len(key)))
 			attributes = append(attributes, key...)
 			value := h.Attributes[key]
-			attributes = appendLenEnc(attributes, uint64(len(value)))
+			attributes = AppendLenEnc(attributes, uint64(len(value)))
 			attributes = append(attributes, value...)
 		}
-		data = appendLenEnc(data, uint64(len(attributes)))
+		data = AppendLenEnc(data, uint64(len(attributes)))
 		data = append(data, attributes...)
 	}
 	return data, nil
@@ -300,17 +300,4 @@ func (r *decoder) lenBytes() []byte {
 		return nil
 	}
 	return r.take(int(n))
-}
-func appendLenEnc(data []byte, n uint64) []byte {
-	switch {
-	case n < 251:
-		return append(data, byte(n))
-	case n <= 0xffff:
-		return append(data, 0xfc, byte(n), byte(n>>8))
-	case n <= 0xffffff:
-		return append(data, 0xfd, byte(n), byte(n>>8), byte(n>>16))
-	default:
-		data = append(data, 0xfe)
-		return binary.LittleEndian.AppendUint64(data, n)
-	}
 }

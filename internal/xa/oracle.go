@@ -28,7 +28,7 @@ const (
 func nativeXID(x XID) wire.Parameter {
 	meta := wire.AppendComplexLenBytes(nil, []byte(xaSchema))
 	meta = wire.AppendComplexLenBytes(meta, []byte(xaXIDType))
-	meta = wire.AppendComplexLenEnc(meta, 0)
+	meta = wire.AppendLenEnc(meta, 0)
 	data := wire.AppendComplexLenBytes([]byte{0}, []byte(strconv.FormatInt(int64(x.FormatID), 10)))
 	data = wire.AppendComplexLenBytes(data, x.GlobalID)
 	data = wire.AppendComplexLenBytes(data, x.BranchID)
@@ -39,7 +39,10 @@ func oracle(ctx context.Context, op *session.Operation, resolver *catalog.Resolv
 	if r.Op == Recover {
 		return oracleRecover(ctx, op, resolver, r)
 	}
-	// Oracle association requires autocommit off; restore only after confirmed END.
+	// The Oracle association window XA_START..XA_END requires autocommit off; confirmed
+	// END restores it. PREPARE, COMMIT and ROLLBACK therefore run with the caller's
+	// autocommit already restored, matching pinned Connector/J OceanBaseXaResource
+	// (isChangedCommit set at START, cleared after a successful END).
 	if r.Op == Start && op.Protocol().OK.Status&2 != 0 {
 		if _, err := command.ExecOK(ctx, op, []byte("\x03SET autocommit=0")); err != nil {
 			op.Discard()

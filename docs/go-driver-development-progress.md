@@ -1,6 +1,6 @@
 # OceanBase Go Driver Development Progress
 
-Last updated: 2026-11-04. Task definitions are in the [development plan](go-driver-development-plan.md); behavior contracts are in the [architecture design](go-driver-architecture-design.md).
+Last updated: 2026-11-12. Task definitions are in the [development plan](go-driver-development-plan.md); behavior contracts are in the [architecture design](go-driver-architecture-design.md).
 
 ## 1. Current Status
 
@@ -1332,3 +1332,11 @@ This record manages development facts/next actions only, without separate walkth
 
 - Merged ten date-stamped live reports into a single [live validation record](live-validation.md) with the current 114/0/3/27 baseline, a history table, per-run records and the reproduction/boundary policy; deleted the dated files and repointed every citation.
 - Docs now keep one evidence document instead of ten overlapping reports; the remaining `pending-live-verification.md` is a checklist, not a report.
+
+#### 2026-11-12 Round 64: review remediation for login failover, session retirement and helper duplication
+
+- Login-phase server errors in SQLState class `08` now switch endpoints instead of aborting the candidate loop; classes `28`/`42` stay terminal, matching pinned [AbstractMastersListener.java#L631](https://github.com/oceanbase/obconnector-j/blob/6adc311ba5db8b2f19f98f3e6e4734667fdfdda1/src/main/java/com/oceanbase/jdbc/AbstractMastersListener.java#L631). `TestLoginOverloadSwitchesCandidate` expects 2 dials, `TestLoginRejectionStopsCandidates` 1.
+- `Engine.Close` now discards the transport even when statement cleanup fails, and a pre-send `COM_STMT_CLOSE` failure marks the operation dirty so the orphaned server handle is released with the session.
+- Removed dead `ScanComplex`/`ParseComplexScalar`; collapsed the duplicated lenenc encoders into `wire.AppendLenEnc`, the snapshot budget into `valuecodec`, and `sameParameterTypes` into `wire.SameParameterTypes`; `ColumnLength` no longer rebuilds its width table per column.
+- `TestPackageDependencies` now lists the windows and linux package graphs, closing the platform-only-import blind spot that a single-GOOS listing left.
+- Added `internal/lifetime` cleanup tests, and documented the shared-memory wait ceiling plus the Oracle XA autocommit window.

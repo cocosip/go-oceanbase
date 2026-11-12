@@ -30,6 +30,10 @@ func DecodeColumn(data []byte, options config.SessionOptions, newMetadata bool) 
 	return column, nil
 }
 
+// charsetWidth is the server's mbmaxlen per charset name. Package state keeps
+// ColumnLength from rebuilding the table for every column.
+var charsetWidth = map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, "dec8": 1, "tis620": 1, charsetGBK: 2, "gb2312": 2, "euckr": 2, "sjis": 2, "big5": 2, "hkscs": 2, "hkscs31": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, "utf16le": 4, charsetGB18030: 4, "gb18030_2022": 4}
+
 // ColumnLength reports the protocol-defined column length in bytes or characters.
 func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 	if c.NewMetadata && mode == config.ModeOracle {
@@ -56,7 +60,7 @@ func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 		}
 		name, ok := charset.Collation(c.Charset)
 		// HKSCS metadata uses the server's mbmaxlen=2 despite its UTF-8 wire payload.
-		width := map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, "dec8": 1, "tis620": 1, charsetGBK: 2, "gb2312": 2, "euckr": 2, "sjis": 2, "big5": 2, "hkscs": 2, "hkscs31": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, "utf16le": 4, charsetGB18030: 4, "gb18030_2022": 4}[name]
+		width := charsetWidth[name]
 		if !ok || width == 0 || c.Length%width != 0 {
 			return 0, false
 		}

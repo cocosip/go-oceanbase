@@ -8,7 +8,7 @@ func StmtArraySize(rows, parameters int, dataBytes int64) (int64, error) {
 		return 0, ErrMalformed
 	}
 	header := int64(10 + (parameters+7)/8 + 1)
-	header += int64(parameters) * int64(6+len(appendLenEnc(nil, uint64(rows)))+(rows+7)/8)
+	header += int64(parameters) * int64(6+len(AppendLenEnc(nil, uint64(rows)))+(rows+7)/8)
 	if dataBytes > int64(math.MaxInt)-header {
 		return 0, ErrMessageTooLarge
 	}
@@ -67,7 +67,7 @@ func EncodeStmtExecuteArray(id uint32, rows [][]Parameter, limit int64, options 
 	copy(payload, header)
 	payload[5] = 8 | 16
 	for column := range width {
-		payload = appendLenEnc(payload, uint64(len(rows)))
+		payload = AppendLenEnc(payload, uint64(len(rows)))
 		bitmap := len(payload)
 		payload = append(payload, make([]byte, (len(rows)+7)/8)...)
 		for i, row := range rows {
@@ -77,7 +77,7 @@ func EncodeStmtExecuteArray(id uint32, rows [][]Parameter, limit int64, options 
 				continue
 			}
 			if parameter.LengthEncoded {
-				payload = appendLenEnc(payload, uint64(len(parameter.Data)))
+				payload = AppendLenEnc(payload, uint64(len(parameter.Data)))
 			}
 			payload = append(payload, parameter.Data...)
 		}

@@ -127,8 +127,11 @@ func openSharedMemory(ctx context.Context, name string) (*sharedMemoryConn, erro
 	if err = windows.SetEvent(request); err != nil {
 		return nil, err
 	}
-	// shortcut: answers have no request ID; retain ownership until answered, even after cancellation.
-	// A hard allocation timeout requires a server protocol with correlated answers.
+	// shortcut: answers carry no request ID, so this mutex stays owned until the
+	// answer arrives; releasing it early would let the next client read this answer.
+	// Ceiling: the wait ignores ctx and ConnectTimeout and keeps the OS thread above
+	// locked, so a hung server blocks Connect until the transport itself closes.
+	// Upgrade path: a correlated-answer server protocol, or secure map teardown.
 	if result, err = windows.WaitForSingleObject(answer, windows.INFINITE); err != nil {
 		return nil, err
 	}

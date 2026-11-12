@@ -139,7 +139,7 @@ func lobInteger(n int64) wire.Parameter {
 func nativeXID(x oceanbase.XID) wire.Parameter {
 	meta := wire.AppendComplexLenBytes(nil, []byte(xaSchema))
 	meta = wire.AppendComplexLenBytes(meta, []byte(xaXIDType))
-	meta = wire.AppendComplexLenEnc(meta, 0)
+	meta = wire.AppendLenEnc(meta, 0)
 	data := wire.AppendComplexLenBytes([]byte{0}, []byte(strconv.FormatInt(int64(x.FormatID), 10)))
 	data = wire.AppendComplexLenBytes(data, x.GlobalID)
 	data = wire.AppendComplexLenBytes(data, x.BranchID)

@@ -78,8 +78,9 @@ func (r *decoder) complex(shape *ComplexShape, depth int, nodes *int, collect bo
 	return v, nil
 }
 
-// AppendComplexLenEnc appends a complex protocol length-encoded integer.
-func AppendComplexLenEnc(data []byte, n uint64) []byte {
+// AppendLenEnc appends a protocol length-encoded integer. Complex values, OK
+// packets, handshake fields and connection attributes all share this format.
+func AppendLenEnc(data []byte, n uint64) []byte {
 	switch {
 	case n < 251:
 		return append(data, byte(n))
@@ -94,5 +95,5 @@ func AppendComplexLenEnc(data []byte, n uint64) []byte {
 
 // AppendComplexLenBytes appends a complex protocol length-prefixed byte sequence.
 func AppendComplexLenBytes(data, value []byte) []byte {
-	return append(AppendComplexLenEnc(data, uint64(len(value))), value...)
+	return append(AppendLenEnc(data, uint64(len(value))), value...)
 }

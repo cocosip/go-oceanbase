@@ -2,13 +2,11 @@ package valuecodec
 
 import (
 	"database/sql/driver"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/valueformat"
 	"github.com/cocosip/go-oceanbase/types"
-	"strings"
 )
 
 // ComplexDriverValue encodes a decoded complex value in the shared format-1 representation.
@@ -42,41 +40,4 @@ func ComplexDriverValue(value any, null bool) (driver.Value, error) {
 		return nil, errors.Join(dberrors.ErrComplex, err)
 	}
 	return string(data), nil
-}
-
-// ScanComplex parses the shared format-1 complex representation.
-func ScanComplex(src any) (any, error) {
-	switch src.(type) {
-	case string, []byte:
-	default:
-		return nil, dberrors.ErrComplex
-	}
-	var object types.Object
-	if err := object.Scan(src); err == nil {
-		return object, nil
-	}
-	var array types.Array
-	if err := array.Scan(src); err != nil {
-		return nil, err
-	}
-	return array, nil
-}
-
-// ParseComplexScalar parses one scalar from complex JSON without session I/O.
-func ParseComplexScalar(typ, text string) (any, error) {
-	switch strings.ToUpper(typ) {
-	case valueformat.TypeNameNumber, valueformat.TypeNameDecimal, valueformat.TypeNameInteger, valueformat.TypeNameNumeric:
-		n := types.Number(text)
-		_, err := n.Value()
-		return n, err
-	case valueformat.TypeNameRaw, valueformat.TypeNameBlob:
-		b, err := base64.StdEncoding.DecodeString(text)
-		return types.Raw(b), err
-	case valueformat.TypeNameDate, valueformat.TypeNameTimestamp:
-		_, _, err := valueformat.ParseWall(text)
-		return text, err
-	case "", valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar, valueformat.TypeNameChar, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameClob, valueformat.TypeNameNClob:
-		return text, nil
-	}
-	return nil, dberrors.ErrComplex
 }

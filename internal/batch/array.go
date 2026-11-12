@@ -40,7 +40,7 @@ func (n *native) execBatchArrayLocked(ctx context.Context, request Request, prep
 					rowErr = wire.ErrMessageTooLarge
 				}
 			}
-			if len(rows) > 0 && (rowErr != nil || !sameParameterTypes(rows[0], parameters)) {
+			if len(rows) > 0 && (rowErr != nil || !wire.SameParameterTypes(rows[0], parameters)) {
 				break
 			}
 			if rowErr != nil {

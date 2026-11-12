@@ -212,7 +212,7 @@ func EncodeComplexMetadata(d *Descriptor, options config.SessionOptions, sqlLimi
 	}
 	metadata := wire.AppendComplexLenBytes(nil, schema)
 	metadata = wire.AppendComplexLenBytes(metadata, name)
-	metadata = wire.AppendComplexLenEnc(metadata, d.Key.Version)
+	metadata = wire.AppendLenEnc(metadata, d.Key.Version)
 	if d.Array && !namedCollection {
 		field := d.Fields[0]
 		if field.Child == nil {
@@ -233,7 +233,7 @@ func EncodeComplexMetadata(d *Descriptor, options config.SessionOptions, sqlLimi
 			}
 			metadata = wire.AppendComplexLenBytes(metadata, schema)
 			metadata = wire.AppendComplexLenBytes(metadata, name)
-			metadata = wire.AppendComplexLenEnc(metadata, field.Child.Key.Version)
+			metadata = wire.AppendLenEnc(metadata, field.Child.Key.Version)
 		}
 	}
 	if int64(len(metadata)) > limit {

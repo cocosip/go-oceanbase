@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 
+	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
@@ -13,12 +15,19 @@ type HandshakeTransportError struct{ error }
 
 func (e *HandshakeTransportError) Unwrap() error { return e.error }
 
-// RetryHandshakeError permits transport retry before initialization has started.
+// RetryHandshakeError permits retry before initialization has started.
 func RetryHandshakeError(err error) bool {
 	// crypto/tls wraps fatal protocol/credential alerts in net.OpError too.
 	var network *net.OpError
 	if errors.As(err, &network) && (network.Op == "remote error" || network.Op == "local error") {
 		return false
+	}
+	// Login-phase connection exceptions (class 08: overloaded, draining, shutting
+	// down) belong to one endpoint, so another candidate may still serve the login.
+	// Credential and database rejections use class 28/42 and stay terminal.
+	var server *dberrors.Error
+	if errors.As(err, &server) {
+		return strings.HasPrefix(server.SQLState, "08")
 	}
 	var transport *wire.IOError
 	var handshake *HandshakeTransportError

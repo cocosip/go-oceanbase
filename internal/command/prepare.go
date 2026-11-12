@@ -58,8 +58,15 @@ func CloseStatement(ctx context.Context, op *session.Operation, id uint32) error
 	p := op.Packets()
 	p.ResetSequence()
 	err := p.WriteMessage(ctx, binary.LittleEndian.AppendUint32([]byte{25}, id))
-	if err != nil && !PreSend(err) {
-		op.Discard()
+	if err != nil {
+		if PreSend(err) {
+			// No bytes left the client, so the server still owns this handle and the
+			// caller has already dropped its bookkeeping. Retiring the session is the
+			// only remaining way to free it.
+			op.MarkDirty()
+		} else {
+			op.Discard()
+		}
 	}
 	return err
 }
