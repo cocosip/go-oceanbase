@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -20,6 +19,18 @@ const generatedKeyCase = "generated-keys"
 const generatedWideID = uint64(9223372036854775813)
 const generatedNegativeData = "negative-data"
 const generatedCleanupError = "cleanup-error"
+
+// closeTracker records physical connection closes so the driver's discard stays
+// observable without racing the fixture cleanup, which closes the peer side too.
+type closeTracker struct {
+	net.Conn
+	closed atomic.Bool
+}
+
+func (c *closeTracker) Close() error {
+	c.closed.Store(true)
+	return c.Conn.Close()
+}
 
 type generatedPeerStep struct {
 	query   string
@@ -44,7 +55,8 @@ func TestGeneratedKeyWorkflows(t *testing.T) {
 	}
 	for _, fault := range []string{"valid-keys", generatedMaxStandard, generatedMaxSummary, "standard-no-id", "standard-mismatch", "standard-count", "standard-update-id", "summary-no-id", "summary-mismatch", "summary-count", "summary-update-id", "alter-error", "wide-standard-no-id", "wide-standard-range", "wide-standard-count", "wide-standard-in-range", "wide-standard-update-id", "wide-summary-no-id", "wide-summary-mismatch", "wide-summary-range", "wide-summary-count", "wide-summary-update-id", "final-count", "standard-read-error", "summary-error", "no-standard-row", "no-summary-row", "zero-data", generatedNegativeData, generatedCleanupError, "summary-extra-result"} {
 		t.Run(fault, func(t *testing.T) {
-			cfg := oceanbase.Config{User: "generated_key_fixture", Mode: oceanbase.ModeMySQL, Session: oceanbase.SessionOptions{SkipVersionProbe: true}, DialContext: generatedKeyPeer(t, fault)}
+			var primary atomic.Pointer[closeTracker]
+			cfg := oceanbase.Config{User: "generated_key_fixture", Mode: oceanbase.ModeMySQL, Session: oceanbase.SessionOptions{SkipVersionProbe: true}, DialContext: generatedKeyPeer(t, fault, &primary)}
 			connector, err := oceanbase.NewConnector(cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -56,6 +68,11 @@ func TestGeneratedKeyWorkflows(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			result := runScenario(ctx, s, definition.run)
+			if fault == generatedNegativeData {
+				if c := primary.Load(); c == nil || !c.closed.Load() {
+					t.Fatal("malformed row did not discard the connection")
+				}
+			}
 			want, state := statusFail, fixtureDroppedState
 			if fault == "valid-keys" || fault == generatedMaxStandard || fault == generatedMaxSummary {
 				want = statusPass
@@ -70,7 +87,7 @@ func TestGeneratedKeyWorkflows(t *testing.T) {
 	}
 }
 
-func generatedKeyPeer(t *testing.T, fault string) func(context.Context, string, string) (net.Conn, error) {
+func generatedKeyPeer(t *testing.T, fault string, primary *atomic.Pointer[closeTracker]) func(context.Context, string, string) (net.Conn, error) {
 	t.Helper()
 	var connections atomic.Int32
 	return func(context.Context, string, string) (net.Conn, error) {
@@ -80,6 +97,10 @@ func generatedKeyPeer(t *testing.T, fault string) func(context.Context, string, 
 			return nil, fmt.Errorf("unexpected reconnect")
 		}
 		client, server := net.Pipe()
+		tracked := &closeTracker{Conn: client}
+		if attempt == 1 {
+			primary.Store(tracked)
+		}
 		if err := server.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 			t.Fatal(err)
 		}
@@ -89,8 +110,8 @@ func generatedKeyPeer(t *testing.T, fault string) func(context.Context, string, 
 			defer func() { _ = server.Close() }()
 			serveGeneratedKeyPeer(t, server, fault, attempt > 1)
 		}()
-		t.Cleanup(func() { _ = client.Close(); _ = server.Close(); <-done })
-		return client, nil
+		t.Cleanup(func() { _ = tracked.Close(); _ = server.Close(); <-done })
+		return tracked, nil
 	}
 }
 
@@ -151,11 +172,7 @@ func serveGeneratedKeyStep(t *testing.T, c net.Conn, step generatedPeerStep) boo
 			}
 		}
 		if step.row == "-1" {
-			// Malformed unsigned data must discard the connection before cleanup.
-			var next [1]byte
-			if n, err := c.Read(next[:]); n != 0 || err != io.EOF {
-				t.Errorf("malformed row did not close connection: n=%d err=%v", n, err)
-			}
+			// Malformed unsigned data ends the script; the driver must discard the connection.
 			return false
 		}
 		return true
