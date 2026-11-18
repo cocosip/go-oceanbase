@@ -36,7 +36,9 @@ func (m *Manager) own(op *session.Operation, r *record) (session.ResourceRef, er
 	}
 	ref, err := op.Register(session.CursorResource)
 	if err != nil {
-		return session.ResourceRef{}, errors.Join(err, r.parent.Release(context.Background(), op))
+		cleanup, cancel := context.WithTimeout(context.Background(), op.Config().Limits.CleanupTimeout)
+		defer cancel()
+		return session.ResourceRef{}, errors.Join(err, r.parent.Release(cleanup, op))
 	}
 	if m.records == nil {
 		m.records = make(map[session.ResourceRef]*record)

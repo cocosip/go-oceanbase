@@ -46,25 +46,37 @@ func legacyCodec(name string) encoding.Encoding {
 	return nil
 }
 
+// legacySingleLow maps the high half of each single-byte charset back to its code.
+var legacySingleLow = func() map[string]map[rune]byte {
+	all := make(map[string]map[rune]byte, len(legacySingleHigh))
+	for name, high := range legacySingleHigh {
+		low := make(map[rune]byte, len(high))
+		for i, mapped := range high {
+			if mapped == 0xffff {
+				continue
+			}
+			if _, ok := low[mapped]; !ok {
+				low[mapped] = byte(i + 160)
+			}
+		}
+		all[name] = low
+	}
+	return all
+}()
+
 func encodeLegacy(name, text string) ([]byte, error) {
-	if high := legacySingleHigh[name]; high != nil {
+	if low := legacySingleLow[name]; low != nil {
 		out := make([]byte, 0, len(text))
 		for _, r := range text {
 			if r < 160 {
 				out = append(out, byte(r))
 				continue
 			}
-			found := false
-			for i, mapped := range high {
-				if r == mapped && mapped != 0xffff {
-					out = append(out, byte(i+160))
-					found = true
-					break
-				}
-			}
-			if !found {
+			code, ok := low[r]
+			if !ok {
 				return nil, ErrEncoding
 			}
+			out = append(out, code)
 		}
 		return out, nil
 	}

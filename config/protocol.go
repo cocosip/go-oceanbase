@@ -66,11 +66,3 @@ func parseFeatureMode(value string) (FeatureMode, error) {
 func protocolAttributes(p ProtocolOptions) map[string]string {
 	return configspec.ProtocolAttributes(p.NewMetadata != FeatureOff, p.ProxyChecksum != FeatureOff, p.OB20 != FeatureOff, p.Compression == FeatureRequired, p.FullLinkTrace != FeatureOff)
 }
-
-func connectionAttributes(cfg Config, proxyUser string) (map[string]string, error) {
-	attrs, field := configspec.ConnectionAttributes(protocolAttributes(cfg.Protocol), cfg.ConnectionAttributes, proxyUser, cfg.Session.Charset, cfg.Mode == ModeMySQL, cfg.Limits.MaxMessageBytes)
-	if field != "" {
-		return nil, &ConfigError{Field: field}
-	}
-	return attrs, nil
-}

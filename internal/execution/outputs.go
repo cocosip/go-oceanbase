@@ -24,7 +24,7 @@ func (e *Engine) queryOutputs(ctx context.Context, op *session.Operation, query 
 		if owned {
 			if temporary {
 				cleanup, cancel := context.WithTimeout(context.Background(), op.Config().Limits.CleanupTimeout)
-				_ = prepared.Close(cleanup, op)
+				err = errors.Join(err, prepared.Close(cleanup, op))
 				cancel()
 			}
 			if !options.RetainOperation {

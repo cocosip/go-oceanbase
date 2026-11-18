@@ -130,7 +130,7 @@ func (c *Decoder) decodeComplexFieldLocked(ctx context.Context, f valuecodec.Fie
 		}
 		values := []driver.Value{v.Data}
 		limit := *budget
-		if column.Type == 210 {
+		if column.Type == wire.TypeBlob {
 			limit = max(0, limit-2) / 4 * 3
 		}
 		if err := c.materializeLOBValuesLocked(ctx, []wire.Column{column}, values, limit); err != nil {

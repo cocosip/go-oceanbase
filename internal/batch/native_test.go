@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"testing"
@@ -111,41 +112,44 @@ func TestNativePipelineAcknowledgements(t *testing.T) {
 	if !handled || !errors.As(err, &batchErr) || batchErr.Index != 1 || batchErr.Completed != 2 || request.Result.Strategy != MultiSend {
 		t.Fatal(handled, request.Result, err)
 	}
-	if request.Result.Items[0].InsertID != maxInsertID || request.Result.Items[1].Status != Failed || request.Result.Items[2].RowsAffected != 3 || !request.Outcome.Started || request.Outcome.WarningsChanged || op.Closed() || op.ResponseActive() {
+	if request.Result.Items[0].InsertID != maxInsertID || request.Result.Items[1].Status != Failed || request.Result.Items[2].RowsAffected != 3 || !request.Outcome.Started || !request.Outcome.WarningsChanged || !request.Outcome.WarningsKnown || request.Outcome.WarningCount != 3 || op.Closed() || op.ResponseActive() {
 		t.Fatal(request.Result, request.Outcome, op.Closed())
 	}
 }
 
 func TestNativeArrayDiagnosticsAndAggregate(t *testing.T) {
+	// Status 2 (autocommit) is informational and must not fail an array batch.
 	for _, framing := range []string{testpeer.Standard, testpeer.Compression, testpeer.OB20} {
-		t.Run(framing, func(t *testing.T) {
-			ctx, op := nativeOperation(t, config.ModeOracle, framing, func(ctx context.Context, p *wire.PacketIO) {
-				if !serveNativePrepare(ctx, t, p, 5) {
-					return
-				}
-				rows := [][]wire.Parameter{{{Type: 8, Data: binary.LittleEndian.AppendUint64(nil, 1)}}, {{Type: 8, Data: binary.LittleEndian.AppendUint64(nil, 2)}}}
-				payload, err := wire.EncodeStmtExecuteArray(7, rows, 1<<20, wire.ExecuteOptions{})
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				if !testpeer.ReadCommand(ctx, t, p, payload) {
-					return
-				}
-				diagnostic := binary.LittleEndian.AppendUint64([]byte{0, 0}, 1)
-				diagnostic = binary.LittleEndian.AppendUint64(diagnostic, 1062)
-				diagnostic = append(diagnostic, 3, 'd', 'u', 'p')
-				if testpeer.SendPackets(ctx, t, p, []byte{3}, testpeer.TextColumn("sql_no", 8, 63, 0), testpeer.TextColumn("error_code", 8, 63, 0), testpeer.TextColumn("error_message", 253, 45, 0), []byte{254, 0, 0, 13, 0}, diagnostic, []byte{254, 0, 0, 13, 0}, nativeOK(1, 17, 5)) {
-					testpeer.ReadCommand(ctx, t, p, []byte{25, 7, 0, 0, 0})
+		for _, status := range []byte{5, 2} {
+			t.Run(fmt.Sprintf("%s/status-%d", framing, status), func(t *testing.T) {
+				ctx, op := nativeOperation(t, config.ModeOracle, framing, func(ctx context.Context, p *wire.PacketIO) {
+					if !serveNativePrepare(ctx, t, p, 5) {
+						return
+					}
+					rows := [][]wire.Parameter{{{Type: 8, Data: binary.LittleEndian.AppendUint64(nil, 1)}}, {{Type: 8, Data: binary.LittleEndian.AppendUint64(nil, 2)}}}
+					payload, err := wire.EncodeStmtExecuteArray(7, rows, 1<<20, wire.ExecuteOptions{})
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					if !testpeer.ReadCommand(ctx, t, p, payload) {
+						return
+					}
+					diagnostic := binary.LittleEndian.AppendUint64([]byte{0, 0}, 1)
+					diagnostic = binary.LittleEndian.AppendUint64(diagnostic, 1062)
+					diagnostic = append(diagnostic, 3, 'd', 'u', 'p')
+					if testpeer.SendPackets(ctx, t, p, []byte{3}, testpeer.TextColumn("sql_no", 8, 63, 0), testpeer.TextColumn("error_code", 8, 63, 0), testpeer.TextColumn("error_message", 253, 45, 0), []byte{254, 0, 0, 13, 0}, diagnostic, []byte{254, 0, 0, 13, 0}, nativeOK(1, 17, status)) {
+						testpeer.ReadCommand(ctx, t, p, []byte{25, 7, 0, 0, 0})
+					}
+				})
+				request := nativeRequest(t, [][]any{{1}, {2}}, Options{Strategy: ArrayBinding, ContinueOnError: true})
+				handled, err := TryNative(ctx, op, nil, nil, nil, request, true)
+				var batchErr *dberrors.BatchError
+				if !handled || !errors.As(err, &batchErr) || batchErr.Index != 1 || batchErr.Completed != 1 || request.Result.Strategy != ArrayBinding || request.Result.Items[0].Status != Succeeded || request.Result.Items[0].RowsAffectedKnown || request.Result.Items[0].InsertIDKnown || request.Result.Items[1].Status != Failed || !request.Outcome.WarningsKnown || request.Outcome.WarningCount != 3 || op.Closed() || op.ResponseActive() {
+					t.Fatal(request.Result, request.Outcome, err)
 				}
 			})
-			request := nativeRequest(t, [][]any{{1}, {2}}, Options{Strategy: ArrayBinding, ContinueOnError: true})
-			handled, err := TryNative(ctx, op, nil, nil, nil, request, true)
-			var batchErr *dberrors.BatchError
-			if !handled || !errors.As(err, &batchErr) || batchErr.Index != 1 || batchErr.Completed != 1 || request.Result.Strategy != ArrayBinding || request.Result.Items[0].Status != Succeeded || request.Result.Items[0].RowsAffectedKnown || request.Result.Items[0].InsertIDKnown || request.Result.Items[1].Status != Failed || !request.Outcome.WarningsKnown || request.Outcome.WarningCount != 3 || op.Closed() || op.ResponseActive() {
-				t.Fatal(request.Result, request.Outcome, err)
-			}
-		})
+		}
 	}
 }
 

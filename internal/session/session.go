@@ -33,7 +33,7 @@ type Session struct {
 func New(cfg config.Config, protocol *Negotiated) *Session {
 	return &Session{
 		gate: make(chan struct{}, 1), cfg: cfg, protocol: protocol,
-		epoch: Epoch{1, 1, 1}, statementEpoch: 1,
+		epoch: Epoch{1, 1}, statementEpoch: 1,
 		resources: make(map[uint64]ResourceMeta),
 	}
 }

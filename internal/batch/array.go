@@ -13,12 +13,13 @@ import (
 )
 
 func (n *native) execBatchArrayLocked(ctx context.Context, request Request, prepared *statement.Statement) error {
-	query, err := n.encodeSQL(prepared.Plan().SQL)
+	plan := prepared.Plan()
+	query, err := n.encodeSQL(plan.SQL)
 	if err != nil {
 		request.Result.Items[0].Err = err
 		return Failure(request.Result)
 	}
-	maxRows := min(request.Options.ChunkRows, n.op.Config().Limits.MaxResultItems, request.Options.ChunkParameters/len(prepared.Plan().Slots), 65535)
+	maxRows := min(request.Options.ChunkRows, n.op.Config().Limits.MaxResultItems, request.Options.ChunkParameters/len(plan.Slots), 65535)
 	for next := 0; next < len(request.Rows); {
 		if err = ctx.Err(); err != nil {
 			request.Result.Items[next].Err = err
@@ -28,7 +29,7 @@ func (n *native) execBatchArrayLocked(ctx context.Context, request Request, prep
 		var rows [][]wire.Parameter
 		var dataBytes int64
 		for next < len(request.Rows) && len(rows) < maxRows {
-			parameters, rowErr := n.encodeParameters(ctx, prepared, request.Rows[next])
+			parameters, rowErr := n.encodeParameters(ctx, plan, request.Rows[next])
 			var added int64
 			if rowErr == nil {
 				for _, parameter := range parameters {
@@ -109,7 +110,8 @@ func (n *native) runBatchArrayLocked(ctx context.Context, payload []byte, items 
 		return n.batchRewriteUnknown(items, err)
 	}
 	ok, err := wire.DecodeOK(data, n.op.Protocol().Capabilities)
-	if err != nil || ok.Status&(8|64|128|4096|2) != 0 {
+	// Only shape-changing flags are rejected; autocommit is informational, as in Connector/J.
+	if err != nil || ok.Status&(wire.StatusMoreResults|wire.StatusCursorExists|wire.StatusLastRowSent|wire.StatusPSOutParameters) != 0 {
 		if err == nil {
 			err = wire.ErrMalformed
 		}

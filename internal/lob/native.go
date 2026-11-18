@@ -214,7 +214,7 @@ func (c *nativeOperation) mutateLOBLocked(ctx context.Context, lob *Native, requ
 		return dberrors.ErrLOB
 	}
 	characters := request.operation == WriteChars || request.operation == TruncateChars
-	if characters != (lob.column.Type == 211) {
+	if characters != (lob.column.Type == wire.TypeClob) {
 		return dberrors.ErrLOB
 	}
 	if request.operation == Truncate || request.operation == TruncateChars {
@@ -367,7 +367,7 @@ func (c *nativeOperation) freeLOBLocked(ctx context.Context, lob *Native) error 
 	}
 	query := lobFreeSQL
 	params := []wire.Parameter{lob.parameter(), {Type: 6}}
-	if lob.column.Type == 211 {
+	if lob.column.Type == wire.TypeClob {
 		query = "DECLARE l CLOB := ?; BEGIN IF DBMS_LOB.ISTEMPORARY(l) = 1 THEN DBMS_LOB.FREETEMPORARY(l); END IF; ? := l; END;"
 	}
 	_, err := c.lobCallLocked(ctx, query, params, 1)

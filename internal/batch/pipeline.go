@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/command"
+	"github.com/cocosip/go-oceanbase/internal/sqltext"
 	"github.com/cocosip/go-oceanbase/internal/statement"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
@@ -26,6 +27,14 @@ func (n *native) execBatchMultiLocked(ctx context.Context, request Request, prep
 		}
 		err = n.cleanup(prepared, err, request.Result)
 	}()
+	plan := prepared.Plan()
+	query, queryErr := n.encodeSQL(plan.SQL)
+	if queryErr != nil {
+		for i := range request.Result.Items {
+			request.Result.Items[i] = Item{Status: Failed, Err: queryErr}
+		}
+		return Failure(request.Result)
+	}
 	for next := 0; next < len(request.Rows); {
 		if cause := ctx.Err(); cause != nil {
 			request.Result.Items[next].Err = cause
@@ -36,11 +45,11 @@ func (n *native) execBatchMultiLocked(ctx context.Context, request Request, prep
 		var bytes int64
 		params := 0
 		for next < len(request.Rows) && len(payloads) < request.Options.ChunkRows {
-			width := len(prepared.Plan().Slots)
+			width := len(plan.Slots)
 			if len(payloads) > 0 && width > request.Options.ChunkParameters-params {
 				break
 			}
-			payload, encodeErr := n.encodeBatchItemLocked(ctx, prepared, request.Rows[next], request.Options.ChunkParameters)
+			payload, encodeErr := n.encodeBatchItemLocked(ctx, plan, prepared, request.Rows[next], request.Options.ChunkParameters, query)
 			if encodeErr != nil {
 				request.Result.Items[next] = Item{Status: Failed, Err: encodeErr}
 				next++
@@ -65,15 +74,11 @@ func (n *native) execBatchMultiLocked(ctx context.Context, request Request, prep
 	return Failure(request.Result)
 }
 
-func (n *native) encodeBatchItemLocked(ctx context.Context, prepared *statement.Statement, args []any, maxParams int) ([]byte, error) {
-	if len(args) > maxParams || len(prepared.Plan().Slots) > maxParams {
+func (n *native) encodeBatchItemLocked(ctx context.Context, plan sqltext.Plan, prepared *statement.Statement, args []any, maxParams int, query []byte) ([]byte, error) {
+	if len(args) > maxParams || len(plan.Slots) > maxParams {
 		return nil, batchLimitError()
 	}
-	params, err := n.encodeParameters(ctx, prepared, args)
-	if err != nil {
-		return nil, err
-	}
-	query, err := n.encodeSQL(prepared.Plan().SQL)
+	params, err := n.encodeParameters(ctx, plan, args)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +89,8 @@ func (n *native) runBatchPipelineLocked(ctx context.Context, batch *Result, payl
 	if n.op.BeginCancellation() {
 		defer n.op.EndCancellation(false)
 	}
+	// Each OK reports the server's warning count, so the batch outcome follows the last one.
+	n.clearWarnings()
 	writes, err := n.op.Packets().Pipeline(ctx, payloads, func(i int) error {
 		data, e := n.op.Packets().ReadMessage(ctx)
 		if e != nil {
@@ -102,10 +109,11 @@ func (n *native) runBatchPipelineLocked(ctx context.Context, batch *Result, payl
 		if e != nil {
 			return e
 		}
-		if ok.Status&8 != 0 {
+		if ok.Status&wire.StatusMoreResults != 0 {
 			return wire.ErrMalformed
 		}
 		n.op.SetOK(ok)
+		n.recordWarnings(ok)
 		*item = Item{Status: Succeeded, Started: true}
 		item.RecordResult(command.Result{Known: true, Affected: ok.AffectedRows, ID: ok.InsertID})
 		return nil

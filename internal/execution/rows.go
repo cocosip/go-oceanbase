@@ -256,7 +256,7 @@ func (r *Rows) prepareResources(ctx context.Context) error {
 			if parent == nil {
 				return dberrors.ErrResource
 			}
-			if value.Type == 163 {
+			if value.Type == wire.TypeRefCursor {
 				id, ok := value.Value.(materialize.RefCursorID)
 				if !ok {
 					return dberrors.ErrOut
@@ -353,11 +353,9 @@ func (r *Rows) next(ctx context.Context, dest []driver.Value) error {
 		return r.fail(err, true)
 	}
 	if dest != nil {
-		values, err := materialize.Row(r.op, r.columns, r.binary, fields, r.captureLOB)
-		if err != nil {
+		if err := materialize.Row(r.op, r.columns, r.binary, fields, r.captureLOB, dest); err != nil {
 			return r.fail(err, true)
 		}
-		copy(dest, values)
 	}
 	return nil
 }
@@ -368,7 +366,7 @@ func (r *Rows) bufferResources(ctx context.Context) error {
 	}
 	found := false
 	for _, column := range r.columns {
-		found = found || column.Type == 160 && !column.IsXMLType() || column.Type == 163 || column.Type == 210 || column.Type == 211
+		found = found || column.Type == 160 && !column.IsXMLType() || column.Type == wire.TypeRefCursor || column.Type == wire.TypeBlob || column.Type == wire.TypeClob
 	}
 	if !found {
 		return nil

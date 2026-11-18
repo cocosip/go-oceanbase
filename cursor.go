@@ -216,11 +216,11 @@ func (c *Cursor) Refresh(ctx context.Context, key map[string]any) (*sql.Rows, er
 func cursorRequest(c *Cursor, op cursorOperation, key map[string]any, changes []ColumnChange) (cursorMutationRequest, error) {
 	request := cursorMutationRequest{cursor: c, operation: op}
 	if op != cursorInsert {
-		normalized, err := normalizeBlobTarget(BlobTarget{Table: "t", Column: "c", Key: key})
+		normalized, err := normalizeKey(key)
 		if err != nil {
 			return request, errors.Join(ErrCursor, err)
 		}
-		request.key = normalized.Key
+		request.key = normalized
 	}
 	if (op == cursorUpdate || op == cursorInsert) && (len(changes) == 0 || len(changes) > command.MaxColumns) {
 		return request, ErrCursor

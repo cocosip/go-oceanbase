@@ -116,6 +116,9 @@ func (c *Connector) Closed() bool { return c.closed.Load() }
 // DialCandidate opens and initializes exactly addr without discovery or failover.
 // cfg must already be normalized, including any private-login policy overrides.
 func DialCandidate(ctx context.Context, cfg config.Config, addr string) (*session.Session, error) {
+	if err := diagnostic.ValidateTraceContext(ctx); err != nil {
+		return nil, err
+	}
 	c := &Connector{cfg: cfg}
 	connected, _, err := c.dialCandidate(ctx, addr)
 	return connected.session, err

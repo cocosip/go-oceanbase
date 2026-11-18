@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/call"
 	"github.com/cocosip/go-oceanbase/internal/catalog"
@@ -12,6 +13,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/parameters"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/valueformat"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 	"io"
 	"math"
 	"unicode/utf8"
@@ -19,6 +21,9 @@ import (
 
 // ErrLOB identifies an invalid LOB operation, offset or result shape.
 var ErrLOB = dberrors.ErrLOB
+
+// errInvalidKey reports an invalid LOB or cursor key; each caller wraps it with its own sentinel.
+var errInvalidKey = errors.New("oceanbase: invalid key")
 
 // Blob is a binary LOB owned by the caller's pinned SQL session.
 type Blob struct{ handle *resourceHandle }
@@ -28,7 +33,7 @@ type Clob struct{ handle *resourceHandle }
 
 // OpenBlob opens exactly one Oracle BLOB locator. SQL NULL returns nil, nil.
 func OpenBlob(ctx context.Context, session Session, query string, args ...any) (*Blob, error) {
-	h, err := openLOB(ctx, session, query, 210, args)
+	h, err := openLOB(ctx, session, query, wire.TypeBlob, args)
 	if err != nil || h == nil {
 		return nil, err
 	}
@@ -37,7 +42,7 @@ func OpenBlob(ctx context.Context, session Session, query string, args ...any) (
 
 // OpenClob opens exactly one Oracle CLOB/NCLOB locator. SQL NULL returns nil, nil.
 func OpenClob(ctx context.Context, session Session, query string, args ...any) (*Clob, error) {
-	h, err := openLOB(ctx, session, query, 211, args)
+	h, err := openLOB(ctx, session, query, wire.TypeClob, args)
 	if err != nil || h == nil {
 		return nil, err
 	}
@@ -271,25 +276,37 @@ func OpenTableBlob(ctx context.Context, pinned Session, target BlobTarget) (*Blo
 }
 
 func normalizeBlobTarget(target BlobTarget) (BlobTarget, error) {
-	if !valueformat.Identifier(target.Table) || !valueformat.Identifier(target.Column) || target.Schema != "" && !valueformat.Identifier(target.Schema) || len(target.Key) == 0 || len(target.Key) > command.MaxColumns {
+	if !valueformat.Identifier(target.Table) || !valueformat.Identifier(target.Column) || target.Schema != "" && !valueformat.Identifier(target.Schema) {
 		return target, ErrLOB
 	}
-	key := make(map[string]any, len(target.Key))
-	for name, value := range target.Key {
-		if !valueformat.Identifier(name) {
-			return target, ErrLOB
-		}
-		normalized, err := normalizeArgument(value)
-		if err != nil {
-			return target, err
-		}
-		key[name], err = parameters.CloneKey(normalized)
-		if err != nil {
-			return target, err
-		}
+	key, err := normalizeKey(target.Key)
+	if err != nil {
+		return target, errors.Join(ErrLOB, err)
 	}
 	target.Key = key
 	return target, nil
+}
+
+// normalizeKey validates identifier names and clones values for LOB and cursor keys.
+func normalizeKey(key map[string]any) (map[string]any, error) {
+	if len(key) == 0 || len(key) > command.MaxColumns {
+		return nil, errInvalidKey
+	}
+	normalized := make(map[string]any, len(key))
+	for name, value := range key {
+		if !valueformat.Identifier(name) {
+			return nil, errInvalidKey
+		}
+		v, err := normalizeArgument(value)
+		if err != nil {
+			return nil, err
+		}
+		normalized[name], err = parameters.CloneKey(v)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return normalized, nil
 }
 
 func (c *conn) execOpenLOB(ctx context.Context, request lobOpenRequest) (driver.Result, error) {

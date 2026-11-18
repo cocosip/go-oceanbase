@@ -212,7 +212,7 @@ func decodeNativeScalars(op *session.Operation, columns []wire.Column, row []byt
 	values := make([]driver.Value, len(fields))
 	cfg, p := op.Config(), op.Protocol()
 	for i, field := range fields {
-		if typ := columns[i].Type; typ == 210 || typ == 211 {
+		if typ := columns[i].Type; typ == wire.TypeBlob || typ == wire.TypeClob {
 			if field != nil {
 				values[i] = slices.Clone(field)
 			}

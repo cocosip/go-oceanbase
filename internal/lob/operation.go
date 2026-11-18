@@ -123,7 +123,7 @@ func ExecuteNative(ctx context.Context, op *session.Operation, n *Native, operat
 	case Size:
 		result.size = int64(n.locator.ByteLength)
 	case Read:
-		if n.column.Type != 210 {
+		if n.column.Type != wire.TypeBlob {
 			return result, dberrors.ErrUnsupported
 		}
 		if !n.locator.InRow {
@@ -141,7 +141,7 @@ func ExecuteNative(ctx context.Context, op *session.Operation, n *Native, operat
 			err = io.EOF
 		}
 	case ReadChars, CharLength:
-		if n.column.Type != 211 {
+		if n.column.Type != wire.TypeClob {
 			return result, dberrors.ErrUnsupported
 		}
 		if !n.locator.InRow {

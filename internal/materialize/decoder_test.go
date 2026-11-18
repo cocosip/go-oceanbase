@@ -50,18 +50,18 @@ func TestRowCapturesResourceValues(t *testing.T) {
 	op := decoderOperation(t)
 	raw := []byte{1, 2, 3}
 	columns := []wire.Column{{Type: 160}, {Type: 210}, {Type: 163}}
-	got, err := Row(op, columns, true, [][]byte{raw, raw, {42, 0, 0, 0}}, true)
-	if err != nil {
+	got := make([]driver.Value, len(columns))
+	if err := Row(op, columns, true, [][]byte{raw, raw, {42, 0, 0, 0}}, true, got); err != nil {
 		t.Fatal(err)
 	}
 	raw[0] = 99
 	if got[0].([]byte)[0] != 1 || got[1].([]byte)[0] != 1 || got[2] != RefCursorID(42) {
 		t.Fatal(got)
 	}
-	if _, err = Row(op, columns, false, [][]byte{nil, nil, nil}, true); !errors.Is(err, dberrors.ErrUnsupported) {
+	if err := Row(op, columns, false, [][]byte{nil, nil, nil}, true, got); !errors.Is(err, dberrors.ErrUnsupported) {
 		t.Fatal(err)
 	}
-	if _, err = Row(op, columns, true, [][]byte{nil, nil, {0, 0, 0, 0}}, true); !errors.Is(err, dberrors.ErrCursor) {
+	if err := Row(op, columns, true, [][]byte{nil, nil, {0, 0, 0, 0}}, true, got); !errors.Is(err, dberrors.ErrCursor) {
 		t.Fatal(err)
 	}
 }

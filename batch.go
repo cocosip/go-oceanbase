@@ -27,6 +27,8 @@ const (
 	BatchSequential
 	BatchMultiSend
 	BatchRewrite
+	// BatchBulk requires COM_STMT_BULK_EXECUTE. Connector/J gates that command to
+	// versions OceanBase never reports, so this strategy falls back to sequential.
 	BatchBulk
 	BatchArrayBinding
 	BatchMultiValues

@@ -11,9 +11,9 @@ const (
 	LOBResource
 )
 
-// Epoch distinguishes physical connections, identities, and local transactions.
+// Epoch distinguishes resource identities and local transactions.
 type Epoch struct {
-	connection, identity, transaction uint64
+	identity, transaction uint64
 }
 
 // ResourceRef is an opaque token, comparable but meaningful only to its owning session.

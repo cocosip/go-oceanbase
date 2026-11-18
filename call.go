@@ -9,6 +9,7 @@ import (
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/call"
 	"github.com/cocosip/go-oceanbase/internal/session"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 // Out supplies a database type when sql.Out's Go destination is insufficient.
@@ -40,11 +41,11 @@ func makeOutput(out Out) (*call.Binding, error) {
 	var resource byte
 	switch out.Dest.(type) {
 	case **Cursor:
-		resource = 163
+		resource = wire.TypeRefCursor
 	case **Blob:
-		resource = 210
+		resource = wire.TypeBlob
 	case **Clob:
-		resource = 211
+		resource = wire.TypeClob
 	}
 	var destination call.ResourceDestination
 	if resource != 0 {

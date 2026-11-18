@@ -353,7 +353,7 @@ func (s *scenario) observe(key, value string) {
 }
 
 func strategyName(strategy oceanbase.BatchStrategy) string {
-	names := []string{"auto", "sequential", "multi-send", "rewrite", "bulk", "array-binding"}
+	names := []string{"auto", "sequential", "multi-send", "rewrite", "bulk", "array-binding", "multi-values"}
 	if int(strategy) >= len(names) {
 		return "unknown"
 	}

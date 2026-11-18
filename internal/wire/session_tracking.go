@@ -21,9 +21,6 @@ func DecodeSessionVariables(data []byte) (map[string]string, error) {
 			}
 			vars[string(name)] = string(value)
 		}
-		if entry.err != nil {
-			return nil, ErrMalformed
-		}
 	}
 	return vars, r.err
 }

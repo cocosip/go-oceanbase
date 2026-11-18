@@ -3,6 +3,7 @@ package statement
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"unicode/utf8"
@@ -77,9 +78,9 @@ func Prepare(ctx context.Context, op *session.Operation, query string) (*Stateme
 	s := Adopt(op, header.ID, plan, parameters)
 	if err = ctx.Err(); err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), cfg.Limits.CleanupTimeout)
-		_ = s.Close(cleanup, op)
+		closeErr := s.Close(cleanup, op)
 		cancel()
-		return nil, err
+		return nil, errors.Join(err, closeErr)
 	}
 	return s, nil
 }

@@ -67,10 +67,12 @@ func serveCursorMutationFailure(ctx context.Context, t *testing.T, p *wire.Packe
 			}
 		}
 	}
-	if !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 63)) {
-		return
-	}
-	if kind != testCursorWarning && !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 64)) {
+	// The mutation statement closes before retirement, matching Refresh.
+	if kind == testCursorWarning {
+		if !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 63)) {
+			return
+		}
+	} else if !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 64)) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 63)) {
 		return
 	}
 	if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}) {

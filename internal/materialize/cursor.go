@@ -16,7 +16,7 @@ import (
 func (c *Decoder) RefCursors(ctx, iterationCtx context.Context, set *Set, depth int, used *int64, active map[RefCursorID]bool) error {
 	for _, row := range set.Rows {
 		for i, column := range set.Columns {
-			if column.Type != 163 || row[i] == nil {
+			if column.Type != wire.TypeRefCursor || row[i] == nil {
 				continue
 			}
 			id, ok := row[i].(RefCursorID)

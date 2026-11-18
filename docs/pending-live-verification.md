@@ -9,7 +9,7 @@
 - 环境变量（由使用者在本机 shell 设置，仓库与日志中不出现；`Linux 环境`指运行驱动的**客户端**，不是服务端操作系统）：
   - `OB_MYSQL_DSN`：MySQL 模式 DSN（`oceanbase://用户@主机:端口/库?mode=mysql`）
   - `OB_ORACLE_DSN`：Oracle 模式 DSN（`oceanbase://用户@主机:端口/库?mode=oracle`）
-  - `OB_MYSQL_CHANGE_DSN` / `OB_ORACLE_CHANGE_DSN`：第二身份 DSN，供 `change-user` 场景（配置项 `change_user_dsn_env`）使用
+  - `OB_MYSQL_CHANGE_USER_DSN` / `OB_ORACLE_CHANGE_USER_DSN`：第二身份 DSN，供 `change-user` 场景（配置项 `change_user_dsn_env`）使用
 - 首次连通性探测（任一失败即先处理环境，不要直接跑验收）：
 
 ```powershell

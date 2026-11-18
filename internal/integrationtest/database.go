@@ -94,7 +94,7 @@ func FailOperation(t *testing.T, operation string, err error) {
 	if errors.As(err, &server) {
 		t.Fatalf("%s failed: server code=%d SQLSTATE=%s", operation, server.Code, server.SQLState)
 	}
-	t.Fatalf("%s failed: %T", operation, err)
+	t.Fatalf("%s failed: %T: %v", operation, err, err)
 }
 
 // DuplicateKey accepts only the mode-specific duplicate server error.

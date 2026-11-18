@@ -20,7 +20,7 @@ import (
 func TextTypeName(c wire.Column, mode config.Mode, session ...config.SessionOptions) string {
 	if mode == config.ModeOracle {
 		switch c.Type {
-		case 163:
+		case wire.TypeRefCursor:
 			return valueformat.TypeNameRefCursor
 		case 160:
 			if c.IsXMLType() {
@@ -59,9 +59,9 @@ func TextTypeName(c wire.Column, mode config.Mode, session ...config.SessionOpti
 			return valueformat.TypeNameNChar
 		case 209:
 			return valueformat.TypeNameRowID
-		case 210:
+		case wire.TypeBlob:
 			return valueformat.TypeNameBlob
-		case 211:
+		case wire.TypeClob:
 			if name, _ := charset.Collation(c.Charset); name == charsetUTF16 {
 				return valueformat.TypeNameNClob
 			}
@@ -137,6 +137,14 @@ func mysqlTextTypeName(c wire.Column, session ...config.SessionOptions) string {
 	return ""
 }
 
+// ValidateTextColumn reports whether a column has a decodable text representation.
+func ValidateTextColumn(c wire.Column, mode config.Mode, session ...config.SessionOptions) error {
+	if TextTypeName(c, mode, session...) == "" {
+		return &dberrors.UnsupportedTypeError{Type: c.Type, Mode: mode}
+	}
+	return nil
+}
+
 // DecodeTextValue decodes one buffered text row field without retaining packet bytes.
 func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
 	if data == nil {
@@ -145,8 +153,8 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...co
 	if mode == config.ModeOracle && c.IsXMLType() {
 		return charset.Decode(charsetUTF8MB4, data)
 	}
-	if TextTypeName(c, mode, session...) == "" {
-		return nil, &dberrors.UnsupportedTypeError{Type: c.Type, Mode: mode}
+	if err := ValidateTextColumn(c, mode, session...); err != nil {
+		return nil, err
 	}
 	switch c.Type {
 	case 0, 246:

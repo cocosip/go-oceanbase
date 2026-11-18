@@ -166,8 +166,8 @@ func (s *State) ReadHidden(ctx context.Context, op *session.Operation, r *comman
 		if err != nil {
 			return err
 		}
-		values, err := materialize.Row(op, r.Columns(), true, fields, true)
-		if err != nil {
+		values := make([]driver.Value, len(fields))
+		if err = materialize.Row(op, r.Columns(), true, fields, true, values); err != nil {
 			return err
 		}
 		s.Capture(values, true)
@@ -195,8 +195,8 @@ func (s *State) DecodeComplex(ctx context.Context, op *session.Operation, resolv
 		if err != nil {
 			return err
 		}
-		values, err := materialize.Row(op, s.complexColumns, true, fields, true)
-		if err != nil {
+		values := make([]driver.Value, len(fields))
+		if err = materialize.Row(op, s.complexColumns, true, fields, true, values); err != nil {
 			return err
 		}
 		if err = errors.Join(d.ComplexValues(ctx, s.complexColumns, values), s.CheckEpoch(op)); err != nil {
@@ -240,7 +240,7 @@ func (s *State) Resources() ([]ResourceValue, error) {
 		if s.columns[i].Type != b.resource {
 			return nil, dberrors.ErrOut
 		}
-		if s.values[i] != nil && b.resource == 163 {
+		if s.values[i] != nil && b.resource == wire.TypeRefCursor {
 			id, ok := s.values[i].(materialize.RefCursorID)
 			if !ok || s.parent == nil || uint32(id) == s.parent.ID() || seen[id] {
 				return nil, dberrors.ErrOut

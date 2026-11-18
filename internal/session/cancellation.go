@@ -38,6 +38,7 @@ type CancelAttempt struct {
 	done     chan struct{}
 	cancel   context.CancelFunc
 	sent     bool
+	finished bool
 }
 
 // ArmTarget captures an execution identity for the current authenticated session.
@@ -99,6 +100,11 @@ func (a *CancelAttempt) Finish(uncertain bool) {
 	s := a.identity.owner
 	state := &s.cancellation
 	state.mu.Lock()
+	if a.finished {
+		state.mu.Unlock()
+		return
+	}
+	a.finished = true
 	closeOriginal := uncertain && s.closed.CompareAndSwap(false, true)
 	if uncertain {
 		state.target, state.active = nil, false

@@ -94,7 +94,7 @@ func (o *operation) mutationSQL(request Request, writable bool) (string, []drive
 		return "", nil, dberrors.ErrUnsupported
 	}
 	mode := o.op.Protocol().Mode
-	if !writable || o.op.Protocol().OK.Status&8192 != 0 || !id.Locking {
+	if !writable || o.op.Protocol().OK.Status&wire.StatusInTransaction != 0 || !id.Locking {
 		return "", nil, dberrors.ErrUnsupported
 	}
 	if request.Operation > Refresh || (request.Operation == Update || request.Operation == Insert) && (len(request.Changes) == 0 || len(request.Changes) > command.MaxColumns) {
@@ -197,13 +197,14 @@ func (m *Manager) Mutate(ctx context.Context, op *session.Operation, resolver *c
 	if err != nil {
 		return command.Result{}, true, err
 	}
-	defer func() { err = errors.Join(err, closeCommand(op, prepared)) }()
+	// Retire after the close so a close failure retires exactly like Refresh.
 	defer func() {
 		retire = err != nil
 		if retire && retireResource != nil {
 			err = errors.Join(err, retireResource())
 		}
 	}()
+	defer func() { err = errors.Join(err, closeCommand(op, prepared)) }()
 	if request.Operation != Insert {
 		if err = o.check(); err != nil {
 			return command.Result{}, false, err

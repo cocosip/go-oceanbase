@@ -156,7 +156,7 @@ func (n *native) runBatchRewriteLocked(ctx context.Context, payload []byte, item
 		if decodeErr != nil {
 			return n.batchRewriteUnknown(items[i:], decodeErr)
 		}
-		if (ok.Status&8 != 0) != (i < len(items)-1) {
+		if (ok.Status&wire.StatusMoreResults != 0) != (i < len(items)-1) {
 			return n.batchRewriteUnknown(items[i:], wire.ErrMalformed)
 		}
 		n.op.SetOK(ok)

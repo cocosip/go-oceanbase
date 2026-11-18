@@ -59,8 +59,8 @@ func TestTextScalarValues(t *testing.T) {
 			}
 		})
 	}
-	_, err := DecodeTextValue(wire.Column{Type: 200}, config.ModeMySQL, []byte("x"))
 	var unsupported *dberrors.UnsupportedTypeError
+	err := ValidateTextColumn(wire.Column{Type: 200}, config.ModeMySQL)
 	if !errors.Is(err, dberrors.ErrUnsupported) || !errors.As(err, &unsupported) || unsupported.Type != 200 {
 		t.Fatal(err)
 	}

@@ -15,6 +15,9 @@ import (
 )
 
 func (c *Connector) connectCandidate(ctx context.Context, routes *routing.Selector, options config.RoutingOptions) (established, error) {
+	if options.MaxAttempts <= 0 {
+		return established{}, &config.ConfigError{Field: "Routing.MaxAttempts"}
+	}
 	var last error
 	attempts := 0
 	for attempts < options.MaxAttempts {

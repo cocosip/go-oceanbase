@@ -44,9 +44,6 @@ func Metadata(ctx context.Context, op *session.Operation, f metadata.MetadataFil
 	if err != nil {
 		return Result{}, err
 	}
-	if f.Kind == metadata.MetadataStatementParameters {
-		return Result{}, dberrors.ErrUnsupported
-	}
 	if f.Kind == metadata.MetadataTypeInfo {
 		return BufferedRows(ctx, op, f.Kind, BuiltinTypeInfo(p.Mode))
 	}

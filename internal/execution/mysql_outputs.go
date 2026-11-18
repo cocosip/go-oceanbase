@@ -40,10 +40,7 @@ func (e *Engine) mysqlLongOutputs(ctx context.Context, op *session.Operation, qu
 	if err != nil {
 		return nil, err
 	}
-	budget := op.Config().Limits.MaxMessageBytes - 10
-	if len(values) > 0 {
-		budget -= int64((len(values)+7)/8 + 1 + 2*len(values))
-	}
+	budget := parameters.Budget(op.Config().Limits.MaxMessageBytes-10, len(values))
 	params, err := parameters.Encode(ctx, op, &e.catalog, values, budget)
 	if err != nil {
 		return nil, err

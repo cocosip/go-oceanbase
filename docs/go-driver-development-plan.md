@@ -1,5 +1,7 @@
 # OceanBase Go Driver Development Plan
 
+> **Status: historical plan (archived).** Current state and progress live in [go-driver-development-progress.md](go-driver-development-progress.md); this file preserves the original task ordering only.
+
 > Execution notes: implement tasks in dependency order using the executing-plans workflow. First verify a failing case for each task, then implement, verify, and update progress. This document does not require branch creation, automatic commits, or a multi-agent workflow.
 
 Goal: implement OceanBase's observable capabilities in both compatibility modes as an idiomatic Go driver named `go-oceanbase`, using `database/sql` and standard Go mechanisms. Java Connector/J behavior is only protocol/error-shape evidence; its classes, option names and JDBC surfaces are not implementation targets.
@@ -41,6 +43,8 @@ Before starting a task, read the relevant architecture sections, then the task a
 ## 3. File Responsibilities and Interface Contracts
 
 ### 3.1 File Ownership
+
+The paths below record the original single-package layout of this plan. The current implementation is split into the packages described in the architecture document, so some root files named here now live under `internal/` or no longer exist as separate files.
 
 | File/directory | Responsibility | Main tasks |
 | --- | --- | --- |

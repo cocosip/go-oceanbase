@@ -130,7 +130,8 @@ func materializeClientLongData(ctx context.Context, op *session.Operation, value
 				err = io.ErrNoProgress
 			}
 			if err == io.EOF {
-				err = nil
+				// An empty stream is an empty value, not SQL NULL.
+				err, data = nil, []byte{}
 			}
 		} else {
 			data, err = io.ReadAll(reader)

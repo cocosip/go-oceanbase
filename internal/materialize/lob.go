@@ -15,7 +15,7 @@ import (
 
 func (c *Decoder) materializeLOBValuesLocked(ctx context.Context, columns []wire.Column, values []driver.Value, limit int64) error {
 	for i, column := range columns {
-		if column.Type != 210 && column.Type != 211 || values[i] == nil {
+		if column.Type != wire.TypeBlob && column.Type != wire.TypeClob || values[i] == nil {
 			continue
 		}
 		raw, ok := values[i].([]byte)
@@ -49,8 +49,9 @@ func (c *Decoder) materializeAndFreeLOBLocked(ctx context.Context, n *lob.Native
 		return nil, wire.ErrMessageTooLarge
 	}
 	limit = min(limit, c.op.Config().Limits.MaxLOBBytes)
-	if n.Column().Type == 211 {
-		text, e := lob.ReadText(ctx, c.op, n, 0, length, limit)
+	if n.Column().Type == wire.TypeClob {
+		// ReadText counts characters; an unlimited count stops at the locator's end.
+		text, e := lob.ReadText(ctx, c.op, n, 0, math.MaxInt64, limit)
 		if e == io.EOF {
 			e = nil
 		}

@@ -16,7 +16,7 @@ func SupportsVersion(version string, major, minor, patch uint32) bool {
 }
 
 // SupportsPrepareExecute identifies the first native prepare-execute protocol version.
-func SupportsPrepareExecute(version string) bool { return SupportsVersion(version, 2, 2, 76) }
+func SupportsPrepareExecute(version string) bool { return configspec.SupportsPrepareExecute(version) }
 
 // UsePrepareExecute applies the configured Oracle native-command gate.
 func UsePrepareExecute(op *session.Operation) bool {

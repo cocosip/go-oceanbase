@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/cocosip/go-oceanbase/config"
-	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/valuecodec"
 	"github.com/cocosip/go-oceanbase/internal/wire"
@@ -27,8 +26,10 @@ func ReadMetadata(ctx context.Context, op *session.Operation, count int, budget 
 		if err != nil {
 			return nil, err
 		}
-		if validate && valuecodec.TextTypeName(column, p.Mode, cfg.Session) == "" {
-			return nil, &dberrors.UnsupportedTypeError{Type: column.Type, Mode: p.Mode}
+		if validate {
+			if err := valuecodec.ValidateTextColumn(column, p.Mode, cfg.Session); err != nil {
+				return nil, err
+			}
 		}
 		columns = append(columns, column)
 	}

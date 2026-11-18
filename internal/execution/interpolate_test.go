@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cocosip/go-oceanbase/config"
@@ -11,6 +13,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/parameters"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/sqltext"
+	"github.com/cocosip/go-oceanbase/internal/streaminput"
 	"github.com/cocosip/go-oceanbase/internal/valueformat"
 	"github.com/cocosip/go-oceanbase/types"
 )
@@ -37,6 +40,31 @@ func interpolateConstructorTest(t *testing.T, mode config.Mode, query string, ar
 	}
 	_, err = interpolateClient(context.Background(), op, plan, values)
 	return err
+}
+
+func TestClientLongDataEmptyStream(t *testing.T) {
+	for _, text := range []bool{false, true} {
+		source := &streaminput.Source{Reader: strings.NewReader(""), Length: 0, MaxBytes: 16, Text: text, State: new(atomic.Bool)}
+		values, err := materializeClientLongData(context.Background(), nil, []any{source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch value := values[0].(type) {
+		case []byte:
+			if len(value) != 0 {
+				t.Fatalf("empty binary stream became %#v", value)
+			}
+			if value == nil {
+				t.Fatal("empty binary stream became SQL NULL")
+			}
+		case string:
+			if value != "" {
+				t.Fatalf("empty text stream became %q", value)
+			}
+		default:
+			t.Fatalf("unexpected replacement %#v", values[0])
+		}
+	}
 }
 
 func TestClientConstructorsRejectBeforeIO(t *testing.T) {

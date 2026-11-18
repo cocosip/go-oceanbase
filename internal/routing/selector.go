@@ -53,14 +53,17 @@ func NewSelector(addresses []Address, options Options) (*Selector, error) {
 		}
 		seen[address.Addr] = time.Time{}
 	}
-	return &Selector{addresses: slices.Clone(addresses), options: options, state: &selectionState{blocked: seen}}, nil
+	members := slices.Clone(addresses)
+	slices.SortStableFunc(members, func(a, b Address) int { return int(a.Group) - int(b.Group) })
+	return &Selector{addresses: members, options: options, state: &selectionState{blocked: seen}}, nil
 }
 
 // Order returns healthy candidates or the delay until the first candidate leaves cooldown.
 func (s *Selector) Order(now time.Time) ([]Address, time.Duration) {
 	s.state.mu.Lock()
 	defer s.state.mu.Unlock()
-	var result []Address
+	// Members are group-sorted once at construction, so filtering keeps group order.
+	result := make([]Address, 0, len(s.addresses))
 	var earliest time.Time
 	for _, address := range s.addresses {
 		until := s.state.blocked[address.Addr]
@@ -73,7 +76,6 @@ func (s *Selector) Order(now time.Time) ([]Address, time.Duration) {
 	if len(result) == 0 {
 		return nil, max(earliest.Sub(now), time.Duration(0))
 	}
-	slices.SortStableFunc(result, func(a, b Address) int { return int(a.Group) - int(b.Group) })
 	for start := 0; start < len(result); {
 		end := start + 1
 		for end < len(result) && result[end].Group == result[start].Group {

@@ -165,6 +165,7 @@ go build ./...
 go test ./... -count=1
 go vet ./...
 golangci-lint run
+golangci-lint run --build-tags=integration
 go test -tags=integration ./... -run '^$' -timeout 1m
 go run ./cmd/obtest -list
 ```
@@ -176,6 +177,7 @@ The integration command compiles the database tests without running them. `obtes
 [CI](.github/workflows/ci.yml) runs on pushes to `master`, `main` and `develop`, on `v*` tag pushes, on pull requests and on manual dispatch:
 
 - Go 1.26 unit tests on Linux, Windows and macOS with `CGO_ENABLED=0`. Linux also builds all packages and examples, compiles integration tests without a database, and collects coverage.
+- Native GSSAPI and OBProxy ABI fixtures on Linux (build) and Linux/Windows (tests) under the `gssapi`, `gssapitest`, `obproxy` and `obproxytest` tags.
 - One Linux lint pass covering ordinary and integration-tagged sources, including vet through the existing linter configuration. Formatting, module files and workflow syntax are checked in the same job.
 - Protocol-peer benchmarks on pull requests, saved for comparison without a shared-runner performance threshold.
 
@@ -183,6 +185,6 @@ Coverage artifacts are retained for 14 days; benchmark artifacts for 30 days. Su
 
 On a `v*` tag push, CI calls the reusable [release workflow](.github/workflows/release.yml) only after all platform tests and lint succeed. Publishing generates release notes and creates a source release without rerunning builds or tests. CodeQL remains an independent workflow and is not a release dependency.
 
-Dedicated fuzz campaigns, native GSSAPI/OBProxy ABI fixtures, Linux/386 checks, extended stability runs and live database acceptance run outside routine CI. Their tests and local commands remain available; ordinary unit tests still run fuzz seeds and the default resource checks. Live integration requires explicit database configuration and `OB_TEST_REQUIRE=1`; routine CI does not read database credentials. Race detection requires a separate cgo-enabled run.
+Dedicated fuzz campaigns, Linux/386 checks, extended stability runs and live database acceptance run outside routine CI. Their tests and local commands remain available; ordinary unit tests still run fuzz seeds and the default resource checks. Live integration requires explicit database configuration and `OB_TEST_REQUIRE=1`; routine CI does not read database credentials. Race detection requires a separate cgo-enabled run.
 
 Workflow definitions and local results are not evidence of successful remote execution. Live OceanBase/OBProxy acceptance, platform coverage and race results remain subject to the evidence recorded in development progress.

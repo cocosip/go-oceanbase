@@ -76,6 +76,32 @@ func TestCancellationRetiresBeforeSend(t *testing.T) {
 	<-done
 }
 
+func TestCancelAttemptFinishIsIdempotent(t *testing.T) {
+	s := New(config.Config{}, &Negotiated{})
+	op, err := s.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer op.Release()
+	target := op.ArmTarget()
+	if !s.BeginCancellation() {
+		t.Fatal("execution was not armed")
+	}
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	attempt, err := target.Begin(cancel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt.Finish(false)
+	// A repeated finish must neither close the completion channel twice nor retire the session.
+	attempt.Finish(false)
+	attempt.Finish(true)
+	if s.Closed() {
+		t.Fatal("repeated finish retired the session")
+	}
+}
+
 func TestManagedTransactionEpoch(t *testing.T) {
 	s := New(config.Config{}, &Negotiated{})
 	op, err := s.Acquire(context.Background())

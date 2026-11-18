@@ -9,11 +9,12 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/cursor"
 	"github.com/cocosip/go-oceanbase/internal/lifetime"
 	"github.com/cocosip/go-oceanbase/internal/session"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 func (e *Engine) writable(op *session.Operation, transactionSession bool) bool {
 	tx := e.control.ActiveTransaction()
-	return transactionSession && tx != nil && !tx.ReadOnly() && op.Protocol().OK.Status&8192 == 0
+	return transactionSession && tx != nil && !tx.ReadOnly() && op.Protocol().OK.Status&wire.StatusInTransaction == 0
 }
 
 // OpenCursor publishes a cursor after its opening response is complete.

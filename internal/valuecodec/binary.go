@@ -283,9 +283,13 @@ func binaryTimeText(typ byte, data []byte) (string, error) {
 	if year > 9999 || month > 12 || day > 31 {
 		return "", wire.ErrMalformed
 	}
-	text := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
+	text := appendPad(nil, uint64(year), 4)
+	text = append(text, '-')
+	text = appendPad(text, uint64(month), 2)
+	text = append(text, '-')
+	text = appendPad(text, uint64(day), 2)
 	if typ == 10 || typ == 14 {
-		return text, nil
+		return string(text), nil
 	}
 	hour, minute, second := byte(0), byte(0), byte(0)
 	if len(data) >= 7 {
@@ -294,23 +298,48 @@ func binaryTimeText(typ byte, data []byte) (string, error) {
 	if hour > 23 || minute > 59 || second > 59 {
 		return "", wire.ErrMalformed
 	}
-	text += fmt.Sprintf(" %02d:%02d:%02d", hour, minute, second)
+	text = append(text, ' ')
+	text = appendPad(text, uint64(hour), 2)
+	text = append(text, ':')
+	text = appendPad(text, uint64(minute), 2)
+	text = append(text, ':')
+	text = appendPad(text, uint64(second), 2)
 	if len(data) == 11 {
 		fraction, err := binaryFraction(data[7:])
 		if err != nil {
 			return "", err
 		}
-		text += fraction
+		text = append(text, fraction...)
 	}
-	return text, nil
+	return string(text), nil
 }
-func binaryFraction(data []byte) (string, error) {
+
+// appendPad appends value zero-padded to at least width decimal digits.
+func appendPad(dst []byte, value uint64, width int) []byte {
+	var digits [20]byte
+	i := len(digits)
+	for {
+		i--
+		digits[i] = byte('0' + value%10)
+		value /= 10
+		if value == 0 {
+			break
+		}
+	}
+	for pad := width - (len(digits) - i); pad > 0; pad-- {
+		dst = append(dst, '0')
+	}
+	return append(dst, digits[i:]...)
+}
+
+func binaryFraction(data []byte) ([]byte, error) {
 	n := binary.LittleEndian.Uint32(data)
 	if n > 999999 {
-		return "", wire.ErrMalformed
+		return nil, wire.ErrMalformed
 	}
-	return fmt.Sprintf(".%06d", n), nil
+	return appendPad([]byte{'.'}, uint64(n), 6), nil
 }
+
 func binaryDurationText(data []byte) (string, error) {
 	if len(data) == 0 {
 		return "00:00:00", nil
@@ -322,19 +351,23 @@ func binaryDurationText(data []byte) (string, error) {
 		return "", wire.ErrMalformed
 	}
 	hours := uint64(binary.LittleEndian.Uint32(data[1:]))*24 + uint64(data[5])
-	sign := ""
+	text := make([]byte, 0, 16)
 	if data[0] == 1 {
-		sign = "-"
+		text = append(text, '-')
 	}
-	text := fmt.Sprintf("%s%02d:%02d:%02d", sign, hours, data[6], data[7])
+	text = appendPad(text, hours, 2)
+	text = append(text, ':')
+	text = appendPad(text, uint64(data[6]), 2)
+	text = append(text, ':')
+	text = appendPad(text, uint64(data[7]), 2)
 	if len(data) == 12 {
 		fraction, err := binaryFraction(data[8:])
 		if err != nil {
 			return "", err
 		}
-		text += fraction
+		text = append(text, fraction...)
 	}
-	return text, nil
+	return string(text), nil
 }
 
 func binaryFloatValue(n float64, mode config.Mode) (driver.Value, error) {

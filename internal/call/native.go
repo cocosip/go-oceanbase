@@ -26,10 +26,7 @@ func PreparePayload(ctx context.Context, op *session.Operation, resolver *catalo
 	if err != nil {
 		return nil, err
 	}
-	budget := cfg.Limits.MaxMessageBytes - 30 - (wire.Parameter{Data: query, LengthEncoded: true}).EncodedSize()
-	if len(values) > 0 {
-		budget -= int64((len(values)+7)/8 + 1 + 2*len(values))
-	}
+	budget := parameters.Budget(cfg.Limits.MaxMessageBytes-30-(wire.Parameter{Data: query, LengthEncoded: true}).EncodedSize(), len(values))
 	if budget < 0 {
 		return nil, wire.ErrMessageTooLarge
 	}

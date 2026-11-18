@@ -21,39 +21,13 @@ func Interpolate(op *session.Operation, query string, args []driver.NamedValue) 
 		return nil, wire.ErrMessageTooLarge
 	}
 	p := op.Protocol()
-	plan, err := sqltext.BuildBindPlanEscapes(query, p.Mode, p.OK.Status&512 != 0)
+	plan, err := sqltext.BuildBindPlanEscapes(query, p.Mode, p.OK.Status&wire.StatusNoBackslashEscapes != 0)
 	if err != nil {
 		return nil, err
 	}
-	if len(args) != plan.NumInput {
-		return nil, fmt.Errorf("%w: argument count", dberrors.ErrBind)
-	}
-	names := make(map[string]int, len(args))
-	for i, arg := range args {
-		if plan.Named {
-			if arg.Name == "" {
-				return nil, fmt.Errorf("%w: named argument required", dberrors.ErrBind)
-			}
-			key := strings.ToUpper(arg.Name)
-			if _, ok := names[key]; ok {
-				return nil, fmt.Errorf("%w: duplicate named argument", dberrors.ErrBind)
-			}
-			names[key] = i
-		} else if arg.Name != "" {
-			return nil, fmt.Errorf("%w: unexpected named argument", dberrors.ErrBind)
-		}
-	}
-	values := make([]any, len(plan.Slots))
-	for i, slot := range plan.Slots {
-		index := slot.Index
-		if plan.Named {
-			var ok bool
-			index, ok = names[slot.Name]
-			if !ok {
-				return nil, fmt.Errorf("%w: missing named argument", dberrors.ErrBind)
-			}
-		}
-		values[i] = args[index].Value
+	values, err := sqltext.BindValues(plan, args, nil)
+	if err != nil {
+		return nil, err
 	}
 	return InterpolatePlan(op, plan, values)
 }

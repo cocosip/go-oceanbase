@@ -28,8 +28,8 @@ func cloneConfigOptions(cfg Config) (Config, error) {
 			return Config{}, &ConfigError{Field: configDatabaseField}
 		}
 	}
-	if _, err = connectionAttributes(cfg, cfg.ProxyUser); err != nil {
-		return Config{}, err
+	if _, field := configspec.ConnectionAttributes(protocolAttributes(cfg.Protocol), cfg.ConnectionAttributes, cfg.ProxyUser, cfg.Session.Charset, cfg.Mode == ModeMySQL, cfg.Limits.MaxMessageBytes); field != "" {
+		return Config{}, &ConfigError{Field: field}
 	}
 	cfg.ConnectionAttributes = maps.Clone(cfg.ConnectionAttributes)
 	cfg.Auth, err = cloneAuthOptions(cfg.Auth)

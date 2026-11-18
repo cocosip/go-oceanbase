@@ -2,6 +2,7 @@ package materialize
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"io"
 
@@ -54,8 +55,8 @@ func (c *Decoder) CollectSet(ctx context.Context, r *command.RawResponse, binary
 		if err != nil {
 			return Set{}, err
 		}
-		row, err := Row(c.op, set.Columns, binaryRows, fields, true)
-		if err != nil {
+		row := make([]driver.Value, len(fields))
+		if err = Row(c.op, set.Columns, binaryRows, fields, true, row); err != nil {
 			return Set{}, err
 		}
 		set.Rows = append(set.Rows, row)
@@ -131,8 +132,8 @@ func (c *Decoder) DecodeSet(ctx context.Context, set *Set, used *int64) error {
 			if err != nil {
 				return err
 			}
-			row, err := Row(c.op, set.Columns, !set.TextRows, fields, true)
-			if err != nil {
+			row := make([]driver.Value, len(fields))
+			if err = Row(c.op, set.Columns, !set.TextRows, fields, true, row); err != nil {
 				return err
 			}
 			if err = errors.Join(c.complexValues(ctx, set.Columns, row, set.TextRows), c.CheckEpoch()); err != nil {

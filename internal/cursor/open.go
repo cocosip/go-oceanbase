@@ -28,7 +28,7 @@ func ValidateOpen(op *session.Operation, query string, opts Options, writable bo
 		return dberrors.ErrUnsupported
 	}
 	if opts.Updatable {
-		if !writable || p.OK.Status&8192 != 0 {
+		if !writable || p.OK.Status&wire.StatusInTransaction != 0 {
 			return dberrors.ErrUnsupported
 		}
 		if err := sqltext.CursorUpdatableQuery(query, p.Mode, p.OK.Status&512 != 0); err != nil {

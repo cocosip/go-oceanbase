@@ -175,5 +175,5 @@ func (e *Execution) Close() error {
 		}
 	}
 	e.recorder.Finish(closeErr)
-	return e.Snapshot().Err
+	return e.recorder.Err()
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/catalog"
 	"github.com/cocosip/go-oceanbase/internal/control"
 	"github.com/cocosip/go-oceanbase/internal/session"
+	"github.com/cocosip/go-oceanbase/internal/sqltext"
 	"github.com/cocosip/go-oceanbase/internal/statement"
 	"github.com/cocosip/go-oceanbase/internal/xa"
 )
@@ -21,7 +22,7 @@ func (e *Engine) BeginTx(ctx context.Context, opts driver.TxOptions) (*control.T
 	if e.Config().Routing.Role == config.RoleReadOnly && !opts.ReadOnly {
 		return nil, fmt.Errorf("%w: read-write transaction on read-only service", dberrors.ErrUnsupported)
 	}
-	if _, err := control.TransactionCommands(e.Config().Mode, opts); err != nil {
+	if _, err := sqltext.TransactionCommands(e.Config().Mode, opts); err != nil {
 		return nil, err
 	}
 	op, err := e.acquire(ctx)

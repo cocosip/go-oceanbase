@@ -1,0 +1,10 @@
+# Store and check out text files with LF on every platform. Without this,
+# core.autocrlf=true on Windows produces CRLF working trees, so gofmt -l flags
+# every file and line-oriented diffs/tools diverge between Windows and Linux.
+# Existing clones: run `git add --renormalize .` once after pulling this file.
+* text=auto eol=lf
+
+# Repository metadata is text as well.
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+LICENSE        text eol=lf

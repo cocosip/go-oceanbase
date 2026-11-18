@@ -166,12 +166,12 @@ func rowArguments(row []any) ([]driver.NamedValue, error) {
 	return args, nil
 }
 
-func (n *native) encodeParameters(ctx context.Context, prepared *statement.Statement, row []any) ([]wire.Parameter, error) {
+func (n *native) encodeParameters(ctx context.Context, plan sqltext.Plan, row []any) ([]wire.Parameter, error) {
 	args, err := rowArguments(row)
 	if err != nil {
 		return nil, err
 	}
-	values, err := parameters.Bind(prepared.Plan(), args)
+	values, err := parameters.Bind(plan, args)
 	if err != nil {
 		return nil, err
 	}

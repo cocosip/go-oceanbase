@@ -11,13 +11,15 @@ import (
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/catalog"
 	"github.com/cocosip/go-oceanbase/internal/materialize"
+	"github.com/cocosip/go-oceanbase/internal/parameters"
 	"github.com/cocosip/go-oceanbase/internal/rowset"
 	"github.com/cocosip/go-oceanbase/internal/sqltext"
+	"github.com/cocosip/go-oceanbase/internal/statement"
 	"github.com/cocosip/go-oceanbase/internal/wire"
 	"github.com/cocosip/go-oceanbase/types"
 )
 
-func (o *operation) refreshSensitive(ctx context.Context, rows [][]driver.Value) ([][]driver.Value, error) {
+func (o *operation) refreshSensitive(ctx context.Context, rows [][]driver.Value) (_ [][]driver.Value, err error) {
 	if len(o.cur.columns) < 2 {
 		return nil, dberrors.ErrCursor
 	}
@@ -31,6 +33,11 @@ func (o *operation) refreshSensitive(ctx context.Context, rows [][]driver.Value)
 		names[i] = sqltext.QuoteIdentifier(config.ModeOracle, name)
 	}
 	query := "SELECT " + strings.Join(names, ",") + " FROM " + id.Table + " WHERE ROWID = ?"
+	prepared, err := statement.Prepare(ctx, o.op, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, closeCommand(o.op, prepared)) }()
 	used := rowset.MetadataSize(visible)
 	for i, row := range rows {
 		if len(row) != len(o.cur.columns) || row[len(row)-1] == nil {
@@ -40,7 +47,7 @@ func (o *operation) refreshSensitive(ctx context.Context, rows [][]driver.Value)
 		if _, err = rowid.Value(); err != nil {
 			return nil, err
 		}
-		fresh, err := o.readSensitive(ctx, query, rowid)
+		fresh, err := o.readSensitive(ctx, prepared, rowid)
 		if err != nil {
 			return nil, err
 		}
@@ -56,12 +63,21 @@ func (o *operation) refreshSensitive(ctx context.Context, rows [][]driver.Value)
 	return rows, nil
 }
 
-func (o *operation) readSensitive(ctx context.Context, query string, rowid types.RowID) (_ []driver.Value, err error) {
-	prepared, payload, err := prepareCommand(ctx, o.op, o.resolver, query, []driver.NamedValue{{Ordinal: 1, Value: rowid}})
+// readSensitive re-reads one row through the prepared ROWID statement.
+func (o *operation) readSensitive(ctx context.Context, prepared *statement.Statement, rowid types.RowID) ([]driver.Value, error) {
+	values, err := parameters.Bind(prepared.Plan(), []driver.NamedValue{{Ordinal: 1, Value: rowid}})
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, closeCommand(o.op, prepared)) }()
+	budget := parameters.Budget(o.op.Config().Limits.MaxMessageBytes-10, len(values))
+	params, err := parameters.Encode(ctx, o.op, o.resolver, values, budget)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := wire.EncodeStmtExecute(prepared.ID(), params, o.op.Config().Limits.MaxMessageBytes)
+	if err != nil {
+		return nil, err
+	}
 	if err = o.check(); err != nil {
 		return nil, err
 	}

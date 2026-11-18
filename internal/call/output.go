@@ -12,6 +12,7 @@ import (
 	"github.com/cocosip/go-oceanbase/dberrors"
 	"github.com/cocosip/go-oceanbase/internal/session"
 	"github.com/cocosip/go-oceanbase/internal/valueformat"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 // Output contains the existing output contract without a dependency on the root facade.
@@ -46,7 +47,7 @@ func NewBinding(out Output, resource byte, destination ResourceDestination) (*Bi
 		return newScalarBinding(out)
 	}
 	name := strings.ToUpper(strings.TrimSpace(out.Type))
-	expected := name == valueformat.TypeNameRefCursor && resource == 163 || name == valueformat.TypeNameBlob && resource == 210 || (name == valueformat.TypeNameClob || name == valueformat.TypeNameNClob) && resource == 211
+	expected := name == valueformat.TypeNameRefCursor && resource == wire.TypeRefCursor || name == valueformat.TypeNameBlob && resource == wire.TypeBlob || (name == valueformat.TypeNameClob || name == valueformat.TypeNameNClob) && resource == wire.TypeClob
 	if !expected || destination == nil || out.In || out.Length != 0 || out.Precision != 0 || out.Scale != 0 {
 		return nil, dberrors.ErrOut
 	}
@@ -62,9 +63,6 @@ func (b *Binding) SetInput(value any) { b.input = value }
 
 // Input returns the normalized initial INOUT value.
 func (b *Binding) Input() any { return b.input }
-
-// ResourceType identifies a cursor or native LOB output.
-func (b *Binding) ResourceType() byte { return b.resource }
 
 // Destination returns the public boundary slot without assigning or publishing it.
 func (b *Binding) Destination() ResourceDestination { return b.destination }

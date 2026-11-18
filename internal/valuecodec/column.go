@@ -32,7 +32,7 @@ func DecodeColumn(data []byte, options config.SessionOptions, newMetadata bool) 
 
 // charsetWidth is the server's mbmaxlen per charset name. Package state keeps
 // ColumnLength from rebuilding the table for every column.
-var charsetWidth = map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, "dec8": 1, "tis620": 1, charsetGBK: 2, "gb2312": 2, "euckr": 2, "sjis": 2, "big5": 2, "hkscs": 2, "hkscs31": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, "utf16le": 4, charsetGB18030: 4, "gb18030_2022": 4}
+var charsetWidth = map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, "dec8": 1, "tis620": 1, "cp850": 1, "hp8": 1, "macroman": 1, "swe7": 1, charsetGBK: 2, "gb2312": 2, "euckr": 2, "sjis": 2, "big5": 2, "hkscs": 2, "hkscs31": 2, "ujis": 2, "cp932": 2, "eucjpms": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, "utf16le": 4, charsetGB18030: 4, "gb18030_2022": 4}
 
 // ColumnLength reports the protocol-defined column length in bytes or characters.
 func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
@@ -40,7 +40,7 @@ func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 		switch c.Type {
 		case 203, 209:
 			return int64(c.Precision), c.Precision != 0
-		case 210, 211:
+		case wire.TypeBlob, wire.TypeClob:
 			return 0, false
 		}
 	}
@@ -98,10 +98,10 @@ func ColumnPrecisionScale(c wire.Column, mode config.Mode) (int64, int64, bool) 
 
 // ColumnScanType reports the standard scan destination type for a column.
 func ColumnScanType(c wire.Column, mode config.Mode, options config.SessionOptions) reflect.Type {
-	if c.Type == 163 && mode == config.ModeOracle {
+	if c.Type == wire.TypeRefCursor && mode == config.ModeOracle {
 		return reflect.TypeFor[sql.Rows]()
 	}
-	if c.Type == 210 && mode == config.ModeOracle {
+	if c.Type == wire.TypeBlob && mode == config.ModeOracle {
 		return reflect.TypeFor[[]byte]()
 	}
 	if options.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type >= 200 && c.Type <= 202 && mode == config.ModeOracle) {

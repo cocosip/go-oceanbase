@@ -11,9 +11,9 @@ import (
 
 // ComplexLOBColumn derives locator metadata from a complex attribute's declared type.
 func ComplexLOBColumn(typ string, options config.SessionOptions) (wire.Column, error) {
-	column := wire.Column{Type: 210, Charset: 63}
+	column := wire.Column{Type: wire.TypeBlob, Charset: 63}
 	if typ != valueformat.TypeNameBlob {
-		column.Type = 211
+		column.Type = wire.TypeClob
 	}
 	if typ == valueformat.TypeNameNClob {
 		name := ComplexCharset(typ, options)

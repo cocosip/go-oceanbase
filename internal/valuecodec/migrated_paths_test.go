@@ -94,13 +94,19 @@ func TestParityCharsetColumnLength(t *testing.T) {
 	for _, tc := range []struct {
 		collation uint16
 		width     uint32
-	}{{152, 2}, {153, 2}, {216, 4}, {217, 4}, {222, 4}} {
+	}{{152, 2}, {153, 2}, {216, 4}, {217, 4}, {222, 4}, {91, 2}, {95, 2}, {97, 2}} {
 		got, known := ColumnLength(wire.Column{Type: 253, Charset: tc.collation, Length: 10 * tc.width}, config.ModeMySQL)
 		if !known || got != 10 {
 			t.Fatalf("collation %d: %d %v", tc.collation, got, known)
 		}
 		if _, known = ColumnLength(wire.Column{Type: 253, Charset: tc.collation, Length: 10*tc.width + 1}, config.ModeMySQL); known {
 			t.Fatal("nonintegral character length")
+		}
+	}
+	// Single-byte charsets report a byte length equal to the character count.
+	for _, collation := range []uint16{4, 6, 39, 10} {
+		if got, known := ColumnLength(wire.Column{Type: 253, Charset: collation, Length: 10}, config.ModeMySQL); !known || got != 10 {
+			t.Fatalf("collation %d: %d %v", collation, got, known)
 		}
 	}
 }

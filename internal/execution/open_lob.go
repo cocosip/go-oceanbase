@@ -13,11 +13,12 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/lifetime"
 	"github.com/cocosip/go-oceanbase/internal/materialize"
 	"github.com/cocosip/go-oceanbase/internal/session"
+	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
 // OpenLOB captures one native locator after consuming the entire query response.
 func (e *Engine) OpenLOB(ctx context.Context, query string, args []driver.NamedValue, expectedType byte, transactionSession bool) (ref session.ResourceRef, err error) {
-	if expectedType != 210 && expectedType != 211 {
+	if expectedType != wire.TypeBlob && expectedType != wire.TypeClob {
 		return ref, dberrors.ErrLOB
 	}
 	op, err := e.acquire(ctx)
@@ -60,7 +61,7 @@ func (e *Engine) selectLOB(op *session.Operation, expectedType byte, sets []mate
 	for _, set := range sets {
 		for _, row := range set.Rows {
 			for i, column := range set.Columns {
-				if column.Type != 210 && column.Type != 211 || row[i] == nil {
+				if column.Type != wire.TypeBlob && column.Type != wire.TypeClob || row[i] == nil {
 					continue
 				}
 				if transactionSession != (e.control.ActiveTransaction() != nil) {
@@ -145,7 +146,7 @@ func (e *Engine) OpenTableBlob(ctx context.Context, target catalog.Target, trans
 		if err != nil {
 			return ref, err
 		}
-		return e.selectLOB(op, 210, sets, transactionSession)
+		return e.selectLOB(op, wire.TypeBlob, sets, transactionSession)
 	}
 	result, err := catalog.QueryRows(ctx, op, catalog.Query{SQL: "SELECT OCTET_LENGTH(" + plan.Column + ")" + plan.From(), Args: plan.Args})
 	if err != nil {

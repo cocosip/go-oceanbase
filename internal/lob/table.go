@@ -138,7 +138,7 @@ func (c *tableOperation) readTableBlobLocked(ctx context.Context, lob *catalog.T
 }
 
 func (c *tableOperation) mutateTableBlobLocked(ctx context.Context, lob *catalog.TableBlobPlan, r Request) error {
-	if !c.writable || c.op.Protocol().OK.Status&8192 != 0 || !lob.Locking {
+	if !c.writable || c.op.Protocol().OK.Status&wire.StatusInTransaction != 0 || !lob.Locking {
 		return dberrors.ErrUnsupported
 	}
 	value, err := c.tableBlobValueLocked(ctx, lob, "OCTET_LENGTH("+lob.Column+")", nil, true)

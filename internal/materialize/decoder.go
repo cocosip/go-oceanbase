@@ -46,27 +46,26 @@ func (c *Decoder) CheckEpoch() error {
 	return nil
 }
 
-// Row decodes scalar cells while preserving locators, complex bytes and child cursor IDs.
-func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [][]byte, captureLOB bool) ([]driver.Value, error) {
-	if len(fields) != len(columns) {
-		return nil, wire.ErrMalformed
+// Row decodes scalar cells into dest while preserving locators, complex bytes and child cursor IDs.
+func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [][]byte, captureLOB bool, dest []driver.Value) error {
+	if len(fields) != len(columns) || len(dest) != len(fields) {
+		return wire.ErrMalformed
 	}
-	values := make([]driver.Value, len(fields))
 	for i, field := range fields {
 		switch columns[i].Type {
-		case 163:
+		case wire.TypeRefCursor:
 			if op.Protocol().Mode != config.ModeOracle || !binaryRows {
-				return nil, dberrors.ErrUnsupported
+				return dberrors.ErrUnsupported
 			}
 			if field != nil {
 				if len(field) != 4 {
-					return nil, wire.ErrMalformed
+					return wire.ErrMalformed
 				}
 				id := binary.LittleEndian.Uint32(field)
 				if id == 0 {
-					return nil, dberrors.ErrCursor
+					return dberrors.ErrCursor
 				}
-				values[i] = RefCursorID(id)
+				dest[i] = RefCursorID(id)
 			}
 			continue
 		case 160:
@@ -74,30 +73,30 @@ func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [
 				break
 			}
 			if op.Protocol().Mode != config.ModeOracle {
-				return nil, dberrors.ErrUnsupported
+				return dberrors.ErrUnsupported
 			}
 			if field != nil {
-				values[i] = append([]byte{}, field...)
+				dest[i] = append([]byte{}, field...)
 			}
 			continue
-		case 210, 211:
+		case wire.TypeBlob, wire.TypeClob:
 			if captureLOB && op.Protocol().Mode == config.ModeOracle {
 				if field != nil {
-					values[i] = slices.Clone(field)
+					dest[i] = slices.Clone(field)
 				}
 				continue
 			}
 		}
 		if typ := columns[i].Type; typ >= 249 && typ <= 252 && int64(len(field)) > op.Config().Limits.MaxLOBBytes {
-			return nil, wire.ErrMessageTooLarge
+			return wire.ErrMessageTooLarge
 		}
 		value, err := valuecodec.DecodeRowValue(columns[i], binaryRows, field, op.Protocol().Mode, op.Config().Session)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		values[i] = value
+		dest[i] = value
 	}
-	return values, nil
+	return nil
 }
 
 // ComplexValue resolves one named Oracle value after response completion.

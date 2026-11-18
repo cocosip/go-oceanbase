@@ -125,7 +125,7 @@ func runXA(ctx context.Context, pinned *sql.Conn, r *xaRequest) error {
 	if err := ctx.Err(); err != nil {
 		return errors.Join(ErrXA, err)
 	}
-	if r.op != xaRecover && !xa.ValidXID(xa.XID{FormatID: r.xid.FormatID, GlobalID: r.xid.GlobalID, BranchID: r.xid.BranchID}) {
+	if r.op != xaRecover && r.op != xaForget && !xa.ValidXID(xa.XID{FormatID: r.xid.FormatID, GlobalID: r.xid.GlobalID, BranchID: r.xid.BranchID}) {
 		return &XAError{Code: -5, Err: ErrBind}
 	}
 	r.xid.GlobalID = append([]byte(nil), r.xid.GlobalID...)

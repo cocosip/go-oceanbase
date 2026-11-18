@@ -118,7 +118,13 @@ func (p *PacketIO) ReadMessage(ctx context.Context) (message []byte, err error) 
 			return nil, p.fail(ctx, "read", transferred, sizeErr)
 		}
 		previous := len(message)
-		message = append(message, make([]byte, total-previous)...)
+		if cap(message) < total {
+			grown := make([]byte, total)
+			copy(grown, message)
+			message = grown
+		} else {
+			message = message[:total]
+		}
 		n, readErr = io.ReadFull(reader, message[previous:])
 		transferred += int64(n)
 		if p.frames != nil {

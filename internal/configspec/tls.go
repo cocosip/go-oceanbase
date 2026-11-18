@@ -20,6 +20,7 @@ func CloneTLSConfig(source *tls.Config) *tls.Config {
 	clone.CipherSuites = slices.Clone(source.CipherSuites)
 	clone.CurvePreferences = slices.Clone(source.CurvePreferences)
 	clone.EncryptedClientHelloConfigList = slices.Clone(source.EncryptedClientHelloConfigList)
+	clone.EncryptedClientHelloKeys = slices.Clone(source.EncryptedClientHelloKeys)
 	clone.Certificates = make([]tls.Certificate, len(source.Certificates))
 	for i, cert := range source.Certificates {
 		clone.Certificates[i] = cloneCertificate(cert)

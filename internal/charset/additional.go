@@ -32,25 +32,33 @@ func additionalCodec(name string) encoding.Encoding {
 	}
 }
 
-func encodeAdditional(name, text string) ([]byte, error) {
-	if table := additionalSingleTables[name]; table != nil {
-		out := make([]byte, 0, len(text))
-		for _, r := range text {
-			if r < 128 && table[r] == r {
-				out = append(out, byte(r))
+// additionalSingleLow maps each single-byte table back to its first code.
+var additionalSingleLow = func() map[string]map[rune]byte {
+	all := make(map[string]map[rune]byte, len(additionalSingleTables))
+	for name, table := range additionalSingleTables {
+		low := make(map[rune]byte, len(table))
+		for code, mapped := range table {
+			if mapped < 0 {
 				continue
 			}
-			found := false
-			for code, mapped := range table {
-				if mapped == r {
-					out = append(out, byte(code))
-					found = true
-					break
-				}
+			if _, ok := low[mapped]; !ok {
+				low[mapped] = byte(code)
 			}
-			if !found {
+		}
+		all[name] = low
+	}
+	return all
+}()
+
+func encodeAdditional(name, text string) ([]byte, error) {
+	if low := additionalSingleLow[name]; low != nil {
+		out := make([]byte, 0, len(text))
+		for _, r := range text {
+			code, ok := low[r]
+			if !ok {
 				return nil, ErrEncoding
 			}
+			out = append(out, code)
 		}
 		return out, nil
 	}

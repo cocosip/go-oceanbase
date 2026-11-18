@@ -43,7 +43,10 @@ func BuildBindPlanEscapes(query string, mode config.Mode, noBackslash bool) (Pla
 		return p, err
 	}
 	alt, altErr := BuildBindPlanSQLMode(query, mode, noBackslash, true)
-	if err != nil || altErr != nil || len(p.Slots) != len(alt.Slots) {
+	if err != nil {
+		return Plan{}, err
+	}
+	if altErr != nil || len(p.Slots) != len(alt.Slots) {
 		return Plan{}, fmt.Errorf("%w: ambiguous SQL quoting", dberrors.ErrBind)
 	}
 	for i, slot := range p.Slots {

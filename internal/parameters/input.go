@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/cocosip/go-oceanbase/config"
@@ -68,46 +67,12 @@ func PrepareArguments(op *session.Operation, query string, args []driver.NamedVa
 // Bind resolves deferred logical values once after each name check, then maps physical slots.
 // Already normalized values never invoke a Valuer again.
 func Bind(plan sqltext.Plan, args []driver.NamedValue) ([]any, error) {
-	if len(args) != plan.NumInput {
-		return nil, fmt.Errorf("%w: argument count", dberrors.ErrBind)
-	}
-	logical := make([]any, len(args))
-	names := make(map[string]int, len(args))
-	for i, arg := range args {
-		if plan.Named {
-			if arg.Name == "" {
-				return nil, fmt.Errorf("%w: named argument required", dberrors.ErrBind)
-			}
-			key := strings.ToUpper(arg.Name)
-			if _, ok := names[key]; ok {
-				return nil, fmt.Errorf("%w: duplicate named argument", dberrors.ErrBind)
-			}
-			names[key] = i
-		} else if arg.Name != "" {
-			return nil, fmt.Errorf("%w: unexpected named argument", dberrors.ErrBind)
+	return sqltext.BindValues(plan, args, func(value any) (any, error) {
+		if source, ok := value.(ArgumentSource); ok {
+			return source.Resolve()
 		}
-		logical[i] = arg.Value
-		if source, ok := arg.Value.(ArgumentSource); ok {
-			value, err := source.Resolve()
-			if err != nil {
-				return nil, err
-			}
-			logical[i] = value
-		}
-	}
-	values := make([]any, len(plan.Slots))
-	for i, slot := range plan.Slots {
-		index := slot.Index
-		if plan.Named {
-			var ok bool
-			index, ok = names[slot.Name]
-			if !ok {
-				return nil, fmt.Errorf("%w: missing named argument", dberrors.ErrBind)
-			}
-		}
-		values[i] = logical[index]
-	}
-	return values, nil
+		return value, nil
+	})
 }
 
 // Encode consumes physical IN values under the caller's remaining message budget.

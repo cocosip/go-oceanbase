@@ -86,8 +86,7 @@ func (e *Engine) Close() error {
 	op.Packets().ResetSequence()
 	err = op.Packets().WriteMessage(ctx, []byte{1})
 	e.Discard()
-	_ = e.cleanup(ctx, op, true, nil)
-	return err
+	return errors.Join(err, e.cleanup(ctx, op, true, nil))
 }
 
 // Ping checks the physical connection without changing SQL diagnostics.

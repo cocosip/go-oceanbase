@@ -14,6 +14,7 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/lifetime"
 	"github.com/cocosip/go-oceanbase/internal/lob"
 	"github.com/cocosip/go-oceanbase/internal/session"
+	"github.com/cocosip/go-oceanbase/internal/sqltext"
 )
 
 // Transaction is local transaction state protected by the session operation.
@@ -40,7 +41,7 @@ func (m *Manager) Begin(ctx context.Context, op *session.Operation, cursors *cur
 	if op.Config().Routing.Role == config.RoleReadOnly && !opts.ReadOnly {
 		return nil, fmt.Errorf("%w: read-write transaction on read-only service", dberrors.ErrUnsupported)
 	}
-	commands, err := TransactionCommands(op.Protocol().Mode, opts)
+	commands, err := sqltext.TransactionCommands(op.Protocol().Mode, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -64,52 +65,6 @@ func (m *Manager) Begin(ctx context.Context, op *session.Operation, cursors *cur
 	m.activeTx = t
 	op.ManagedTransaction(true)
 	return t, nil
-}
-
-// TransactionCommands validates options and returns mode-specific setup SQL.
-func TransactionCommands(mode config.Mode, opts driver.TxOptions) ([]string, error) {
-	level, err := IsolationSQL(opts.Isolation)
-	if err != nil {
-		return nil, err
-	}
-	if mode == config.ModeOracle {
-		iso := sql.IsolationLevel(opts.Isolation)
-		if iso != sql.LevelDefault && iso != sql.LevelReadCommitted && iso != sql.LevelSerializable || opts.ReadOnly && iso == sql.LevelReadCommitted {
-			return nil, fmt.Errorf("%w: Oracle transaction options", dberrors.ErrUnsupported)
-		}
-		query := "SET TRANSACTION READ WRITE"
-		if opts.ReadOnly {
-			query = "SET TRANSACTION READ ONLY"
-		} else if level != "" {
-			query = "SET TRANSACTION ISOLATION LEVEL " + level
-		}
-		return []string{"SET autocommit=0", query}, nil
-	}
-	commands := []string{}
-	if level != "" {
-		commands = append(commands, "SET TRANSACTION ISOLATION LEVEL "+level)
-	}
-	access := "READ WRITE"
-	if opts.ReadOnly {
-		access = "READ ONLY"
-	}
-	return append(commands, "START TRANSACTION "+access), nil
-}
-
-// IsolationSQL validates the supported database/sql isolation levels.
-func IsolationSQL(level driver.IsolationLevel) (string, error) {
-	switch sql.IsolationLevel(level) {
-	case sql.LevelDefault:
-		return "", nil
-	case sql.LevelReadCommitted:
-		return "READ COMMITTED", nil
-	case sql.LevelRepeatableRead:
-		return "REPEATABLE READ", nil
-	case sql.LevelSerializable:
-		return "SERIALIZABLE", nil
-	default:
-		return "", fmt.Errorf("%w: transaction isolation", dberrors.ErrUnsupported)
-	}
 }
 
 // Finish uses the already acquired operation and the caller's commit or cleanup context.

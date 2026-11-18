@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/cocosip/go-oceanbase/internal/configspec"
 )
 
 func TestAttributesSnapshot(t *testing.T) {
@@ -13,9 +15,9 @@ func TestAttributesSnapshot(t *testing.T) {
 	attributes["application"] = "changed"
 	delete(attributes, "应用")
 	for range 2 {
-		got, err := connectionAttributes(cfg, "")
-		if err != nil || got["application"] != "billing,worker:1" || got["\xd3\xa6\xd3\xc3"] != "\xb2\xe2\xca\xd4" || got["__ob_client_attribute_capability_flag"] != "7" {
-			t.Fatalf("attributes no longer use the independent configuration snapshot: %v", err)
+		got, field := configspec.ConnectionAttributes(protocolAttributes(cfg.Protocol), cfg.ConnectionAttributes, "", cfg.Session.Charset, cfg.Mode == ModeMySQL, cfg.Limits.MaxMessageBytes)
+		if field != "" || got["application"] != "billing,worker:1" || got["\xd3\xa6\xd3\xc3"] != "\xb2\xe2\xca\xd4" || got["__ob_client_attribute_capability_flag"] != "7" {
+			t.Fatalf("attributes no longer use the independent configuration snapshot: %v", field)
 		}
 		got["application"] = "changed"
 	}

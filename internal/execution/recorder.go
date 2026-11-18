@@ -167,6 +167,16 @@ func (r *Recorder) Finish(err error) {
 	r.snapshot.Done = true
 }
 
+// Err reports the recorded execution error without copying results.
+func (r *Recorder) Err() error {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.snapshot.Err
+}
+
 // Snapshot copies both result and column slices without reading from the network.
 func (r *Recorder) Snapshot() Snapshot {
 	if r == nil {

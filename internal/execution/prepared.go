@@ -58,7 +58,7 @@ func (e *Engine) queryPrepared(ctx context.Context, op *session.Operation, s *st
 		if owned {
 			if s.Automatic() {
 				cleanup, cancel := context.WithTimeout(context.Background(), op.Config().Limits.CleanupTimeout)
-				_ = s.Close(cleanup, op)
+				err = errors.Join(err, s.Close(cleanup, op))
 				cancel()
 			}
 			if !options.RetainOperation {
@@ -88,10 +88,7 @@ func (e *Engine) queryPrepared(ctx context.Context, op *session.Operation, s *st
 		owned = false
 		return e.combined(ctx, op, payload, plan, nil, s, options, false)
 	}
-	budget := op.Config().Limits.MaxMessageBytes - 10
-	if len(values) > 0 {
-		budget -= int64((len(values)+7)/8 + 1 + 2*len(values))
-	}
+	budget := parameters.Budget(op.Config().Limits.MaxMessageBytes-10, len(values))
 	params, err := parameters.Encode(ctx, op, &e.catalog, values, budget)
 	if err != nil {
 		return nil, err
