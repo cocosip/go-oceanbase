@@ -7,7 +7,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.4
 	github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e
 	github.com/ebitengine/purego v0.11.3
-	golang.org/x/net v0.62.0
+	golang.org/x/net v0.63.0
 	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.44.0
 )
