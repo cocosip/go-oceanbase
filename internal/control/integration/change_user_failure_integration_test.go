@@ -43,7 +43,7 @@ func integrationTestChangeUserFailure(t *testing.T, p integrationtest.Profile) {
 	db := integrationtest.OpenProfile(t, p)
 	ctx := integrationtest.TestContext(t)
 	probe := sessionProbeSQL
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		probe += integrationtest.OracleDualSuffix
 	}
 	pinned, err := db.Conn(ctx)
@@ -59,7 +59,7 @@ func integrationTestChangeUserFailure(t *testing.T, p integrationtest.Profile) {
 	// MySQL maps invalid credentials to 1045; the Oracle-mode target reports
 	// OBE-01017 as server code 600 with state 42000.
 	want := uint32(1045)
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		want = 600
 	}
 	if !integrationtest.OnlyServerErrorCode(err, want) {

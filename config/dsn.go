@@ -103,7 +103,7 @@ func newDSNOptionCanonicalNames() map[string]string {
 		"retrydelay":               "retryDelay",
 		"blacklisttimeout":         "blacklistTimeout",
 		"validationinterval":       "validationInterval",
-		"mode":                     "mode",
+		"compatibilitymode":        "compatibilityMode",
 		"connecttimeout":           "connectTimeout",
 		"readtimeout":              "readTimeout",
 		"cleanuptimeout":           "cleanupTimeout",
@@ -164,16 +164,16 @@ func applyDSNOption(cfg *Config, name, value string) error {
 func applyConnectionDSNOption(cfg *Config, name, value string) error {
 	var err error
 	switch name {
-	case "mode":
-		switch value {
+	case "compatibilityMode":
+		switch strings.ToLower(value) {
 		case "auto":
-			cfg.Mode = ModeAuto
+			cfg.CompatibilityMode = CompatibilityModeAuto
 		case "mysql":
-			cfg.Mode = ModeMySQL
+			cfg.CompatibilityMode = CompatibilityModeMySQL
 		case "oracle":
-			cfg.Mode = ModeOracle
+			cfg.CompatibilityMode = CompatibilityModeOracle
 		default:
-			err = &ConfigError{Field: "mode"}
+			err = &ConfigError{Field: name}
 		}
 	case "connectTimeout":
 		cfg.ConnectTimeout, err = time.ParseDuration(value)

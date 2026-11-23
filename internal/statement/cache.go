@@ -52,7 +52,7 @@ func statementHead(op *session.Operation, query string) (string, bool) {
 	p := op.Protocol()
 	noBackslash := p.OK.Status&512 != 0
 	quoteModes := []bool{false}
-	if p.Mode == config.ModeMySQL && !noBackslash && strings.Contains(query, `"`) && strings.Contains(query, `\`) {
+	if p.Mode == config.CompatibilityModeMySQL && !noBackslash && strings.Contains(query, `"`) && strings.Contains(query, `\`) {
 		quoteModes = append(quoteModes, true)
 	}
 	head := ""

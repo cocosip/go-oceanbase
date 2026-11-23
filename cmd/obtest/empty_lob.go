@@ -24,8 +24,8 @@ type emptyLOBProfile struct {
 	boundEmpty bool
 }
 
-func emptyLOBProfileFor(mode oceanbase.Mode) emptyLOBProfile {
-	if mode == oceanbase.ModeOracle {
+func emptyLOBProfileFor(mode oceanbase.CompatibilityMode) emptyLOBProfile {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return emptyLOBProfile{
 			ddl:         "(ID INTEGER PRIMARY KEY,B BLOB,T CLOB)",
 			emptyInsert: "INSERT INTO %s VALUES (1,EMPTY_BLOB(),EMPTY_CLOB())",

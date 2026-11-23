@@ -19,13 +19,13 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-func protocolOperation(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO)) (context.Context, *session.Operation) {
+func protocolOperation(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO)) (context.Context, *session.Operation) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	t.Cleanup(cancel)
 	client, peer := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	cfg, err := config.Normalize(config.Config{User: "app", Mode: mode})
+	cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: mode})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func protocolOperation(t *testing.T, mode config.Mode, serve func(context.Contex
 }
 
 func TestUploadLongSharedSource(t *testing.T) {
-	ctx, op := protocolOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := protocolOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		for _, index := range []uint16{0, 2} {
 			want := binary.LittleEndian.AppendUint32([]byte{24}, 7)
 			want = binary.LittleEndian.AppendUint16(want, index)
@@ -68,7 +68,7 @@ type errorReader struct{ err error }
 func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestUploadLongNoReplayAndPrevalidation(t *testing.T) {
-	op := testOperation(t, config.Config{Limits: config.Limits{MaxLOBBytes: 1024}}, config.ModeMySQL, "")
+	op := testOperation(t, config.Config{Limits: config.Limits{MaxLOBBytes: 1024}}, config.CompatibilityModeMySQL, "")
 	a := &streaminput.Source{Reader: errorReader{err: driver.ErrBadConn}, Length: -1, State: &atomic.Bool{}}
 	invalid := &streaminput.Source{Reader: strings.NewReader("x"), Length: 2, MaxBytes: 1, State: &atomic.Bool{}}
 	if err := UploadLongData(context.Background(), op, 7, []any{a, invalid}); !errors.Is(err, wire.ErrMessageTooLarge) || a.State.Load() || op.Closed() {
@@ -81,7 +81,7 @@ func TestUploadLongNoReplayAndPrevalidation(t *testing.T) {
 }
 
 func TestStatementCacheOwnership(t *testing.T) {
-	op := testOperation(t, config.Config{Execution: config.ExecutionOptions{StatementCacheSize: 1, StatementCacheSQLLimit: 1024}}, config.ModeMySQL, "")
+	op := testOperation(t, config.Config{Execution: config.ExecutionOptions{StatementCacheSize: 1, StatementCacheSQLLimit: 1024}}, config.CompatibilityModeMySQL, "")
 	ctx := context.Background()
 	var cache Cache
 	a, err := PrepareAutomatic(ctx, op, "SELECT 1", true)

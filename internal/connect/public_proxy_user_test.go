@@ -19,7 +19,7 @@ import (
 func TestProxyUserChangeUserPreflight(t *testing.T) {
 	for _, attributes := range []bool{false, true} {
 		t.Run(fmt.Sprint(attributes), func(t *testing.T) {
-			created, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: config.ModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+			created, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: config.CompatibilityModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 				greeting := testpeer.AuthGreeting(authentication.Native, false)
 				if attributes {
 					greeting = testpeer.ProtocolGreeting(false)

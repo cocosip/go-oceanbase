@@ -50,12 +50,12 @@ func synonymFixtureCases() []synonymFixtureCase {
 }
 
 func TestOracleSynonymWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, synonymCase, oceanbase.ModeOracle)
+	definition := scenarioDefinition(t, synonymCase, oceanbase.CompatibilityModeOracle)
 	for _, tc := range synonymFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := synonymSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeOracle
+			s.mode = oceanbase.CompatibilityModeOracle
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.failStep < 0 {

@@ -35,7 +35,7 @@ func runMetadataTypeInfo(ctx context.Context, s *scenario) error {
 		return err
 	}
 	wantCount := typeInfoMySQLCount
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		wantCount = typeInfoOracleCount
 	}
 	if err = expect(len(rows) == wantCount, "built-in type row count changed"); err != nil {
@@ -138,9 +138,9 @@ func validTypeCategory(category string) bool {
 	return false
 }
 
-func typeInfoExpectations(mode oceanbase.Mode) []metadataTypeInfoRow {
+func typeInfoExpectations(mode oceanbase.CompatibilityMode) []metadataTypeInfoRow {
 	value := func(text string) typeInfoLimit { return typeInfoLimit{valid: true, text: text} }
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		return []metadataTypeInfoRow{
 			{name: "INT", category: typeInfoNumeric, width: value("10"), minimum: value("0"), maximum: value("0"), radix: value("10"), auto: value("1")},
 			{name: "DECIMAL", category: typeInfoNumeric, width: value("65"), minimum: value("0"), maximum: value("30"), radix: value("10"), params: value("precision,scale"), auto: value("0")},

@@ -14,18 +14,18 @@ import (
 
 func TestBindPreservesNativeSQL(t *testing.T) {
 	for _, tc := range []struct {
-		mode   oceanbase.Mode
+		mode   oceanbase.CompatibilityMode
 		status byte
 		query  string
 	}{
-		{oceanbase.ModeMySQL, 2, "CREATE PROCEDURE p() BEGIN SELECT 1; END"},
-		{oceanbase.ModeOracle, 6, "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;"},
-		{oceanbase.ModeOracle, 6, "DECLARE PROCEDURE p IS BEGIN NULL; END; BEGIN p; END;"},
-		{oceanbase.ModeMySQL, 2, "SELECT /*! SQL_NO_CACHE */ 1"},
-		{oceanbase.ModeMySQL, 2, `SELECT ROW_COUNT(), '"\a'`},
+		{oceanbase.CompatibilityModeMySQL, 2, "CREATE PROCEDURE p() BEGIN SELECT 1; END"},
+		{oceanbase.CompatibilityModeOracle, 6, "CREATE OR REPLACE PROCEDURE p AS BEGIN NULL; END;"},
+		{oceanbase.CompatibilityModeOracle, 6, "DECLARE PROCEDURE p IS BEGIN NULL; END; BEGIN p; END;"},
+		{oceanbase.CompatibilityModeMySQL, 2, "SELECT /*! SQL_NO_CACHE */ 1"},
+		{oceanbase.CompatibilityModeMySQL, 2, `SELECT ROW_COUNT(), '"\a'`},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
-			connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: tc.mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+			connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: tc.mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeConnect(ctx, t, p, tc.status) || !testpeer.ServeBaseline(ctx, t, p, tc.status) {
 					return
 				}

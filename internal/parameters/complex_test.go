@@ -16,14 +16,14 @@ import (
 const parameterBudgetText = "测测"
 
 func TestComplexEncoderNestedNullBudget(t *testing.T) {
-	child := &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: "CHILD", Version: 0}, Fields: []valuecodec.Field{{Name: "A", Type: valueformat.TypeNameNumber}, {Name: "B", Type: valueformat.TypeNameNumber}}}
+	child := &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "CHILD", Version: 0}, Fields: []valuecodec.Field{{Name: "A", Type: valueformat.TypeNameNumber}, {Name: "B", Type: valueformat.TypeNameNumber}}}
 	childValue := types.Object{Schema: "S", Type: "CHILD", Fields: []types.Attribute{{Name: "A"}, {Name: "B"}}}
 	for _, tc := range []struct {
 		name  string
 		d     *valuecodec.Descriptor
 		value any
 	}{
-		{"object", &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: "PARENT", Version: 0}, Fields: []valuecodec.Field{{Name: "C", Child: child}, {Name: "N", Type: valueformat.TypeNameNumber}}}, types.Object{Type: "PARENT", Fields: []types.Attribute{{Name: "C", Value: childValue}, {Name: "N"}}}},
+		{"object", &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "PARENT", Version: 0}, Fields: []valuecodec.Field{{Name: "C", Child: child}, {Name: "N", Type: valueformat.TypeNameNumber}}}, types.Object{Type: "PARENT", Fields: []types.Attribute{{Name: "C", Value: childValue}, {Name: "N"}}}},
 		{"array", &valuecodec.Descriptor{Array: true, Fields: []valuecodec.Field{{Child: child}}}, types.Array{Elements: []any{childValue, nil}}},
 	} {
 		for _, limit := range []int{4, 5} {

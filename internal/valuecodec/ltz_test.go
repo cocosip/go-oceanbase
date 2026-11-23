@@ -56,7 +56,7 @@ func TestLTZPrepareEquivalence(t *testing.T) {
 				options := config.SessionOptions{Location: tc.location}
 				value := types.TimestampLTZ(tc.input)
 				if prepare == config.PrepareServer {
-					p, e := EncodeParameter(value, config.ModeOracle, options, 1024)
+					p, e := EncodeParameter(value, config.CompatibilityModeOracle, options, 1024)
 					if tc.wall == nil {
 						if !errors.Is(e, dberrors.ErrType) {
 							t.Fatal("invalid session time accepted", e)
@@ -66,7 +66,7 @@ func TestLTZPrepareEquivalence(t *testing.T) {
 					}
 					return
 				}
-				text, e := ClientLiteral(value, config.ModeOracle, options, 1024, 1024)
+				text, e := ClientLiteral(value, config.CompatibilityModeOracle, options, 1024, 1024)
 				if tc.wall == nil {
 					if !errors.Is(e, dberrors.ErrType) {
 						t.Fatal("invalid session time accepted", text, e)

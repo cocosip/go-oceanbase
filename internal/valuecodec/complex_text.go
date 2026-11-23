@@ -43,7 +43,7 @@ func validateTextDescriptor(d *Descriptor, depth int, nodes *int) error {
 	if err := valueformat.ComplexNode(depth, nodes); err != nil {
 		return err
 	}
-	if d == nil || d.Array || d.Key.Mode != config.ModeOracle || d.Key.Name == "" {
+	if d == nil || d.Array || d.Key.Mode != config.CompatibilityModeOracle || d.Key.Name == "" {
 		return dberrors.ErrUnsupported
 	}
 	for _, f := range d.Fields {

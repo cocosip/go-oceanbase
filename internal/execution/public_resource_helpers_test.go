@@ -37,7 +37,7 @@ func openEpochLOB(ctx context.Context, t *testing.T, session oceanbase.Session, 
 }
 
 func lobOpenEpochConfig(strategy string) config.Config {
-	cfg := config.Config{Mode: config.ModeOracle, PrepareMode: config.PrepareServer, Limits: config.Limits{CleanupTimeout: 200 * time.Millisecond}}
+	cfg := config.Config{CompatibilityMode: config.CompatibilityModeOracle, PrepareMode: config.PrepareServer, Limits: config.Limits{CleanupTimeout: 200 * time.Millisecond}}
 	if strategy == publictest.LobOpenClient {
 		cfg.PrepareMode = config.PrepareClient
 	}

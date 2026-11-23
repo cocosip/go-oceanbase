@@ -12,7 +12,7 @@ import (
 )
 
 func TestStatementTypeFailure(t *testing.T) {
-	db := optimizationDB(t, oceanbase.ModeMySQL, oceanbase.ExecutionOptions{ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeMySQL, oceanbase.ExecutionOptions{ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, testBatchSQL, 7, 1, nil) {
 			return
 		}

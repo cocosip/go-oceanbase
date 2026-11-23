@@ -21,7 +21,7 @@ type Set struct {
 // Rows iterates a materialized snapshot without retaining a connection or operation gate.
 type Rows struct {
 	ctx     context.Context
-	mode    config.Mode
+	mode    config.CompatibilityMode
 	options config.SessionOptions
 	columns []wire.Column
 	sets    []Set
@@ -29,12 +29,12 @@ type Rows struct {
 }
 
 // New takes ownership of the sets and preserves the caller's iteration context.
-func New(ctx context.Context, mode config.Mode, parseTime bool, sets []Set) *Rows {
+func New(ctx context.Context, mode config.CompatibilityMode, parseTime bool, sets []Set) *Rows {
 	return NewWithSession(ctx, mode, config.SessionOptions{ParseTime: parseTime}, sets)
 }
 
 // NewWithSession takes ownership of the complete immutable session profile.
-func NewWithSession(ctx context.Context, mode config.Mode, options config.SessionOptions, sets []Set) *Rows {
+func NewWithSession(ctx context.Context, mode config.CompatibilityMode, options config.SessionOptions, sets []Set) *Rows {
 	r := &Rows{ctx: ctx, mode: mode, options: options, sets: sets}
 	if len(sets) > 0 {
 		r.columns = sets[0].Columns

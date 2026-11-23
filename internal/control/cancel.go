@@ -31,7 +31,7 @@ func CancelQuery(ctx context.Context, configured *connect.Connector, target sess
 		return dberrors.ErrConnectorClosed
 	}
 	cfg := configured.Config()
-	if cfg.Network != id.Network || cfg.Mode != config.ModeAuto && cfg.Mode != id.Mode {
+	if cfg.Network != id.Network || cfg.CompatibilityMode != config.CompatibilityModeAuto && cfg.CompatibilityMode != id.Mode {
 		return fmt.Errorf("%w: cancel connector network or mode differs", dberrors.ErrUnsupported)
 	}
 	if id.TLSVerified && (cfg.TLSConfig == nil || cfg.TLSConfig.InsecureSkipVerify) {
@@ -45,7 +45,7 @@ func CancelQuery(ctx context.Context, configured *connect.Connector, target sess
 	}
 	uncertain := false
 	defer func() { pending.Finish(uncertain) }()
-	cfg.Mode = id.Mode
+	cfg.CompatibilityMode = id.Mode
 	cfg.CreateDatabaseIfMissing = false
 	cfg.Logger, cfg.Diagnostics = nil, config.DiagnosticOptions{}
 	aux, err := connect.DialCandidate(ctx, cfg, id.Addr)

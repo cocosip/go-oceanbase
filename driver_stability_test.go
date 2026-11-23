@@ -28,7 +28,7 @@ func TestDriverResourceStability(t *testing.T) {
 	started := time.Now()
 	for sample := 0; sample <= stabilitySamples; sample++ {
 		if sample > 0 {
-			for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+			for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 				for _, scenario := range driverBenchmarkCases(mode) {
 					name := fmt.Sprintf("sample-%d/mode-%d/%s", sample, mode, scenario.name)
 					if !t.Run(name, func(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 )
 
 // LocalImportStatement checks the supported LOCAL INFILE SQL shape.
-func LocalImportStatement(query string, mode config.Mode, noBackslash bool) error {
+func LocalImportStatement(query string, mode config.CompatibilityMode, noBackslash bool) error {
 	bad := fmt.Errorf("%w: Import requires a single LOAD DATA statement", dberrors.ErrUnsupported)
 	// A double-quoted backslash must not hide a separator under ANSI_QUOTES.
 	for _, ansiQuotes := range []bool{false, true} {

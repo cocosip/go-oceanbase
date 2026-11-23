@@ -33,8 +33,8 @@ func TestPublicLeafAliases(t *testing.T) {
 	if err := error(&oceanbase.OutError{Parameter: 2, Partial: true, Err: cause}); !errors.As(err, &converted) || !errors.Is(err, cause) || !errors.Is(err, dberrors.ErrOut) || !converted.Partial {
 		t.Fatal("output error alias lost type, cause or classification", err)
 	}
-	var unsupported *dberrors.UnsupportedTypeError = &oceanbase.UnsupportedTypeError{Type: 255, Mode: oceanbase.ModeOracle} //nolint:staticcheck // The explicit destination type checks alias assignment compatibility.
-	if unsupported.Mode != oceanbase.ModeOracle {
+	var unsupported *dberrors.UnsupportedTypeError = &oceanbase.UnsupportedTypeError{Type: 255, Mode: oceanbase.CompatibilityModeOracle} //nolint:staticcheck // The explicit destination type checks alias assignment compatibility.
+	if unsupported.Mode != oceanbase.CompatibilityModeOracle {
 		t.Fatal("compatibility mode changed")
 	}
 	var filter metadata.MetadataFilter = oceanbase.MetadataFilter{Kind: oceanbase.MetadataColumns, NamePattern: "T"} //nolint:staticcheck // The explicit destination type checks alias assignment compatibility.

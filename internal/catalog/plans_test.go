@@ -13,7 +13,7 @@ import (
 )
 
 func TestOracleColumnAutoIncrementMapping(t *testing.T) {
-	plan, err := Plan(config.ModeOracle, "4.3.5.0", metadata.MetadataFilter{Kind: metadata.MetadataColumns})
+	plan, err := Plan(config.CompatibilityModeOracle, "4.3.5.0", metadata.MetadataFilter{Kind: metadata.MetadataColumns})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,9 +26,9 @@ func TestOracleColumnAutoIncrementMapping(t *testing.T) {
 }
 
 func TestMetadataFilters(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for kind := metadata.MetadataCatalogs; kind <= metadata.MetadataServerInfo; kind++ {
-			if mode == config.ModeMySQL && (kind == metadata.MetadataSynonyms || kind == metadata.MetadataTypes || kind == metadata.MetadataTypeAttributes || kind == metadata.MetadataCollectionElements) {
+			if mode == config.CompatibilityModeMySQL && (kind == metadata.MetadataSynonyms || kind == metadata.MetadataTypes || kind == metadata.MetadataTypeAttributes || kind == metadata.MetadataCollectionElements) {
 				continue
 			}
 			plan, err := Plan(mode, "4.3.5.0", metadata.MetadataFilter{Kind: kind})
@@ -58,7 +58,7 @@ func TestMetadataFilters(t *testing.T) {
 		}
 	}
 	for _, version := range []string{"", "5.7.25-OceanBase_CE", "OceanBase 3.2.4.0", "OceanBase_CE 4.0.0.0"} {
-		if _, err := Plan(config.ModeMySQL, version, metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters}); !errors.Is(err, dberrors.ErrUnsupported) {
+		if _, err := Plan(config.CompatibilityModeMySQL, version, metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters}); !errors.Is(err, dberrors.ErrUnsupported) {
 			t.Fatalf("unreliable parameter dictionary accepted %q: %v", version, err)
 		}
 	}
@@ -81,7 +81,7 @@ func TestMySQLParameterDictionaryVersions(t *testing.T) {
 	} {
 		t.Run(tc.version, func(t *testing.T) {
 			filter := metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters}
-			plan, err := Plan(config.ModeMySQL, tc.version, filter)
+			plan, err := Plan(config.CompatibilityModeMySQL, tc.version, filter)
 			if tc.want {
 				if err != nil || !strings.Contains(plan.SQL, "information_schema.PARAMETERS") {
 					t.Fatalf("parameter dictionary unavailable: %v, SQL=%q", err, plan.SQL)
@@ -89,7 +89,7 @@ func TestMySQLParameterDictionaryVersions(t *testing.T) {
 			} else if !errors.Is(err, dberrors.ErrUnsupported) {
 				t.Fatalf("old or unknown version accepted: %v", err)
 			}
-			plan, err = Plan(config.ModeMySQL, tc.version, metadata.MetadataFilter{Kind: metadata.MetadataServerInfo})
+			plan, err = Plan(config.CompatibilityModeMySQL, tc.version, metadata.MetadataFilter{Kind: metadata.MetadataServerInfo})
 			flag := `0 AS "parameter_dictionary"`
 			if tc.want {
 				flag = `1 AS "parameter_dictionary"`
@@ -108,9 +108,9 @@ func FuzzMetadataFilters(f *testing.F) {
 		if len(schema) > 4096 || len(name) > 4096 {
 			t.Skip()
 		}
-		mode := config.ModeMySQL
+		mode := config.CompatibilityModeMySQL
 		if oracle {
-			mode = config.ModeOracle
+			mode = config.CompatibilityModeOracle
 		}
 		kinds := []metadata.MetadataKind{metadata.MetadataColumns, metadata.MetadataForeignKeys, metadata.MetadataRoutineParameters, metadata.MetadataTypeAttributes}
 		filter := metadata.MetadataFilter{Kind: kinds[int(kind)%len(kinds)], SchemaPattern: "s" + schema, NamePattern: "n" + name}
@@ -184,7 +184,7 @@ func TestMySQLMetadataTemporalScale(t *testing.T) {
 		kind  metadata.MetadataKind
 		alias string
 	}{{metadata.MetadataColumns, "c"}, {metadata.MetadataRoutineParameters, "p"}} {
-		plan, err := Plan(config.ModeMySQL, "4.3.5.0", metadata.MetadataFilter{Kind: tc.kind})
+		plan, err := Plan(config.CompatibilityModeMySQL, "4.3.5.0", metadata.MetadataFilter{Kind: tc.kind})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,7 +197,7 @@ func TestMySQLMetadataTemporalScale(t *testing.T) {
 }
 
 func TestMySQLRoutineMetadataNamespaces(t *testing.T) {
-	plan, err := Plan(config.ModeMySQL, "4.3.5.0", metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters})
+	plan, err := Plan(config.CompatibilityModeMySQL, "4.3.5.0", metadata.MetadataFilter{Kind: metadata.MetadataRoutineParameters})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestMySQLRoutineMetadataNamespaces(t *testing.T) {
 }
 
 func TestMetadataColumnFlags(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		p, err := Plan(mode, "4.3.5.0", metadata.MetadataFilter{Kind: metadata.MetadataColumns})
 		if err != nil {
 			t.Fatal(err)

@@ -31,8 +31,8 @@ import (
 )
 
 func TestLongDataCancelBeforeExecute(t *testing.T) {
-	physical, op := rawStatementOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
-		if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeMySQL, 88, 0, 3, []byte("ab"))) {
+	physical, op := rawStatementOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+		if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeMySQL, 88, 0, 3, []byte("ab"))) {
 			return
 		}
 		p.ResetSequence()
@@ -41,7 +41,7 @@ func TestLongDataCancelBeforeExecute(t *testing.T) {
 		}
 	})
 	ctx := &longQueuedContext{Context: context.Background(), done: make(chan struct{}), cancelAt: 3}
-	s := statement.Adopt(op, 88, sqltext.Plan{Query: selectBindSQL, SQL: selectBindSQL, NumInput: 1, Slots: []sqltext.Slot{{Index: 0}}, Mode: config.ModeMySQL}, nil)
+	s := statement.Adopt(op, 88, sqltext.Plan{Query: selectBindSQL, SQL: selectBindSQL, NumInput: 1, Slots: []sqltext.Slot{{Index: 0}}, Mode: config.CompatibilityModeMySQL}, nil)
 	op.Release()
 	engine := execution.New(nil, physical)
 	_, err := engine.QueryPrepared(ctx, s, []driver.NamedValue{{Ordinal: 1, Value: streamSource(&oceanbase.LongData{Reader: strings.NewReader("ab"), Length: -1})}}, execution.Options{})
@@ -55,7 +55,7 @@ func TestLongDataCancelAfterPiece(t *testing.T) {
 	defer func() { _ = client.Close(); _ = server.Close() }()
 	ctx := &longQueuedContext{Context: context.Background(), done: make(chan struct{})}
 	raw := &longCancelConn{Conn: client, cancel: ctx.cancel}
-	physical, op := statementOperation(t, outputTestConfig(), &session.Negotiated{Raw: raw, Conn: raw, Packets: wire.NewPacketIO(raw, 4096), Mode: config.ModeMySQL})
+	physical, op := statementOperation(t, outputTestConfig(), &session.Negotiated{Raw: raw, Conn: raw, Packets: wire.NewPacketIO(raw, 4096), Mode: config.CompatibilityModeMySQL})
 	done := make(chan struct{})
 	go func() { defer close(done); _, _ = io.Copy(io.Discard, server) }()
 	err := statement.UploadLongData(ctx, op, 87, []any{streamSource(&oceanbase.LongData{Reader: strings.NewReader("ab"), Length: -1})})
@@ -73,11 +73,11 @@ func TestLongDataIncremental(t *testing.T) {
 	firstSent := make(chan struct{})
 	data := bytes.Repeat([]byte{1}, 65539)
 	db := publictest.QueryDB(t, func(ctx context.Context, p *wire.PacketIO) {
-		if !publictest.ServePrepare(ctx, t, p, selectBindSQL, 86, 1, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeMySQL, 86, 0, 1, data[:65536])) {
+		if !publictest.ServePrepare(ctx, t, p, selectBindSQL, 86, 1, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeMySQL, 86, 0, 1, data[:65536])) {
 			return
 		}
 		close(firstSent)
-		if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeMySQL, 86, 0, 3, data[65536:])) || !testpeer.ServeOK(ctx, t, p, append(publictest.ExecuteHeader(86), 0, 1, 252, 0), 2) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 86)) {
+		if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeMySQL, 86, 0, 3, data[65536:])) || !testpeer.ServeOK(ctx, t, p, append(publictest.ExecuteHeader(86), 0, 1, 252, 0), 2) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 86)) {
 			return
 		}
 		p.ResetSequence()
@@ -116,8 +116,8 @@ func TestLongDataPieceFailure(t *testing.T) {
 		{"more", []byte{0, 0, 0, 10, 0, 0, 0}, wire.ErrMalformed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			physical, op := rawStatementOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
-				if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeOracle, 85, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, tc.response) {
+			physical, op := rawStatementOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+				if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeOracle, 85, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, tc.response) {
 					return
 				}
 				p.ResetSequence()
@@ -145,16 +145,16 @@ func TestLongDataPieceFailure(t *testing.T) {
 func TestLongDataPreSend(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		mode    oceanbase.Mode
+		mode    oceanbase.CompatibilityMode
 		prepare oceanbase.PrepareMode
 		version string
 		value   *oceanbase.LongData
 		want    error
 	}{
-		{"nil", oceanbase.ModeMySQL, oceanbase.PrepareServer, "", nil, oceanbase.ErrLongData},
-		{"length", oceanbase.ModeMySQL, oceanbase.PrepareServer, "", &oceanbase.LongData{Reader: strings.NewReader(""), Length: -2}, oceanbase.ErrLongData},
-		{"client", oceanbase.ModeMySQL, oceanbase.PrepareClient, "", &oceanbase.LongData{Reader: strings.NewReader(""), Length: -1}, oceanbase.ErrUnsupported},
-		{"old", oceanbase.ModeOracle, oceanbase.PrepareServer, "2.2.74", &oceanbase.LongData{Reader: strings.NewReader(""), Length: -1}, oceanbase.ErrUnsupported},
+		{"nil", oceanbase.CompatibilityModeMySQL, oceanbase.PrepareServer, "", nil, oceanbase.ErrLongData},
+		{"length", oceanbase.CompatibilityModeMySQL, oceanbase.PrepareServer, "", &oceanbase.LongData{Reader: strings.NewReader(""), Length: -2}, oceanbase.ErrLongData},
+		{"client", oceanbase.CompatibilityModeMySQL, oceanbase.PrepareClient, "", &oceanbase.LongData{Reader: strings.NewReader(""), Length: -1}, oceanbase.ErrUnsupported},
+		{"old", oceanbase.CompatibilityModeOracle, oceanbase.PrepareServer, "2.2.74", &oceanbase.LongData{Reader: strings.NewReader(""), Length: -1}, oceanbase.ErrUnsupported},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client, server := net.Pipe()
@@ -182,7 +182,7 @@ func TestLongDataPartialWrite(t *testing.T) {
 	client, server := net.Pipe()
 	defer func() { _ = client.Close(); _ = server.Close() }()
 	fault := testutil.NewFaultConn(client, testutil.Faults{MaxWrite: 2, WriteFailAt: 2})
-	physical, op := statementOperation(t, outputTestConfig(), &session.Negotiated{Raw: fault, Conn: fault, Packets: wire.NewPacketIO(fault, 4096), Mode: config.ModeMySQL})
+	physical, op := statementOperation(t, outputTestConfig(), &session.Negotiated{Raw: fault, Conn: fault, Packets: wire.NewPacketIO(fault, 4096), Mode: config.CompatibilityModeMySQL})
 	done := make(chan struct{})
 	go func() { defer close(done); _, _ = io.Copy(io.Discard, server) }()
 	stream := &oceanbase.LongData{Reader: strings.NewReader("ab"), Length: -1}
@@ -238,12 +238,12 @@ func TestLongDataCancellation(t *testing.T) {
 }
 
 func TestLongDataNamedFanout(t *testing.T) {
-	db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, "INSERT INTO t VALUES (?,?)", 82, 2, nil) {
 			return
 		}
 		for _, index := range []uint16{0, 1} {
-			if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeOracle, 82, index, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
+			if !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeOracle, 82, index, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
 				return
 			}
 		}
@@ -262,14 +262,14 @@ func TestLongDataNamedFanout(t *testing.T) {
 
 func TestLongDataSmallTextLimit(t *testing.T) {
 	// The bounded frame guard rejects a message limit that cannot hold a rune.
-	_, op := statementOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 24, MaxLOBBytes: 100}}, &session.Negotiated{Mode: config.ModeOracle, OBVersion: "4.3.5"})
+	_, op := statementOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 24, MaxLOBBytes: 100}}, &session.Negotiated{Mode: config.CompatibilityModeOracle, OBVersion: "4.3.5"})
 	if _, err := statement.LongDataParameter(op, streamSource(&oceanbase.LongData{Reader: strings.NewReader("你"), Text: true, Length: -1})); !errors.Is(err, wire.ErrMessageTooLarge) {
 		t.Fatal(err)
 	}
 }
 
 func TestLongDataText(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, name := range []string{"utf8mb4", "gb18030"} {
 			t.Run(fmt.Sprintf("%d/%s", mode, name), func(t *testing.T) {
 				text := strings.Repeat("a你🙂", 7000)
@@ -277,12 +277,12 @@ func TestLongDataText(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				db := publictest.ConfiguredDB(t, config.Config{Mode: mode, Session: config.SessionOptions{Charset: name}}, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.ConfiguredDB(t, config.Config{CompatibilityMode: mode, Session: config.SessionOptions{Charset: name}}, func(ctx context.Context, p *wire.PacketIO) {
 					if !publictest.ServePrepare(ctx, t, p, selectBindSQL, 78, 1, nil) || !serveLongContent(ctx, t, p, mode, 78, 0, true, want) {
 						return
 					}
 					typ := byte(253)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						typ = 254
 					}
 					if !testpeer.ServeOK(ctx, t, p, append(publictest.ExecuteHeader(78), 0, 1, typ, 0), 2) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 78)) {
@@ -341,7 +341,7 @@ func TestLongDataFailure(t *testing.T) {
 				if !publictest.ServePrepare(ctx, t, p, selectBindSQL, 77, 1, nil) {
 					return
 				}
-				if tc.name == "reader" && !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeMySQL, 77, 0, 1, bytes.Repeat([]byte{1}, 65536))) {
+				if tc.name == "reader" && !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeMySQL, 77, 0, 1, bytes.Repeat([]byte{1}, 65536))) {
 					return
 				}
 				p.ResetSequence()
@@ -360,7 +360,7 @@ func TestLongDataFailure(t *testing.T) {
 }
 
 func TestLongDataChunks(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, size := range []int{0, 3, 65536, 65539} {
 			for _, known := range []bool{false, true} {
 				t.Run(fmt.Sprintf("mode%d/size%d/known%t", mode, size, known), func(t *testing.T) {
@@ -370,7 +370,7 @@ func TestLongDataChunks(t *testing.T) {
 							return
 						}
 						chunk := 65536
-						if mode == oceanbase.ModeOracle {
+						if mode == oceanbase.CompatibilityModeOracle {
 							chunk = (65536 - 17) / 2
 						}
 						for offset := 0; ; offset += chunk {
@@ -386,14 +386,14 @@ func TestLongDataChunks(t *testing.T) {
 							if final {
 								piece = 3
 							}
-							if mode == oceanbase.ModeOracle {
+							if mode == oceanbase.CompatibilityModeOracle {
 								body = []byte(hex.EncodeToString(body))
 							}
 							want := longDataPacket(mode, 77, 1, piece, body)
 							if !testpeer.ReadCommand(ctx, t, p, want) {
 								return
 							}
-							if mode == oceanbase.ModeOracle && !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
+							if mode == oceanbase.CompatibilityModeOracle && !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
 								return
 							}
 							if final {
@@ -401,7 +401,7 @@ func TestLongDataChunks(t *testing.T) {
 							}
 						}
 						typ := byte(252)
-						if mode == oceanbase.ModeOracle {
+						if mode == oceanbase.CompatibilityModeOracle {
 							typ = 254
 						}
 						payload := append(publictest.ExecuteHeader(77), 0, 1, 8, 0, typ, 0)

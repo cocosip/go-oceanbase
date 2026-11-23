@@ -25,21 +25,21 @@ type Slot struct {
 // Plan retains SQL text and its logical-to-physical bind mapping.
 type Plan struct {
 	Query, SQL string
-	Mode       config.Mode
+	Mode       config.CompatibilityMode
 	Slots      []Slot
 	NumInput   int
 	Named      bool
 }
 
 // BuildBindPlan parses placeholders using the actual compatibility mode.
-func BuildBindPlan(query string, mode config.Mode) (Plan, error) {
+func BuildBindPlan(query string, mode config.CompatibilityMode) (Plan, error) {
 	return BuildBindPlanEscapes(query, mode, false)
 }
 
 // BuildBindPlanEscapes parses placeholders under the active backslash-escape mode.
-func BuildBindPlanEscapes(query string, mode config.Mode, noBackslash bool) (Plan, error) {
+func BuildBindPlanEscapes(query string, mode config.CompatibilityMode, noBackslash bool) (Plan, error) {
 	p, err := BuildBindPlanSQLMode(query, mode, noBackslash, false)
-	if mode != config.ModeMySQL || noBackslash || !strings.Contains(query, `"`) || !strings.Contains(query, `\`) {
+	if mode != config.CompatibilityModeMySQL || noBackslash || !strings.Contains(query, `"`) || !strings.Contains(query, `\`) {
 		return p, err
 	}
 	alt, altErr := BuildBindPlanSQLMode(query, mode, noBackslash, true)
@@ -58,8 +58,8 @@ func BuildBindPlanEscapes(query string, mode config.Mode, noBackslash bool) (Pla
 }
 
 // BuildBindPlanSQLMode parses placeholders with explicit SQL quote modes.
-func BuildBindPlanSQLMode(query string, mode config.Mode, noBackslash, ansiQuotes bool) (Plan, error) {
-	if mode != config.ModeMySQL && mode != config.ModeOracle {
+func BuildBindPlanSQLMode(query string, mode config.CompatibilityMode, noBackslash, ansiQuotes bool) (Plan, error) {
+	if mode != config.CompatibilityModeMySQL && mode != config.CompatibilityModeOracle {
 		return Plan{}, fmt.Errorf("%w: actual compatibility mode required", dberrors.ErrBind)
 	}
 	tokens, err := LexSQL(query, mode, noBackslash, ansiQuotes)
@@ -70,7 +70,7 @@ func BuildBindPlanSQLMode(query string, mode config.Mode, noBackslash, ansiQuote
 	style := ""
 	names := make(map[string]int)
 	for _, t := range tokens {
-		if t.Kind != '?' && (t.Kind != ':' || mode != config.ModeOracle) {
+		if t.Kind != '?' && (t.Kind != ':' || mode != config.CompatibilityModeOracle) {
 			continue
 		}
 		slot := Slot{Start: t.Start, End: t.End}
@@ -124,7 +124,7 @@ func BuildBindPlanSQLMode(query string, mode config.Mode, noBackslash, ansiQuote
 }
 
 // LexSQL retains executable token spans and excludes quoted contents and comments from binding.
-func LexSQL(query string, mode config.Mode, noBackslash, ansiQuotes bool) ([]Token, error) {
+func LexSQL(query string, mode config.CompatibilityMode, noBackslash, ansiQuotes bool) ([]Token, error) {
 	if strings.ContainsRune(query, 0) || !utf8.ValidString(query) {
 		return nil, fmt.Errorf("%w: invalid SQL text", dberrors.ErrBind)
 	}
@@ -144,7 +144,7 @@ func LexSQL(query string, mode config.Mode, noBackslash, ansiQuotes bool) ([]Tok
 			i = next
 			continue
 		}
-		if mode == config.ModeOracle && OracleQuotePrefix(query, i) > 0 {
+		if mode == config.CompatibilityModeOracle && OracleQuotePrefix(query, i) > 0 {
 			end, err := OracleQuoteEnd(query, i)
 			if err != nil {
 				return nil, err
@@ -154,7 +154,7 @@ func LexSQL(query string, mode config.Mode, noBackslash, ansiQuotes bool) ([]Tok
 			continue
 		}
 		if ch == '\'' || ch == '"' || ch == '`' {
-			end, err := QuotedEnd(query, i, ch, mode == config.ModeMySQL && !noBackslash && ch != '`' && (ch != '"' || !ansiQuotes))
+			end, err := QuotedEnd(query, i, ch, mode == config.CompatibilityModeMySQL && !noBackslash && ch != '`' && (ch != '"' || !ansiQuotes))
 			if err != nil {
 				return nil, err
 			}
@@ -164,7 +164,7 @@ func LexSQL(query string, mode config.Mode, noBackslash, ansiQuotes bool) ([]Tok
 		}
 		kind := ch
 		i++
-		if mode == config.ModeOracle && ch == ':' {
+		if mode == config.CompatibilityModeOracle && ch == ':' {
 			if i < len(query) && (query[i] == '=' || query[i] == ':') {
 				i++
 				kind = 0
@@ -176,7 +176,7 @@ func LexSQL(query string, mode config.Mode, noBackslash, ansiQuotes bool) ([]Tok
 			}
 		} else if BindNameByte(ch) {
 			kind = 'w'
-			i = SQLNameEnd(query, i, mode != config.ModeMySQL)
+			i = SQLNameEnd(query, i, mode != config.CompatibilityModeMySQL)
 		}
 		tokens = append(tokens, Token{start, i, kind})
 	}
@@ -255,16 +255,16 @@ func OracleQuoteEnd(s string, i int) (int, error) {
 }
 
 // SQLCommentEnd skips an ordinary SQL comment and rejects executable comments.
-func SQLCommentEnd(query string, i int, mode config.Mode) (int, error) {
+func SQLCommentEnd(query string, i int, mode config.CompatibilityMode) (int, error) {
 	ch := query[i]
-	if ch == '#' && mode == config.ModeMySQL {
+	if ch == '#' && mode == config.CompatibilityModeMySQL {
 		return LineEnd(query, i+1), nil
 	}
-	if ch == '-' && i+1 < len(query) && query[i+1] == '-' && (mode == config.ModeOracle || i+2 == len(query) || query[i+2] <= 32) {
+	if ch == '-' && i+1 < len(query) && query[i+1] == '-' && (mode == config.CompatibilityModeOracle || i+2 == len(query) || query[i+2] <= 32) {
 		return LineEnd(query, i+2), nil
 	}
 	if ch == '/' && i+1 < len(query) && query[i+1] == '*' {
-		if mode == config.ModeMySQL && i+2 < len(query) && query[i+2] == '!' {
+		if mode == config.CompatibilityModeMySQL && i+2 < len(query) && query[i+2] == '!' {
 			return 0, fmt.Errorf("%w: executable comments", dberrors.ErrUnsupported)
 		}
 		n := strings.Index(query[i+2:], "*/")

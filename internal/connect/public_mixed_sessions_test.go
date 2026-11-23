@@ -97,7 +97,7 @@ func runPlatformMixedSession(t *testing.T, listener net.Listener, cfg config.Con
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	status := byte(2)
-	if cfg.Mode == config.ModeOracle {
+	if cfg.CompatibilityMode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	done := make(chan struct{})
@@ -120,7 +120,7 @@ func runPlatformMixedSession(t *testing.T, listener net.Listener, cfg config.Con
 			return
 		}
 		for i := range 2 {
-			if !serveDriverSessionCycle(ctx, t, p, cfg.Mode, i, nil) {
+			if !serveDriverSessionCycle(ctx, t, p, cfg.CompatibilityMode, i, nil) {
 				return
 			}
 		}
@@ -200,11 +200,11 @@ func sessionStabilityProtocol(framing string) config.ProtocolOptions {
 	return protocol
 }
 
-func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode, i int, barrier func() bool) bool {
+func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode, i int, barrier func() bool) bool {
 	t.Helper()
 	status, active := byte(2), byte(3)
 	begin := []txStep{{testMySQLReadWrite, active}}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status, active = 6, 5
 		begin = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, active}}
 	}
@@ -237,7 +237,7 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 		finish = testRollbackSQL
 	}
 	end := []txStep{{finish, status}}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		end = []txStep{{finish, 4}, {testAutocommitOn, status}}
 	}
 	if !serveTxSteps(ctx, t, p, end) ||
@@ -276,7 +276,7 @@ func serveTxSteps(ctx context.Context, t *testing.T, p *wire.PacketIO, steps []t
 func TestPlatformTransportUnixMixedSessions(t *testing.T) {
 	// Subtest-derived TempDir names can exceed sockaddr_un's platform limit.
 	directory := testpeer.UnixTempDir(t)
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				path := filepath.Join(directory, "mixed.sock")
@@ -284,7 +284,7 @@ func TestPlatformTransportUnixMixedSessions(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				runPlatformMixedSession(t, listener, config.Config{Network: networkUnix, Addr: path, Mode: mode}, framing)
+				runPlatformMixedSession(t, listener, config.Config{Network: networkUnix, Addr: path, CompatibilityMode: mode}, framing)
 			})
 		}
 	}
@@ -300,7 +300,7 @@ func TestProxyUserChangeUser(t *testing.T) {
 
 func testProxyUserChangeUser(t *testing.T, framing, charset string) {
 	t.Helper()
-	cfg := config.Config{User: testUser, ProxyUser: testProxyUser, Mode: config.ModeOracle, Session: config.SessionOptions{Charset: charset},
+	cfg := config.Config{User: testUser, ProxyUser: testProxyUser, CompatibilityMode: config.CompatibilityModeOracle, Session: config.SessionOptions{Charset: charset},
 		Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, Checksum: config.FeatureOff, NewMetadata: config.FeatureOff, ProxyChecksum: config.FeatureOff, FullLinkTrace: config.FeatureOff}}
 	if framing == testCompression {
 		cfg.Protocol.Compression = config.FeatureRequired
@@ -350,7 +350,7 @@ func testProxyUserChangeUser(t *testing.T, framing, charset string) {
 				t.Error(err)
 				return
 			}
-			want := append(changeUserPacket(t, config.ModeOracle, ""), encoded[34:]...)
+			want := append(changeUserPacket(t, config.CompatibilityModeOracle, ""), encoded[34:]...)
 			if !testpeer.ServeOK(ctx, t, p, want, 6) || !serveAttributeBaseline(ctx, t, p, 6, charset) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 6) {
 				return
 			}

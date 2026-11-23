@@ -19,7 +19,7 @@ func TestStmtAfterReset(t *testing.T) {
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
 			cfg := integrationtest.ProfileConfig(t, p)
-			cfg.Mode = p.Mode
+			cfg.CompatibilityMode = p.Mode
 			cfg.ResetMode = oceanbase.ResetFull
 			connector, err := oceanbase.NewConnector(cfg)
 			if err != nil {
@@ -29,7 +29,7 @@ func TestStmtAfterReset(t *testing.T) {
 			db.SetMaxOpenConns(1)
 			defer func() { _ = db.Close() }()
 			query := integrationtest.SelectParameterSQL
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query += integrationtest.OracleDualSuffix
 			}
 			stmt, err := db.PrepareContext(integrationtest.TestContext(t), query)

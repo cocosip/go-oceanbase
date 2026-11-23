@@ -241,7 +241,7 @@ func TestServerPrepareDeprecatedEOF(t *testing.T) {
 }
 
 func TestServerPrepareOracleInfinity(t *testing.T) {
-	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: oceanbase.ModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: oceanbase.CompatibilityModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, 6) || !testpeer.ServeBaseline(ctx, t, p, 6) {
 			return
 		}
@@ -311,7 +311,7 @@ func TestServerPrepareRowsCleanupFailure(t *testing.T) {
 
 func TestServerPrepareOracleNamed(t *testing.T) {
 	query := "SELECT :x,:X FROM dual"
-	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: oceanbase.ModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: oceanbase.CompatibilityModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, 6) || !testpeer.ServeBaseline(ctx, t, p, 6) {
 			return
 		}

@@ -23,13 +23,13 @@ import (
 
 const cursorQuery = "SELECT id FROM cursor_fixture"
 
-func cursorOperation(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO)) (context.Context, *session.Operation) {
+func cursorOperation(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO)) (context.Context, *session.Operation) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	t.Cleanup(cancel)
 	client, peer := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	cfg, err := config.Normalize(config.Config{User: "app", Mode: mode})
+	cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: mode})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func closeOwned(ctx context.Context, t *testing.T, op *session.Operation, m *Man
 }
 
 func TestManagerForwardCursor(t *testing.T) {
-	ctx, op := cursorOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := cursorOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !preparePeer(ctx, t, p, cursorQuery, 51) || !openPeer(ctx, t, p, 51) {
 			return
 		}
@@ -134,7 +134,7 @@ func TestManagerForwardCursor(t *testing.T) {
 func TestManagerStaticCursor(t *testing.T) {
 	for _, limit := range []int64{0, 180} {
 		t.Run(map[bool]string{false: "scroll", true: "budget"}[limit != 0], func(t *testing.T) {
-			ctx, op := cursorOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := cursorOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !preparePeer(ctx, t, p, cursorQuery, 52) || !openPeer(ctx, t, p, 52) {
 					return
 				}
@@ -198,7 +198,7 @@ func TestManagerStaticCursor(t *testing.T) {
 }
 
 func TestManagerRefCursorLease(t *testing.T) {
-	ctx, op := cursorOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := cursorOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, []byte{28, 9, 0, 0, 0, 1, 0, 0, 0}) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 6, 0}, binary.LittleEndian.AppendUint64([]byte{0, 0}, 7), []byte{254, 0, 0, 134, 0}) {
 			return
 		}

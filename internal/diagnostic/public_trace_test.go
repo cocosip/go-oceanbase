@@ -75,7 +75,7 @@ func TestTraceNilLogger(t *testing.T) {
 	cfg := diagnosticConfig()
 	var records []config.RequestDiagnostic
 	cfg.Diagnostics.Request = func(_ context.Context, r config.RequestDiagnostic) { records = append(records, r) }
-	c := execution.New(nil, session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: p, Mode: config.ModeOracle, Capabilities: wire.ClientProtocol41}))
+	c := execution.New(nil, session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: p, Mode: config.CompatibilityModeOracle, Capabilities: wire.ClientProtocol41}))
 
 	if err := c.Ping(oceanbase.WithTraceInfo(ctx, oceanbase.TraceInfo{Module: "only-first"})); err != nil {
 		t.Fatal(err)

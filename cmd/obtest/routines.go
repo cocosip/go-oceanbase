@@ -14,7 +14,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 	fn := "(x BIGINT) RETURNS BIGINT DETERMINISTIC RETURN x*2"
 	failing := "(OUT y BIGINT) BEGIN SET y=100; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='obtest'; END"
 	failureCode := uint32(1644)
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		proc = "(x IN NUMBER,y IN OUT NUMBER,z OUT VARCHAR2) AS BEGIN y:=x+y; z:='ok'; END;"
 		fn = "(x IN NUMBER) RETURN NUMBER AS BEGIN RETURN x*2; END;"
 		failing = "(y OUT NUMBER) AS BEGIN y:=100; RAISE_APPLICATION_ERROR(-20001,'obtest'); END;"
@@ -35,7 +35,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 	return withSession(ctx, s.db, func(c *sql.Conn) error {
 		y, z := int64(40), "before"
 		call := "CALL " + p + "(?,?,?)"
-		if s.mode == oceanbase.ModeOracle {
+		if s.mode == oceanbase.CompatibilityModeOracle {
 			call = "BEGIN " + p + "(?,?,?); END;"
 		}
 		for i := range 2 {
@@ -49,7 +49,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 		var output oceanbase.Number
 		call = "SELECT " + f + "(?) INTO ?"
 		args := []any{21, sql.Out{Dest: &output}}
-		if s.mode == oceanbase.ModeOracle {
+		if s.mode == oceanbase.CompatibilityModeOracle {
 			call, args = "BEGIN ? := "+f+"(?); END;", []any{sql.Out{Dest: &output}, 21}
 		}
 		if _, err := c.ExecContext(ctx, call, args...); err != nil {
@@ -60,7 +60,7 @@ func runRoutines(ctx context.Context, s *scenario) error {
 		}
 		y = 7
 		call = "CALL " + e + "(?)"
-		if s.mode == oceanbase.ModeOracle {
+		if s.mode == oceanbase.CompatibilityModeOracle {
 			call = "BEGIN " + e + "(?); END;"
 		}
 		_, callErr := c.ExecContext(ctx, call, sql.Out{Dest: &y})

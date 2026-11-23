@@ -19,7 +19,7 @@ func integrationTestTableBlobProfile(t *testing.T, p integrationtest.Profile) {
 	t.Helper()
 	cfg := integrationtest.ProfileConfig(t, p)
 	cfg.Limits.MaxLOBBytes = 1024
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		cfg.RowsAffectedMode = oceanbase.ChangedRows
 	}
 	connector, err := oceanbase.NewConnector(cfg)
@@ -31,7 +31,7 @@ func integrationTestTableBlobProfile(t *testing.T, p integrationtest.Profile) {
 	defer func() { _ = db.Close() }()
 	table := fmt.Sprintf("OBGTB_%d", time.Now().UnixNano())
 	typ, empty, suffix := integrationIntegrationLongBlobType, "X''", integrationIntegrationInnoDBSuffix
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		typ, empty, suffix = integrationIntegrationBlobType, "EMPTY_BLOB()", ""
 	}
 	if _, err = db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER,PART VARCHAR(20),B "+typ+",PRIMARY KEY(ID,PART))"+suffix); err != nil {
@@ -67,7 +67,7 @@ func integrationTestTableBlobProfile(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "open transactional table BLOB", err)
 	}
 	integrationTestTableBlobContent(t, b)
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		integrationTestTableBlobLock(t, db, table)
 	}
 	if err = b.Truncate(integrationtest.TestContext(t), 3); err != nil {
@@ -106,7 +106,7 @@ const integrationIntegrationInnoDBSuffix = " ENGINE=InnoDB"
 
 const integrationIntegrationLongBlobType = "LONGBLOB"
 
-func integrationTestTableBlobConn(t *testing.T, c *sql.Conn, target oceanbase.BlobTarget, mode oceanbase.Mode) {
+func integrationTestTableBlobConn(t *testing.T, c *sql.Conn, target oceanbase.BlobTarget, mode oceanbase.CompatibilityMode) {
 	t.Helper()
 	b, err := oceanbase.OpenTableBlob(integrationtest.TestContext(t), c, target)
 	if err != nil || b == nil {
@@ -115,7 +115,7 @@ func integrationTestTableBlobConn(t *testing.T, c *sql.Conn, target oceanbase.Bl
 	if size, err := b.Size(integrationtest.TestContext(t)); err != nil || size != 0 {
 		t.Fatal(size, err)
 	}
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		if _, err = b.WriteAtContext(integrationtest.TestContext(t), []byte{1}, 0); !errors.Is(err, oceanbase.ErrUnsupported) {
 			t.Fatal("table BLOB write outside transaction", err)
 		}
@@ -163,7 +163,7 @@ func integrationTestNativeLOBProfile(t *testing.T, p integrationtest.Profile) {
 	t.Helper()
 	cfg := integrationtest.ProfileConfig(t, p)
 	cfg.ResetMode = oceanbase.ResetFull
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		cfg.Session.NCharset = "utf16"
 	}
 	connector, err := oceanbase.NewConnector(cfg)
@@ -173,7 +173,7 @@ func integrationTestNativeLOBProfile(t *testing.T, p integrationtest.Profile) {
 	db := sql.OpenDB(connector)
 	db.SetMaxOpenConns(1)
 	defer func() { _ = db.Close() }()
-	if p.Mode != oceanbase.ModeOracle {
+	if p.Mode != oceanbase.CompatibilityModeOracle {
 		c, err := db.Conn(integrationtest.TestContext(t))
 		if err != nil {
 			integrationtest.FailOperation(t, "pin LOB session", err)

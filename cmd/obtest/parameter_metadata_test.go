@@ -39,13 +39,13 @@ func TestParameterMetadataWorkflow(t *testing.T) {
 	if definition.run == nil || definition.mysqlOnly || definition.oracleOnly {
 		t.Fatal("parameter metadata acceptance scenario is missing or mode-gated")
 	}
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range []parameterMetadataTest{
 			{name: "reported-description", pass: true},
 			{name: "unknown-description", pass: true, edit: func(r *metadataFixtureRows) { r.values[0][4], r.values[0][6], r.values[0][9] = nil, nil, int64(6) }},
 			{name: "reported-number", pass: true, edit: func(r *metadataFixtureRows) {
 				typeName, scale := metadataFixtureNumber, int64(-2)
-				if mode == oceanbase.ModeMySQL {
+				if mode == oceanbase.CompatibilityModeMySQL {
 					typeName, scale = "DECIMAL", 2
 				}
 				r.values[0][4], r.values[0][6], r.values[0][7], r.values[0][8], r.values[0][9] = typeName, nil, int64(38), scale, int64(246)
@@ -59,7 +59,7 @@ func TestParameterMetadataWorkflow(t *testing.T) {
 			{name: "empty-type", edit: func(r *metadataFixtureRows) { r.values[0][4] = "" }},
 			{name: "nullable-state", edit: func(r *metadataFixtureRows) { r.values[0][5] = int64(2) }},
 			{name: "nullability-contract", edit: func(r *metadataFixtureRows) {
-				if mode == oceanbase.ModeMySQL {
+				if mode == oceanbase.CompatibilityModeMySQL {
 					r.values[0][5] = int64(1)
 				} else {
 					r.values[0][5] = nil
@@ -85,7 +85,7 @@ func TestParameterMetadataWorkflow(t *testing.T) {
 				r.values = [][]driver.Value{{int64(1), int64(1), nil, nil, nil, nil, nil, nil, nil, int64(6), int64(0)}}
 			}},
 		} {
-			if tc.oracleOnly && mode != oceanbase.ModeOracle {
+			if tc.oracleOnly && mode != oceanbase.CompatibilityModeOracle {
 				continue
 			}
 			t.Run(fmt.Sprintf("%d/%s", mode, tc.name), func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestParameterMetadataWorkflow(t *testing.T) {
 	}
 }
 
-func testParameterMetadata(t *testing.T, definition caseDefinition, mode oceanbase.Mode, tc parameterMetadataTest) {
+func testParameterMetadata(t *testing.T, definition caseDefinition, mode oceanbase.CompatibilityMode, tc parameterMetadataTest) {
 	t.Helper()
 	queries, parts := parameterMetadataFixtures(mode)
 	part := tc.part
@@ -106,7 +106,7 @@ func testParameterMetadata(t *testing.T, definition caseDefinition, mode oceanba
 		tc.edit(parts[part])
 	}
 	steps := []fixtureStep{{query: parameterFixtureDDL}, {query: "INSERT INTO OBT_OFFLINE_T VALUES (1,'before')", affected: 1}}
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		steps[0].query += parameterFixtureEngine
 	}
 	for i, query := range queries {
@@ -154,10 +154,10 @@ func testParameterMetadata(t *testing.T, definition caseDefinition, mode oceanba
 	}
 }
 
-func parameterMetadataFixtures(mode oceanbase.Mode) ([]string, []*metadataFixtureRows) {
+func parameterMetadataFixtures(mode oceanbase.CompatibilityMode) ([]string, []*metadataFixtureRows) {
 	queries := []string{"UPDATE OBT_OFFLINE_T SET V=? WHERE ID=?"}
 	identities := [][]int64{{1, 2}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		queries = append(queries, "UPDATE OBT_OFFLINE_T SET V=:text WHERE ID=:key OR ID=:KEY")
 		identities = append(identities, []int64{1, 2, 2})
 	}
@@ -168,7 +168,7 @@ func parameterMetadataFixtures(mode oceanbase.Mode) ([]string, []*metadataFixtur
 		r := &metadataFixtureRows{fixtureRows: fixtureRows{width: 11}, labels: strings.Fields("physical_ordinal logical_ordinal name direction data_type nullable length precision scale protocol_type protocol_direction")}
 		for j, slot := range slots {
 			var name, nullable driver.Value
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				nullable = int64(1)
 				if i == 1 {
 					name = []string{"TEXT", parameterFixtureKey, parameterFixtureKey}[j]

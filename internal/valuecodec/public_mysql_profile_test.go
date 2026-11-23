@@ -40,7 +40,7 @@ func testMySQLClientProfileRows(t *testing.T, version int, newMetadata bool, pat
 	for _, column := range columns[1:] {
 		column[len(column)-3] = 4
 	}
-	cfg := oceanbase.Config{User: testpeer.User, Mode: oceanbase.ModeMySQL,
+	cfg := oceanbase.Config{User: testpeer.User, CompatibilityMode: oceanbase.CompatibilityModeMySQL,
 		Session:  oceanbase.SessionOptions{CompatibleMysqlVersion: version},
 		Protocol: oceanbase.ProtocolOptions{Compression: oceanbase.FeatureOff, OB20: oceanbase.FeatureOff, NewMetadata: oceanbase.FeatureOff}}
 	if newMetadata {

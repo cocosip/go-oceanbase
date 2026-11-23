@@ -62,7 +62,7 @@ type Rows struct {
 	last                                     command.Result
 	bufferBytes                              int64
 	input                                    *streaminput.Infile
-	mode                                     config.Mode
+	mode                                     config.CompatibilityMode
 	sessionConfig                            config.SessionOptions
 	transactionSession                       bool
 }
@@ -361,7 +361,7 @@ func (r *Rows) next(ctx context.Context, dest []driver.Value) error {
 }
 
 func (r *Rows) bufferResources(ctx context.Context) error {
-	if r.captureLOB || r.released || r.op.Protocol().Mode != config.ModeOracle {
+	if r.captureLOB || r.released || r.op.Protocol().Mode != config.CompatibilityModeOracle {
 		return nil
 	}
 	found := false

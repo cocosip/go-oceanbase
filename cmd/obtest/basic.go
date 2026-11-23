@@ -89,7 +89,7 @@ func runPrepared(ctx context.Context, s *scenario) (err error) {
 			return err
 		}
 	}
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		var a, b int
 		if err = s.db.QueryRowContext(ctx, "SELECT :x,:X FROM dual", sql.Named("x", 42)).Scan(&a, &b); err != nil {
 			return err
@@ -102,7 +102,7 @@ func runPrepared(ctx context.Context, s *scenario) (err error) {
 func runScalars(ctx context.Context, s *scenario) error {
 	definition := "(ID INTEGER PRIMARY KEY,N DECIMAL(38,9),V VARCHAR(100),B VARBINARY(100),D DATE,TS DATETIME(6),Z VARCHAR(10))"
 	binary := any([]byte{0, 1, 127, 128, 255})
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		definition = "(ID INTEGER PRIMARY KEY,N NUMBER(38,9),V VARCHAR2(100),B RAW(100),D DATE,TS TIMESTAMP(6),Z VARCHAR2(10))"
 		binary = oceanbase.Raw{0, 1, 127, 128, 255}
 	}
@@ -117,7 +117,7 @@ func runScalars(ctx context.Context, s *scenario) error {
 	instant := time.Date(2026, 1, 2, 3, 4, 5, 123456000, location)
 	var dateValue any = "2024-02-29"
 	wantDate := "2024-02-29"
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		dateValue = time.Date(2024, 2, 29, 0, 0, 0, 0, location)
 		wantDate += " 00:00:00"
 	}
@@ -218,7 +218,7 @@ func runTransactions(ctx context.Context, s *scenario) (err error) {
 
 func runMetadata(ctx context.Context, s *scenario) error {
 	idType := "INTEGER"
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		idType = "NUMBER(38,0)"
 	}
 	table, err := s.table(ctx, "(ID "+idType+" PRIMARY KEY,V VARCHAR(100))")
@@ -245,7 +245,7 @@ func runMetadata(ctx context.Context, s *scenario) error {
 			return err
 		}
 		idType, textType, _ := metadataScalarTypes(s.mode)
-		if s.mode == oceanbase.ModeMySQL {
+		if s.mode == oceanbase.CompatibilityModeMySQL {
 			idType = "INTEGER" // Result type names are normalized; dictionary DATA_TYPE is INT.
 		}
 		return expect(len(columns) == 2 && strings.EqualFold(columns[0].Name(), "ID") && strings.EqualFold(columns[0].DatabaseTypeName(), idType) && strings.EqualFold(columns[1].Name(), "V") && strings.EqualFold(columns[1].DatabaseTypeName(), textType), "ColumnTypes lost column metadata")

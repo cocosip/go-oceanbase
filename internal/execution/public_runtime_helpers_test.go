@@ -79,13 +79,13 @@ func (c commandReadDeadlineConn) Read(data []byte) (int, error) {
 
 const testUser = "app"
 
-func optimizationDB(t *testing.T, mode oceanbase.Mode, options oceanbase.ExecutionOptions, serve func(context.Context, *wire.PacketIO)) *sql.DB {
+func optimizationDB(t *testing.T, mode oceanbase.CompatibilityMode, options oceanbase.ExecutionOptions, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
-	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: mode, Execution: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: mode, Execution: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 			return
 		}
@@ -113,9 +113,9 @@ type longChanReader chan byte
 
 func (longChanReader) Read([]byte) (int, error) { return 0, io.EOF }
 
-func longDataPacket(mode oceanbase.Mode, id uint32, index uint16, piece byte, data []byte) []byte {
+func longDataPacket(mode oceanbase.CompatibilityMode, id uint32, index uint16, piece byte, data []byte) []byte {
 	b := binary.LittleEndian.AppendUint16(publictest.StmtPacket(24, id), index)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		b[0] = 162
 		b = append(b, piece, 0)
 		b = binary.LittleEndian.AppendUint64(b, uint64(len(data)))
@@ -137,9 +137,9 @@ func (longSliceReader) Read([]byte) (int, error) { return 0, io.EOF }
 
 const localImportSQL = "LOAD DATA LOCAL INFILE 'input' INTO TABLE t"
 
-func localInfileDB(t *testing.T, mode oceanbase.Mode, serve func(context.Context, *wire.PacketIO), configure ...func(*oceanbase.Config)) *sql.DB {
+func localInfileDB(t *testing.T, mode oceanbase.CompatibilityMode, serve func(context.Context, *wire.PacketIO), configure ...func(*oceanbase.Config)) *sql.DB {
 	t.Helper()
-	cfg := oceanbase.Config{User: testUser, Mode: mode}
+	cfg := oceanbase.Config{User: testUser, CompatibilityMode: mode}
 	cfg.DialContext = testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		greeting := testpeer.AuthGreeting(authentication.Native, false)
 		compressed := cfg.Protocol.Compression == oceanbase.FeatureRequired
@@ -158,7 +158,7 @@ func localInfileDB(t *testing.T, mode oceanbase.Mode, serve func(context.Context
 			return
 		}
 		status := byte(2)
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			status = 6
 		}
 		var variables map[string]string

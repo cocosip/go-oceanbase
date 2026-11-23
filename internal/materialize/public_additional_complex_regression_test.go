@@ -72,7 +72,7 @@ func TestDescriptorBufferedValueRefresh(t *testing.T) {
 		testpeer.ServeComplexType(ctx, t, p, []string{"A", "B"}, []string{valueformat.TypeNameNumber, valueformat.TypeNameNumber})
 	})
 	resolver := new(catalog.Resolver)
-	key := valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: "T", Version: 1}
+	key := valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "T", Version: 1}
 	if _, err := resolver.Resolve(t.Context(), op, key); err != nil {
 		t.Fatal(err)
 	}

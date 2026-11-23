@@ -32,9 +32,9 @@ type TableBlobPlan struct {
 func (p *TableBlobPlan) From() string { return " FROM " + p.Table + " WHERE " + p.Predicate }
 
 // DictionaryPlan retains the original eight-column table/key dictionary query.
-func DictionaryPlan(mode config.Mode, schema, table string) Query {
+func DictionaryPlan(mode config.CompatibilityMode, schema, table string) Query {
 	query := MySQLBlobDictionarySQL
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		query = OracleBlobDictionarySQL
 	}
 	return Query{SQL: query, Args: []driver.NamedValue{{Ordinal: 1, Value: schema}, {Ordinal: 2, Value: table}}}
@@ -45,7 +45,7 @@ func LookupTableBlob(ctx context.Context, op *session.Operation, target Target) 
 	epoch := op.Epoch()
 	if target.Schema == "" {
 		query := "SELECT DATABASE()"
-		if op.Protocol().Mode == config.ModeOracle {
+		if op.Protocol().Mode == config.CompatibilityModeOracle {
 			query = "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL"
 		}
 		result, err := QueryRows(ctx, op, Query{SQL: query})
@@ -84,7 +84,7 @@ const MySQLBlobDictionarySQL = "SELECT t.TABLE_SCHEMA,t.TABLE_NAME,t.TABLE_TYPE,
 const OracleBlobDictionarySQL = "SELECT t.OWNER,t.TABLE_NAME,'BASE TABLE',NULL,c.COLUMN_NAME,c.DATA_TYPE,c.VIRTUAL_COLUMN,p.POSITION FROM ALL_TABLES t JOIN ALL_OBJECTS o ON o.OWNER=t.OWNER AND o.OBJECT_NAME=t.TABLE_NAME AND o.OBJECT_TYPE='TABLE' AND o.SUBOBJECT_NAME IS NULL JOIN ALL_TAB_COLS c ON c.OWNER=t.OWNER AND c.TABLE_NAME=t.TABLE_NAME LEFT JOIN (SELECT k.OWNER,k.TABLE_NAME,c.COLUMN_NAME,c.POSITION FROM ALL_CONSTRAINTS k JOIN ALL_CONS_COLUMNS c ON c.OWNER=k.OWNER AND c.TABLE_NAME=k.TABLE_NAME AND c.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.CONSTRAINT_TYPE='P') p ON p.OWNER=c.OWNER AND p.TABLE_NAME=c.TABLE_NAME AND p.COLUMN_NAME=c.COLUMN_NAME WHERE t.OWNER = ? AND t.TABLE_NAME = ? AND c.HIDDEN_COLUMN='NO' ORDER BY c.COLUMN_ID"
 
 // ResolveTableBlob validates dictionary rows and builds a table BLOB plan.
-func ResolveTableBlob(mode config.Mode, t Target, sets []Result) (*TableBlobPlan, error) {
+func ResolveTableBlob(mode config.CompatibilityMode, t Target, sets []Result) (*TableBlobPlan, error) {
 	if len(sets) != 1 || len(sets[0].Columns) != 8 || len(sets[0].Rows) == 0 {
 		return nil, dberrors.ErrLOB
 	}
@@ -147,8 +147,8 @@ func ResolveTableBlob(mode config.Mode, t Target, sets []Result) (*TableBlobPlan
 }
 
 // ValidTableBlobColumn checks that the requested BLOB column is writable.
-func ValidTableBlobColumn(mode config.Mode, typ, generated string, primary driver.Value) bool {
-	binary := typ == valueformat.TypeNameBlob || mode == config.ModeMySQL && TableBlobCapacity(typ) != 0
+func ValidTableBlobColumn(mode config.CompatibilityMode, typ, generated string, primary driver.Value) bool {
+	binary := typ == valueformat.TypeNameBlob || mode == config.CompatibilityModeMySQL && TableBlobCapacity(typ) != 0
 	computed := generated == "YES" || strings.Contains(generated, "VIRTUAL GENERATED") || strings.Contains(generated, "STORED GENERATED")
 	return binary && primary == nil && !computed
 }
@@ -169,12 +169,12 @@ func TableBlobCapacity(typ string) int64 {
 }
 
 // MatchIdentifier applies mode-specific dictionary identifier matching.
-func MatchIdentifier(mode config.Mode, input, name string) bool {
-	return input == name || mode == config.ModeMySQL && strings.EqualFold(input, name)
+func MatchIdentifier(mode config.CompatibilityMode, input, name string) bool {
+	return input == name || mode == config.CompatibilityModeMySQL && strings.EqualFold(input, name)
 }
 
 // ResolveKey finds one unambiguous normalized primary-key value.
-func ResolveKey(mode config.Mode, name string, key map[string]any, used map[string]bool) (any, error) {
+func ResolveKey(mode config.CompatibilityMode, name string, key map[string]any, used map[string]bool) (any, error) {
 	var selected any
 	for input, value := range key {
 		if MatchIdentifier(mode, input, name) {
@@ -191,7 +191,7 @@ func ResolveKey(mode config.Mode, name string, key map[string]any, used map[stri
 }
 
 // TableBlobKeyType reports whether a primary-key dictionary type is supported.
-func TableBlobKeyType(mode config.Mode, typ string) bool {
+func TableBlobKeyType(mode config.CompatibilityMode, typ string) bool {
 	if strings.HasPrefix(typ, "TIMESTAMP") {
 		return true
 	}
@@ -199,9 +199,9 @@ func TableBlobKeyType(mode config.Mode, typ string) bool {
 	case valueformat.TypeNameDate, valueformat.TypeNameChar, valueformat.TypeNameFloat:
 		return true
 	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", valueformat.TypeNameInteger, valueformat.TypeNameBigInt, valueformat.TypeNameDecimal, valueformat.TypeNameNumeric, valueformat.TypeNameDouble, "REAL", "BIT", "YEAR", valueformat.TypeNameDateTime, valueformat.TypeNameTime, valueformat.TypeNameVarchar, valueformat.TypeNameBinary, valueformat.TypeNameVarbinary, "ENUM", "SET":
-		return mode == config.ModeMySQL
+		return mode == config.CompatibilityModeMySQL
 	case "NUMBER", "BINARY_FLOAT", "BINARY_DOUBLE", "VARCHAR2", "NVARCHAR2", "NCHAR", "RAW", "ROWID", "UROWID", "INTERVAL YEAR TO MONTH", "INTERVAL DAY TO SECOND":
-		return mode == config.ModeOracle
+		return mode == config.CompatibilityModeOracle
 	}
 	return false
 }

@@ -125,15 +125,15 @@ func (m *Manager) Validate(op *session.Operation, r *Request, localTx bool) erro
 	return m.validatePhase(r, key, b, known)
 }
 
-func validFlags(mode config.Mode, r *Request) bool {
+func validFlags(mode config.CompatibilityMode, r *Request) bool {
 	switch r.Op {
 	case Start:
 		if r.Flags == NoFlags || r.Flags == Join || r.Flags == Resume {
 			return true
 		}
-		return mode == config.ModeOracle && (r.Flags == OracleReadOnly || r.Flags == OracleSerializable || r.Flags == OracleLoose)
+		return mode == config.CompatibilityModeOracle && (r.Flags == OracleReadOnly || r.Flags == OracleSerializable || r.Flags == OracleLoose)
 	case End:
-		return r.Flags == Success || r.Flags == Fail || r.Flags == Suspend || mode == config.ModeOracle && (r.Flags == Migrate || r.Flags == Suspend|Migrate)
+		return r.Flags == Success || r.Flags == Fail || r.Flags == Suspend || mode == config.CompatibilityModeOracle && (r.Flags == Migrate || r.Flags == Suspend|Migrate)
 	default:
 		return true
 	}
@@ -175,7 +175,7 @@ func (m *Manager) Execute(ctx context.Context, op *session.Operation, resolver *
 	m.used = true
 	op.MarkDirty()
 	var err error
-	if op.Protocol().Mode == config.ModeOracle {
+	if op.Protocol().Mode == config.CompatibilityModeOracle {
 		err = oracle(ctx, op, resolver, r)
 	} else {
 		err = mysql(ctx, op, r)
@@ -221,7 +221,7 @@ func failure(op *session.Operation, r *Request, err error, sent bool) error {
 	var server *dberrors.Error
 	if errors.As(err, &server) {
 		code := int32(-3)
-		if op.Protocol().Mode == config.ModeMySQL {
+		if op.Protocol().Mode == config.CompatibilityModeMySQL {
 			codes := map[uint32]int32{1397: -4, 1398: -5, 1399: -7, 1400: -9, 1401: -3, 1402: 100, 1440: -8, 1613: 106, 1614: 102}
 			if mapped, ok := codes[server.Code]; ok {
 				code = mapped

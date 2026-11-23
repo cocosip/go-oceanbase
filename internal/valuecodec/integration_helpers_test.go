@@ -27,7 +27,7 @@ func integrationTestScalarProfile(t *testing.T, p integrationtest.Profile, path 
 	cfg.Session.ParseTime = false
 	cfg.Session.CompatibleMysqlVersion = 8
 	cfg.Session.Charset = charsetUTF8MB4
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		cfg.Session.NCharset = "utf16"
 	}
 	if path == testClientStrategy {
@@ -50,7 +50,7 @@ func integrationTestScalarProfile(t *testing.T, p integrationtest.Profile, path 
 	args := []any{1, oceanbase.Number("12345678901234567890.123456789"), "中文😀", []byte{0, 255}, instant, integrationScalarDateText, "-838:59:58.999999", 2026}
 	args[4] = instant.Add(789 * time.Nanosecond)
 	args = append(args, uint64(math.MaxUint64), int64(math.MinInt64), []byte{0, 255, 0, 0})
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		definition = "id INTEGER PRIMARY KEY,n NUMBER(38,9),v NVARCHAR2(100),b RAW(100),ts TIMESTAMP(9),tz TIMESTAMP(9) WITH TIME ZONE,ltz TIMESTAMP(9) WITH LOCAL TIME ZONE,ym INTERVAL YEAR(9) TO MONTH,ds INTERVAL DAY(9) TO SECOND(9),dt DATE"
 		values = "?,?,?,?,?,?,?,?,?,?"
 		query = "SELECT n,v,b,ts,tz,ltz,ym,ds,ROWID FROM " + table + " WHERE id=1"
@@ -91,7 +91,7 @@ func integrationCheckScalarMetadata(t *testing.T, p integrationtest.Profile, db 
 	query := "SELECT d,ts,u,s,b,bf FROM " + table + " WHERE id=1"
 	wantColumns := 6
 	wantDate, wantTimestamp := integrationScalarDateText, "DATETIME"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		query = "SELECT dt,ts FROM " + table + " WHERE id=1"
 		wantColumns = 2
 		wantDate, wantTimestamp = "2024-02-29 12:34:56", "TIMESTAMP"
@@ -123,7 +123,7 @@ func integrationCheckScalarMetadata(t *testing.T, p integrationtest.Profile, db 
 	destinations := []any{&date, &timestamp}
 	var unsigned, signed reflect.Value
 	var variableBinary, fixedBinary []byte
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		if columns[2].ScanType() != reflect.TypeFor[uint64]() || columns[3].ScanType() != reflect.TypeFor[int64]() {
 			t.Fatal("integer ScanType cannot represent full column range")
 		}
@@ -140,10 +140,10 @@ func integrationCheckScalarMetadata(t *testing.T, p integrationtest.Profile, db 
 	if date != wantDate {
 		t.Fatal("date time-of-day changed", date)
 	}
-	if p.Mode == oceanbase.ModeMySQL && (unsigned.Elem().Interface() != uint64(math.MaxUint64) || signed.Elem().Interface() != int64(math.MinInt64)) {
+	if p.Mode == oceanbase.CompatibilityModeMySQL && (unsigned.Elem().Interface() != uint64(math.MaxUint64) || signed.Elem().Interface() != int64(math.MinInt64)) {
 		t.Fatal("integer ScanType lost boundary value")
 	}
-	if p.Mode == oceanbase.ModeMySQL && (!bytes.Equal(variableBinary, []byte{0, 255}) || !bytes.Equal(fixedBinary, []byte{0, 255, 0, 0})) {
+	if p.Mode == oceanbase.CompatibilityModeMySQL && (!bytes.Equal(variableBinary, []byte{0, 255}) || !bytes.Equal(fixedBinary, []byte{0, 255, 0, 0})) {
 		t.Fatal("binary string bytes or padding changed")
 	}
 	if rows.Next() || rows.Err() != nil {
@@ -172,7 +172,7 @@ func integrationCheckScalarProfileRow(t *testing.T, p integrationtest.Profile, d
 	var text string
 	var raw oceanbase.Raw
 	var timestamp string
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		var tz oceanbase.TimestampTZ
 		var ltz oceanbase.TimestampLTZ
 		var ym oceanbase.IntervalYM
@@ -221,7 +221,7 @@ func integrationTestComplexProfile(t *testing.T, p integrationtest.Profile) {
 	}
 	db := sql.OpenDB(connector)
 	defer func() { _ = db.Close() }()
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		_, err = db.ExecContext(integrationtest.TestContext(t), "SELECT ?", oceanbase.Object{Type: "T"})
 		if !errors.Is(err, oceanbase.ErrUnsupported) {
 			integrationtest.FailOperation(t, "reject Oracle complex type in MySQL compatibility mode", err)

@@ -13,9 +13,9 @@ import (
 
 func ExampleNewConnector() {
 	cfg := oceanbase.Config{
-		User:   "app@tenant",
-		Mode:   oceanbase.ModeOracle,
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		User:              "app@tenant",
+		CompatibilityMode: oceanbase.CompatibilityModeOracle,
+		Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	connector, err := oceanbase.NewConnector(cfg)
 	if err != nil {
@@ -32,7 +32,7 @@ func ExampleNewConnector() {
 func ExampleNewConnector_proxyUser() {
 	connector, err := oceanbase.NewConnector(oceanbase.Config{
 		User: "proxy@tenant", Password: "proxy-password", ProxyUser: "client_user",
-		Mode: oceanbase.ModeOracle,
+		CompatibilityMode: oceanbase.CompatibilityModeOracle,
 	})
 	// NewConnector validates configuration without opening a network connection.
 	fmt.Println(connector != nil, err == nil)
@@ -41,7 +41,7 @@ func ExampleNewConnector_proxyUser() {
 
 func ExampleNewConnector_createDatabase() {
 	connector, err := oceanbase.NewConnector(oceanbase.Config{
-		User: "app@tenant", Database: "demo", Mode: oceanbase.ModeMySQL,
+		User: "app@tenant", Database: "demo", CompatibilityMode: oceanbase.CompatibilityModeMySQL,
 		CreateDatabaseIfMissing: true,
 	})
 	// Creating a Connector validates the policy; it does not create a database.

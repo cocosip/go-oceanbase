@@ -19,7 +19,7 @@ type MetadataRows struct {
 
 // NewMetadata defers scalar conversion until Next, preserving dictionary error timing.
 func NewMetadata(ctx context.Context, sets []Set) *MetadataRows {
-	r := New(ctx, config.ModeMySQL, false, sets)
+	r := New(ctx, config.CompatibilityModeMySQL, false, sets)
 	return WrapMetadata(r, r.columns)
 }
 

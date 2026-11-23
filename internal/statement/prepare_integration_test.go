@@ -75,7 +75,7 @@ func TestPrepareRoundTrip(t *testing.T) {
 			}
 			query := integrationtest.SelectParameterSQL
 			args := []any{int64(42)}
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query = "SELECT :x,:X FROM dual"
 				args = []any{sql.Named("x", int64(42))}
 				var a, b int

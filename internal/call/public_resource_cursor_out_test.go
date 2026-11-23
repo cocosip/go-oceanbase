@@ -61,10 +61,10 @@ func TestOutputLeaseTransaction(t *testing.T) {
 
 func TestCursorOutCapability(t *testing.T) {
 	for _, tc := range []struct {
-		mode    config.Mode
+		mode    config.CompatibilityMode
 		version string
-	}{{config.ModeMySQL, testOutVersion}, {config.ModeOracle, "2.2.75"}, {config.ModeOracle, ""}} {
-		db := publictest.QueryVersionDB(t, tc.version, func(_ context.Context, p *wire.PacketIO) { p.ResetSequence(); testpeer.ServeQuit(t, p) }, func(cfg *config.Config) { cfg.Mode = tc.mode })
+	}{{config.CompatibilityModeMySQL, testOutVersion}, {config.CompatibilityModeOracle, "2.2.75"}, {config.CompatibilityModeOracle, ""}} {
+		db := publictest.QueryVersionDB(t, tc.version, func(_ context.Context, p *wire.PacketIO) { p.ResetSequence(); testpeer.ServeQuit(t, p) }, func(cfg *config.Config) { cfg.CompatibilityMode = tc.mode })
 		pinned := publictest.PinnedSession(t, db)
 		var cur *oceanbase.Cursor
 		if _, err := oceanbase.Execute(context.Background(), pinned, "CALL p(?)", oceanbase.CursorOut{Dest: &cur}); !errors.Is(err, dberrors.ErrUnsupported) {

@@ -15,7 +15,7 @@ const authExamplePublicKeyPEM = "PUBLIC KEY"
 
 func ExampleNewConnector_credentials() {
 	connector, err := NewConnector(Config{
-		Addr: os.Getenv("OB_ADDR"), Mode: ModeOracle,
+		Addr: os.Getenv("OB_ADDR"), CompatibilityMode: CompatibilityModeOracle,
 		Credentials: authExampleCredentials,
 	})
 	fmt.Println(connector != nil, err == nil)

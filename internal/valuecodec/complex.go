@@ -111,7 +111,7 @@ func EncodeComplexScalar(typ string, value any, options config.SessionOptions, m
 			return wire.Parameter{}, dberrors.ErrComplex
 		}
 		options.Location = wall.Location()
-		p, err := EncodeParameter(wall, config.ModeMySQL, options, limit)
+		p, err := EncodeParameter(wall, config.CompatibilityModeMySQL, options, limit)
 		if err != nil {
 			return wire.Parameter{}, err
 		}
@@ -273,7 +273,7 @@ func DecodeComplexScalar(typ string, data []byte, options config.SessionOptions)
 	case valueformat.TypeNameRaw:
 		return types.Raw(append([]byte{}, data...)), nil
 	case valueformat.TypeNameDate:
-		return DecodeBinaryValue(wire.Column{Type: 12}, config.ModeOracle, data)
+		return DecodeBinaryValue(wire.Column{Type: 12}, config.CompatibilityModeOracle, data)
 	case valueformat.TypeNameTimestamp:
 		return DecodeOracleTemporal(202, data, options.Location)
 	case valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob:

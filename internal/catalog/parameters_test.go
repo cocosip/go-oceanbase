@@ -16,7 +16,7 @@ const routineApp = "app"
 const routineOther = "other"
 
 func TestRoutineParameterPlan(t *testing.T) {
-	plan, err := sqltext.BuildBindPlan("CALL app.p(1,?,?)", config.ModeMySQL)
+	plan, err := sqltext.BuildBindPlan("CALL app.p(1,?,?)", config.CompatibilityModeMySQL)
 	if err != nil {
 		t.Fatal(err)
 	}

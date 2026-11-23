@@ -29,8 +29,8 @@ func TestParameterEncodedBudget(t *testing.T) {
 		{"national-fallback", charsetGBK, "", parameterBudgetText, parameterBudgetGBK, true},
 		{"national-expansion", charsetUTF8MB4, charsetGB18030, "\u0080\u0080", parameterBudgetExpansion, true},
 	} {
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-			if tc.national && mode != config.ModeOracle {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+			if tc.national && mode != config.CompatibilityModeOracle {
 				continue
 			}
 			for _, limit := range []int64{int64(len(tc.encoded)), int64(len(tc.encoded)) - 1, 0, -1} {

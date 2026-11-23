@@ -20,7 +20,7 @@ const (
 )
 
 func TestDuplicateKeyWorkflows(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, name := range []string{duplicateCRUDCase, "optimized-execution"} {
 			for _, tc := range []struct {
 				name             string
@@ -45,7 +45,7 @@ func TestDuplicateKeyWorkflows(t *testing.T) {
 			} {
 				t.Run(modeName(mode)+"/"+name+"/"+tc.name, func(t *testing.T) {
 					code := tc.mysql
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						code = tc.oracle
 					}
 					var failure error = &oceanbase.Error{Code: code, SQLState: "23000", Message: "private duplicate fixture"}
@@ -90,10 +90,10 @@ func TestDuplicateKeyWorkflows(t *testing.T) {
 	}
 }
 
-func duplicateFixtureSteps(t *testing.T, mode oceanbase.Mode, name string, failure error) []fixtureStep {
+func duplicateFixtureSteps(t *testing.T, mode oceanbase.CompatibilityMode, name string, failure error) []fixtureStep {
 	t.Helper()
 	ddl := parameterFixtureDDL
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		ddl += parameterFixtureEngine
 	}
 	steps := []fixtureStep{{query: ddl}}
@@ -134,12 +134,12 @@ func duplicateArguments(t *testing.T, want ...any) func([]driver.NamedValue) {
 }
 
 func TestBatchDuplicateAssertions(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, keepGoing := range []bool{false, true} {
 			for _, fault := range []string{duplicateValidBatch, duplicateWrappedBatch, "wrong-aggregate-code", "wrong-item-code", "wrong-mode-code", "missing-server-error", "missing-item-error", duplicateUnexpectedSuccess, "wrong-index", "wrong-completed", "missing-item", "extra-item", "first-failed", "first-error", "second-succeeded", "last-status", "last-error", "joined-finalization", "joined-summary", "joined-item"} {
 				t.Run(fmt.Sprintf("%s/%t/%s", modeName(mode), keepGoing, fault), func(t *testing.T) {
 					code, otherMode := uint32(1062), uint32(1)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						code, otherMode = otherMode, code
 					}
 					server := &oceanbase.Error{Code: code}

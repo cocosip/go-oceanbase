@@ -26,7 +26,7 @@ type OutputVariable string
 type LongPlaceholder struct{}
 
 // ClientLiteral renders a bounded SQL literal; callers reject streaming inputs first.
-func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
+func ClientLiteral(v any, mode config.CompatibilityMode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
 	var s string
 	switch v := v.(type) {
 	case ResolvedComplex:
@@ -41,7 +41,7 @@ func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLO
 	case types.Number:
 		return valueformat.PlainNumber(string(v), limit)
 	case types.NString, types.Raw, types.RowID, types.URowID, *types.URowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
-		if mode != config.ModeOracle {
+		if mode != config.CompatibilityModeOracle {
 			return "", dberrors.ErrUnsupported
 		}
 		return scalarLiteral(v, mode, options, maxLOBBytes, limit)
@@ -70,7 +70,7 @@ func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLO
 		if err != nil {
 			return "", err
 		}
-		if mode == config.ModeMySQL {
+		if mode == config.CompatibilityModeMySQL {
 			name := strings.ToLower(options.Charset)
 			if name == charsetUTF8MB3 {
 				name = "utf8"
@@ -88,7 +88,7 @@ func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLO
 			break
 		}
 		prefix, suffix := "X'", "'"
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			prefix, suffix = "HEXTORAW('", "')"
 		}
 		if int64(len(v)) > maxLOBBytes || int64(len(v)) > (limit-int64(len(prefix)+len(suffix)))/2 {
@@ -110,23 +110,23 @@ func ClientLiteral(v any, mode config.Mode, options config.SessionOptions, maxLO
 	return s, nil
 }
 
-func clientTimeLiteral(v time.Time, mode config.Mode, options config.SessionOptions) (string, error) {
+func clientTimeLiteral(v time.Time, mode config.CompatibilityMode, options config.SessionOptions) (string, error) {
 	var s string
 	v = v.In(options.Location)
 	if v.Year() < 1 || v.Year() > 9999 {
 		return "", fmt.Errorf("%w: datetime range", dberrors.ErrBind)
 	}
 	s = "'" + v.Format("2006-01-02 15:04:05.000000") + "'"
-	if mode == config.ModeOracle && v.Nanosecond()%1000 != 0 {
+	if mode == config.CompatibilityModeOracle && v.Nanosecond()%1000 != 0 {
 		s = "'" + v.Format(valueformat.TimestampLayout+".000000000") + "'"
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		s = "TIMESTAMP " + s
 	}
 	return s, nil
 }
 
-func scalarLiteral(value any, mode config.Mode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
+func scalarLiteral(value any, mode config.CompatibilityMode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
 	if id, ok := value.(*types.URowID); ok {
 		if id == nil {
 			const nullURowID = "CAST(NULL AS UROWID)"
@@ -230,10 +230,10 @@ func formatTimestamp(t time.Time, scale int) string {
 	return text
 }
 
-func clientFloat(v float64, mode config.Mode) (string, error) {
+func clientFloat(v float64, mode config.CompatibilityMode) (string, error) {
 	if !math.IsNaN(v) && !math.IsInf(v, 0) {
 		s := strconv.FormatFloat(v, 'g', -1, 64)
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			return s + "d", nil
 		}
 		if !strings.ContainsAny(s, "eE") {
@@ -241,7 +241,7 @@ func clientFloat(v float64, mode config.Mode) (string, error) {
 		}
 		return s, nil
 	}
-	if mode != config.ModeOracle {
+	if mode != config.CompatibilityModeOracle {
 		return "", fmt.Errorf("%w: non-finite parameter", dberrors.ErrBind)
 	}
 	if math.IsNaN(v) {

@@ -32,7 +32,10 @@ func TestCursorParsedTemporal(t *testing.T) {
 				}
 				p.ResetSequence()
 				testpeer.ServeQuit(t, p)
-			}, func(cfg *config.Config) { cfg.Mode = config.ModeOracle; cfg.Session.ParseTime = true })
+			}, func(cfg *config.Config) {
+				cfg.CompatibilityMode = config.CompatibilityModeOracle
+				cfg.Session.ParseTime = true
+			})
 			defer func() { _ = db.Close() }()
 			conn := publictest.PinnedSession(t, db)
 			defer func() { _ = conn.Close() }()

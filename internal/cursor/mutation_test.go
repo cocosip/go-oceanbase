@@ -11,7 +11,7 @@ import (
 
 func TestCursorInsertRejectsNullKey(t *testing.T) {
 	id := &catalog.CursorIdentity{Table: "`s`.`t`", Keys: []string{"id"}, Columns: []string{"id", "b"}, Locking: true}
-	s := session.New(config.Config{}, &session.Negotiated{Mode: config.ModeMySQL})
+	s := session.New(config.Config{}, &session.Negotiated{Mode: config.CompatibilityModeMySQL})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

@@ -23,7 +23,7 @@ func TestTemporalTimeWorkflow(t *testing.T) {
 		if definition.run == nil || definition.configure == nil {
 			t.Fatalf("missing %s acceptance case", name)
 		}
-		for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+		for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 			for _, valid := range []bool{true, false} {
 				t.Run(name+"/"+modeName(mode)+map[bool]string{true: "/valid", false: "/wrong-instant"}[valid], func(t *testing.T) {
 					stamp := time.Date(2024, 6, 1, 12, 30, 45, 123456789, time.UTC)
@@ -31,7 +31,7 @@ func TestTemporalTimeWorkflow(t *testing.T) {
 					ddl := "(ID INTEGER PRIMARY KEY,D DATE,DT DATETIME(6),TS TIMESTAMP(6),TM TIME(6),Y YEAR) ENGINE=InnoDB"
 					fields, types := "D,DT,TS,TM,Y", []byte{10, 12, 7, 11, 13}
 					values := []driver.Value{date, stamp.Truncate(time.Microsecond), stamp.Truncate(time.Microsecond), "-25:00:00.123456", int64(2024)}
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						ddl = "(ID INTEGER PRIMARY KEY,D DATE,DT TIMESTAMP(9),TS TIMESTAMP(9) WITH TIME ZONE,LTZ TIMESTAMP(9) WITH LOCAL TIME ZONE)"
 						fields, types = "D,DT,TS,LTZ", []byte{12, 202, 200, 201}
 						date = date.Add(12*time.Hour + 34*time.Minute + 56*time.Second)
@@ -41,7 +41,7 @@ func TestTemporalTimeWorkflow(t *testing.T) {
 						values[1] = stamp.Add(time.Hour)
 					}
 					marks := "?,?,?,?,?,?"
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						marks = "?,?,?,?,?"
 					}
 					steps := []fixtureStep{{query: "CREATE TABLE OBT_OFFLINE_T " + ddl}, {query: "INSERT INTO OBT_OFFLINE_T VALUES (" + marks + ")", affected: 1}, {query: "INSERT INTO OBT_OFFLINE_T VALUES (" + marks + ")", affected: 1}}
@@ -62,7 +62,7 @@ func TestTemporalTimeWorkflow(t *testing.T) {
 					}
 					steps = append(steps, fixtureStep{query: fixtureDropTableSQL})
 					s := fixtureScenario(t, steps)
-					s.mode, s.cfg.Mode, s.cfg.Session.Location = mode, mode, time.UTC
+					s.mode, s.cfg.CompatibilityMode, s.cfg.Session.Location = mode, mode, time.UTC
 					definition.configure(&s.cfg)
 					if !s.cfg.Session.ParseTime || s.cfg.Session.CompatibleMysqlVersion != 8 {
 						t.Fatal("time scenario configuration lost")

@@ -17,7 +17,7 @@ type RoutineCall struct {
 // NamedRoutine accepts only CALL syntax with unambiguous routine-to-placeholder mapping.
 func NamedRoutine(query string, noBackslash bool) (RoutineCall, error) {
 	bad := fmt.Errorf("%w: named MySQL arguments require a simple CALL", dberrors.ErrBind)
-	tokens, err := LexSQL(query, config.ModeMySQL, noBackslash, false)
+	tokens, err := LexSQL(query, config.CompatibilityModeMySQL, noBackslash, false)
 	if err != nil {
 		return RoutineCall{}, err
 	}

@@ -13,7 +13,7 @@ func FuzzBindPlan(f *testing.F) {
 		if len(data) > 4096 {
 			t.Skip()
 		}
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 			for _, noBackslash := range []bool{false, true} {
 				p, err := BuildBindPlanSQLMode(string(data), mode, noBackslash, len(data)%2 == 0)
 				if err != nil {

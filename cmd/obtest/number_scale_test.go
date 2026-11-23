@@ -39,12 +39,12 @@ func numberScaleFixtureCases() []numberScaleFixtureCase {
 }
 
 func TestOracleNumberScaleWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, numberScaleCase, oceanbase.ModeOracle)
+	definition := scenarioDefinition(t, numberScaleCase, oceanbase.CompatibilityModeOracle)
 	for _, tc := range numberScaleFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps, expected := numberScaleSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeOracle
+			s.mode = oceanbase.CompatibilityModeOracle
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

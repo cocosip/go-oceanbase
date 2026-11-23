@@ -27,23 +27,23 @@ import (
 
 func TestAuthPluginGSSNativeSessionState(t *testing.T) {
 	credentials, maxToken := nativeSSPICredentials(t)
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, reject := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/reject=%t", mode, reject), func(t *testing.T) { checkNativeSSPISessionState(t, credentials, maxToken, mode, reject) })
 		}
 	}
 }
-func checkNativeSSPISessionState(t *testing.T, credentials *sspi.Credentials, maxToken uint32, mode config.Mode, reject bool) {
+func checkNativeSSPISessionState(t *testing.T, credentials *sspi.Credentials, maxToken uint32, mode config.CompatibilityMode, reject bool) {
 	t.Helper()
 	clientTLS, serverTLS := testpeer.TLSConfig(t)
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	var dials atomic.Int32
 	var rawTransport net.Conn
 	peerDone := make(chan struct{})
-	cfg := config.Config{User: testUser, Password: testSSPIPassword, Mode: mode, TLSConfig: clientTLS,
+	cfg := config.Config{User: testUser, Password: testSSPIPassword, CompatibilityMode: mode, TLSConfig: clientTLS,
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			dials.Add(1)
 			var err error

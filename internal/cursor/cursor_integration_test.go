@@ -19,7 +19,7 @@ func TestCursorUpdates(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) { integrationTestCursorUpdates(t, p, oceanbase.CursorForward) })
-		if p.Mode == oceanbase.ModeOracle {
+		if p.Mode == oceanbase.CompatibilityModeOracle {
 			t.Run(p.Name+"-sensitive", func(t *testing.T) { integrationTestCursorUpdates(t, p, oceanbase.CursorSensitive) })
 		}
 	}
@@ -31,7 +31,7 @@ func TestSensitiveCursorRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeOracle {
+		if p.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) {

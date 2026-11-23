@@ -114,7 +114,7 @@ func integrationTestBatchArrayBindingProfile(t *testing.T, p integrationtest.Pro
 	db := integrationtest.OpenProfile(t, p)
 	table := fmt.Sprintf("OBGARRAY_%d", time.Now().UnixNano())
 	suffix := integrationIntegrationInnoDBSuffix
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		suffix = ""
 	}
 	if _, err := db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(100))"+suffix); err != nil {
@@ -134,7 +134,7 @@ func integrationTestBatchArrayBindingProfile(t *testing.T, p integrationtest.Pro
 		[][]any{{1, "一"}, {1, "duplicate"}, {2, "二🙂"}},
 		oceanbase.BatchOptions{Strategy: oceanbase.BatchArrayBinding, ContinueOnError: true, ChunkRows: 3, ChunkParameters: 6})
 	want := oceanbase.BatchSequential
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		// This native-path fixture requires a known OceanBase version >= 4.2.1.
 		want = oceanbase.BatchArrayBinding
 	}
@@ -146,7 +146,7 @@ func integrationTestBatchArrayBindingProfile(t *testing.T, p integrationtest.Pro
 	if r.Items[0].Status != oceanbase.BatchSucceeded || r.Items[1].Status != oceanbase.BatchFailed || r.Items[2].Status != oceanbase.BatchSucceeded {
 		t.Fatal("array binding omitted a successful input")
 	}
-	if p.Mode == oceanbase.ModeOracle && (r.Items[0].RowsAffectedKnown || r.Items[2].RowsAffectedKnown || server.SQLState != "") {
+	if p.Mode == oceanbase.CompatibilityModeOracle && (r.Items[0].RowsAffectedKnown || r.Items[2].RowsAffectedKnown || server.SQLState != "") {
 		t.Fatal("array binding fabricated per-input counts or SQLSTATE")
 	}
 	if err = tx.Rollback(); err != nil {
@@ -165,7 +165,7 @@ func integrationTestBatchDatabase(t *testing.T, p integrationtest.Profile, db *s
 	t.Helper()
 	table := fmt.Sprintf("OBGBATCH_%d", time.Now().UnixNano())
 	suffix := integrationIntegrationInnoDBSuffix
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		suffix = ""
 	}
 	if _, err := db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(100))"+suffix); err != nil {
@@ -185,7 +185,7 @@ func integrationTestBatchDatabase(t *testing.T, p integrationtest.Profile, db *s
 			r, err := oceanbase.ExecBatch(ctx, db, query, inputs, oceanbase.BatchOptions{Strategy: strategy, ContinueOnError: keepGoing, ChunkRows: 2, ChunkParameters: 4})
 			if rewrite && strategy == oceanbase.BatchRewrite {
 				want := oceanbase.BatchSequential
-				if p.Mode == oceanbase.ModeMySQL && !keepGoing {
+				if p.Mode == oceanbase.CompatibilityModeMySQL && !keepGoing {
 					want = oceanbase.BatchRewrite
 				}
 				if r.Strategy == oceanbase.BatchRewrite {
@@ -231,7 +231,7 @@ func integrationTestBatchDatabase(t *testing.T, p integrationtest.Profile, db *s
 	if n != 0 {
 		t.Fatal("batch changed caller transaction boundary")
 	}
-	if rewrite && p.Mode == oceanbase.ModeMySQL && !nativeRewrite {
+	if rewrite && p.Mode == oceanbase.CompatibilityModeMySQL && !nativeRewrite {
 		if os.Getenv("OB_TEST_REQUIRE") == "1" {
 			t.Fatal("native batch rewrite unavailable; sequential fallback and rollback verified")
 		}
@@ -239,7 +239,7 @@ func integrationTestBatchDatabase(t *testing.T, p integrationtest.Profile, db *s
 	}
 }
 
-func integrationCheckBatchDuplicateResult(t *testing.T, mode oceanbase.Mode, result oceanbase.BatchResult, err error, keepGoing bool) int {
+func integrationCheckBatchDuplicateResult(t *testing.T, mode oceanbase.CompatibilityMode, result oceanbase.BatchResult, err error, keepGoing bool) int {
 	t.Helper()
 	var batch *oceanbase.BatchError
 	if !errors.As(err, &batch) || batch.Index != 1 || len(result.Items) != 3 || result.Items[0].Status != oceanbase.BatchSucceeded || result.Items[1].Status != oceanbase.BatchFailed {

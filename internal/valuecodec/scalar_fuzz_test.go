@@ -41,8 +41,8 @@ func FuzzScalars(f *testing.F) {
 		_, _ = valueformat.ParseTimestamp(text)
 		if _, err := valueformat.ParseLTZ(text); err == nil {
 			options := config.SessionOptions{Location: time.UTC}
-			_, serverErr := EncodeParameter(types.TimestampLTZ(text), config.ModeOracle, options, 1024)
-			_, clientErr := ClientLiteral(types.TimestampLTZ(text), config.ModeOracle, options, 1024, 1024)
+			_, serverErr := EncodeParameter(types.TimestampLTZ(text), config.CompatibilityModeOracle, options, 1024)
+			_, clientErr := ClientLiteral(types.TimestampLTZ(text), config.CompatibilityModeOracle, options, 1024, 1024)
 			if (serverErr == nil) != (clientErr == nil) {
 				t.Fatal("LTZ prepare acceptance differs", text, serverErr, clientErr)
 			}
@@ -51,8 +51,8 @@ func FuzzScalars(f *testing.F) {
 		_, _ = valueformat.ParseInterval(text, true)
 		charsets := [...]string{"", charsetUTF8MB4, charsetUTF8MB3, charsetGBK, charsetLatin1, charsetUTF16, charsetASCII, charsetGB18030}
 		options := config.SessionOptions{Charset: charsetGBK, NCharset: charsets[int(typ)%len(charsets)]}
-		_, serverErr := EncodeParameter(types.NString(text), config.ModeOracle, options, 8192)
-		_, clientErr := ClientLiteral(types.NString(text), config.ModeOracle, options, 8192, 8192)
+		_, serverErr := EncodeParameter(types.NString(text), config.CompatibilityModeOracle, options, 8192)
+		_, clientErr := ClientLiteral(types.NString(text), config.CompatibilityModeOracle, options, 8192, 8192)
 		if (serverErr == nil) != (clientErr == nil) {
 			t.Fatal("types.NString prepare acceptance differs", options.NCharset, text, serverErr, clientErr)
 		}

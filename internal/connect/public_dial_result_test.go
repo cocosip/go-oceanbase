@@ -16,7 +16,7 @@ import (
 
 func TestDialContextNilConnection(t *testing.T) {
 	sentinel := errors.New("dial callback failed")
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, tc := range []struct {
 			name     string
 			err      error
@@ -29,7 +29,7 @@ func TestDialContextNilConnection(t *testing.T) {
 			for _, typed := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%d/%s/typed%t", mode, tc.name, typed), func(t *testing.T) {
 					calls, credentials := 0, 0
-					cfg := config.Config{Mode: mode, ReadTimeout: time.Second,
+					cfg := config.Config{CompatibilityMode: mode, ReadTimeout: time.Second,
 						Routing: config.RoutingOptions{Endpoints: []config.Endpoint{{Addr: routeFirst}, {Addr: routeSecond}}},
 						Credentials: func(context.Context) (config.Credentials, error) {
 							credentials++

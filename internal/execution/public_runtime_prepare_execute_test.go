@@ -14,7 +14,7 @@ import (
 )
 
 func TestPrepareExecuteFailureNoReplay(t *testing.T) {
-	db := optimizationDB(t, oceanbase.ModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true}, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, publictest.CombinedQueryPacket(0, testBatchSQL, 1, false, false)) || !testpeer.SendPackets(ctx, t, p, []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'x'}) {
 			return
 		}
@@ -34,7 +34,7 @@ func TestPrepareExecuteFailureNoReplay(t *testing.T) {
 }
 
 func TestPrepareExecuteQueries(t *testing.T) {
-	db := optimizationDB(t, oceanbase.ModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true, StatementCacheSize: 1, ReuseParameterTypes: true, StatementChecksum: true}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true, StatementCacheSize: 1, ReuseParameterTypes: true, StatementChecksum: true}, func(ctx context.Context, p *wire.PacketIO) {
 		for i := int64(1); i <= 3; i++ {
 			id := uint32(0)
 			if i > 1 {
@@ -67,7 +67,7 @@ func TestPrepareExecuteLOBOpen(t *testing.T) {
 	for _, typ := range []byte{210, 211} {
 		t.Run(fmt.Sprint(typ), func(t *testing.T) {
 			query := "SELECT lob FROM t WHERE id=?"
-			db := optimizationDB(t, oceanbase.ModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true}, func(ctx context.Context, p *wire.PacketIO) {
+			db := optimizationDB(t, oceanbase.CompatibilityModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true}, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadCommand(ctx, t, p, publictest.CombinedQueryPacket(0, query, 1, false, false)) {
 					return
 				}

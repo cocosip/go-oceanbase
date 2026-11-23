@@ -9,7 +9,7 @@ import (
 )
 
 // Parameter validates a streamed input without reading or claiming its source.
-func Parameter(source *Source, mode config.Mode, oracleSupported bool, maxLOBBytes, maxMessageBytes int64) (wire.Parameter, error) {
+func Parameter(source *Source, mode config.CompatibilityMode, oracleSupported bool, maxLOBBytes, maxMessageBytes int64) (wire.Parameter, error) {
 	if err := source.Validate(); err != nil {
 		return wire.Parameter{}, err
 	}
@@ -24,7 +24,7 @@ func Parameter(source *Source, mode config.Mode, oracleSupported bool, maxLOBByt
 	if source.Text {
 		typ = 253
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		if !oracleSupported {
 			return wire.Parameter{}, dberrors.ErrUnsupported
 		}

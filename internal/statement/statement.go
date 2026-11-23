@@ -45,7 +45,7 @@ func Prepare(ctx context.Context, op *session.Operation, query string) (*Stateme
 		return nil, wire.ErrMessageTooLarge
 	}
 	plan := sqltext.Plan{Query: query, SQL: query, Mode: p.Mode}
-	if p.Mode == config.ModeOracle {
+	if p.Mode == config.CompatibilityModeOracle {
 		var err error
 		plan, err = sqltext.BuildBindPlan(query, p.Mode)
 		if err != nil {
@@ -60,7 +60,7 @@ func Prepare(ctx context.Context, op *session.Operation, query string) (*Stateme
 	if err != nil {
 		return nil, err
 	}
-	if p.Mode == config.ModeMySQL {
+	if p.Mode == config.CompatibilityModeMySQL {
 		plan.NumInput = int(header.Parameters)
 		plan.Slots = make([]sqltext.Slot, plan.NumInput)
 		for i := range plan.Slots {

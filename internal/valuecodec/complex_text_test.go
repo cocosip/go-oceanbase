@@ -20,8 +20,8 @@ const (
 )
 
 func textObjectDescriptor() *Descriptor {
-	child := &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: testComplexChild}, Fields: []Field{{Name: "N", Type: valueformat.TypeNameNumber}, {Name: "S", Type: valueformat.TypeNameNVarchar2}}}
-	return &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: testComplexRoot, Version: 7}, Fields: []Field{{Name: "C", Type: testComplexChild, Child: child}, {Name: testComplexTag, Type: valueformat.TypeNameNumber}}}
+	child := &Descriptor{Key: Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: testComplexChild}, Fields: []Field{{Name: "N", Type: valueformat.TypeNameNumber}, {Name: "S", Type: valueformat.TypeNameNVarchar2}}}
+	return &Descriptor{Key: Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: testComplexRoot, Version: 7}, Fields: []Field{{Name: "C", Type: testComplexChild, Child: child}, {Name: testComplexTag, Type: valueformat.TypeNameNumber}}}
 }
 
 func TestComplexTextObjects(t *testing.T) {
@@ -72,7 +72,7 @@ func TestComplexTextDescriptorBoundaries(t *testing.T) {
 	if _, err := DecodeComplexText(d, []byte("ROOT(NULL,NULL)"), 1<<20); err == nil {
 		t.Fatal("cyclic descriptor accepted")
 	}
-	d = &Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "T"}}
+	d = &Descriptor{Key: Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "T"}}
 	for i := 0; i <= valueformat.MaxComplexNodes; i++ {
 		d.Fields = append(d.Fields, Field{Name: "F", Type: valueformat.TypeNameNumber})
 	}

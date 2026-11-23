@@ -28,12 +28,12 @@ func utf16leFixtureCases() []utf16leFixtureCase {
 }
 
 func TestMySQLUTF16LEWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, utf16leCase, oceanbase.ModeMySQL)
+	definition := scenarioDefinition(t, utf16leCase, oceanbase.CompatibilityModeMySQL)
 	for _, tc := range utf16leFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := utf16leSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeMySQL
+			s.mode = oceanbase.CompatibilityModeMySQL
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

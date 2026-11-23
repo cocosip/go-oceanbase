@@ -63,7 +63,7 @@ func integrationTestChangeUserResourceInvalidation(t *testing.T, p integrationte
 	}
 	defer func() { _ = pinned.Close() }()
 	identitySQL := identityMySQLSQL
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		identitySQL = identityOracleSQL
 	}
 	var original string
@@ -92,7 +92,7 @@ func integrationTestChangeUserResourceInvalidation(t *testing.T, p integrationte
 	}
 	_ = cursor.Close()
 	probe := sessionProbeSQL
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		probe += integrationtest.OracleDualSuffix
 	}
 	var value int

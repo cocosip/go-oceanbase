@@ -52,7 +52,7 @@ func TestComplexLOBContent(t *testing.T) {
 
 func TestNamedLOBCollectionMetadata(t *testing.T) {
 	for _, typ := range []string{valueformat.TypeNameBlob, valueformat.TypeNameClob} {
-		d := Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "TA", Version: 7}, Array: true, Fields: []Field{{Type: typ}}}
+		d := Descriptor{Key: Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "TA", Version: 7}, Array: true, Fields: []Field{{Type: typ}}}
 		want := []byte{1, 'S', 2, 'T', 'A', 7}
 		got, err := EncodeComplexMetadata(&d, config.SessionOptions{}, 1024, int64(len(want)))
 		if err != nil || !bytes.Equal(got, want) {

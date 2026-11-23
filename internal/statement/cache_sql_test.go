@@ -10,17 +10,17 @@ import (
 func TestCacheableSQLQuoteModes(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		mode   config.Mode
+		mode   config.CompatibilityMode
 		status uint16
 		query  string
 		want   bool
 	}{
-		{"ansi separators", config.ModeMySQL, 0, `SELECT 1 AS "a\"; USE db2; SELECT 1 AS "b" -- "`, false},
-		{"no backslash separators", config.ModeMySQL, 512, `SELECT 1 AS "a\"; USE db2; SELECT 1 AS "b" -- "`, false},
-		{"quoted separator", config.ModeMySQL, 0, `SELECT "a;b"`, true},
-		{"both quote modes safe", config.ModeMySQL, 0, `SELECT 'a\b' AS "v"`, true},
-		{"ambiguous quote", config.ModeMySQL, 0, `SELECT "a\"b"`, false},
-		{"oracle quotes", config.ModeOracle, 0, `SELECT 'a\b' AS "v" FROM dual`, true},
+		{"ansi separators", config.CompatibilityModeMySQL, 0, `SELECT 1 AS "a\"; USE db2; SELECT 1 AS "b" -- "`, false},
+		{"no backslash separators", config.CompatibilityModeMySQL, 512, `SELECT 1 AS "a\"; USE db2; SELECT 1 AS "b" -- "`, false},
+		{"quoted separator", config.CompatibilityModeMySQL, 0, `SELECT "a;b"`, true},
+		{"both quote modes safe", config.CompatibilityModeMySQL, 0, `SELECT 'a\b' AS "v"`, true},
+		{"ambiguous quote", config.CompatibilityModeMySQL, 0, `SELECT "a\"b"`, false},
+		{"oracle quotes", config.CompatibilityModeOracle, 0, `SELECT 'a\b' AS "v" FROM dual`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			op := testOperation(t, config.Config{}, tc.mode, "")
@@ -35,23 +35,23 @@ func TestCacheableSQLQuoteModes(t *testing.T) {
 func TestSessionNeutralSQL(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		mode   config.Mode
+		mode   config.CompatibilityMode
 		status uint16
 		query  string
 		want   bool
 	}{
-		{"show", config.ModeMySQL, 0, "SHOW VARIABLES LIKE 'sql_mode'", true},
-		{"explain", config.ModeMySQL, 0, "EXPLAIN SELECT 1", true},
-		{"describe", config.ModeMySQL, 0, "DESCRIBE t", true},
-		{"desc", config.ModeMySQL, 0, "DESC t", true},
-		{"set mutates", config.ModeMySQL, 0, "SET SESSION sql_mode = 'ANSI_QUOTES'", false},
-		{"ddl mutates", config.ModeMySQL, 0, "TRUNCATE t", false},
-		{"call mutates", config.ModeMySQL, 0, "CALL p()", false},
-		{"with clears", config.ModeMySQL, 0, "WITH c AS (SELECT 1) SELECT * FROM c", false},
-		{"quoted separator", config.ModeMySQL, 0, `SHOW VARIABLES LIKE "a\"; SET x=1; -- "`, false},
-		{"multi statement", config.ModeMySQL, 0, "SHOW A; SHOW B", false},
-		{"ambiguous quote", config.ModeMySQL, 0, `SHOW "a\"b"`, false},
-		{"empty", config.ModeMySQL, 0, "", false},
+		{"show", config.CompatibilityModeMySQL, 0, "SHOW VARIABLES LIKE 'sql_mode'", true},
+		{"explain", config.CompatibilityModeMySQL, 0, "EXPLAIN SELECT 1", true},
+		{"describe", config.CompatibilityModeMySQL, 0, "DESCRIBE t", true},
+		{"desc", config.CompatibilityModeMySQL, 0, "DESC t", true},
+		{"set mutates", config.CompatibilityModeMySQL, 0, "SET SESSION sql_mode = 'ANSI_QUOTES'", false},
+		{"ddl mutates", config.CompatibilityModeMySQL, 0, "TRUNCATE t", false},
+		{"call mutates", config.CompatibilityModeMySQL, 0, "CALL p()", false},
+		{"with clears", config.CompatibilityModeMySQL, 0, "WITH c AS (SELECT 1) SELECT * FROM c", false},
+		{"quoted separator", config.CompatibilityModeMySQL, 0, `SHOW VARIABLES LIKE "a\"; SET x=1; -- "`, false},
+		{"multi statement", config.CompatibilityModeMySQL, 0, "SHOW A; SHOW B", false},
+		{"ambiguous quote", config.CompatibilityModeMySQL, 0, `SHOW "a\"b"`, false},
+		{"empty", config.CompatibilityModeMySQL, 0, "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			op := testOperation(t, config.Config{}, tc.mode, "")

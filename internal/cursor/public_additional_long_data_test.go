@@ -15,7 +15,7 @@ import (
 
 func TestLongDataCursor(t *testing.T) {
 	db := publictest.QueryDB(t, func(ctx context.Context, p *wire.PacketIO) {
-		if !publictest.ServePrepare(ctx, t, p, "SELECT ?", 80, 1, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(config.ModeMySQL, 80, 0, 3, []byte("ab"))) {
+		if !publictest.ServePrepare(ctx, t, p, "SELECT ?", 80, 1, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(config.CompatibilityModeMySQL, 80, 0, 3, []byte("ab"))) {
 			return
 		}
 		payload := append(publictest.ExecuteHeader(80), 0, 1, 252, 0)
@@ -44,9 +44,9 @@ func TestLongDataCursor(t *testing.T) {
 	}
 }
 
-func longDataPacket(mode config.Mode, id uint32, index uint16, piece byte, data []byte) []byte {
+func longDataPacket(mode config.CompatibilityMode, id uint32, index uint16, piece byte, data []byte) []byte {
 	b := binary.LittleEndian.AppendUint16(publictest.StmtPacket(24, id), index)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		b[0] = 162
 		b = append(b, piece, 0)
 		b = binary.LittleEndian.AppendUint64(b, uint64(len(data)))

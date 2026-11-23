@@ -28,7 +28,7 @@ func runParameterMetadata(ctx context.Context, s *scenario) error {
 		slots []parameterIdentity
 	}
 	queries := []description{{"UPDATE " + table + " SET V=? WHERE ID=?", []parameterIdentity{{1, ""}, {2, ""}}}}
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		queries = append(queries, description{"UPDATE " + table + " SET V=:text WHERE ID=:key OR ID=:KEY", []parameterIdentity{{1, "TEXT"}, {2, "KEY"}, {2, "KEY"}}})
 	}
 	queries = append(queries, description{"SELECT ID,V FROM " + table + " WHERE ID=1", nil})
@@ -52,7 +52,7 @@ func runParameterMetadata(ctx context.Context, s *scenario) error {
 	return countRows(ctx, s.db, table, 1)
 }
 
-func checkParameterMetadata(ctx context.Context, c *sql.Conn, mode oceanbase.Mode, query string, slots []parameterIdentity) (err error) {
+func checkParameterMetadata(ctx context.Context, c *sql.Conn, mode oceanbase.CompatibilityMode, query string, slots []parameterIdentity) (err error) {
 	rows, err := oceanbase.Metadata(ctx, c, oceanbase.MetadataFilter{Kind: oceanbase.MetadataStatementParameters, Query: query})
 	if err != nil {
 		return err
@@ -81,7 +81,7 @@ func checkParameterMetadata(ctx context.Context, c *sql.Conn, mode oceanbase.Mod
 	return expect(n == len(slots), "statement parameter metadata row count mismatch")
 }
 
-func checkParameterMetadataRow(rows *sql.Rows, mode oceanbase.Mode, ordinal int64, slot parameterIdentity) error {
+func checkParameterMetadataRow(rows *sql.Rows, mode oceanbase.CompatibilityMode, ordinal int64, slot parameterIdentity) error {
 	var physical, logical, protocolType, protocolDirection int64
 	var name, direction, dataType sql.NullString
 	var nullable, length, precision, scale sql.NullInt64
@@ -92,7 +92,7 @@ func checkParameterMetadataRow(rows *sql.Rows, mode oceanbase.Mode, ordinal int6
 		return checkFailure("statement parameter identity or direction mismatch")
 	}
 	nullableOK := !nullable.Valid
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		nullableOK = nullable.Valid && (nullable.Int64 == 0 || nullable.Int64 == 1)
 	}
 	if !nullableOK || protocolType < 0 || protocolType > 255 || protocolDirection < 0 || protocolDirection > 255 || dataType.Valid && dataType.String == "" {

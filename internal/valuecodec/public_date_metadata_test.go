@@ -18,9 +18,9 @@ const testDateQuery = "SELECT d FROM t"
 const testDateText = "2024-02-29 12:34:56"
 
 func TestDateColumnTypes(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		types := []byte{7, 10, 12}
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			types = []byte{12}
 		}
 		for _, typ := range types {
@@ -37,13 +37,13 @@ func TestDateColumnTypes(t *testing.T) {
 	}
 }
 
-func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, typ byte, path, framing string, parseTime bool) {
+func testDateColumnTypes(t *testing.T, mode oceanbase.CompatibilityMode, typ byte, path, framing string, parseTime bool) {
 	t.Helper()
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
-	cfg := oceanbase.Config{Mode: mode, Session: oceanbase.SessionOptions{ParseTime: parseTime}}
+	cfg := oceanbase.Config{CompatibilityMode: mode, Session: oceanbase.SessionOptions{ParseTime: parseTime}}
 	if path == testClientStrategy {
 		cfg.PrepareMode = oceanbase.PrepareClient
 	}
@@ -107,7 +107,7 @@ func testDateColumnTypes(t *testing.T, mode oceanbase.Mode, typ byte, path, fram
 	}
 }
 
-func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode, typ byte, parseTime bool) {
+func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.CompatibilityMode, typ byte, parseTime bool) {
 	t.Helper()
 	defer func() { _ = rows.Close() }()
 	columns, err := rows.ColumnTypes()
@@ -115,7 +115,7 @@ func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode, typ
 		t.Fatal("date column metadata missing", err)
 	}
 	wantType := valueformat.TypeNameDateTime
-	if mode == oceanbase.ModeOracle || typ == 10 {
+	if mode == oceanbase.CompatibilityModeOracle || typ == 10 {
 		wantType = valueformat.TypeNameDate
 	} else if typ == 7 {
 		wantType = valueformat.TypeNameTimestamp
@@ -152,16 +152,16 @@ func assertDateColumnRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode, typ
 }
 
 func TestDateParameterMetadata(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				status := byte(2)
 				wantType := valueformat.TypeNameDateTime
-				if mode == oceanbase.ModeOracle {
+				if mode == oceanbase.CompatibilityModeOracle {
 					status, wantType = 6, valueformat.TypeNameDate
 				}
 				const query = "SELECT ? FROM dual"
-				db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
 					if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, query...)) || !testpeer.SendPackets(ctx, t, p,
 						[]byte{0, 7, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0}, testpeer.TextColumn("p", 12, 63, 0), []byte{254, 0, 0, status, 0}) {
 						return

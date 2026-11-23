@@ -72,7 +72,7 @@ func TestOBProxyProtocolSessions(t *testing.T) {
 					_ = testpeer.ReadCommand(ctx, t, p, []byte{1})
 				})
 				_, dial, _ := obproxy.NewTestRuntime(t, socket, func() error { starts.Add(1); return nil })
-				cfg := oceanbase.Config{User: testpeer.User, Mode: testpeer.ModeFromStatus(status), Network: networkUnix, Addr: socket,
+				cfg := oceanbase.Config{User: testpeer.User, CompatibilityMode: testpeer.ModeFromStatus(status), Network: networkUnix, Addr: socket,
 					DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 						c, e := dial(ctx, network, address)
 						if e != nil {
@@ -136,7 +136,7 @@ func TestOBProxyTLSAndAuthentication(t *testing.T) {
 				_ = testpeer.ReadCommand(ctx, t, p, []byte{1})
 			})
 			_, dial, _ := obproxy.NewTestRuntime(t, socket, func() error { return nil })
-			created, err := oceanbase.NewConnector(oceanbase.Config{User: testpeer.User, Password: "vc-secret", Mode: testpeer.ModeFromStatus(status), TLSConfig: clientTLS,
+			created, err := oceanbase.NewConnector(oceanbase.Config{User: testpeer.User, Password: "vc-secret", CompatibilityMode: testpeer.ModeFromStatus(status), TLSConfig: clientTLS,
 				Network: networkUnix, Addr: socket, DialContext: dial})
 			if err != nil {
 				t.Fatal(err)

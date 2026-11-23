@@ -255,9 +255,9 @@ func FinishAuthentication(ctx context.Context, cfg config.Config, s *session.Neg
 			if err != nil {
 				return err
 			}
-			s.Mode = config.ModeMySQL
+			s.Mode = config.CompatibilityModeMySQL
 			if s.OK.Status&4 != 0 {
-				s.Mode = config.ModeOracle
+				s.Mode = config.CompatibilityModeOracle
 			}
 			if err := checkAuthenticationMode(cfg, s.Mode, credentials); err != nil {
 				return err
@@ -297,14 +297,14 @@ func FinishAuthentication(ctx context.Context, cfg config.Config, s *session.Neg
 	return fmt.Errorf("%w: too many authentication exchanges", dberrors.ErrUnsupported)
 }
 
-func checkAuthenticationMode(cfg config.Config, mode config.Mode, credentials config.Credentials) error {
-	if cfg.Mode != config.ModeAuto && mode != cfg.Mode {
-		return dberrors.ErrModeMismatch
+func checkAuthenticationMode(cfg config.Config, mode config.CompatibilityMode, credentials config.Credentials) error {
+	if cfg.CompatibilityMode != config.CompatibilityModeAuto && mode != cfg.CompatibilityMode {
+		return dberrors.ErrCompatibilityModeMismatch
 	}
-	if mode == config.ModeOracle && cfg.RowsAffectedMode == config.ChangedRows {
+	if mode == config.CompatibilityModeOracle && cfg.RowsAffectedMode == config.ChangedRows {
 		return &config.ConfigError{Field: "RowsAffectedMode"}
 	}
-	if credentials.ProxyUser != "" && mode != config.ModeOracle {
+	if credentials.ProxyUser != "" && mode != config.CompatibilityModeOracle {
 		return fmt.Errorf("%w: proxy login requires Oracle compatibility mode", dberrors.ErrUnsupported)
 	}
 	return nil

@@ -13,8 +13,8 @@ func TestConfigDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := c
-	if cfg.Addr != "127.0.0.1:2881" || cfg.Mode != ModeAuto || cfg.ConnectTimeout != 10*time.Second {
-		t.Fatalf("unexpected connection defaults: addr=%q mode=%v timeout=%v", cfg.Addr, cfg.Mode, cfg.ConnectTimeout)
+	if cfg.Addr != "127.0.0.1:2881" || cfg.CompatibilityMode != CompatibilityModeAuto || cfg.ConnectTimeout != 10*time.Second {
+		t.Fatalf("unexpected connection defaults: addr=%q mode=%v timeout=%v", cfg.Addr, cfg.CompatibilityMode, cfg.ConnectTimeout)
 	}
 	if cfg.Limits.MaxMessageBytes != 64<<20 || cfg.Limits.MaxLOBBytes != 16<<20 || cfg.Limits.FetchSize != 128 || cfg.Limits.MaxResultItems != 1024 || cfg.Limits.CleanupTimeout != time.Second {
 		t.Fatalf("unexpected resource defaults: %+v", cfg.Limits)
@@ -36,7 +36,7 @@ func TestConfigValidation(t *testing.T) {
 		cfg  Config
 	}{
 		{"missing user", Config{}},
-		{"mode", Config{User: testUser, Mode: 99}},
+		{"mode", Config{User: testUser, CompatibilityMode: 99}},
 		{"negative timeout", Config{User: testUser, ConnectTimeout: -1}},
 		{"negative message limit", Config{User: testUser, Limits: Limits{MaxMessageBytes: -1}}},
 		{"negative lob limit", Config{User: testUser, Limits: Limits{MaxLOBBytes: -1}}},
@@ -45,7 +45,7 @@ func TestConfigValidation(t *testing.T) {
 		{"negative cleanup", Config{User: testUser, Limits: Limits{CleanupTimeout: -1}}},
 		{"insecure TLS", Config{User: testUser, TLSConfig: &tls.Config{InsecureSkipVerify: true}}},
 		{"invalid counts", Config{User: testUser, RowsAffectedMode: 99}},
-		{"oracle changed counts", Config{User: testUser, Mode: ModeOracle, RowsAffectedMode: ChangedRows}},
+		{"oracle changed counts", Config{User: testUser, CompatibilityMode: CompatibilityModeOracle, RowsAffectedMode: ChangedRows}},
 		{"invalid reset", Config{User: testUser, ResetMode: 99}},
 		{"invalid address", Config{User: testUser, Addr: "host:0"}},
 		{"invalid port", Config{User: testUser, Addr: "host:65536"}},

@@ -16,7 +16,7 @@ import (
 
 func TestLOBScalarOutput(t *testing.T) {
 	locator := publictest.LobOutFixture(3)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBCall(ctx, t, p, "BEGIN ? := f(); END;", []wire.Parameter{{Type: 6}}, [][]byte{testpeer.TextColumn("b", 210, 63, 0)}, append([]byte{0, 0, byte(len(locator))}, locator...)) {
 			return
 		}

@@ -21,7 +21,7 @@ import (
 
 func TestMetadataBufferedBudgets(t *testing.T) {
 	op := catalogOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 1 << 20, MaxResultItems: 1}}, nil)
-	if _, err := catalog.BufferedRows(context.Background(), op, oceanbase.MetadataTypeInfo, catalog.BuiltinTypeInfo(config.ModeMySQL)); err != nil {
+	if _, err := catalog.BufferedRows(context.Background(), op, oceanbase.MetadataTypeInfo, catalog.BuiltinTypeInfo(config.CompatibilityModeMySQL)); err != nil {
 		t.Fatal(err)
 	}
 	cfg := op.Config()
@@ -145,10 +145,10 @@ func TestMetadataBuiltinTypeInfo(t *testing.T) {
 	if oceanbase.MetadataStatementParameters != 17 || oceanbase.MetadataTypeInfo != 18 {
 		t.Fatal("metadata enum numbers changed")
 	}
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		db := publictest.TxDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
 			status := byte(2)
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				status = 6
 			}
 			if !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {

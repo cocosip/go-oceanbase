@@ -14,11 +14,11 @@ import (
 )
 
 func TestConnectionAttributesChangeUser(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, variant := range []struct{ framing, charset string }{{testStandard, testUTF8MB4}, {testCompression, testUTF8MB4}, {testOB20, testUTF8MB4}, {testStandard, localFilenameCharset}, {testCompression, localFilenameCharset}, {testOB20, localFilenameCharset}} {
 			framing := variant.framing
 			t.Run(fmt.Sprintf("%d/%s/%s", mode, framing, variant.charset), func(t *testing.T) {
-				cfg := config.Config{User: testUser, Mode: mode, Interactive: true, Session: config.SessionOptions{Charset: variant.charset}, ConnectionAttributes: map[string]string{testAttributeKey: testAttributeValue, "应用": "测试"}, Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff}}
+				cfg := config.Config{User: testUser, CompatibilityMode: mode, Interactive: true, Session: config.SessionOptions{Charset: variant.charset}, ConnectionAttributes: map[string]string{testAttributeKey: testAttributeValue, "应用": "测试"}, Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff}}
 				if framing == testCompression {
 					cfg.Protocol.Compression = config.FeatureRequired
 				}
@@ -40,7 +40,7 @@ func TestConnectionAttributesChangeUser(t *testing.T) {
 						return
 					}
 					status := byte(2)
-					if mode == config.ModeOracle {
+					if mode == config.CompatibilityModeOracle {
 						status = 6
 					}
 					var variables map[string]string
@@ -65,7 +65,7 @@ func TestConnectionAttributesChangeUser(t *testing.T) {
 					}
 					ctx = context.Background()
 					database := ""
-					if mode == config.ModeOracle {
+					if mode == config.CompatibilityModeOracle {
 						database = "next"
 					}
 					want := changeUserPacket(t, mode, database)

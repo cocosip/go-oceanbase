@@ -127,7 +127,7 @@ func TestProxyChecksumPolicy(t *testing.T) {
 }
 
 func TestConnectionAttributesHandshake(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, interactive := range []bool{false, true} {
 			for _, tc := range []struct {
 				charset, key, value string
@@ -137,7 +137,7 @@ func TestConnectionAttributesHandshake(t *testing.T) {
 				{localFilenameCharset, "\xd3\xa6\xd3\xc3", testAttributeGBKValue, 28},
 			} {
 				t.Run(fmt.Sprintf("%d/%t/%s", mode, interactive, tc.charset), func(t *testing.T) {
-					cfg := config.Config{User: testUser, Mode: mode, Interactive: interactive, Session: config.SessionOptions{Charset: tc.charset}, ConnectionAttributes: map[string]string{testAttributeKey: testAttributeValue, "应用": "测试", testAttributeEmpty: ""}, Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, ProxyChecksum: config.FeatureOff, NewMetadata: config.FeatureOff}}
+					cfg := config.Config{User: testUser, CompatibilityMode: mode, Interactive: interactive, Session: config.SessionOptions{Charset: tc.charset}, ConnectionAttributes: map[string]string{testAttributeKey: testAttributeValue, "应用": "测试", testAttributeEmpty: ""}, Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, ProxyChecksum: config.FeatureOff, NewMetadata: config.FeatureOff}}
 					s, err := runAuthTest(t, cfg, func(ctx context.Context, p *wire.PacketIO) {
 						if !sendPackets(ctx, t, p, protocolGreeting(false)) {
 							return
@@ -157,7 +157,7 @@ func TestConnectionAttributesHandshake(t *testing.T) {
 							return
 						}
 						status := byte(2)
-						if mode == config.ModeOracle {
+						if mode == config.CompatibilityModeOracle {
 							status = 6
 						}
 						sendPackets(ctx, t, p, commandPacket(0, 0, status))
@@ -209,7 +209,7 @@ func TestInteractiveCapability(t *testing.T) {
 
 func TestProxyUserHandshake(t *testing.T) {
 	for _, dynamic := range []bool{false, true} {
-		cfg := config.Config{User: testUser, ProxyUser: testProxyUser, Mode: config.ModeOracle,
+		cfg := config.Config{User: testUser, ProxyUser: testProxyUser, CompatibilityMode: config.CompatibilityModeOracle,
 			Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, NewMetadata: config.FeatureOff, ProxyChecksum: config.FeatureOff}}
 		if dynamic {
 			cfg.ProxyUser = "overridden"
@@ -260,7 +260,7 @@ func TestProxyUserRejection(t *testing.T) {
 				}
 			}
 			if path == "dynamic-mysql" {
-				cfg.Mode = config.ModeMySQL
+				cfg.CompatibilityMode = config.CompatibilityModeMySQL
 			}
 			_, err := runAuthTest(t, cfg, func(ctx context.Context, p *wire.PacketIO) {
 				greeting := protocolGreeting(false)
@@ -321,14 +321,14 @@ func TestProxyUserCallbackClearsTarget(t *testing.T) {
 		}
 		sendPackets(ctx, t, p, commandPacket(0, 0, 2))
 	})
-	if err != nil || s.ProxyUser != "" || s.Mode != config.ModeMySQL {
+	if err != nil || s.ProxyUser != "" || s.Mode != config.CompatibilityModeMySQL {
 		t.Fatal("credential callback could not clear static proxy target", err)
 	}
 }
 
 func TestProxyUserVerifiedTLS(t *testing.T) {
 	clientCfg, serverCfg := testTLSConfig(t)
-	s, err := runAuthConnTest(t, config.Config{User: testUser, ProxyUser: testProxyUser, Mode: config.ModeOracle, TLSConfig: clientCfg}, nil,
+	s, err := runAuthConnTest(t, config.Config{User: testUser, ProxyUser: testProxyUser, CompatibilityMode: config.CompatibilityModeOracle, TLSConfig: clientCfg}, nil,
 		func(ctx context.Context, raw net.Conn, p *wire.PacketIO) {
 			greeting := protocolGreeting(false)
 			start := bytes.IndexByte(greeting[1:], 0) + 2 + 4 + 8 + 1

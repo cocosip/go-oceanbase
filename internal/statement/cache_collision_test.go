@@ -20,7 +20,7 @@ func TestCacheCollisionEvictionFailureReleasesNewStatement(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
 	fault := testutil.NewFaultConn(client, testutil.Faults{WriteFailAt: 1})
 	cfg := config.Config{Session: config.SessionOptions{Charset: "utf8mb4"}, Limits: config.Limits{MaxMessageBytes: 4096}, Execution: config.ExecutionOptions{StatementCacheSize: 4, StatementCacheSQLLimit: 1024}}
-	s := session.New(cfg, &session.Negotiated{Raw: fault, Conn: fault, Packets: wire.NewPacketIO(fault, 4096), Mode: config.ModeMySQL})
+	s := session.New(cfg, &session.Negotiated{Raw: fault, Conn: fault, Packets: wire.NewPacketIO(fault, 4096), Mode: config.CompatibilityModeMySQL})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

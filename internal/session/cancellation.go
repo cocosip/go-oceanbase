@@ -15,7 +15,7 @@ type Target struct{ identity *cancelIdentity }
 // TargetInfo is the immutable identity used to authenticate an auxiliary connection.
 type TargetInfo struct {
 	ConnectionID                   uint32
-	Mode                           config.Mode
+	Mode                           config.CompatibilityMode
 	Network, Addr, User, ProxyUser string
 	TLSVerified                    bool
 }

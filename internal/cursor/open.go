@@ -24,7 +24,7 @@ func ValidateOpen(op *session.Operation, query string, opts Options, writable bo
 		return dberrors.ErrCursor
 	}
 	p := op.Protocol()
-	if opts.Mode == Sensitive && (p.Mode != config.ModeOracle || !statement.SupportsPrepareExecute(p.OBVersion)) {
+	if opts.Mode == Sensitive && (p.Mode != config.CompatibilityModeOracle || !statement.SupportsPrepareExecute(p.OBVersion)) {
 		return dberrors.ErrUnsupported
 	}
 	if opts.Updatable {
@@ -90,7 +90,7 @@ func (m *Manager) Open(ctx context.Context, op *session.Operation, resolver *cat
 		return ref, dberrors.ErrResource
 	}
 	p := op.Protocol()
-	cur := &record{columns: columns, last: last, options: opts, offset: p.Mode == config.ModeOracle && statement.SupportsVersion(p.OBVersion, 2, 2, 5), statement: prepared, scope: op.StatementScope()}
+	cur := &record{columns: columns, last: last, options: opts, offset: p.Mode == config.CompatibilityModeOracle && statement.SupportsVersion(p.OBVersion, 2, 2, 5), statement: prepared, scope: op.StatementScope()}
 	ref, err = m.own(op, cur)
 	if err != nil {
 		return ref, err

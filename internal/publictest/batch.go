@@ -16,7 +16,7 @@ import (
 func BatchRewriteDB(t *testing.T, cfg oceanbase.Config, variant string, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if cfg.Mode == oceanbase.ModeOracle {
+	if cfg.CompatibilityMode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
 	cfg.User = testpeer.User

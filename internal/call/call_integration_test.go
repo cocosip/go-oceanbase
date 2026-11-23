@@ -20,7 +20,7 @@ func TestReturning(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
-			if p.Mode != oceanbase.ModeOracle {
+			if p.Mode != oceanbase.CompatibilityModeOracle {
 				t.Skip("RETURNING INTO is an Oracle compatibility mode capability")
 			}
 			db := integrationtest.OpenProfile(t, p)

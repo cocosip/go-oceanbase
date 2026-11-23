@@ -14,11 +14,11 @@ import (
 
 func lifetimeOperation(t *testing.T) *session.Operation {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: "app", Mode: config.ModeMySQL})
+	cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: config.CompatibilityModeMySQL})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := session.New(cfg, &session.Negotiated{Mode: config.ModeMySQL})
+	s := session.New(cfg, &session.Negotiated{Mode: config.CompatibilityModeMySQL})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

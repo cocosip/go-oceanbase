@@ -13,15 +13,15 @@ import (
 
 func TestTransactionGrammar(t *testing.T) {
 	for _, tc := range []struct {
-		mode    config.Mode
+		mode    config.CompatibilityMode
 		options driver.TxOptions
 		want    []string
 	}{
-		{config.ModeMySQL, driver.TxOptions{}, []string{"START TRANSACTION READ WRITE"}},
-		{config.ModeMySQL, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelRepeatableRead), ReadOnly: true}, []string{"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ", "START TRANSACTION READ ONLY"}},
-		{config.ModeOracle, driver.TxOptions{}, []string{testDisableAutocommit, "SET TRANSACTION READ WRITE"}},
-		{config.ModeOracle, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelSerializable)}, []string{testDisableAutocommit, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"}},
-		{config.ModeOracle, driver.TxOptions{ReadOnly: true}, []string{testDisableAutocommit, "SET TRANSACTION READ ONLY"}},
+		{config.CompatibilityModeMySQL, driver.TxOptions{}, []string{"START TRANSACTION READ WRITE"}},
+		{config.CompatibilityModeMySQL, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelRepeatableRead), ReadOnly: true}, []string{"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ", "START TRANSACTION READ ONLY"}},
+		{config.CompatibilityModeOracle, driver.TxOptions{}, []string{testDisableAutocommit, "SET TRANSACTION READ WRITE"}},
+		{config.CompatibilityModeOracle, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelSerializable)}, []string{testDisableAutocommit, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"}},
+		{config.CompatibilityModeOracle, driver.TxOptions{ReadOnly: true}, []string{testDisableAutocommit, "SET TRANSACTION READ ONLY"}},
 	} {
 		got, err := TransactionCommands(tc.mode, tc.options)
 		if err != nil || !reflect.DeepEqual(got, tc.want) {
@@ -33,7 +33,7 @@ func TestTransactionGrammar(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := TransactionCommands(config.ModeOracle, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelReadCommitted), ReadOnly: true}); !errors.Is(err, dberrors.ErrUnsupported) {
+	if _, err := TransactionCommands(config.CompatibilityModeOracle, driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelReadCommitted), ReadOnly: true}); !errors.Is(err, dberrors.ErrUnsupported) {
 		t.Fatal(err)
 	}
 }

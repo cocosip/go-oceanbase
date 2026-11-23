@@ -34,7 +34,7 @@ func integrationTestResultBudgetLimits(t *testing.T, p integrationtest.Profile) 
 	ctx := integrationtest.TestContext(t)
 	table := fmt.Sprintf("OBGB_%d", time.Now().UnixNano())
 	typ := "LONGBLOB"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		typ = "BLOB"
 	}
 	if _, err := setup.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,B "+typ+")"); err != nil {
@@ -83,7 +83,7 @@ func integrationTestResultBudgetLimits(t *testing.T, p integrationtest.Profile) 
 	}
 	var text string
 	wide := "SELECT RPAD('x', 8000, 'x')"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		wide += integrationtest.OracleDualSuffix
 	}
 	if err = msgConn.QueryRowContext(ctx, wide).Scan(&text); err == nil {

@@ -44,7 +44,7 @@ func TestDiscovery(t *testing.T) {
 					if err != nil {
 						integrationtest.FailOperation(t, "discovery DSN", err)
 					}
-					if cfg.Discovery.Source == nil || (cfg.Mode != oceanbase.ModeAuto && cfg.Mode != p.Mode) {
+					if cfg.Discovery.Source == nil || (cfg.CompatibilityMode != oceanbase.CompatibilityModeAuto && cfg.CompatibilityMode != p.Mode) {
 						t.Fatal("discovery source/mode mismatch")
 					}
 					wantRole := oceanbase.RoleReadWrite
@@ -65,7 +65,7 @@ func TestDiscovery(t *testing.T) {
 						}
 						return topology, err
 					}
-					cfg.Mode = p.Mode
+					cfg.CompatibilityMode = p.Mode
 					connector, err := oceanbase.NewConnector(cfg)
 					if err != nil {
 						integrationtest.FailOperation(t, "discovery connector", err)

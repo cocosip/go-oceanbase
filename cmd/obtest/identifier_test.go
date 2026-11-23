@@ -14,40 +14,40 @@ const identifierFixturePrefix = "OBT_OFFLINE"
 type identifierFixtureCase struct {
 	name   string
 	failAt int
-	mutate func(body *[]fixtureStep, mode oceanbase.Mode)
+	mutate func(body *[]fixtureStep, mode oceanbase.CompatibilityMode)
 	wantOK bool
 }
 
 func identifierFixtureCases() []identifierFixtureCase {
 	return []identifierFixtureCase{
 		{name: caseRoundTrip, failAt: -1, wantOK: true},
-		{name: "folded-table", failAt: -1, wantOK: true, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
-			if mode != oceanbase.ModeMySQL {
+		{name: "folded-table", failAt: -1, wantOK: true, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
+			if mode != oceanbase.CompatibilityModeMySQL {
 				return
 			}
 			rows := newIdentifierTableRows(mode)
 			rows.values[0][2] = strings.ToLower(identifierFixtureTable(mode))
 			(*body)[5].rows = rows
 		}},
-		{name: "table-name", failAt: 5, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "table-name", failAt: 5, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newIdentifierTableRows(mode)
 			rows.values[0][2] = identifierFixtureTable(mode) + "X"
 			(*body)[5].rows = rows
 		}},
-		{name: "long-column", failAt: 6, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "long-column", failAt: 6, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newIdentifierColumnRows(mode)
 			rows.values[1][3] = identifierColumn()[:identifierColumnLen-1]
 			(*body)[6].rows = rows
 		}},
-		{name: "insert-value", failAt: 4, mutate: func(body *[]fixtureStep, _ oceanbase.Mode) {
+		{name: "insert-value", failAt: 4, mutate: func(body *[]fixtureStep, _ oceanbase.CompatibilityMode) {
 			(*body)[4].values = [][]driver.Value{{int64(1), int64(43)}}
 		}},
-		{name: "rejected-table", failAt: 2, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "rejected-table", failAt: 2, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			(*body)[1].err = nil
 			extra := fixtureStep{query: "DROP TABLE " + identifierTooLong(identifierFixturePrefix, identifierLimit(mode))}
 			*body = append((*body)[:2], append([]fixtureStep{extra}, (*body)[2:]...)...)
 		}},
-		{name: "rejected-column", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "rejected-column", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			(*body)[2].err = nil
 			extra := fixtureStep{query: "ALTER TABLE " + identifierFixtureTable(mode) + " DROP COLUMN " + strings.Repeat("X", identifierColumnLen+1)}
 			*body = append((*body)[:3], append([]fixtureStep{extra}, (*body)[3:]...)...)
@@ -57,7 +57,7 @@ func identifierFixtureCases() []identifierFixtureCase {
 
 func TestIdentifierLengthWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, identifierCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range identifierFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				steps := identifierSteps(t, mode, tc)
@@ -81,24 +81,24 @@ func TestIdentifierLengthWorkflow(t *testing.T) {
 	}
 }
 
-func identifierFixtureTable(mode oceanbase.Mode) string {
+func identifierFixtureTable(mode oceanbase.CompatibilityMode) string {
 	limit := identifierLimit(mode)
 	return identifierFixturePrefix + "_" + identifierSuffix(limit, identifierFixturePrefix)
 }
 
-func identifierLimit(mode oceanbase.Mode) int {
-	if mode == oceanbase.ModeOracle {
+func identifierLimit(mode oceanbase.CompatibilityMode) int {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return identifierOracleTable
 	}
 	return identifierMySQLTable
 }
 
-func identifierSteps(t *testing.T, mode oceanbase.Mode, tc identifierFixtureCase) []fixtureStep {
+func identifierSteps(t *testing.T, mode oceanbase.CompatibilityMode, tc identifierFixtureCase) []fixtureStep {
 	t.Helper()
 	table := identifierFixtureTable(mode)
 	column := identifierColumn()
 	create := "CREATE TABLE " + table + " " + identifierDDL(column)
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		create += parameterFixtureEngine
 	}
 	body := []fixtureStep{
@@ -119,8 +119,8 @@ func identifierSteps(t *testing.T, mode oceanbase.Mode, tc identifierFixtureCase
 	return append(body, fixtureStep{query: "DROP TABLE " + table})
 }
 
-func identifierRejectionCode(mode oceanbase.Mode) uint32 {
-	if mode == oceanbase.ModeOracle {
+func identifierRejectionCode(mode oceanbase.CompatibilityMode) uint32 {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return identifierOracleCode
 	}
 	return identifierMySQLCode
@@ -139,7 +139,7 @@ type identifierTableRows struct {
 	fixtureRows
 }
 
-func newIdentifierTableRows(mode oceanbase.Mode) *identifierTableRows {
+func newIdentifierTableRows(mode oceanbase.CompatibilityMode) *identifierTableRows {
 	return &identifierTableRows{fixtureRows: fixtureRows{width: 5, values: [][]driver.Value{
 		{nil, "S", identifierFixtureTable(mode), viewTypeTable, nil},
 	}}}
@@ -149,7 +149,7 @@ type identifierColumnRows struct {
 	fixtureRows
 }
 
-func newIdentifierColumnRows(mode oceanbase.Mode) *identifierColumnRows {
+func newIdentifierColumnRows(mode oceanbase.CompatibilityMode) *identifierColumnRows {
 	table := identifierFixtureTable(mode)
 	return &identifierColumnRows{fixtureRows: fixtureRows{width: 15, values: [][]driver.Value{
 		{nil, "S", table, "ID", int64(1), metadataFixtureNumber, int64(22), int64(38), int64(0), int64(0), nil, nil, nil, nil, int64(0)},

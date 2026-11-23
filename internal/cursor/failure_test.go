@@ -19,7 +19,7 @@ import (
 )
 
 func TestManagerFetchRetirement(t *testing.T) {
-	ctx, op := cursorOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := cursorOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !preparePeer(ctx, t, p, cursorQuery, 55) || !openPeer(ctx, t, p, 55) {
 			return
 		}
@@ -89,7 +89,7 @@ func TestManagerMutationRetirement(t *testing.T) {
 		retire   bool
 	}{{"success", 1, 0, false}, {"warning", 1, 1, true}, {"multiple rows", 2, 0, true}} {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, op := cursorOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := cursorOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !prepareMutationPeer(ctx, t, p, "INSERT INTO `s`.`t` (`id`) VALUES (?)") || !mutationExecutePeer(ctx, t, p) || !testpeer.SendPackets(ctx, t, p, []byte{0, tc.affected, 0, 2, 0, tc.warnings, 0}) {
 					return
 				}
@@ -111,7 +111,7 @@ func TestManagerMutationRetirement(t *testing.T) {
 }
 
 func TestManagerMissingRefreshRetires(t *testing.T) {
-	ctx, op := cursorOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := cursorOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !prepareMutationPeer(ctx, t, p, "SELECT `id` AS `id` FROM `s`.`t` WHERE `id` = ?") || !mutationExecutePeer(ctx, t, p) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 2, 0}, []byte{254, 0, 0, 2, 0}) {
 			return
 		}

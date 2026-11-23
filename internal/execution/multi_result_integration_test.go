@@ -21,8 +21,8 @@ func TestMultiResult(t *testing.T) {
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
 			cfg := integrationtest.ProfileConfig(t, p)
-			cfg.Mode = p.Mode
-			cfg.AllowMultiStatements = p.Mode == oceanbase.ModeMySQL
+			cfg.CompatibilityMode = p.Mode
+			cfg.AllowMultiStatements = p.Mode == oceanbase.CompatibilityModeMySQL
 			connector, err := oceanbase.NewConnector(cfg)
 			if err != nil {
 				t.Fatal("invalid multi-result config")
@@ -48,7 +48,7 @@ func TestMultiResult(t *testing.T) {
 			}
 			defer func() { _ = conn.Close() }()
 			query := "UPDATE " + table + " SET v=1; SELECT v FROM " + table + "; UPDATE " + table + " SET v=2"
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query = "BEGIN UPDATE " + table + " SET v=1; UPDATE " + table + " SET v=2; END;"
 			}
 			e, err := oceanbase.Execute(ctx, conn, query)
@@ -73,7 +73,7 @@ func TestMultiResult(t *testing.T) {
 			if !snapshot.Done || snapshot.Err != nil {
 				t.Fatal(snapshot)
 			}
-			if p.Mode == oceanbase.ModeMySQL {
+			if p.Mode == oceanbase.CompatibilityModeMySQL {
 				if len(snapshot.Results) != 3 || snapshot.Results[0].Kind != oceanbase.ResultCommand || snapshot.Results[1].RowSetIndex != 0 || snapshot.Results[2].Kind != oceanbase.ResultCommand {
 					t.Fatal(snapshot)
 				}
@@ -83,7 +83,7 @@ func TestMultiResult(t *testing.T) {
 			if err = conn.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if p.Mode == oceanbase.ModeMySQL {
+			if p.Mode == oceanbase.CompatibilityModeMySQL {
 				integrationTestRowsAffectedPolicy(t, p, table)
 			}
 		})

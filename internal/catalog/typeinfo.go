@@ -18,12 +18,12 @@ const (
 
 // BuiltinTypeInfo describes SQL families, not JDBC constants or per-column Go scan types.
 // Unknown/server-dependent limits stay NULL; this is not a server capability probe.
-func BuiltinTypeInfo(mode config.Mode) [][]driver.Value {
+func BuiltinTypeInfo(mode config.CompatibilityMode) [][]driver.Value {
 	var rows [][]driver.Value
 	add := func(name, category string, precision, minScale, maxScale, radix driver.Value, prefix, suffix, params driver.Value, auto driver.Value) {
 		rows = append(rows, []driver.Value{name, category, precision, minScale, maxScale, radix, prefix, suffix, params, auto})
 	}
-	if mode == config.ModeMySQL {
+	if mode == config.CompatibilityModeMySQL {
 		for _, n := range []struct {
 			name      string
 			precision int64

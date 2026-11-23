@@ -37,7 +37,7 @@ func (n *native) tryBatchArray(ctx context.Context, request Request, writable bo
 		return true, driver.ErrBadConn
 	}
 	p := n.op.Protocol()
-	if p.Mode != config.ModeOracle || !statement.SupportsVersion(p.OBVersion, 4, 2, 1) || !writable || p.OK.Status&2 != 0 || !sqltext.BatchDML(request.Query, p.Mode, p.OK.Status&512 != 0) || !n.batchParametersValid(request) {
+	if p.Mode != config.CompatibilityModeOracle || !statement.SupportsVersion(p.OBVersion, 4, 2, 1) || !writable || p.OK.Status&2 != 0 || !sqltext.BatchDML(request.Query, p.Mode, p.OK.Status&512 != 0) || !n.batchParametersValid(request) {
 		return false, nil
 	}
 	plan, bindErr := sqltext.BuildBindPlan(request.Query, p.Mode)
@@ -66,7 +66,7 @@ func (n *native) tryBatchRewrite(ctx context.Context, request Request) (handled 
 		return true, driver.ErrBadConn
 	}
 	p := n.op.Protocol()
-	if p.Mode != config.ModeMySQL || p.Capabilities&wire.ClientMultiStatements == 0 || !sqltext.BatchDML(request.Query, p.Mode, p.OK.Status&512 != 0) {
+	if p.Mode != config.CompatibilityModeMySQL || p.Capabilities&wire.ClientMultiStatements == 0 || !sqltext.BatchDML(request.Query, p.Mode, p.OK.Status&512 != 0) {
 		return false, nil
 	}
 	plan, err := sqltext.BuildBindPlanEscapes(request.Query, p.Mode, p.OK.Status&512 != 0)
@@ -97,7 +97,7 @@ func (n *native) tryBatchMultiValues(ctx context.Context, request Request) (bool
 		return true, driver.ErrBadConn
 	}
 	p := n.op.Protocol()
-	if p.Mode != config.ModeMySQL {
+	if p.Mode != config.CompatibilityModeMySQL {
 		return false, nil
 	}
 	_, plan, ok := sqltext.BatchValuesPlan(request.Query, p.OK.Status&512 != 0)

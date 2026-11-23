@@ -72,7 +72,7 @@ func arrayUncertaintyPackets(failure string) [][]byte {
 func TestBatchArrayUncertainResponse(t *testing.T) {
 	for _, failure := range []string{"array-disconnect", "top-error", "duplicate", "position", "code", "array-null", "array-tail-error", "array-extra", "metadata", "metadata-out", "array-row-error", "array-metadata-error", "array-metadata-eof-error"} {
 		t.Run(failure, func(t *testing.T) {
-			ctx, op := nativeOperation(t, config.ModeOracle, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := nativeOperation(t, config.CompatibilityModeOracle, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveNativePrepare(ctx, t, p, 5) {
 					return
 				}
@@ -107,7 +107,7 @@ func TestBatchArrayUncertainResponse(t *testing.T) {
 func TestBatchRewriteUncertainty(t *testing.T) {
 	for _, name := range []string{"peer-closed", "short-ok", "rowset", rewriteEarlyEnd, rewriteUnexpectedMore} {
 		t.Run(name, func(t *testing.T) {
-			ctx, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveRewriteGuard(ctx, t, p) || !testpeer.ReadQuery(ctx, t, p, "INSERT INTO t VALUES ( 1 )\n;\nINSERT INTO t VALUES ( 2 )\n;\nINSERT INTO t VALUES ( 3 )") {
 					return
 				}
@@ -163,7 +163,7 @@ func TestBatchRewriteUncertainty(t *testing.T) {
 func TestNativeCancellationRetiresResponse(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(peerCtx context.Context, p *wire.PacketIO) {
+	_, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(peerCtx context.Context, p *wire.PacketIO) {
 		if testpeer.ReadQuery(peerCtx, t, p, "INSERT INTO t VALUES ( 1 ),( 2 )") {
 			cancel()
 			_, _ = p.ReadMessage(peerCtx)

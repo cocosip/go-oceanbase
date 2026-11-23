@@ -21,20 +21,20 @@ func TestTableBlobOpenTransactionInvalidation(t *testing.T) {
 	const schemaStage, dictionaryStage = "schema", "dictionary"
 	const oracleTableSQL = "FROM ALL_TABLES t"
 	for _, tc := range []struct {
-		mode  config.Mode
+		mode  config.CompatibilityMode
 		stage string
-	}{{config.ModeMySQL, schemaStage}, {config.ModeMySQL, dictionaryStage}, {config.ModeMySQL, "length"}, {config.ModeOracle, dictionaryStage}, {config.ModeOracle, "locator"}} {
+	}{{config.CompatibilityModeMySQL, schemaStage}, {config.CompatibilityModeMySQL, dictionaryStage}, {config.CompatibilityModeMySQL, "length"}, {config.CompatibilityModeOracle, dictionaryStage}, {config.CompatibilityModeOracle, "locator"}} {
 		for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
-			label := map[config.Mode]string{config.ModeMySQL: publictest.TransactionMySQLLabel, config.ModeOracle: publictest.TransactionOracleLabel}[tc.mode]
+			label := map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: publictest.TransactionMySQLLabel, config.CompatibilityModeOracle: publictest.TransactionOracleLabel}[tc.mode]
 			t.Run(label+"/"+tc.stage+"/"+variant, func(t *testing.T) {
 				active, ended := byte(3), byte(2)
 				start, finish := []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}, []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}
-				if tc.mode == config.ModeOracle {
+				if tc.mode == config.CompatibilityModeOracle {
 					active, ended = 5, 4
 					start = []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}
 					finish = []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}
 				}
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: tc.mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: tc.mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !publictest.ServeTxSteps(ctx, t, p, start) {
 						return
 					}
@@ -47,7 +47,7 @@ func TestTableBlobOpenTransactionInvalidation(t *testing.T) {
 						if tc.stage == dictionaryStage {
 							status = ended
 						}
-						if tc.mode == config.ModeMySQL {
+						if tc.mode == config.CompatibilityModeMySQL {
 							if !publictest.ServeTableDictionary(ctx, t, p, status, publictest.TableDictionary()...) {
 								return
 							}
@@ -56,7 +56,7 @@ func TestTableBlobOpenTransactionInvalidation(t *testing.T) {
 							return
 						}
 						if tc.stage != dictionaryStage {
-							if tc.mode == config.ModeMySQL {
+							if tc.mode == config.CompatibilityModeMySQL {
 								if !publictest.ServeTableRows(ctx, t, p, ended, []string{publictest.TestOctetLength}, []byte{8}, []any{"9"}) {
 									return
 								}
@@ -105,7 +105,7 @@ func TestTableBlobOpenTransactionInvalidation(t *testing.T) {
 func TestTableBlobSizeTransactionInvalidation(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		t.Run(variant, func(t *testing.T) {
-			db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeMySQL}, variant, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeMySQL}, variant, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) ||
 					!publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) ||
 					!publictest.ServeTableRows(ctx, t, p, 3, []string{publictest.TestOctetLength}, []byte{8}, []any{"9"}) ||
@@ -148,7 +148,7 @@ func TestTableBlobTransactionEndsBetweenChunks(t *testing.T) {
 		for _, operation := range []string{publictest.TestBlobRead, shortRead, write} {
 			for _, prefix := range []int{0, 1} {
 				t.Run(fmt.Sprintf("%s/%s/prefix=%d", variant, operation, prefix), func(t *testing.T) {
-					db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeMySQL, Limits: config.Limits{MaxLOBBytes: 4}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeMySQL, Limits: config.Limits{MaxLOBBytes: 4}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) ||
 							!publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) ||
 							!publictest.ServeTableRows(ctx, t, p, 3, []string{publictest.TestOctetLength}, []byte{8}, []any{"9"}) {

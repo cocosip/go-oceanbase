@@ -29,7 +29,7 @@ import (
 )
 
 func TestPlatformTransportNamedPipeMixedSessions(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				path := fmt.Sprintf(`\\.\pipe\go-oceanbase-mixed-%d-%d`, os.Getpid(), time.Now().UnixNano())
@@ -37,7 +37,7 @@ func TestPlatformTransportNamedPipeMixedSessions(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				runPlatformMixedSession(t, listener, config.Config{Network: networkPipe, Addr: path, Mode: mode}, framing)
+				runPlatformMixedSession(t, listener, config.Config{Network: networkPipe, Addr: path, CompatibilityMode: mode}, framing)
 			})
 		}
 	}
@@ -45,7 +45,7 @@ func TestPlatformTransportNamedPipeMixedSessions(t *testing.T) {
 
 func TestAuthPluginGSSNativeSessions(t *testing.T) {
 	credentials, maxToken := nativeSSPICredentials(t)
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, reject := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/reject=%t", mode, reject), func(t *testing.T) {
 				testNativeSSPISession(t, credentials, maxToken, mode, reject)
@@ -54,17 +54,17 @@ func TestAuthPluginGSSNativeSessions(t *testing.T) {
 	}
 }
 
-func testNativeSSPISession(t *testing.T, credentials *sspi.Credentials, maxToken uint32, mode config.Mode, reject bool) {
+func testNativeSSPISession(t *testing.T, credentials *sspi.Credentials, maxToken uint32, mode config.CompatibilityMode, reject bool) {
 	t.Helper()
 	clientTLS, serverTLS := testpeer.TLSConfig(t)
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	var dials atomic.Int32
 	var rawTransport net.Conn
 	peerDone := make(chan struct{})
-	cfg := config.Config{User: testUser, Password: testSSPIPassword, Mode: mode, TLSConfig: clientTLS,
+	cfg := config.Config{User: testUser, Password: testSSPIPassword, CompatibilityMode: mode, TLSConfig: clientTLS,
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			dials.Add(1)
 			var err error
@@ -125,7 +125,7 @@ func testNativeSSPISession(t *testing.T, credentials *sspi.Credentials, maxToken
 	}
 }
 
-func serveNativeSSPISession(t *testing.T, raw net.Conn, serverTLS *tls.Config, credentials *sspi.Credentials, maxToken uint32, mode config.Mode, status byte, reject bool) {
+func serveNativeSSPISession(t *testing.T, raw net.Conn, serverTLS *tls.Config, credentials *sspi.Credentials, maxToken uint32, mode config.CompatibilityMode, status byte, reject bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -183,7 +183,7 @@ func serveNativeSSPISession(t *testing.T, raw net.Conn, serverTLS *tls.Config, c
 	testpeer.ServeQuit(t, p)
 }
 
-func readNativeSSPIChange(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode, user string) ([]byte, bool) {
+func readNativeSSPIChange(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode, user string) ([]byte, bool) {
 	t.Helper()
 	p.ResetSequence()
 	data, err := p.ReadMessage(ctx)
@@ -200,7 +200,7 @@ func readNativeSSPIChange(ctx context.Context, t *testing.T, p *wire.PacketIO, m
 	}
 	token, suffix := data[1:1+length], data[1+length:]
 	database := ""
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		database, _, _ = strings.Cut(user, "@")
 	}
 	want := []byte(database + "\x00" + authentication.GSSAPI + "\x00")

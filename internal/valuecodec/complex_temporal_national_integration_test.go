@@ -26,7 +26,7 @@ func TestOracleComplexTemporalNational(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeOracle {
+		if profile.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		for _, scalar := range []string{complexNativeTimestampType, "NVARCHAR2(20)", "NCHAR(4)"} {

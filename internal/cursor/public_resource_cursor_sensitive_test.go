@@ -20,7 +20,7 @@ func TestSensitiveCursorRefreshTransactionInvalidation(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			const native = "SELECT id, ROWID FROM cursor_fixture"
 			const refresh = `SELECT "id" FROM "s"."t" WHERE ROWID = ?`
-			db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !publictest.ServePrepareStatus(ctx, t, p, native, 54, 0, nil, 5) {
 					return
 				}

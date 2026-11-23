@@ -17,7 +17,7 @@ import (
 // A second prepare would be read where an execute is expected and fail the assertion.
 func TestSensitiveRefreshPreparesOnce(t *testing.T) {
 	const query = `SELECT "id" FROM "s"."t" WHERE ROWID = ?`
-	ctx, op := cursorOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := cursorOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !prepareMutationPeer(ctx, t, p, query) {
 			return
 		}

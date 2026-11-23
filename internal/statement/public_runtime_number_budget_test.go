@@ -15,16 +15,16 @@ import (
 )
 
 func TestNumberSQLNormalizedBudget(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, variant := range []string{testStandard, testCompression, testOB20} {
 			for _, prepare := range []oceanbase.PrepareMode{oceanbase.PrepareServer, oceanbase.PrepareClient} {
 				t.Run(fmt.Sprintf("%d/%s/%d", mode, variant, prepare), func(t *testing.T) {
 					status := byte(2)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						status = 6
 					}
 					const query = "UPDATE t SET v=?"
-					db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode, PrepareMode: prepare, Limits: oceanbase.Limits{MaxMessageBytes: 256}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode, PrepareMode: prepare, Limits: oceanbase.Limits{MaxMessageBytes: 256}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						payload := []byte("\x03UPDATE t SET v= 1 ")
 						if prepare == oceanbase.PrepareServer {
 							if !publictest.ServePrepareStatus(ctx, t, p, query, 87, 1, nil, status) {

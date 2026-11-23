@@ -18,13 +18,13 @@ import (
 
 func decoderOperation(t *testing.T) *session.Operation {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: "app", Mode: config.ModeOracle})
+	cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: config.CompatibilityModeOracle})
 	if err != nil {
 		t.Fatal(err)
 	}
 	client, peer := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	s := session.New(cfg, &session.Negotiated{Conn: client, Raw: client, Packets: wire.NewPacketIO(client, 0), Mode: config.ModeOracle})
+	s := session.New(cfg, &session.Negotiated{Conn: client, Raw: client, Packets: wire.NewPacketIO(client, 0), Mode: config.CompatibilityModeOracle})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

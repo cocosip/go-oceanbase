@@ -65,7 +65,7 @@ func metadataRoutineFixtureCases() []metadataRoutineFixtureCase {
 
 func TestMetadataRoutineWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, metadataRoutineCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range metadataRoutineFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				steps := metadataRoutineSteps(t, mode, tc)
@@ -89,10 +89,10 @@ func TestMetadataRoutineWorkflow(t *testing.T) {
 	}
 }
 
-func metadataRoutineSteps(t *testing.T, mode oceanbase.Mode, tc metadataRoutineFixtureCase) []fixtureStep {
+func metadataRoutineSteps(t *testing.T, mode oceanbase.CompatibilityMode, tc metadataRoutineFixtureCase) []fixtureStep {
 	t.Helper()
 	proc, function := metadataRoutineProcFixMY, metadataRoutineFuncFixMY
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		proc, function = metadataRoutineProcFixOR, metadataRoutineFuncFixOR
 	}
 	body := []fixtureStep{

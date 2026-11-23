@@ -28,7 +28,7 @@ func integrationTestLongParametersProfile(t *testing.T, p integrationtest.Profil
 	defer func() { _ = db.Close() }()
 	table := fmt.Sprintf("OBGLD_%d", time.Now().UnixNano())
 	binaryType, textType, suffix := integrationIntegrationLongBlobType, "LONGTEXT", integrationIntegrationInnoDBSuffix
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		binaryType, textType, suffix = integrationIntegrationBlobType, "CLOB", ""
 	}
 	if _, err = db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,B "+binaryType+",C "+textType+")"+suffix); err != nil {
@@ -162,7 +162,7 @@ func integrationTestExecuteStrategy(t *testing.T, p integrationtest.Profile, opt
 func integrationTestStrategyOutput(t *testing.T, p integrationtest.Profile, db *sql.DB) {
 	t.Helper()
 	query := "BEGIN ? := 42; END;"
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		procedure := fmt.Sprintf("OBGEXECP_%d", time.Now().UnixNano())
 		if _, err := db.ExecContext(integrationtest.TestContext(t), "CREATE PROCEDURE "+procedure+"(OUT y BIGINT) SET y=42"); err != nil {
 			integrationtest.FailOperation(t, "create strategy procedure", err)

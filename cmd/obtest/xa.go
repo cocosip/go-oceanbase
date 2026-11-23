@@ -182,7 +182,7 @@ func cleanupXA(ctx context.Context, db *sql.DB, xid oceanbase.XID, record *objec
 	})
 }
 
-func endAndReassociateXA(ctx context.Context, c *sql.Conn, xid oceanbase.XID, variant string, record *objectRecord, mode oceanbase.Mode) error {
+func endAndReassociateXA(ctx context.Context, c *sql.Conn, xid oceanbase.XID, variant string, record *objectRecord, mode oceanbase.CompatibilityMode) error {
 	var err error
 	flag := oceanbase.XASuccess
 	if variant == xaSuspendVariant {

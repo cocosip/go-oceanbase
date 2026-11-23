@@ -8,7 +8,7 @@ import (
 
 // BatchValuesPlan accepts a single VALUES tuple suitable for batch expansion.
 func BatchValuesPlan(query string, noBackslash bool) (string, Plan, bool) {
-	tokens, err := LexSQL(query, config.ModeMySQL, noBackslash, false)
+	tokens, err := LexSQL(query, config.CompatibilityModeMySQL, noBackslash, false)
 	if err != nil || len(tokens) < 7 {
 		return "", Plan{}, false
 	}
@@ -41,7 +41,7 @@ func BatchValuesPlan(query string, noBackslash bool) (string, Plan, bool) {
 	if i != len(tokens) {
 		return "", Plan{}, false
 	}
-	plan, err := BuildBindPlanEscapes(query[tokens[start].Start:tokens[i-1].End], config.ModeMySQL, noBackslash)
+	plan, err := BuildBindPlanEscapes(query[tokens[start].Start:tokens[i-1].End], config.CompatibilityModeMySQL, noBackslash)
 	return query[:tokens[start].Start], plan, err == nil
 }
 
@@ -69,7 +69,7 @@ func batchValuesListEnd(tokens []Token, i int, valid func(Token) bool) int {
 }
 
 // BatchDML reports whether SQL is eligible for the batch DML strategies.
-func BatchDML(query string, mode config.Mode, noBackslash bool) bool {
+func BatchDML(query string, mode config.CompatibilityMode, noBackslash bool) bool {
 	for _, ansi := range []bool{false, true} {
 		tokens, err := LexSQL(query, mode, noBackslash, ansi)
 		if err != nil || len(tokens) == 0 || tokens[0].Kind != 'w' {

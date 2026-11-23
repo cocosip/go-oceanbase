@@ -46,7 +46,7 @@ func testMySQLScalarCompatibility(t *testing.T, path, framing string) {
 	for i, width := range []uint32{1, 3, 4, 1, 64} {
 		binary.LittleEndian.PutUint32(columns[i][len(columns[i])-10:], width)
 	}
-	cfg := oceanbase.Config{Mode: oceanbase.ModeMySQL}
+	cfg := oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeMySQL}
 	if path == testClientStrategy {
 		cfg.PrepareMode = oceanbase.PrepareClient
 	}

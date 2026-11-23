@@ -79,7 +79,7 @@ func charPaddingFixtureCases() []charPaddingFixtureCase {
 
 func TestCharPaddingWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, charPaddingCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		profile := charPaddingProfileFor(mode)
 		for _, tc := range charPaddingFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
@@ -99,10 +99,10 @@ func TestCharPaddingWorkflow(t *testing.T) {
 	}
 }
 
-func charPaddingSteps(t *testing.T, mode oceanbase.Mode, profile charPaddingProfile, tc charPaddingFixtureCase) []fixtureStep {
+func charPaddingSteps(t *testing.T, mode oceanbase.CompatibilityMode, profile charPaddingProfile, tc charPaddingFixtureCase) []fixtureStep {
 	t.Helper()
 	ddl := "CREATE TABLE OBT_OFFLINE_T " + profile.ddl
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		ddl += parameterFixtureEngine
 	}
 	body := []fixtureStep{{query: ddl}}

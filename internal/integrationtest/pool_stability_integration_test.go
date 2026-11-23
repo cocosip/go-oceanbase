@@ -61,7 +61,7 @@ func TestConcurrentPoolTransactions(t *testing.T) {
 			defer cancel()
 			table := fmt.Sprintf("OBGPL_%d", time.Now().UnixNano())
 			suffix := ""
-			if p.Mode == oceanbase.ModeMySQL {
+			if p.Mode == oceanbase.CompatibilityModeMySQL {
 				suffix = integrationIntegrationInnoDBSuffix
 			}
 			if _, err = db.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(80))"+suffix); err != nil {

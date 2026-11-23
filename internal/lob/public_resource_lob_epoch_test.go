@@ -32,7 +32,7 @@ func TestLOBTransactionEndsBetweenChunks(t *testing.T) {
 					if write {
 						locator = publictest.LobOutFixture(0)
 					}
-					db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) ||
 							!publictest.ServeLOBQueryStatus(ctx, t, p, "SELECT lob FROM t", typ, 5, locator) {
 							return

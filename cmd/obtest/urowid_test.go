@@ -56,7 +56,7 @@ func urowidCases() []urowidWorkflowCase {
 }
 
 func TestOracleURowIDWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, urowidCase, oceanbase.ModeOracle)
+	definition := scenarioDefinition(t, urowidCase, oceanbase.CompatibilityModeOracle)
 	for _, tc := range urowidCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps, truncated := urowidSteps(t, tc)
@@ -64,7 +64,7 @@ func TestOracleURowIDWorkflow(t *testing.T) {
 				t.Fatalf("step plan truncated=%v but stop=%q", truncated, tc.stop)
 			}
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeOracle
+			s.mode = oceanbase.CompatibilityModeOracle
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

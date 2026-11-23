@@ -23,7 +23,7 @@ func TestLocalInfileFraming(t *testing.T) {
 	for _, framing := range []string{testCompression, testOB20} {
 		t.Run(framing, func(t *testing.T) {
 			payload := bytes.Repeat([]byte{0, 1, 255, 3}, 40000)
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !p.Framed() {
 					t.Error("unframed import")
 					return
@@ -58,7 +58,7 @@ func TestLocalInfileFraming(t *testing.T) {
 }
 
 func TestLocalInfileFinalResultsetRejected(t *testing.T) {
-	db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !localRequest(ctx, t, p, localInputName) {
 			return
 		}
@@ -83,7 +83,7 @@ func TestLocalInfileFinalResultsetRejected(t *testing.T) {
 
 func TestLocalInfileSequenceWrap(t *testing.T) {
 	payload := bytes.Repeat([]byte{3, 's'}, 8<<20)
-	db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !localRequest(ctx, t, p, localInputName) {
 			return
 		}
@@ -105,7 +105,7 @@ func TestLocalInfileSequenceWrap(t *testing.T) {
 func TestLocalInfileMySQLXASessionRefused(t *testing.T) {
 	for _, ended := range []bool{false, true} {
 		t.Run(map[bool]string{false: "active", true: "ended"}[ended], func(t *testing.T) {
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeOK(ctx, t, p, []byte("\x03"+testXAStartSQL), 2) {
 					return
 				}
@@ -152,7 +152,7 @@ func TestLocalInfileMySQLManualTransactionRefused(t *testing.T) {
 			if command == testManualTxStart {
 				status = 3
 			}
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeOK(ctx, t, p, []byte("\x03"+command), status) || !testpeer.ServeOK(ctx, t, p, []byte("\x03ROLLBACK"), 2) {
 					return
 				}
@@ -180,7 +180,7 @@ func TestLocalInfileMySQLManualTransactionRefused(t *testing.T) {
 
 func TestLocalInfileMySQLTransactionRefused(t *testing.T) {
 	var reads atomic.Int32
-	db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: testMySQLReadWrite, Status: 3}, {Query: testRollbackSQL, Status: 2}}) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -206,7 +206,7 @@ func TestLocalInfileMySQLTransactionRefused(t *testing.T) {
 }
 
 func TestLocalInfileOracleTransactionRefused(t *testing.T) {
-	db := localInfileDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := localInfileDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: testAutocommitOff, Status: 4}, {Query: testOracleReadWrite, Status: 5}, {Query: testRollbackSQL, Status: 4}, {Query: testAutocommitOn, Status: 6}}) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 6) {
 			return
 		}
@@ -235,7 +235,7 @@ func TestLocalInfileServerResponse(t *testing.T) {
 	for _, stage := range []string{localErrorStage, "repeat", localMalformedNameStage, "malformed-final"} {
 		t.Run(stage, func(t *testing.T) {
 			var opened atomic.Int32
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				name := localInputName
 				if stage == localMalformedNameStage {
 					name = "invalid\x00infile"
@@ -299,7 +299,7 @@ func TestLocalInfileTimeout(t *testing.T) {
 		t.Run(stage, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(peerCtx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(peerCtx context.Context, p *wire.PacketIO) {
 				if !localRequest(peerCtx, t, p, localInputName) {
 					return
 				}
@@ -336,7 +336,7 @@ func TestLocalInfileResolver(t *testing.T) {
 				reader.closeErr = sentinel
 			}
 			ok := stage == localSuccessStage || stage == localEmptyStage
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !localRequest(ctx, t, p, localInputName) {
 					return
 				}
@@ -402,7 +402,7 @@ func TestLocalInfileSourceFailure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var dialed atomic.Int32
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !localRequest(ctx, t, p, localInputName) {
 					return
 				}
@@ -436,7 +436,7 @@ func TestLocalInfileFailure(t *testing.T) {
 	for _, authorized := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unsolicited", true: "wrong-name"}[authorized], func(t *testing.T) {
 			var reads atomic.Int32
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !localRequest(ctx, t, p, "sensitive-file") {
 					return
 				}
@@ -459,8 +459,8 @@ func TestLocalInfileFailure(t *testing.T) {
 }
 
 func TestLocalInfilePolicy(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
-		t.Run(map[oceanbase.Mode]string{oceanbase.ModeMySQL: "mysql-mode", oceanbase.ModeOracle: "oracle-mode"}[mode], func(t *testing.T) {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
+		t.Run(map[oceanbase.CompatibilityMode]string{oceanbase.CompatibilityModeMySQL: "mysql-mode", oceanbase.CompatibilityModeOracle: "oracle-mode"}[mode], func(t *testing.T) {
 			payload := bytes.Repeat([]byte{0, 1, 255, 10}, 20000)
 			db := localInfileDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
 				if !localRequest(ctx, t, p, localInputName) {
@@ -501,7 +501,7 @@ func TestLocalInfileOracleManualTransactionRefused(t *testing.T) {
 		status  byte
 	}{{command: testAutocommitOff, status: 4}, {command: testOracleReadWrite, status: 7}} {
 		t.Run(state.command, func(t *testing.T) {
-			db := localInfileDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeOK(ctx, t, p, []byte("\x03"+state.command), state.status) || !testpeer.ServeOK(ctx, t, p, []byte("\x03ROLLBACK"), 6) {
 					return
 				}
@@ -535,7 +535,7 @@ func TestLocalInfileOracleCommandBoundary(t *testing.T) {
 		"BEGIN unsafe_import; END;",
 	} {
 		t.Run(query, func(t *testing.T) {
-			db := localInfileDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeOK(ctx, t, p, []byte{14}, 6) {
 					return
 				}
@@ -563,7 +563,7 @@ func TestLocalInfileMySQLCommandBoundary(t *testing.T) {
 		"/*! START TRANSACTION; */ " + localImportSQL,
 	} {
 		t.Run(query, func(t *testing.T) {
-			db := localInfileDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 					return
 				}

@@ -14,7 +14,7 @@ func FuzzBlobIdentifiers(f *testing.F) {
 		if len(name) > 1024 || !valueformat.Identifier(name) {
 			return
 		}
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 			id := QuoteIdentifier(mode, name)
 			for _, noBackslash := range []bool{false, true} {
 				plan, err := BuildBindPlanEscapes("SELECT "+id+" FROM "+id+"."+id+" WHERE "+id+" = ?", mode, noBackslash)

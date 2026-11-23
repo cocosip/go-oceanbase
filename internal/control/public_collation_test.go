@@ -19,7 +19,7 @@ import (
 
 func TestCollationFullReset(t *testing.T) {
 	var sessions atomic.Uint32
-	created, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: config.ModeMySQL, ResetMode: config.ResetFull,
+	created, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: config.CompatibilityModeMySQL, ResetMode: config.ResetFull,
 		Session: config.SessionOptions{Collation: testCollationUTF8, InitSQL: []string{"SET NAMES latin1"}},
 		DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 			if !testpeer.ServeConnect(ctx, t, p, 2) || !serveCollationBaseline(ctx, t, p, testCollationSQL) {
@@ -67,7 +67,7 @@ func TestCollationLifecycle(t *testing.T) {
 			{"utf8mb3", "utf8_general_ci", "SET NAMES utf8 COLLATE utf8_general_ci", "测试", 33},
 		} {
 			t.Run(framing+"/"+tc.charset, func(t *testing.T) {
-				cfg := config.Config{User: testUser, Mode: config.ModeMySQL, Session: config.SessionOptions{Charset: tc.charset, Collation: tc.collation, InitSQL: []string{"SET NAMES latin1"}}, Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, Checksum: config.FeatureOff, NewMetadata: config.FeatureOff, ProxyChecksum: config.FeatureOff, FullLinkTrace: config.FeatureOff}}
+				cfg := config.Config{User: testUser, CompatibilityMode: config.CompatibilityModeMySQL, Session: config.SessionOptions{Charset: tc.charset, Collation: tc.collation, InitSQL: []string{"SET NAMES latin1"}}, Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, Checksum: config.FeatureOff, NewMetadata: config.FeatureOff, ProxyChecksum: config.FeatureOff, FullLinkTrace: config.FeatureOff}}
 				if framing == testCompression {
 					cfg.Protocol.Compression = config.FeatureRequired
 				}
@@ -154,7 +154,7 @@ func TestCollationLifecycle(t *testing.T) {
 func TestCollationServerFailure(t *testing.T) {
 	for _, collation := range []string{testCollationLatin1, "utf8mb4_unknown"} {
 		t.Run(collation, func(t *testing.T) {
-			created, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: config.ModeMySQL, Session: config.SessionOptions{Collation: collation}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+			created, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: config.CompatibilityModeMySQL, Session: config.SessionOptions{Collation: collation}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeConnect(ctx, t, p, 2) || !testpeer.ReadQuery(ctx, t, p, "SET NAMES utf8mb4 COLLATE "+collation) || !testpeer.SendPackets(ctx, t, p, []byte{255, 229, 4, '#', '4', '2', '0', '0', '0', 'n', 'o'}) {
 					return
 				}

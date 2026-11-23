@@ -18,8 +18,8 @@ type ResolvedComplex struct {
 	Value      any
 }
 
-func complexConstructor(v ResolvedComplex, mode config.Mode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
-	if mode != config.ModeOracle {
+func complexConstructor(v ResolvedComplex, mode config.CompatibilityMode, options config.SessionOptions, maxLOBBytes, limit int64) (string, error) {
+	if mode != config.CompatibilityModeOracle {
 		return "", dberrors.ErrUnsupported
 	}
 	nodes := valueformat.MaxComplexNodes
@@ -37,7 +37,7 @@ func validateConstructor(d *Descriptor, depth int, nodes *int) error {
 	if err := valueformat.ComplexNode(depth, nodes); err != nil {
 		return err
 	}
-	if d == nil || d.Key.Mode != config.ModeOracle || !valueformat.Identifier(d.Key.Schema) || !valueformat.Identifier(d.Key.Name) || d.Array && len(d.Fields) != 1 {
+	if d == nil || d.Key.Mode != config.CompatibilityModeOracle || !valueformat.Identifier(d.Key.Schema) || !valueformat.Identifier(d.Key.Name) || d.Array && len(d.Fields) != 1 {
 		return dberrors.ErrUnsupported
 	}
 	for _, f := range d.Fields {
@@ -170,7 +170,7 @@ func (e *constructorEncoder) scalar(typ string, value any, depth int) error {
 		default:
 			return dberrors.ErrComplex
 		}
-		literal, err = ClientLiteral(text, config.ModeOracle, e.options, e.maxLOBBytes, e.limit)
+		literal, err = ClientLiteral(text, config.CompatibilityModeOracle, e.options, e.maxLOBBytes, e.limit)
 	default:
 		var p wire.Parameter
 		p, err = EncodeComplexScalar(typ, value, e.options, e.maxLOBBytes, e.limit)
@@ -181,7 +181,7 @@ func (e *constructorEncoder) scalar(typ string, value any, depth int) error {
 		case valueformat.TypeNameNumber, valueformat.TypeNameInteger, valueformat.TypeNameDecimal, valueformat.TypeNameNumeric:
 			literal = string(p.Data)
 		case valueformat.TypeNameRaw:
-			literal, err = ClientLiteral(p.Data, config.ModeOracle, e.options, e.maxLOBBytes, e.limit)
+			literal, err = ClientLiteral(p.Data, config.CompatibilityModeOracle, e.options, e.maxLOBBytes, e.limit)
 		default:
 			var text string
 			switch v := value.(type) {
@@ -192,7 +192,7 @@ func (e *constructorEncoder) scalar(typ string, value any, depth int) error {
 			default:
 				return dberrors.ErrComplex
 			}
-			literal, err = ClientLiteral(text, config.ModeOracle, e.options, e.maxLOBBytes, e.limit)
+			literal, err = ClientLiteral(text, config.CompatibilityModeOracle, e.options, e.maxLOBBytes, e.limit)
 		}
 	}
 	if err != nil {

@@ -16,7 +16,7 @@ func TestMySQLCharsets(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeMySQL {
+		if p.Mode != oceanbase.CompatibilityModeMySQL {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) {
@@ -41,7 +41,7 @@ func TestMySQLUTF16LEResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeMySQL {
+		if p.Mode != oceanbase.CompatibilityModeMySQL {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) {

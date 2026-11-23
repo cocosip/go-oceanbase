@@ -102,5 +102,5 @@ func MySQLPlan(version string, f metadata.MetadataFilter, procedureOnly bool) (Q
 	default:
 		return Query{}, fmt.Errorf("%w: metadata kind %d in MySQL compatibility mode", dberrors.ErrUnsupported, f.Kind)
 	}
-	return buildMetadataQuery(config.ModeMySQL, f, s)
+	return buildMetadataQuery(config.CompatibilityModeMySQL, f, s)
 }

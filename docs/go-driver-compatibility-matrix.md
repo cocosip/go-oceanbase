@@ -85,7 +85,7 @@ Source basis: pinned OceanBase protocol behavior (connect attributes, capability
 | --- | --- | --- |
 | MySQL connectionCollation | Session.Collation/DSN collation; SET NAMES Charset COLLATE Collation, empty keeps defaults | Local configuration/strict identifiers, UTF-8/GBK/utf8mb3, standard/compressed/OB20 initialization recovery/ChangeUser/Full-reset replacement pass; actual sorting/comparison/argument round trips pending integration |
 | Failure and encoding | Server validates charset/name pairing; no fallback/driver-encoding changes; failure closes; columns decode by actual IDs | Local unknown/mismatched server errors/resource closure covered; actual supported target list unconfirmed |
-| Oracle mode | Explicit ModeOracle rejects during configuration; ModeAuto with actual Oracle returns ErrUnsupported before initialization | Both rejection paths covered locally; no reference-client silent-ignore behavior or changes to default Oracle flow |
+| Oracle mode | Explicit CompatibilityModeOracle rejects during configuration; CompatibilityModeAuto with actual Oracle returns ErrUnsupported before initialization | Both rejection paths covered locally; no reference-client silent-ignore behavior or changes to default Oracle flow |
 
 Four-target TestSessionCollation joins manual CI but only compiles. MySQL direct/proxy require real positive verification; Oracle provides this feature's negative contract, not overall compatibility evidence. See architecture §6.2 for defaults/lifecycle.
 

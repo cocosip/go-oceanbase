@@ -46,7 +46,7 @@ func metadataPatternFixtureCases() []metadataPatternFixtureCase {
 
 func TestMetadataPatternWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, metadataPatternCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range metadataPatternFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				steps := metadataPatternSteps(t, mode, tc)
@@ -70,10 +70,10 @@ func TestMetadataPatternWorkflow(t *testing.T) {
 	}
 }
 
-func metadataPatternSteps(t *testing.T, mode oceanbase.Mode, tc metadataPatternFixtureCase) []fixtureStep {
+func metadataPatternSteps(t *testing.T, mode oceanbase.CompatibilityMode, tc metadataPatternFixtureCase) []fixtureStep {
 	t.Helper()
 	engine := ""
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		engine = parameterFixtureEngine
 	}
 	body := []fixtureStep{

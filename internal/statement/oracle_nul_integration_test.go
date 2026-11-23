@@ -21,7 +21,7 @@ func TestOracleClientLongNUL(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeOracle {
+		if profile.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		for _, length := range []int{12003, 98304, 196608, 1048576} {
@@ -90,7 +90,7 @@ func TestOracleClientLongNULStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeOracle {
+		if profile.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		t.Run(profile.Name, func(t *testing.T) {
@@ -163,7 +163,7 @@ func TestOracleClientLongNULStorageBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeOracle {
+		if profile.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		t.Run(profile.Name, func(t *testing.T) {

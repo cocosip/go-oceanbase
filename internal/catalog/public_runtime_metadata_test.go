@@ -69,7 +69,7 @@ func TestMetadataTypeDictionaryProjection(t *testing.T) {
 		{oceanbase.MetadataCollectionElements, `SELECT NULL AS "catalog",c.OWNER AS "schema",c.TYPE_NAME AS "name",c.COLL_TYPE AS "collection_type",c.UPPER_BOUND AS "upper_bound",c.ELEM_TYPE_NAME AS "element_type",c.ELEM_TYPE_OWNER AS "element_owner",c.LENGTH AS "length",c.NUMBER_PRECISION AS "precision",c.SCALE AS "scale" FROM ALL_COLL_TYPES c WHERE 1=1 ORDER BY c.OWNER,c.TYPE_NAME`},
 	} {
 		t.Run(fmt.Sprint(tt.kind), func(t *testing.T) {
-			db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadQuery(ctx, t, p, tt.query) {
 					return
 				}
@@ -172,10 +172,10 @@ func TestMetadataDictionaryErrors(t *testing.T) {
 }
 
 func TestMetadataServerIdentity(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			name, types := "MYSQL", byte('0')
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				name, types = "ORACLE", '1'
 			}
 			query := `SELECT ob_version() AS "oceanbase_version",'` + name + `' AS "compatibility_mode",1 AS "parameter_dictionary",` + string(types) + ` AS "type_dictionary" FROM dual WHERE 1=1`
@@ -217,7 +217,7 @@ func TestMetadataServerIdentity(t *testing.T) {
 }
 
 func TestMetadataOracleParameterIdentity(t *testing.T) {
-	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: oceanbase.ModeOracle, PrepareMode: oceanbase.PrepareClient, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: oceanbase.CompatibilityModeOracle, PrepareMode: oceanbase.PrepareClient, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, 6) || !testpeer.ServeBaseline(ctx, t, p, 6) {
 			return
 		}
@@ -316,7 +316,7 @@ func TestMetadataInternalBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := rowset.New(ctx, config.ModeMySQL, false, []rowset.Set{{Columns: result.Columns, Rows: result.Rows}})
+	rows := rowset.New(ctx, config.CompatibilityModeMySQL, false, []rowset.Set{{Columns: result.Columns, Rows: result.Rows}})
 	values := make([]driver.Value, 1)
 	if err = rows.Next(values); err != nil || values[0] != "def" {
 		t.Fatal("internal metadata values missing", err)
@@ -337,11 +337,11 @@ func TestMetadataInternalBoundary(t *testing.T) {
 }
 
 func TestMetadataPublicSession(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			query := `SELECT s.CATALOG_NAME AS "catalog",s.SCHEMA_NAME AS "schema" FROM information_schema.SCHEMATA s WHERE 1=1 AND s.SCHEMA_NAME LIKE  _utf8mb4 X'4d69585f25'  ESCAPE '/' ORDER BY s.SCHEMA_NAME`
 			catalog := []byte{3, 'd', 'e', 'f'}
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				query = `SELECT NULL AS "catalog",u.USERNAME AS "schema" FROM ALL_USERS u WHERE 1=1 AND u.USERNAME LIKE  'MiX_%'  ESCAPE '/' ORDER BY u.USERNAME`
 				catalog = []byte{251}
 			}
@@ -381,7 +381,7 @@ func TestMetadataPublicSession(t *testing.T) {
 			}
 			var cat sql.NullString
 			var schema string
-			if err = rows.Scan(&cat, &schema); err != nil || schema != "MiX" || cat.Valid != (mode == oceanbase.ModeMySQL) {
+			if err = rows.Scan(&cat, &schema); err != nil || schema != "MiX" || cat.Valid != (mode == oceanbase.CompatibilityModeMySQL) {
 				t.Fatal(cat, schema, err)
 			}
 			if rows.Next() || rows.Err() != nil {

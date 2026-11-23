@@ -26,7 +26,7 @@ const (
 // reports the view and its columns like a table.
 func runViews(ctx context.Context, s *scenario) error {
 	definition := "(ID INTEGER PRIMARY KEY,V VARCHAR(10))"
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		definition = "(ID INTEGER PRIMARY KEY,V VARCHAR2(10))"
 	}
 	table, err := s.tableNamed(ctx, viewTableSuffix, definition)

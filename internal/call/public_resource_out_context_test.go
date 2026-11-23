@@ -39,7 +39,7 @@ func TestOutTransactionCancelStopsPublication(t *testing.T) {
 }
 
 func TestOutCancelStopsPublication(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, framing := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
 			t.Run(fmt.Sprintf("%v/%s", mode, framing), func(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -49,7 +49,7 @@ func TestOutCancelStopsPublication(t *testing.T) {
 						return
 					}
 					status := byte(2)
-					if mode == config.ModeOracle {
+					if mode == config.CompatibilityModeOracle {
 						status = 6
 					}
 					if !testpeer.ServeOK(peerCtx, t, p, []byte{14}, status) {

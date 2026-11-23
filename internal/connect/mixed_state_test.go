@@ -119,7 +119,7 @@ func TestProxyUserChangeUserState(t *testing.T) {
 }
 func checkProxyUserSessionState(t *testing.T, framing, charset string) {
 	t.Helper()
-	cfg := config.Config{User: testUser, ProxyUser: testProxyUser, Mode: config.ModeOracle, Session: config.SessionOptions{Charset: charset},
+	cfg := config.Config{User: testUser, ProxyUser: testProxyUser, CompatibilityMode: config.CompatibilityModeOracle, Session: config.SessionOptions{Charset: charset},
 		Protocol: config.ProtocolOptions{Compression: config.FeatureOff, OB20: config.FeatureOff, Checksum: config.FeatureOff, NewMetadata: config.FeatureOff, ProxyChecksum: config.FeatureOff, FullLinkTrace: config.FeatureOff}}
 	if framing == testCompression {
 		cfg.Protocol.Compression = config.FeatureRequired
@@ -169,7 +169,7 @@ func checkProxyUserSessionState(t *testing.T, framing, charset string) {
 				t.Error(err)
 				return
 			}
-			want := append(changeUserPacket(t, config.ModeOracle, ""), encoded[34:]...)
+			want := append(changeUserPacket(t, config.CompatibilityModeOracle, ""), encoded[34:]...)
 			if !testpeer.ServeOK(ctx, t, p, want, 6) || !serveAttributeBaseline(ctx, t, p, 6, charset) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 6) {
 				return
 			}

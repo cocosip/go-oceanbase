@@ -28,7 +28,7 @@ func TestMySQLXAReceiptLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range profiles {
-		if p.Mode != oceanbase.ModeMySQL {
+		if p.Mode != oceanbase.CompatibilityModeMySQL {
 			continue // Oracle XA has a combined PL response, covered separately.
 		}
 		for _, phase := range []string{integrationXAPrepareReceipt, integrationXACommitReceipt} {
@@ -45,7 +45,7 @@ func TestOracleXAReceiptLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range profiles {
-		if p.Mode != oceanbase.ModeOracle {
+		if p.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		for _, phase := range []string{integrationXAPrepareReceipt, integrationXACommitReceipt} {
@@ -139,7 +139,7 @@ func integrationXAReceiptLoss(t *testing.T, p integrationtest.Profile, phase str
 func integrationXAReceiptPhase(ctx context.Context, t *testing.T, p integrationtest.Profile, pinned *sql.Conn, xid oceanbase.XID, fault *integrationtest.ReceiptLossConn, phase string) error {
 	t.Helper()
 	arm := fault.Arm
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		arm = fault.ArmCombined
 	}
 	if phase == integrationXAPrepareReceipt {

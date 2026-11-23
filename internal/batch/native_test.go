@@ -22,13 +22,13 @@ import (
 const nativeSQL = "INSERT INTO t VALUES (?)"
 const maxInsertID = "18446744073709551615"
 
-func nativeOperation(t *testing.T, mode config.Mode, framing string, serve func(context.Context, *wire.PacketIO)) (context.Context, *session.Operation) {
+func nativeOperation(t *testing.T, mode config.CompatibilityMode, framing string, serve func(context.Context, *wire.PacketIO)) (context.Context, *session.Operation) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	t.Cleanup(cancel)
 	client, peer := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	cfg, err := config.Normalize(config.Config{User: testpeer.User, Mode: mode, AllowMultiStatements: true})
+	cfg, err := config.Normalize(config.Config{User: testpeer.User, CompatibilityMode: mode, AllowMultiStatements: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func nativeOperation(t *testing.T, mode config.Mode, framing string, serve func(
 		}
 	}
 	status := uint16(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 5
 	}
 	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: clientPackets, Mode: mode, OBVersion: "4.3.5.0", Capabilities: wire.ClientProtocol41 | wire.ClientMultiStatements, OK: wire.OK{Status: status}})
@@ -88,7 +88,7 @@ func nativeExecute(t *testing.T, value uint64) []byte {
 }
 
 func TestNativePipelineAcknowledgements(t *testing.T) {
-	ctx, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveNativePrepare(ctx, t, p, 2) {
 			return
 		}
@@ -122,7 +122,7 @@ func TestNativeArrayDiagnosticsAndAggregate(t *testing.T) {
 	for _, framing := range []string{testpeer.Standard, testpeer.Compression, testpeer.OB20} {
 		for _, status := range []byte{5, 2} {
 			t.Run(fmt.Sprintf("%s/status-%d", framing, status), func(t *testing.T) {
-				ctx, op := nativeOperation(t, config.ModeOracle, framing, func(ctx context.Context, p *wire.PacketIO) {
+				ctx, op := nativeOperation(t, config.CompatibilityModeOracle, framing, func(ctx context.Context, p *wire.PacketIO) {
 					if !serveNativePrepare(ctx, t, p, 5) {
 						return
 					}
@@ -162,7 +162,7 @@ func serveRewriteGuard(ctx context.Context, t *testing.T, p *wire.PacketIO) bool
 func TestNativeRewritePreservesConfirmedPrefix(t *testing.T) {
 	for _, broken := range []bool{false, true} {
 		t.Run(map[bool]string{false: "server", true: "disconnect"}[broken], func(t *testing.T) {
-			ctx, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveRewriteGuard(ctx, t, p) || !testpeer.ReadQuery(ctx, t, p, "INSERT INTO t VALUES ( 1 )\n;\nINSERT INTO t VALUES ( 2 )\n;\nINSERT INTO t VALUES ( 3 )") || !testpeer.SendPackets(ctx, t, p, nativeOK(1, 7, 10)) {
 					return
 				}
@@ -192,7 +192,7 @@ func TestNativeRewritePreservesConfirmedPrefix(t *testing.T) {
 func TestNativeMultiValuesAggregate(t *testing.T) {
 	for _, framing := range []string{testpeer.Standard, testpeer.Compression, testpeer.OB20} {
 		t.Run(framing, func(t *testing.T) {
-			ctx, op := nativeOperation(t, config.ModeMySQL, framing, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := nativeOperation(t, config.CompatibilityModeMySQL, framing, func(ctx context.Context, p *wire.PacketIO) {
 				if testpeer.ReadQuery(ctx, t, p, "INSERT INTO t VALUES ( 1 ),( 2 )") {
 					testpeer.SendPackets(ctx, t, p, nativeOK(2, math.MaxUint64, 2))
 				}

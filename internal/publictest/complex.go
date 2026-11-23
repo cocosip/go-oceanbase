@@ -20,12 +20,12 @@ import (
 // ServeDescriptorRows serves a bounded dictionary result for one exact type name.
 func ServeDescriptorRows(ctx context.Context, t *testing.T, p *wire.PacketIO, kind metadata.MetadataKind, schema, name string, rows [][]string) bool {
 	t.Helper()
-	plan, err := catalog.Plan(config.ModeOracle, "", metadata.MetadataFilter{Kind: kind, SchemaPattern: catalog.ExactDescriptorPattern(schema), NamePattern: catalog.ExactDescriptorPattern(name)})
+	plan, err := catalog.Plan(config.CompatibilityModeOracle, "", metadata.MetadataFilter{Kind: kind, SchemaPattern: catalog.ExactDescriptorPattern(schema), NamePattern: catalog.ExactDescriptorPattern(name)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Config{Session: config.SessionOptions{Charset: "utf8mb4"}, Limits: config.Limits{MaxMessageBytes: 1 << 20}}
-	s := session.New(cfg, &session.Negotiated{Mode: config.ModeOracle})
+	s := session.New(cfg, &session.Negotiated{Mode: config.CompatibilityModeOracle})
 	op, err := s.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)

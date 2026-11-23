@@ -142,7 +142,7 @@ func TestCursorSensitiveInitialChildren(t *testing.T) {
 	)
 	for _, kind := range []string{"child", nullChild, parent, fetchError} {
 		t.Run(kind, func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServePrepare(ctx, t, p, native, 54, 0, nil) {
 					return
 				}

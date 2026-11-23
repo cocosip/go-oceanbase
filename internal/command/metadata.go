@@ -42,7 +42,7 @@ func ReadMetadata(ctx context.Context, op *session.Operation, count int, budget 
 		if err != nil {
 			return nil, err
 		}
-		if p.Mode == config.ModeOracle && !validate && eof.Status&3 == 3 {
+		if p.Mode == config.CompatibilityModeOracle && !validate && eof.Status&3 == 3 {
 			eof.Status = eof.Status&^3 | op.Protocol().OK.Status&3
 		}
 		ok := op.Protocol().OK

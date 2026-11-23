@@ -29,7 +29,7 @@ func runRowCounts(ctx context.Context, s *scenario) error {
 		{"UPDATE " + table + " SET V=8 WHERE ID=99", 0},
 	}
 	deleted := int64(1)
-	if s.mode == oceanbase.ModeMySQL {
+	if s.mode == oceanbase.CompatibilityModeMySQL {
 		operations = append(operations,
 			command{"INSERT INTO " + table + " VALUES (1,8) ON DUPLICATE KEY UPDATE V=8", noChange},
 			command{"INSERT INTO " + table + " VALUES (1,9) ON DUPLICATE KEY UPDATE V=9", 2},

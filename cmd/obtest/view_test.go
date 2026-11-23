@@ -55,7 +55,7 @@ func viewFixtureCases() []viewFixtureCase {
 
 func TestViewWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, viewCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range viewFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				steps := viewSteps(t, mode, tc)
@@ -79,10 +79,10 @@ func TestViewWorkflow(t *testing.T) {
 	}
 }
 
-func viewSteps(t *testing.T, mode oceanbase.Mode, tc viewFixtureCase) []fixtureStep {
+func viewSteps(t *testing.T, mode oceanbase.CompatibilityMode, tc viewFixtureCase) []fixtureStep {
 	t.Helper()
 	create := viewCreateMY + parameterFixtureEngine
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		create = viewCreateOR
 	}
 	body := []fixtureStep{

@@ -43,7 +43,7 @@ func TestComplexMetadataBudget(t *testing.T) {
 		d    Descriptor
 		want []byte
 	}{
-		{Descriptor{Key: Key{Mode: config.ModeOracle, Schema: "S", Name: "T", Version: 7}}, []byte{1, 'S', 1, 'T', 7}},
+		{Descriptor{Key: Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "T", Version: 7}}, []byte{1, 'S', 1, 'T', 7}},
 		{Descriptor{Key: Key{Version: 8}, Array: true, Fields: []Field{{Type: valueformat.TypeNameNumber}}}, []byte{0, 0, 8, 0}},
 		{Descriptor{Key: Key{Version: 8}, Array: true, Fields: []Field{{Child: &Descriptor{Key: Key{Schema: "S", Name: "T", Version: 9}}}}}, []byte{0, 0, 8, 160, 1, 'S', 1, 'T', 9}},
 	} {

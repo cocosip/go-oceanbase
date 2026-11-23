@@ -22,11 +22,11 @@ func responseOperation(t *testing.T, packets [][]byte) (context.Context, *sessio
 	client, peer := net.Pipe()
 	t.Cleanup(cancel)
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	cfg, err := config.Normalize(config.Config{User: "app", Addr: "127.0.0.1:2881", Mode: config.ModeMySQL})
+	cfg, err := config.Normalize(config.Config{User: "app", Addr: "127.0.0.1:2881", CompatibilityMode: config.CompatibilityModeMySQL})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, 0), Mode: config.ModeMySQL, Capabilities: wire.ClientProtocol41})
+	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, 0), Mode: config.CompatibilityModeMySQL, Capabilities: wire.ClientProtocol41})
 	op, err := s.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)

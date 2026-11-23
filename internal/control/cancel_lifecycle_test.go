@@ -243,7 +243,7 @@ func armedCancelTarget(t *testing.T, tlsVerified ...bool) (*session.Session, *se
 	t.Helper()
 	client, server := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
-	p := &session.Negotiated{Raw: client, User: testUser, Mode: config.ModeMySQL, Hello: wire.Handshake{ConnectionID: 42}}
+	p := &session.Negotiated{Raw: client, User: testUser, Mode: config.CompatibilityModeMySQL, Hello: wire.Handshake{ConnectionID: 42}}
 	if len(tlsVerified) > 0 {
 		p.TLSVerified = tlsVerified[0]
 	}
@@ -268,7 +268,7 @@ func TestCancelQueryGuards(t *testing.T) {
 			case "network":
 				cfg.Network, cfg.Addr = "unix", "/socket"
 			case "expected-mode":
-				cfg.Mode = config.ModeOracle
+				cfg.CompatibilityMode = config.CompatibilityModeOracle
 			case cancelNoTLSPath, cancelInsecureTLSPath:
 				if name == cancelInsecureTLSPath {
 					cfg.TLSConfig = &tls.Config{InsecureSkipVerify: true}

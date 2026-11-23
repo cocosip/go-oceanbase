@@ -34,7 +34,7 @@ func TestClobMutation(t *testing.T) {
 			afterData, _ := charset.Encode(name, after)
 			trimmedData, _ := charset.Encode(name, trimmed)
 			locator, updated, short := publictest.LobInlineFixture(string(initialData)), publictest.LobInlineFixture(string(afterData)), publictest.LobInlineFixture(string(trimmedData))
-			db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadQuery(ctx, t, p, "SELECT c FROM t") || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("c", 211, collation, 0), []byte{254, 0, 0, 6, 0}, append([]byte{byte(len(locator))}, locator...), []byte{254, 0, 0, 6, 0}) {
 					return
 				}
@@ -78,7 +78,7 @@ func TestClobMutation(t *testing.T) {
 func TestLOBWritePartial(t *testing.T) {
 	locator, updated := publictest.LobOutFixture(0), publictest.LobOutFixture(32767)
 	value := []byte(strings.Repeat("a", 32768))
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 			return
 		}
@@ -114,10 +114,10 @@ func TestLOBWritePartial(t *testing.T) {
 }
 
 func TestLOBValidation(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeOracle, config.ModeMySQL} {
-		t.Run(map[config.Mode]string{config.ModeOracle: "Oracle", config.ModeMySQL: "MySQL"}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeOracle, config.CompatibilityModeMySQL} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeOracle: "Oracle", config.CompatibilityModeMySQL: "MySQL"}[mode], func(t *testing.T) {
 			db := publictest.TxDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
-				if mode == config.ModeOracle && !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, publictest.LobInlineFixture(publictest.TestLOBABC)) {
+				if mode == config.CompatibilityModeOracle && !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, publictest.LobInlineFixture(publictest.TestLOBABC)) {
 					return
 				}
 				p.ResetSequence()
@@ -126,7 +126,7 @@ func TestLOBValidation(t *testing.T) {
 			defer func() { _ = db.Close() }()
 			pinned := publictest.PinnedSession(t, db)
 			b, err := oceanbase.OpenBlob(context.Background(), pinned, "SELECT b FROM t")
-			if mode == config.ModeMySQL {
+			if mode == config.CompatibilityModeMySQL {
 				if !errors.Is(err, dberrors.ErrUnsupported) {
 					t.Fatal(err)
 				}
@@ -161,7 +161,7 @@ func TestLOBValidation(t *testing.T) {
 func TestClobUTF16OverwriteBoundary(t *testing.T) {
 	for _, pair := range [][2]string{{"aX", "😀"}, {"😀X", "a"}} {
 		t.Run(pair[0], func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				data, _ := charset.Encode("utf16", pair[0])
 				if !testpeer.ReadQuery(ctx, t, p, "SELECT c FROM t") || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("c", 211, 54, 0), []byte{254, 0, 0, 6, 0}, append([]byte{byte(len(data) + 8)}, publictest.LobInlineFixture(string(data))...), []byte{254, 0, 0, 6, 0}) {
 					return
@@ -190,7 +190,7 @@ func TestLOBOracleAmount(t *testing.T) {
 	for _, typ := range []byte{3, 246} {
 		t.Run(map[byte]string{3: "INTEGER", 246: "NUMBER"}[typ], func(t *testing.T) {
 			locator := publictest.LobOutFixture(2)
-			db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 					return
 				}
@@ -225,7 +225,7 @@ func TestLOBOracleAmount(t *testing.T) {
 
 func TestClobOutRow(t *testing.T) {
 	locator := publictest.LobOutFixture(9)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT c FROM t", 211, locator) {
 			return
 		}
@@ -265,7 +265,7 @@ func TestClobOutRow(t *testing.T) {
 
 func TestLOBLargeReader(t *testing.T) {
 	value := strings.Repeat("a", (16<<20)+1)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, publictest.LobInlineFixture(value)) {
 			return
 		}
@@ -292,7 +292,7 @@ func TestLOBLargeReader(t *testing.T) {
 
 func TestLOBInterleave(t *testing.T) {
 	locator := publictest.LobOutFixture(3)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadQuery(ctx, t, p, "SELECT mixed") || !testpeer.SendPackets(ctx, t, p,
 			[]byte{1}, testpeer.TextColumn("a", 253, 45, 0), []byte{254, 0, 0, 6, 0}, []byte{1, 'x'}, []byte{254, 0, 0, 14, 0},
 			[]byte{1}, testpeer.TextColumn("b", 210, 63, 0), []byte{254, 0, 0, 6, 0}, append([]byte{byte(len(locator))}, locator...), []byte{254, 0, 0, 14, 0},
@@ -339,7 +339,7 @@ func TestLOBInterleave(t *testing.T) {
 func TestLOBTemporary(t *testing.T) {
 	locator := publictest.LobInlineFixture("x")
 	locator[5] |= 1
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 			return
 		}
@@ -367,7 +367,7 @@ func TestLOBTemporary(t *testing.T) {
 
 func TestLOBMutation(t *testing.T) {
 	locator, updated, trimmed := publictest.LobOutFixture(3), publictest.LobOutFixture(5), publictest.LobOutFixture(2)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 			return
 		}
@@ -409,7 +409,7 @@ func TestLOBMutation(t *testing.T) {
 func TestLOBOutRow(t *testing.T) {
 	locator := publictest.LobOutFixture(5)
 	const readSQL = "DECLARE n INTEGER := ?; v RAW(32767); BEGIN BEGIN DBMS_LOB.READ(?, n, ?, v); EXCEPTION WHEN NO_DATA_FOUND THEN n := 0; END; ? := n; ? := v; END;"
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 			return
 		}
@@ -445,7 +445,7 @@ func TestLOBOutRow(t *testing.T) {
 }
 
 func TestClobOffsets(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT c FROM t", 211, publictest.LobInlineFixture("a中😀z")) {
 			return
 		}
@@ -471,7 +471,7 @@ func TestClobOffsets(t *testing.T) {
 }
 
 func TestLOBLocator(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, publictest.LobInlineFixture(publictest.TestLOBABC)) {
 			return
 		}

@@ -25,7 +25,7 @@ func integrationTestMetadataProfile(t *testing.T, p integrationtest.Profile) {
 	defer func() { _ = pinned.Close() }()
 	var schema string
 	schemaSQL := integrationDatabaseQuery
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		schemaSQL = "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual"
 	}
 	if err = pinned.QueryRowContext(ctx, schemaSQL).Scan(&schema); err != nil {
@@ -35,7 +35,7 @@ func integrationTestMetadataProfile(t *testing.T, p integrationtest.Profile) {
 	child := parent + "_C"
 	view := parent + "_V"
 	definition := "id INTEGER PRIMARY KEY,amount DECIMAL(10,2),note VARCHAR(12)"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		definition = "id INTEGER PRIMARY KEY,amount NUMBER(10,2),note VARCHAR2(12)"
 	}
 	if _, err = pinned.ExecContext(ctx, "CREATE TABLE "+parent+" ("+definition+")"); err != nil {
@@ -121,7 +121,7 @@ func integrationTestMetadataProfile(t *testing.T, p integrationtest.Profile) {
 			integrationtest.FailOperation(t, "close metadata dictionary", err)
 		}
 	}
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		for _, kind := range []oceanbase.MetadataKind{oceanbase.MetadataSynonyms, oceanbase.MetadataTypes, oceanbase.MetadataTypeAttributes, oceanbase.MetadataCollectionElements} {
 			rows, err := oceanbase.Metadata(ctx, pinned, oceanbase.MetadataFilter{Kind: kind})
 			if err != nil {
@@ -164,7 +164,7 @@ func integrationCheckResultColumnOrigins(t *testing.T, pinned *sql.Conn, schema,
 func integrationCreateMetadataView(t *testing.T, p integrationtest.Profile, pinned *sql.Conn, view, parent string) bool {
 	t.Helper()
 	if _, err := pinned.ExecContext(integrationtest.TestContext(t), "CREATE VIEW "+view+" AS SELECT id FROM "+parent); err != nil {
-		if p.Mode == oceanbase.ModeOracle && integrationtest.OnlyServerErrorCode(err, 1031) {
+		if p.Mode == oceanbase.CompatibilityModeOracle && integrationtest.OnlyServerErrorCode(err, 1031) {
 			t.Skip("CREATE VIEW privilege unavailable; table metadata tested separately")
 		}
 		integrationtest.FailOperation(t, "create metadata view", err)
@@ -193,7 +193,7 @@ func integrationCompareMetadataCatalogAndRemarks(t *testing.T, p integrationtest
 	if err = rows.Scan(&catalog, &schema, &name, &kind, &remarks); err != nil {
 		integrationtest.FailOperation(t, "scan table remarks", err)
 	}
-	if !remarks.Valid || remarks.String != integrationMetadataTableRemark || catalog.Valid != (p.Mode == oceanbase.ModeMySQL) || catalog.Valid && catalog.String != integrationMetadataCatalogName {
+	if !remarks.Valid || remarks.String != integrationMetadataTableRemark || catalog.Valid != (p.Mode == oceanbase.CompatibilityModeMySQL) || catalog.Valid && catalog.String != integrationMetadataCatalogName {
 		t.Fatal("table remarks or catalog differ from the mode/DDL")
 	}
 	if rows.Next() || rows.Err() != nil {
@@ -206,7 +206,7 @@ func integrationCompareMetadataCatalogAndRemarks(t *testing.T, p integrationtest
 		for _, catalog := range []string{"", integrationMetadataCatalogName, "d%", "x' OR 1=1 --", "库/_%"} {
 			filter.Kind, filter.Catalog = kind, catalog
 			want := 0
-			if catalog == "" || p.Mode == oceanbase.ModeMySQL && catalog == integrationMetadataCatalogName {
+			if catalog == "" || p.Mode == oceanbase.CompatibilityModeMySQL && catalog == integrationMetadataCatalogName {
 				want = 1
 				if kind == oceanbase.MetadataColumns {
 					want = 3
@@ -249,7 +249,7 @@ func integrationCheckMetadataPatternFilters(t *testing.T, p integrationtest.Prof
 	t.Helper()
 	pattern := integrationMetadataPattern
 	column := "amount"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		column = "AMOUNT"
 	}
 	f := base
@@ -261,7 +261,7 @@ func integrationCheckMetadataPatternFilters(t *testing.T, p integrationtest.Prof
 	f.ColumnPattern = pattern(column[:3]) + "%"
 	integrationCheckMetadataCount(t, pinned, f, 1)
 
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		f = base
 		f.Kind = oceanbase.MetadataForeignKeys
 		f.NamePattern = pattern(child) + "%"
@@ -307,7 +307,7 @@ func integrationConfigureMetadataRemarks(t *testing.T, p integrationtest.Profile
 		"ALTER TABLE " + table + " COMMENT='" + tableText + "'",
 		"ALTER TABLE " + table + " MODIFY note VARCHAR(12) COMMENT '" + columnText + "'",
 	}
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		commands = []string{
 			"COMMENT ON TABLE " + table + " IS '" + tableText + "'",
 			"COMMENT ON COLUMN " + table + ".note IS '" + columnText + "'",
@@ -342,7 +342,7 @@ func integrationCompareMetadataColumns(t *testing.T, p integrationtest.Profile, 
 			integrationtest.FailOperation(t, "scan metadata columns", err)
 		}
 		autoOK := autoIncrement.Valid && autoIncrement.Int64 == 0
-		if p.Mode == oceanbase.ModeOracle {
+		if p.Mode == oceanbase.CompatibilityModeOracle {
 			autoOK = !autoIncrement.Valid
 		}
 		if !autoOK || !generated.Valid || generated.Int64 != 0 {
@@ -366,7 +366,7 @@ func integrationCompareMetadataColumns(t *testing.T, p integrationtest.Profile, 
 		integrationtest.FailOperation(t, "close metadata columns", err)
 	}
 	dictionarySQL := "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		dictionarySQL = "SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE OWNER=? AND TABLE_NAME=? ORDER BY COLUMN_ID"
 	}
 	raw, err := pinned.QueryContext(ctx, dictionarySQL, schema, parent)

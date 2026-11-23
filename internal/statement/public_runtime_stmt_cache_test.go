@@ -16,7 +16,7 @@ import (
 )
 
 func TestStatementCacheFailureEvicts(t *testing.T) {
-	db := optimizationDB(t, oceanbase.ModeMySQL, oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeMySQL, oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
 		for i := int64(1); i <= 2; i++ {
 			if !publictest.ServePrepare(ctx, t, p, testBatchSQL, 7, 1, nil) || !testpeer.ReadCommand(ctx, t, p, optimizationExecute(7, i, false)) {
 				return
@@ -48,12 +48,12 @@ func TestStatementCacheFailureEvicts(t *testing.T) {
 }
 
 func TestStatementCache(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			queries := []string{testBatchSQL, testBatchSQL, testCacheSQL, testBatchSQL}
 			ids := []uint32{7, 7, 8, 9}
 			status := byte(2)
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				status = 6
 			}
 			db := optimizationDB(t, mode, oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
@@ -110,10 +110,10 @@ func TestStatementCacheFullReset(t *testing.T) {
 }
 
 func TestStatementCacheSurvivesTextQuery(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			status := byte(2)
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				status = 6
 			}
 			db := optimizationDB(t, mode, oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
@@ -148,7 +148,7 @@ func TestStatementCacheSurvivesTextQuery(t *testing.T) {
 func TestStatementCacheInvalidation(t *testing.T) {
 	for _, sqlLimit := range []int{1, 1024} {
 		t.Run(fmt.Sprint(sqlLimit), func(t *testing.T) {
-			db := optimizationDB(t, oceanbase.ModeMySQL, oceanbase.ExecutionOptions{StatementCacheSize: 1, StatementCacheSQLLimit: sqlLimit}, func(ctx context.Context, p *wire.PacketIO) {
+			db := optimizationDB(t, oceanbase.CompatibilityModeMySQL, oceanbase.ExecutionOptions{StatementCacheSize: 1, StatementCacheSQLLimit: sqlLimit}, func(ctx context.Context, p *wire.PacketIO) {
 				for i := uint32(7); i <= 8; i++ {
 					if !publictest.ServePrepare(ctx, t, p, testBatchSQL, i, 1, nil) || !testpeer.ServeOK(ctx, t, p, optimizationExecute(i, 1, false), 2) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, i)) {
 						return
@@ -177,7 +177,7 @@ func TestStatementCacheInvalidation(t *testing.T) {
 func TestStatementCacheLRU(t *testing.T) {
 	queries := []string{testBatchSQL, testCacheSQL, testBatchSQL, "INSERT INTO v VALUES (?)", testCacheSQL}
 	ids := []uint32{7, 8, 7, 9, 10}
-	db := optimizationDB(t, oceanbase.ModeMySQL, oceanbase.ExecutionOptions{StatementCacheSize: 2}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeMySQL, oceanbase.ExecutionOptions{StatementCacheSize: 2}, func(ctx context.Context, p *wire.PacketIO) {
 		for i, query := range queries {
 			if i != 2 && !publictest.ServePrepare(ctx, t, p, query, ids[i], 1, nil) {
 				return

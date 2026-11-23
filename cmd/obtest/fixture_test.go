@@ -185,21 +185,21 @@ func TestOwnedXACleanup(t *testing.T) {
 
 func TestCancellationRejectsUnrelatedErrors(t *testing.T) {
 	interrupted := &oceanbase.Error{Code: 600, SQLState: "70100", Message: "OBE-00600: internal error code, arguments: -5065, Query execution was interrupted"}
-	if err := checkCancellation(errors.Join(interrupted, interrupted), oceanbase.ModeOracle, 0); err != nil {
+	if err := checkCancellation(errors.Join(interrupted, interrupted), oceanbase.CompatibilityModeOracle, 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, outcome := range []error{&oceanbase.Error{Code: 600}, &oceanbase.Error{Code: 600, SQLState: "70100", Message: "other internal error"}, errors.Join(interrupted, context.DeadlineExceeded), interrupted} {
-		mode := oceanbase.ModeOracle
+		mode := oceanbase.CompatibilityModeOracle
 		if outcome == interrupted {
-			mode = oceanbase.ModeMySQL
+			mode = oceanbase.CompatibilityModeMySQL
 		}
 		if checkCancellation(outcome, mode, 0) == nil {
 			t.Fatal("unrelated internal error accepted")
 		}
 	}
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		code := uint32(1317)
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			code = 1013
 		}
 		if err := checkCancellation(&oceanbase.Error{Code: code}, mode, 0); err != nil {
@@ -266,7 +266,7 @@ func fixtureScenario(t *testing.T, steps []fixtureStep) *scenario {
 	f := &fixtureDB{t: t, steps: steps}
 	db := sql.OpenDB(f)
 	db.SetMaxOpenConns(2) // a pinned session must not block the scenario's pooled DDL
-	s := &scenario{db: db, prefix: fixturePrefix, mode: oceanbase.ModeOracle, cleanupTimeout: time.Second}
+	s := &scenario{db: db, prefix: fixturePrefix, mode: oceanbase.CompatibilityModeOracle, cleanupTimeout: time.Second}
 	t.Cleanup(func() {
 		if err := db.Close(); err != nil {
 			t.Error(err)
@@ -329,7 +329,7 @@ func TestOnlyConfirmedObjectsAreDropped(t *testing.T) {
 
 func TestCLIConfigurationOnly(t *testing.T) {
 	const secret = "do-not-print-this-password"
-	t.Setenv("OB_DSN", "oceanbase://fixture:"+secret+"@127.0.0.1:1/test?mode=mysql")
+	t.Setenv("OB_DSN", "oceanbase://fixture:"+secret+"@127.0.0.1:1/test?compatibilityMode=mysql")
 	for _, args := range [][]string{{"-list"}, {"-check"}} {
 		var out, stderr strings.Builder
 		if code := command(args, &out, &stderr); code != 0 || strings.Contains(out.String()+stderr.String(), secret) {
@@ -363,10 +363,10 @@ func TestXAFlagRejectionClassification(t *testing.T) {
 		{errors.Join(oceanbase.ErrXA, &oceanbase.Error{Code: 1064}), false},
 		{errors.Join(oceanbase.ErrXA, server, &oceanbase.Error{Code: 1142}), false},
 	} {
-		if xaFlagRejected(tc.err, oceanbase.ModeMySQL) != tc.want {
+		if xaFlagRejected(tc.err, oceanbase.CompatibilityModeMySQL) != tc.want {
 			t.Errorf("classification mismatch: %v", tc.err)
 		}
-		if xaFlagRejected(tc.err, oceanbase.ModeOracle) {
+		if xaFlagRejected(tc.err, oceanbase.CompatibilityModeOracle) {
 			t.Error("Oracle error classified as MySQL flag rejection")
 		}
 	}

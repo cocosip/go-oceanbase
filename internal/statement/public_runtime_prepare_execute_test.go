@@ -12,7 +12,7 @@ import (
 )
 
 func TestPrepareExecuteExplicitStatement(t *testing.T) {
-	db := optimizationDB(t, oceanbase.ModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true, ReuseParameterTypes: true}, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepareStatus(ctx, t, p, testBatchSQL, 7, 1, nil, 6) {
 			return
 		}

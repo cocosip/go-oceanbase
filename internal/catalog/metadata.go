@@ -32,11 +32,11 @@ func Metadata(ctx context.Context, op *session.Operation, f metadata.MetadataFil
 		return Result{}, err
 	}
 	p := op.Protocol()
-	if f.Kind == metadata.MetadataRoutineParameters && p.Mode == config.ModeMySQL && !HasParameterDictionary(p.OBVersion) {
+	if f.Kind == metadata.MetadataRoutineParameters && p.Mode == config.CompatibilityModeMySQL && !HasParameterDictionary(p.OBVersion) {
 		return routineFallback(ctx, op, f, procedureOnly)
 	}
 	var plan Query
-	if procedureOnly && f.Kind == metadata.MetadataRoutineParameters && p.Mode == config.ModeMySQL {
+	if procedureOnly && f.Kind == metadata.MetadataRoutineParameters && p.Mode == config.CompatibilityModeMySQL {
 		plan, err = MySQLPlan(p.OBVersion, f, true)
 	} else {
 		plan, err = Plan(p.Mode, p.OBVersion, f)
@@ -107,7 +107,7 @@ func routineFallback(ctx context.Context, op *session.Operation, f metadata.Meta
 			return Result{}, fmt.Errorf("%w: routine metadata requires a current database", dberrors.ErrBind)
 		}
 	}
-	qualified := sqltext.QuoteIdentifier(config.ModeMySQL, schema) + "." + sqltext.QuoteIdentifier(config.ModeMySQL, name)
+	qualified := sqltext.QuoteIdentifier(config.CompatibilityModeMySQL, schema) + "." + sqltext.QuoteIdentifier(config.CompatibilityModeMySQL, name)
 	sets, err := QueryRows(ctx, op, Query{SQL: "SHOW CREATE PROCEDURE " + qualified})
 	if err != nil {
 		var server *dberrors.Error

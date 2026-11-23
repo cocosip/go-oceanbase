@@ -23,7 +23,7 @@ const concurrentStabilityConnections = 3
 
 func TestDriverConcurrentSessionStability(t *testing.T) {
 	iterations := sessionStabilityIterations(t)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{driverFixtureStandard, driverFixtureCompression, driverFixtureOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				runConcurrentSessionStability(t, mode, framing, iterations)
@@ -32,7 +32,7 @@ func TestDriverConcurrentSessionStability(t *testing.T) {
 	}
 }
 
-func runConcurrentSessionStability(t *testing.T, mode oceanbase.Mode, framing string, iterations int) {
+func runConcurrentSessionStability(t *testing.T, mode oceanbase.CompatibilityMode, framing string, iterations int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Minute)
 	defer cancel()
@@ -136,10 +136,10 @@ func concurrentSessionBarriers(ctx context.Context, iterations, step int) map[in
 	return barriers
 }
 
-func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode oceanbase.Mode, framing string, iterations int, barriers map[int]func() bool) (*sql.DB, *atomic.Int32, <-chan struct{}, func()) {
+func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode oceanbase.CompatibilityMode, framing string, iterations int, barriers map[int]func() bool) (*sql.DB, *atomic.Int32, <-chan struct{}, func()) {
 	t.Helper()
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
 	peers := make([]func(context.Context, string, string) (net.Conn, error), concurrentStabilityConnections)
@@ -168,7 +168,7 @@ func newConcurrentStabilityDB(ctx context.Context, t *testing.T, mode oceanbase.
 	}
 	dials := new(atomic.Int32)
 	transports := make([]net.Conn, concurrentStabilityConnections)
-	cfg := oceanbase.Config{User: driverFixtureUser, Mode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
+	cfg := oceanbase.Config{User: driverFixtureUser, CompatibilityMode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
 	cfg.Protocol = sessionStabilityProtocol(framing)
 	cfg.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		i := int(dials.Add(1)) - 1

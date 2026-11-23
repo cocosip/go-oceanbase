@@ -31,7 +31,7 @@ func batchArrayPacket(t testing.TB, values []any, options wire.ExecuteOptions) [
 		if err != nil {
 			t.Fatal(err)
 		}
-		parameter, err := valuecodec.EncodeParameter(normalized, oceanbase.ModeOracle, oceanbase.SessionOptions{}, 1<<20)
+		parameter, err := valuecodec.EncodeParameter(normalized, oceanbase.CompatibilityModeOracle, oceanbase.SessionOptions{}, 1<<20)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +77,7 @@ func serveBatchArrayEnd(ctx context.Context, t *testing.T, p *wire.PacketIO) {
 }
 
 func TestBatchArrayBinaryDoubleRange(t *testing.T) {
-	db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeOracle}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveBatchArrayBegin(ctx, t, p) {
 			return
 		}
@@ -114,7 +114,7 @@ func TestBatchArrayResults(t *testing.T) {
 		for _, failed := range []bool{false, true} {
 			t.Run(fmt.Sprint(variant, "/", failed), func(t *testing.T) {
 				options := wire.ExecuteOptions{UseChecksum: true, SQLChecksum: wire.SQLChecksum([]byte(testBatchSQL))}
-				db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeOracle, Execution: oceanbase.ExecutionOptions{StatementChecksum: true, ReuseParameterTypes: true}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle, Execution: oceanbase.ExecutionOptions{StatementChecksum: true, ReuseParameterTypes: true}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !serveBatchArrayBegin(ctx, t, p) || !testpeer.ReadCommand(ctx, t, p, batchArrayPacket(t, []any{1, 2}, options)) {
 						return
 					}
@@ -176,7 +176,7 @@ func TestBatchArrayChunks(t *testing.T) {
 		{"local-error", [][]any{{"a"}, {"b"}, {strings.Repeat("x", 200)}, {"c"}, {"d"}}, [][]any{{"a", "b"}, {"c", "d"}}, oceanbase.BatchOptions{}, oceanbase.Limits{MaxMessageBytes: 192}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeOracle, Limits: tc.limits}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle, Limits: tc.limits}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveBatchArrayBegin(ctx, t, p) {
 					return
 				}
@@ -224,7 +224,7 @@ func TestBatchArrayFallback(t *testing.T) {
 			if reason == arrayFallbackAutocommit {
 				status = 6
 			}
-			cfg := oceanbase.Config{Mode: oceanbase.ModeOracle}
+			cfg := oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle}
 			if reason == testClientStrategy {
 				cfg.PrepareMode = oceanbase.PrepareClient
 			}
@@ -323,7 +323,7 @@ func serveBatchArrayFallback(ctx context.Context, t *testing.T, p *wire.PacketIO
 
 func TestBatchArrayPhysicalParameterBudget(t *testing.T) {
 	const query = "INSERT INTO t VALUES (:value,:value)"
-	db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeOracle}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle}, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !publictest.ServePrepareStatus(ctx, t, p, "INSERT INTO t VALUES (?,?)", 7, 2, nil, 5) {
 			return
 		}

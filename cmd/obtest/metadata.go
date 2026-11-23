@@ -9,7 +9,7 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
-func checkDictionaryMetadata(ctx context.Context, c *sql.Conn, mode oceanbase.Mode, schema, table string, kind oceanbase.MetadataKind) (err error) {
+func checkDictionaryMetadata(ctx context.Context, c *sql.Conn, mode oceanbase.CompatibilityMode, schema, table string, kind oceanbase.MetadataKind) (err error) {
 	rows, err := oceanbase.Metadata(ctx, c, oceanbase.MetadataFilter{Kind: kind, SchemaPattern: exactPattern(schema), NamePattern: exactPattern(table)})
 	if err != nil {
 		return err
@@ -35,7 +35,7 @@ func checkDictionaryMetadata(ctx context.Context, c *sql.Conn, mode oceanbase.Mo
 	return expect(n == want, "dictionary metadata row count mismatch")
 }
 
-func checkDictionaryMetadataRow(rows *sql.Rows, mode oceanbase.Mode, schema, table string, kind oceanbase.MetadataKind, index int) error {
+func checkDictionaryMetadataRow(rows *sql.Rows, mode oceanbase.CompatibilityMode, schema, table string, kind oceanbase.MetadataKind, index int) error {
 	var catalog, remarks, defaultValue, owner sql.NullString
 	var gotSchema, gotTable, name, typeName, keyName string
 	var ordinal, length, precision, scale, nullable, autoIncrement, generated sql.NullInt64
@@ -54,7 +54,7 @@ func checkDictionaryMetadataRow(rows *sql.Rows, mode oceanbase.Mode, schema, tab
 		return err
 	}
 	catalogOK := !catalog.Valid
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		catalogOK = catalog.Valid && catalog.String == "def"
 	}
 	if !catalogOK || gotSchema != schema || !strings.EqualFold(gotTable, table) {
@@ -67,7 +67,7 @@ func checkDictionaryMetadataRow(rows *sql.Rows, mode oceanbase.Mode, schema, tab
 		return expect(keyName != "" && strings.EqualFold(name, "ID") && ordinal.Valid && ordinal.Int64 == 1, "dictionary primary key mismatch")
 	default:
 		autoOK := autoIncrement.Valid && autoIncrement.Int64 == 0
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			autoOK = !autoIncrement.Valid
 		}
 		if !autoOK || !generated.Valid || generated.Int64 != 0 {
@@ -84,10 +84,10 @@ func checkDictionaryMetadataRow(rows *sql.Rows, mode oceanbase.Mode, schema, tab
 	}
 }
 
-func checkDictionaryInteger(mode oceanbase.Mode, name, typeName string, nullable, precision, scale sql.NullInt64) error {
+func checkDictionaryInteger(mode oceanbase.CompatibilityMode, name, typeName string, nullable, precision, scale sql.NullInt64) error {
 	idType, _, idPrecision := metadataScalarTypes(mode)
 	// OceanBase MySQL dictionaries may report INT precision as 10 or 11.
-	precisionOK := precision.Valid && (precision.Int64 == idPrecision || mode == oceanbase.ModeMySQL && precision.Int64 == 11)
+	precisionOK := precision.Valid && (precision.Int64 == idPrecision || mode == oceanbase.CompatibilityModeMySQL && precision.Int64 == 11)
 	if !strings.EqualFold(name, "ID") || !strings.EqualFold(typeName, idType) || nullable.Int64 != 0 || !precisionOK || !scale.Valid || scale.Int64 != 0 {
 		return checkFailure(fmt.Sprintf("dictionary integer column mismatch: name=%s type=%s nullable=%v precision=%v scale=%v", name, typeName, nullable, precision, scale))
 	}
@@ -96,8 +96,8 @@ func checkDictionaryInteger(mode oceanbase.Mode, name, typeName string, nullable
 
 const metadataFixtureNumber = "NUMBER"
 
-func metadataScalarTypes(mode oceanbase.Mode) (idType, textType string, precision int64) {
-	if mode == oceanbase.ModeOracle {
+func metadataScalarTypes(mode oceanbase.CompatibilityMode) (idType, textType string, precision int64) {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return metadataFixtureNumber, typeNameVarchar2, 38
 	}
 	return "INT", typeNameVarchar, 10

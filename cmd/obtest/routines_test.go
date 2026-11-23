@@ -14,7 +14,7 @@ import (
 const routineFixtureVarchar = "VARCHAR"
 
 func TestRoutineFailureAssertions(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, name := range []string{"routines", "routines-client"} {
 			for _, tc := range []struct {
 				name                        string
@@ -42,7 +42,7 @@ func TestRoutineFailureAssertions(t *testing.T) {
 			} {
 				t.Run(modeName(mode)+"/"+name+"/"+tc.name, func(t *testing.T) {
 					var failure error = &oceanbase.Error{Code: tc.mysql, SQLState: "45000", Message: "private fixture"}
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						failure = &oceanbase.Error{Code: tc.oracle, SQLState: "HY000", Message: "private fixture"}
 					}
 					if tc.name == "unexpected-success" || tc.other != nil && !tc.join {
@@ -97,7 +97,7 @@ func TestRoutineFailureAssertions(t *testing.T) {
 	}
 }
 
-func routineFixtureSteps(t *testing.T, mode oceanbase.Mode, failure error, publish bool) []fixtureStep {
+func routineFixtureSteps(t *testing.T, mode oceanbase.CompatibilityMode, failure error, publish bool) []fixtureStep {
 	t.Helper()
 	steps := []fixtureStep{
 		{query: "CREATE PROCEDURE OBT_OFFLINE_P (IN x BIGINT,INOUT y BIGINT,OUT z VARCHAR(40)) BEGIN SET y=x+y; SET z='ok'; END"},
@@ -105,7 +105,7 @@ func routineFixtureSteps(t *testing.T, mode oceanbase.Mode, failure error, publi
 		{query: "CREATE PROCEDURE OBT_OFFLINE_E (OUT y BIGINT) BEGIN SET y=100; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='obtest'; END"},
 	}
 	call, function, failing := "CALL OBT_OFFLINE_P(?,?,?)", "SELECT OBT_OFFLINE_F(?) INTO ?", "CALL OBT_OFFLINE_E(?)"
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		steps = []fixtureStep{
 			{query: "CREATE PROCEDURE OBT_OFFLINE_P (x IN NUMBER,y IN OUT NUMBER,z OUT VARCHAR2) AS BEGIN y:=x+y; z:='ok'; END;"},
 			{query: "CREATE FUNCTION OBT_OFFLINE_F (x IN NUMBER) RETURN NUMBER AS BEGIN RETURN x*2; END;"},
@@ -133,7 +133,7 @@ func routineFixtureSteps(t *testing.T, mode oceanbase.Mode, failure error, publi
 	}
 	steps = append(steps, fixtureStep{query: function, inspect: func(args []driver.NamedValue) {
 		input, output := 0, 1
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			input, output = 1, 0
 		}
 		if len(args) != 2 || args[input].Value != 21 {

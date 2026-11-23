@@ -110,7 +110,7 @@ func batchMultiCandidate(request Request) bool {
 func (n *native) batchParametersValid(request Request) bool {
 	p := n.op.Protocol()
 	var plan sqltext.Plan
-	if p.Mode == config.ModeOracle {
+	if p.Mode == config.CompatibilityModeOracle {
 		var err error
 		plan, err = sqltext.BuildBindPlan(request.Query, p.Mode)
 		if err != nil || len(plan.Slots) > request.Options.ChunkParameters {
@@ -125,7 +125,7 @@ func (n *native) batchParametersValid(request Request) bool {
 		if err != nil {
 			return false
 		}
-		if p.Mode == config.ModeOracle {
+		if p.Mode == config.CompatibilityModeOracle {
 			if _, err = parameters.Bind(plan, args); err != nil {
 				return false
 			}

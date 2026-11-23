@@ -41,7 +41,7 @@ func TestImportUploadOwnership(t *testing.T) {
 	for _, owned := range []bool{false, true} {
 		t.Run(map[bool]string{false: "caller reader", true: "callback reader"}[owned], func(t *testing.T) {
 			source := &infileReader{reader: strings.NewReader("a,b\n")}
-			ctx, engine := rowsProtocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadCommand(ctx, t, p, append([]byte{3}, importQuery...)) || !testpeer.SendPackets(ctx, t, p, append([]byte{251}, "fixture"...)) || !readUpload(ctx, t, p, "a,b\n") || !readUpload(ctx, t, p, "") {
 					return
 				}
@@ -80,7 +80,7 @@ func TestImportUploadOwnership(t *testing.T) {
 }
 
 func TestImportCallbackErrorClosesReaderAndPreventsReplay(t *testing.T) {
-	ctx, engine := rowsProtocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, append([]byte{3}, importQuery...)) || !testpeer.SendPackets(ctx, t, p, append([]byte{251}, "fixture"...)) {
 			return
 		}
@@ -96,7 +96,7 @@ func TestImportCallbackErrorClosesReaderAndPreventsReplay(t *testing.T) {
 }
 
 func TestImportRefusesRepeatedRequest(t *testing.T) {
-	ctx, engine := rowsProtocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		request := append([]byte{251}, "fixture"...)
 		if !testpeer.ReadCommand(ctx, t, p, append([]byte{3}, importQuery...)) || !testpeer.SendPackets(ctx, t, p, request) || !readUpload(ctx, t, p, "a") || !readUpload(ctx, t, p, "") || !testpeer.SendPackets(ctx, t, p, request) {
 			return
@@ -116,7 +116,7 @@ func TestImportRefusesRepeatedRequest(t *testing.T) {
 }
 
 func TestImportValidatesBeforeInput(t *testing.T) {
-	ctx, engine := rowsProtocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		testpeer.ServeOK(ctx, t, p, []byte{14}, 2)
 	})
 	opened := false

@@ -78,7 +78,7 @@ func TestMySQLScalarsWorkflow(t *testing.T) {
 				}
 				steps = append(steps, fixtureStep{query: fixtureDropTableSQL})
 				s := fixtureScenario(t, steps)
-				s.mode = oceanbase.ModeMySQL
+				s.mode = oceanbase.CompatibilityModeMySQL
 				s.cfg.Session.ParseTime = true
 				definition.configure(&s.cfg)
 				if s.cfg.PrepareMode != oceanbase.PrepareServer || s.cfg.Session.ParseTime || s.cfg.Session.CompatibleMysqlVersion != 8 {

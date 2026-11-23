@@ -58,7 +58,7 @@ func (m *Manager) ResetWarnings() { m.warnings = Summary{}; m.warningsCleared = 
 
 // ReadWarnings consumes the bounded MySQL diagnostic area without changing the snapshot.
 func (m *Manager) ReadWarnings(ctx context.Context, op *session.Operation) ([]Warning, error) {
-	if op.Protocol().Mode != config.ModeMySQL {
+	if op.Protocol().Mode != config.CompatibilityModeMySQL {
 		return nil, fmt.Errorf("%w: Oracle compatibility mode supplies warning counts only", dberrors.ErrUnsupported)
 	}
 	if m.warningsCleared {

@@ -13,7 +13,7 @@ import (
 
 func TestOraclePrepareMetadataPublicTransaction(t *testing.T) {
 	const query = "SELECT ? FROM dual"
-	db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: testAutocommitOff, Status: 4}, {Query: testOracleReadWrite, Status: 5}}) ||
 			!publictest.ServePrepareStatus(ctx, t, p, query, 88, 1, nil, 3) ||
 			!testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 88)) ||

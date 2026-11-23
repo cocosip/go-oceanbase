@@ -20,7 +20,7 @@ import (
 
 func TestCursorMalformedOpenDiscards(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 72, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(72)) || !testpeer.SendPackets(ctx, t, p, []byte{255}) {
 			return
 		}
@@ -42,7 +42,7 @@ func TestCursorMalformedOpenDiscards(t *testing.T) {
 
 func TestCursorResetLifetime(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 71, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(71)) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 66, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 71)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -85,7 +85,7 @@ func TestCursorOldOracleFetch(t *testing.T) {
 		}
 		p.ResetSequence()
 		testpeer.ServeQuit(t, p)
-	}, func(cfg *config.Config) { cfg.Mode = config.ModeOracle })
+	}, func(cfg *config.Config) { cfg.CompatibilityMode = config.CompatibilityModeOracle })
 	defer func() { _ = db.Close() }()
 	session := publictest.PinnedSession(t, db)
 	defer func() { _ = session.Close() }()
@@ -114,7 +114,7 @@ func TestCursorOldOracleFetch(t *testing.T) {
 
 func TestCursorDeprecatedEOF(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	db := publictest.CapabilityDB(t, config.Config{Mode: config.ModeMySQL}, wire.ClientDeprecateEOF, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.CapabilityDB(t, config.Config{CompatibilityMode: config.CompatibilityModeMySQL}, wire.ClientDeprecateEOF, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 67, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(67)) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0)) || !testpeer.ReadCommand(ctx, t, p, publictest.CursorFetchFixture(67, 1)) || !testpeer.SendPackets(ctx, t, p, binary.LittleEndian.AppendUint64([]byte{0, 0}, 7), []byte{254, 0, 0, 130, 0, 0, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 67)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -149,7 +149,7 @@ func TestCursorDeprecatedEOF(t *testing.T) {
 
 func TestCursorTxLifetime(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServePrepare(ctx, t, p, query, 60, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(60)) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 67, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.CursorFetchFixture(60, 1)) || !testpeer.SendPackets(ctx, t, p, binary.LittleEndian.AppendUint64([]byte{0, 0}, 7), []byte{254, 0, 0, 131, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 60)) || !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}) {
 			return
 		}
@@ -188,7 +188,7 @@ func TestCursorTxLifetime(t *testing.T) {
 
 func TestCursorFetchFailureInvalidates(t *testing.T) {
 	const query = "SELECT id FROM t"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 59, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(59)) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 66, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.CursorFetchFixture(59, 1)) || !testpeer.SendPackets(ctx, t, p, []byte{254, 0, 0, 66, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 59)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -214,7 +214,7 @@ func TestCursorFetchFailureInvalidates(t *testing.T) {
 }
 
 func TestCursorRejectsUnsafeOpen(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
@@ -244,7 +244,7 @@ func TestCursorRejectsUnsafeOpen(t *testing.T) {
 
 func TestCursorEmptyOpen(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 55, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(55)) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 130, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 55)) {
 			return
 		}
@@ -277,7 +277,7 @@ func TestCursorSensitive(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
 	const native = "SELECT id, ROWID FROM cursor_fixture"
 	const refresh = `SELECT "id" FROM "s"."t" WHERE ROWID = ?`
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, native, 54, 0, nil) {
 			return
 		}
@@ -335,7 +335,7 @@ func TestCursorSensitive(t *testing.T) {
 
 func TestCursorOracleFetchLOB(t *testing.T) {
 	const query = "SELECT payload FROM cursor_fixture"
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 53, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(53)) ||
 			!testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("payload", 210, 63, 0), []byte{254, 0, 0, 70, 0}) {
 			return
@@ -381,7 +381,7 @@ func TestCursorStatic(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
 	for _, limit := range []int64{0, 180} {
 		t.Run(map[bool]string{false: "scroll", true: "budget"}[limit != 0], func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServePrepare(ctx, t, p, query, 52, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(52)) ||
 					!testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 66, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.CursorFetchFixture(52, 128)) {
 					return
@@ -456,7 +456,7 @@ func TestCursorPreSendValidation(t *testing.T) {
 
 func TestCursorFetch(t *testing.T) {
 	const query = "SELECT id FROM cursor_fixture"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 51, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(51)) ||
 			!testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("id", 8, 63, 0), []byte{254, 0, 0, 66, 0}) {
 			return

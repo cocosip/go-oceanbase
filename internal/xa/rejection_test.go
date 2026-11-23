@@ -59,7 +59,7 @@ func TestXAMySQLRejectionBranchState(t *testing.T) {
 						}
 						_ = peer.WriteMessage(ctx, packet)
 					}()
-					op := testOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 4096, MaxResultItems: 16}}, &session.Negotiated{Raw: client, Conn: client, Packets: packets, Capabilities: wire.ClientProtocol41, Mode: config.ModeMySQL, OK: wire.OK{Status: 2}})
+					op := testOperation(t, config.Config{Limits: config.Limits{MaxMessageBytes: 4096, MaxResultItems: 16}}, &session.Negotiated{Raw: client, Conn: client, Packets: packets, Capabilities: wire.ClientProtocol41, Mode: config.CompatibilityModeMySQL, OK: wire.OK{Status: 2}})
 					m := &Manager{}
 					x := XID{FormatID: 1, GlobalID: []byte("g")}
 					r := &Request{Op: Start, XID: x}

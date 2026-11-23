@@ -17,7 +17,7 @@ func FuzzClientPrepare(f *testing.F) {
 		if len(value) > 4096 {
 			return
 		}
-		for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+		for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 			cfg, mode := oceanbase.Config{Session: oceanbase.SessionOptions{Charset: testUTF8MB4, Location: time.UTC}, Limits: oceanbase.Limits{MaxMessageBytes: 1024, MaxLOBBytes: 512}}, mode
 			query, err := interpolateStatement(t, cfg, mode, selectBindSQL, []driver.NamedValue{{Value: value}})
 			if err == nil && len(query) >= 1024 {

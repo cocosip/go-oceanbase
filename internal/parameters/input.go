@@ -27,7 +27,7 @@ func PrepareArguments(op *session.Operation, query string, args []driver.NamedVa
 	if len(args) > 65535 {
 		return nil, fmt.Errorf("%w: too many arguments", dberrors.ErrBind)
 	}
-	if op.Protocol().Mode == config.ModeMySQL {
+	if op.Protocol().Mode == config.CompatibilityModeMySQL {
 		for _, arg := range args {
 			if arg.Name != "" {
 				if _, err := sqltext.NamedRoutine(query, op.Protocol().OK.Status&512 != 0); err != nil {
@@ -52,7 +52,7 @@ func PrepareArguments(op *session.Operation, query string, args []driver.NamedVa
 			}
 		}
 	}
-	if op.Protocol().Mode == config.ModeOracle {
+	if op.Protocol().Mode == config.CompatibilityModeOracle {
 		plan, err := sqltext.BuildBindPlan(query, op.Protocol().Mode)
 		if err != nil {
 			return nil, err

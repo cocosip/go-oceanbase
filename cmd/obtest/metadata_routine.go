@@ -23,7 +23,7 @@ const (
 func runMetadataRoutines(ctx context.Context, s *scenario) error {
 	procDefinition := "(pIn INTEGER, OUT pOut VARCHAR(20)) BEGIN SET pOut='x'; END"
 	functionDefinition := "(pIn INTEGER) RETURNS INTEGER DETERMINISTIC RETURN pIn+1"
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		procDefinition = "(pIn INTEGER, pOut OUT VARCHAR2) AS BEGIN pOut:='x'; END;"
 		functionDefinition = "(pIn INTEGER) RETURN INTEGER AS BEGIN RETURN pIn+1; END;"
 	}

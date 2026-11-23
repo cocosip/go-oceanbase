@@ -23,7 +23,7 @@ func TestAuthNativeRSAPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, plugin := range []string{authentication.SHA256, authentication.CachingSHA2} {
 			for _, path := range []string{"initial", "switch", authRSAChangePath} {
 				t.Run(fmt.Sprintf("%d/%s/%s", mode, plugin, path), func(t *testing.T) {
@@ -39,17 +39,17 @@ func TestAuthNativeCredentialRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			t.Setenv("OB_USER", testUser)
 			t.Setenv("OB_PASSWORD", testPassword)
 			t.Setenv("OB_PROXY_USER", "")
 			status := byte(2)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				status = 6
 			}
 			var calls, dials atomic.Int32
-			configured, err := oceanbase.NewConnector(config.Config{User: "fallback", Password: "fallback", Mode: mode,
+			configured, err := oceanbase.NewConnector(config.Config{User: "fallback", Password: "fallback", CompatibilityMode: mode,
 				Auth: config.AuthOptions{RSAKey: &key.PublicKey}, Credentials: func(ctx context.Context) (config.Credentials, error) {
 					calls.Add(1)
 					return authExampleCredentials(ctx)

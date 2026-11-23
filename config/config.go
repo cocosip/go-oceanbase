@@ -13,14 +13,21 @@ import (
 
 const configDatabaseField = "Database"
 
-// Mode is an OceanBase compatibility mode. Auto is pinned after initialization.
-type Mode uint8
+// CompatibilityMode identifies an OceanBase tenant compatibility mode:
+// CompatibilityModeMySQL or CompatibilityModeOracle.
+//
+// CompatibilityModeAuto is the zero value. It is not a server mode: in Config
+// and DSN it means "no constraint", and the driver accepts whichever mode the
+// authenticated session reports. A session never reports
+// CompatibilityModeAuto.
+type CompatibilityMode uint8
 
-// Compatibility modes. Auto requires detection from the authenticated session.
+// Compatibility modes. CompatibilityModeAuto means no constraint and is only
+// valid in Config or DSN; the authenticated session supplies the actual mode.
 const (
-	ModeAuto Mode = iota
-	ModeMySQL
-	ModeOracle
+	CompatibilityModeAuto CompatibilityMode = iota
+	CompatibilityModeMySQL
+	CompatibilityModeOracle
 )
 
 // RowsAffectedMode selects matched or changed UPDATE counts.
@@ -95,12 +102,16 @@ type Config struct {
 	Password string
 	// ProxyUser is an Oracle proxy-login target, separate from the authenticating User.
 	// Empty disables proxy login. Credentials callbacks replace all three identity fields.
-	ProxyUser   string
-	Database    string
-	Mode        Mode
-	Logger      *slog.Logger
-	Diagnostics DiagnosticOptions
-	TLSConfig   *tls.Config
+	ProxyUser string
+	Database  string
+	// CompatibilityMode constrains the tenant mode detected during
+	// authentication. CompatibilityModeAuto accepts either mode; an explicit
+	// mode fails the connection on mismatch and rejects impossible
+	// mode-specific options during configuration validation.
+	CompatibilityMode CompatibilityMode
+	Logger            *slog.Logger
+	Diagnostics       DiagnosticOptions
+	TLSConfig         *tls.Config
 	// ConnectTimeout bounds connection setup; zero uses 10 seconds, negative values fail.
 	ConnectTimeout time.Duration
 	// DialContext returns a raw transport. Nil and typed-nil connections are rejected.
@@ -151,10 +162,10 @@ func Normalize(cfg Config) (Config, error) {
 	if strings.ContainsRune(cfg.Database, 0) {
 		return Config{}, &ConfigError{Field: configDatabaseField}
 	}
-	if cfg.Mode > ModeOracle {
-		return Config{}, &ConfigError{Field: "Mode"}
+	if cfg.CompatibilityMode > CompatibilityModeOracle {
+		return Config{}, &ConfigError{Field: "CompatibilityMode"}
 	}
-	if cfg.RowsAffectedMode > ChangedRows || (cfg.Mode == ModeOracle && cfg.RowsAffectedMode == ChangedRows) {
+	if cfg.RowsAffectedMode > ChangedRows || (cfg.CompatibilityMode == CompatibilityModeOracle && cfg.RowsAffectedMode == ChangedRows) {
 		return Config{}, &ConfigError{Field: "RowsAffectedMode"}
 	}
 	if cfg.ResetMode > ResetFull {

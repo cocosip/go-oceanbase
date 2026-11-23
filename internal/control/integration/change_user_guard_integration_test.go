@@ -48,7 +48,7 @@ func integrationTestChangeUserGuard(t *testing.T, p integrationtest.Profile) {
 	}
 	defer func() { _ = pinned.Close() }()
 	identitySQL := identityMySQLSQL
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		identitySQL = identityOracleSQL
 	}
 	var original string
@@ -61,7 +61,7 @@ func integrationTestChangeUserGuard(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "begin guarded identity transaction", err)
 	}
 	probe := "SELECT 42"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		probe += integrationtest.OracleDualSuffix
 	}
 	if _, err = tx.ExecContext(ctx, probe); err != nil {

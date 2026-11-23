@@ -16,7 +16,7 @@ import (
 // closeTestConfig only satisfies configuration validation; peers are in memory.
 func closeTestConfig(t *testing.T) config.Config {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: "app", Addr: "127.0.0.1:2881", Mode: config.ModeMySQL})
+	cfg, err := config.Normalize(config.Config{User: "app", Addr: "127.0.0.1:2881", CompatibilityMode: config.CompatibilityModeMySQL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func closeTestPipedOperation(t *testing.T) *session.Operation {
 	cfg := closeTestConfig(t)
 	client, peer := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, 0), Mode: config.ModeMySQL, Capabilities: wire.ClientProtocol41})
+	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, 0), Mode: config.CompatibilityModeMySQL, Capabilities: wire.ClientProtocol41})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestCloseStatementPostSendFailureDiscards(t *testing.T) {
 // A released operation cannot send, and must not change session state.
 func TestCloseStatementRefusesWithoutOwnership(t *testing.T) {
 	cfg := closeTestConfig(t)
-	s := session.New(cfg, &session.Negotiated{Mode: config.ModeMySQL})
+	s := session.New(cfg, &session.Negotiated{Mode: config.CompatibilityModeMySQL})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

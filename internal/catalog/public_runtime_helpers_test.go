@@ -54,13 +54,13 @@ const (
 	testStandard        = "standard"
 )
 
-func testMetadataCatalogAndRemarks(t *testing.T, mode oceanbase.Mode, charset, framing string) {
+func testMetadataCatalogAndRemarks(t *testing.T, mode oceanbase.CompatibilityMode, charset, framing string) {
 	t.Helper()
 	fixtures := metadataContractFixtures(mode)
 	catalogs := []string{"", executionColumnCatalog, "d%", "x' OR 1=1 --", "库/_%"}
 	var sessions atomic.Int32
 	done := make(chan struct{})
-	db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode, Session: oceanbase.SessionOptions{Charset: charset}}, framing, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode, Session: oceanbase.SessionOptions{Charset: charset}}, framing, func(ctx context.Context, p *wire.PacketIO) {
 		if sessions.Add(1) != 1 {
 			t.Error("metadata opened another physical session")
 			return
@@ -76,7 +76,7 @@ func testMetadataCatalogAndRemarks(t *testing.T, mode oceanbase.Mode, charset, f
 	for _, fixture := range fixtures {
 		for _, catalog := range catalogs {
 			want := fixture.rows
-			if catalog != "" && (mode == oceanbase.ModeOracle || catalog != executionColumnCatalog) {
+			if catalog != "" && (mode == oceanbase.CompatibilityModeOracle || catalog != executionColumnCatalog) {
 				want = nil
 			}
 			assertMetadataContract(ctx, t, pinned, fixture, catalog, want)
@@ -149,21 +149,21 @@ func assertMetadataContract(ctx context.Context, t *testing.T, pinned *sql.Conn,
 	}
 }
 
-func metadataContractFixtures(mode oceanbase.Mode) []metadataContractFixture {
+func metadataContractFixtures(mode oceanbase.CompatibilityMode) []metadataContractFixture {
 	var catalog any = executionColumnCatalog
 	var emptyRemark any = ""
 	catalogQuery := `SELECT 'def' AS "catalog" FROM dual WHERE 1=1`
 	schemaQuery := `SELECT s.CATALOG_NAME AS "catalog",s.SCHEMA_NAME AS "schema" FROM information_schema.SCHEMATA s WHERE 1=1 ORDER BY s.SCHEMA_NAME`
 	tableQuery := `SELECT t.TABLE_CATALOG AS "catalog",t.TABLE_SCHEMA AS "schema",t.TABLE_NAME AS "name",CASE t.TABLE_TYPE WHEN 'BASE TABLE' THEN 'TABLE' WHEN 'SYSTEM VIEW' THEN 'VIEW' ELSE t.TABLE_TYPE END AS "type",t.TABLE_COMMENT AS "remarks" FROM information_schema.TABLES t WHERE 1=1 ORDER BY t.TABLE_SCHEMA,t.TABLE_NAME`
 	columnQuery := `SELECT c.TABLE_CATALOG AS "catalog",c.TABLE_SCHEMA AS "schema",c.TABLE_NAME AS "table_name",c.COLUMN_NAME AS "name",c.ORDINAL_POSITION AS "ordinal_position",c.DATA_TYPE AS "data_type",c.CHARACTER_MAXIMUM_LENGTH AS "length",c.NUMERIC_PRECISION AS "precision",c.NUMERIC_SCALE AS "scale",CASE c.IS_NULLABLE WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END AS "nullable",c.COLUMN_DEFAULT AS "default_value",c.COLUMN_COMMENT AS "remarks",NULL AS "type_owner" FROM information_schema.COLUMNS c WHERE 1=1 ORDER BY c.TABLE_SCHEMA,c.TABLE_NAME,c.ORDINAL_POSITION`
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		catalog, emptyRemark = nil, nil
 		catalogQuery = `SELECT CAST(NULL AS VARCHAR2(128)) AS "catalog" FROM dual WHERE 1=1 AND (1=0)`
 		schemaQuery = `SELECT NULL AS "catalog",u.USERNAME AS "schema" FROM ALL_USERS u WHERE 1=1 ORDER BY u.USERNAME`
 		tableQuery = `SELECT NULL AS "catalog",o.OWNER AS "schema",o.OBJECT_NAME AS "name",o.OBJECT_TYPE AS "type",c.COMMENTS AS "remarks" FROM ALL_OBJECTS o LEFT JOIN ALL_TAB_COMMENTS c ON c.OWNER=o.OWNER AND c.TABLE_NAME=o.OBJECT_NAME AND c.TABLE_TYPE=o.OBJECT_TYPE WHERE 1=1 AND (o.OBJECT_TYPE IN ('TABLE','VIEW','SYNONYM','MATERIALIZED VIEW') AND o.SUBOBJECT_NAME IS NULL) ORDER BY o.OWNER,o.OBJECT_NAME,o.OBJECT_TYPE`
 		columnQuery = `SELECT NULL AS "catalog",c.OWNER AS "schema",c.TABLE_NAME AS "table_name",c.COLUMN_NAME AS "name",c.COLUMN_ID AS "ordinal_position",c.DATA_TYPE AS "data_type",CASE WHEN c.CHAR_USED='C' THEN c.CHAR_LENGTH ELSE c.DATA_LENGTH END AS "length",c.DATA_PRECISION AS "precision",c.DATA_SCALE AS "scale",CASE c.NULLABLE WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END AS "nullable",c.DATA_DEFAULT AS "default_value",m.COMMENTS AS "remarks",c.DATA_TYPE_OWNER AS "type_owner" FROM ALL_TAB_COLUMNS c LEFT JOIN ALL_COL_COMMENTS m ON m.OWNER=c.OWNER AND m.TABLE_NAME=c.TABLE_NAME AND m.COLUMN_NAME=c.COLUMN_NAME WHERE 1=1 ORDER BY c.OWNER,c.TABLE_NAME,c.COLUMN_ID`
 	}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		columnQuery = strings.Replace(columnQuery, ` FROM ALL_TAB_COLUMNS c`, `,CASE WHEN UPPER(c.DATA_DEFAULT) LIKE '%SEQUENCE.NEXTVAL%' THEN 1 ELSE NULL END AS "auto_increment",CASE c.VIRTUAL_COLUMN WHEN 'YES' THEN 1 WHEN 'NO' THEN 0 END AS "generated" FROM ALL_TAB_COLS c`, 1)
 		columnQuery = strings.Replace(columnQuery, "WHERE 1=1 ORDER", "WHERE 1=1 AND (c.HIDDEN_COLUMN='NO') ORDER", 1)
 		columnQuery = strings.Replace(columnQuery, "c.COLUMN_ID AS", "c.ORDINAL_POSITION AS", 1)
@@ -173,7 +173,7 @@ func metadataContractFixtures(mode oceanbase.Mode) []metadataContractFixture {
 		columnQuery = strings.Replace(columnQuery, ` FROM information_schema.COLUMNS c`, `,CASE WHEN c.EXTRA IS NULL THEN NULL WHEN LOWER(c.EXTRA) LIKE '%auto_increment%' THEN 1 ELSE 0 END AS "auto_increment",CASE WHEN c.EXTRA IS NULL THEN NULL WHEN UPPER(c.EXTRA) IN ('VIRTUAL','PERSISTENT') OR UPPER(c.EXTRA) LIKE '%VIRTUAL GENERATED%' OR UPPER(c.EXTRA) LIKE '%STORED GENERATED%' THEN 1 ELSE 0 END AS "generated" FROM information_schema.COLUMNS c`, 1)
 	}
 	var catalogRows [][]any
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		catalogRows = [][]any{{executionColumnCatalog}}
 	}
 	return []metadataContractFixture{
@@ -224,12 +224,12 @@ func refreshedMetadataRemarks(fixtures []metadataContractFixture) []metadataCont
 	return refreshed
 }
 
-func serveMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.Mode, charset string, fixtures []metadataContractFixture, catalogs []string) {
+func serveMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.CompatibilityMode, charset string, fixtures []metadataContractFixture, catalogs []string) {
 	t.Helper()
 	for _, fixture := range fixtures {
 		for _, catalog := range catalogs {
 			rows := fixture.rows
-			if catalog != "" && (mode == oceanbase.ModeOracle || catalog != executionColumnCatalog) {
+			if catalog != "" && (mode == oceanbase.CompatibilityModeOracle || catalog != executionColumnCatalog) {
 				rows = nil
 			}
 			if !testpeer.ReadQuery(ctx, t, p, metadataContractSQL(fixture, mode, charset, catalog)) || !sendMetadataContract(ctx, t, p, fixture, mode, charset, rows) {
@@ -243,7 +243,7 @@ func serveMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, 
 		}
 	}
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
 	if !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
@@ -253,7 +253,7 @@ func serveMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, 
 	testpeer.ServeQuit(t, p)
 }
 
-func sendMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, fixture metadataContractFixture, mode oceanbase.Mode, charset string, rows [][]any) bool {
+func sendMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, fixture metadataContractFixture, mode oceanbase.CompatibilityMode, charset string, rows [][]any) bool {
 	t.Helper()
 	names := strings.Fields(fixture.columns)
 	if !testpeer.SendPackets(ctx, t, p, []byte{byte(len(names))}) {
@@ -263,14 +263,14 @@ func sendMetadataContract(ctx context.Context, t *testing.T, p *wire.PacketIO, f
 	if charset == localFilenameCharset {
 		collation = 28
 	}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
 	for i := range names {
 		typ := byte(253)
 		if fixture.numeric[i] {
 			typ = 8
-			if mode == oceanbase.ModeOracle {
+			if mode == oceanbase.CompatibilityModeOracle {
 				typ = 246
 			}
 		}
@@ -307,14 +307,14 @@ func metadataContractBytes(text, charset string) []byte {
 	return []byte(text)
 }
 
-func metadataContractSQL(fixture metadataContractFixture, mode oceanbase.Mode, charset, catalog string) string {
+func metadataContractSQL(fixture metadataContractFixture, mode oceanbase.CompatibilityMode, charset, catalog string) string {
 	query, order := fixture.query, ""
 	if i := strings.LastIndex(query, " ORDER BY "); i >= 0 {
 		query, order = query[:i], query[i+10:]
 	}
 	if catalog != "" {
 		predicate := "'def' =  _" + charset + " X'" + hex.EncodeToString(metadataContractBytes(catalog, charset)) + "' "
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			predicate = "NULL =  '" + strings.ReplaceAll(catalog, "'", "''") + "' "
 		}
 		query += " AND " + predicate
@@ -358,11 +358,11 @@ func serveComplexDictionaryFields(ctx context.Context, t *testing.T, p *wire.Pac
 
 func serveDescriptorRows(ctx context.Context, t *testing.T, p *wire.PacketIO, kind oceanbase.MetadataKind, schema, name string, rows [][]string) bool {
 	t.Helper()
-	plan, err := catalog.Plan(oceanbase.ModeOracle, "", oceanbase.MetadataFilter{Kind: kind, SchemaPattern: catalog.ExactDescriptorPattern(schema), NamePattern: catalog.ExactDescriptorPattern(name)})
+	plan, err := catalog.Plan(oceanbase.CompatibilityModeOracle, "", oceanbase.MetadataFilter{Kind: kind, SchemaPattern: catalog.ExactDescriptorPattern(schema), NamePattern: catalog.ExactDescriptorPattern(name)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	op := catalogOperation(t, config.Config{Mode: config.ModeOracle}, nil)
+	op := catalogOperation(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, nil)
 	query, err := command.Interpolate(op, plan.SQL, plan.Args)
 	if err != nil {
 		t.Fatal(err)

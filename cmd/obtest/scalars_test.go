@@ -15,7 +15,7 @@ const (
 )
 
 func TestScalarsTemporalAssertions(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, path := range []string{"text", "parameterized"} {
 			for _, tc := range []struct {
 				name, date, timestamp string
@@ -46,11 +46,11 @@ func TestScalarsTemporalAssertions(t *testing.T) {
 	}
 }
 
-func scalarAssertionScenario(t *testing.T, mode oceanbase.Mode, path, dateOverride, timestampOverride string, valid bool) *scenario {
+func scalarAssertionScenario(t *testing.T, mode oceanbase.CompatibilityMode, path, dateOverride, timestampOverride string, valid bool) *scenario {
 	t.Helper()
 	definition := "(ID INTEGER PRIMARY KEY,N DECIMAL(38,9),V VARCHAR(100),B VARBINARY(100),D DATE,TS DATETIME(6),Z VARCHAR(10)) ENGINE=InnoDB"
 	date := scalarDate
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		definition = "(ID INTEGER PRIMARY KEY,N NUMBER(38,9),V VARCHAR2(100),B RAW(100),D DATE,TS TIMESTAMP(6),Z VARCHAR2(10))"
 		date += " 00:00:00"
 	}

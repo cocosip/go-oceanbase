@@ -15,7 +15,7 @@ func ExampleNewOBProxyDialer() {
 		panic(err)
 	}
 	connector, err := NewConnector(Config{
-		User: "vc_app", Mode: ModeMySQL, Network: "unix",
+		User: "vc_app", CompatibilityMode: CompatibilityModeMySQL, Network: "unix",
 		Addr: filepath.Join(".obproxy", "obproxy.domain"), DialContext: dial,
 		// Configure deployment credentials and TLSConfig with an explicit ServerName.
 	})

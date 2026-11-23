@@ -197,7 +197,7 @@ type TxStep struct {
 // OutOracleDB is a shared public API protocol fixture.
 func OutOracleDB(t *testing.T, prepare config.PrepareMode, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
 	t.Helper()
-	cfg := config.Config{User: TestUser, Mode: config.ModeOracle, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	cfg := config.Config{User: TestUser, CompatibilityMode: config.CompatibilityModeOracle, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if testpeer.ServeConnect(ctx, t, p, 6) && testpeer.ServeBaseline(ctx, t, p, 6) {
 			serve(context.Background(), p)
 		}
@@ -406,13 +406,13 @@ func ServeLOBQueryStatus(ctx context.Context, t testing.TB, p *wire.PacketIO, qu
 const TestCursorEpochPlain = "plain"
 
 // TxDB is a shared public API protocol fixture.
-func TxDB(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
+func TxDB(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
-	cfg := config.Config{User: TestUser, Mode: mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	cfg := config.Config{User: TestUser, CompatibilityMode: mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 			return
 		}

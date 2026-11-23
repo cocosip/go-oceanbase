@@ -9,14 +9,14 @@ import (
 	"github.com/cocosip/go-oceanbase"
 )
 
-func basic(ctx context.Context, c *sql.Conn, table string, mode oceanbase.Mode) error {
+func basic(ctx context.Context, c *sql.Conn, table string, mode oceanbase.CompatibilityMode) error {
 	tx, err := c.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	empty := "X''"
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		empty = "EMPTY_BLOB()"
 	}
 	query := "INSERT INTO " + table + " (ID,V,B) VALUES(?,?," + empty + ")"
@@ -54,10 +54,10 @@ func basic(ctx context.Context, c *sql.Conn, table string, mode oceanbase.Mode) 
 	return nil
 }
 
-func call(ctx context.Context, c *sql.Conn, name string, mode oceanbase.Mode) (err error) {
+func call(ctx context.Context, c *sql.Conn, name string, mode oceanbase.CompatibilityMode) (err error) {
 	ddl := "CREATE PROCEDURE " + name + "(IN x BIGINT,INOUT y BIGINT,OUT z VARCHAR(40)) BEGIN SET y=x+y; SET z='ok'; END"
 	query := "CALL " + name + "(?,?,?)"
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		ddl = "CREATE PROCEDURE " + name + "(x IN NUMBER,y IN OUT NUMBER,z OUT VARCHAR2) AS BEGIN y:=x+y; z:='ok'; END;"
 		query = "BEGIN " + name + "(:x,:y,:z); END;"
 	}
@@ -67,7 +67,7 @@ func call(ctx context.Context, c *sql.Conn, name string, mode oceanbase.Mode) (e
 	defer cleanup(c, "DROP PROCEDURE "+name, &err)
 	y, z := int64(40), ""
 	args := []any{2, sql.Out{Dest: &y, In: true}, oceanbase.Out{Dest: &z, Type: "VARCHAR", Length: 40}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		args = []any{sql.Named("x", args[0]), sql.Named("y", args[1]), sql.Named("z", args[2])}
 	}
 	if _, err = c.ExecContext(ctx, query, args...); err != nil {
@@ -80,9 +80,9 @@ func call(ctx context.Context, c *sql.Conn, name string, mode oceanbase.Mode) (e
 	return nil
 }
 
-func results(ctx context.Context, c *sql.Conn, table string, mode oceanbase.Mode) (err error) {
+func results(ctx context.Context, c *sql.Conn, table string, mode oceanbase.CompatibilityMode) (err error) {
 	query := "UPDATE " + table + " SET V='ONE' WHERE ID=1; SELECT ID,V FROM " + table + " ORDER BY ID; UPDATE " + table + " SET V='one' WHERE ID=1"
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		query = "BEGIN UPDATE " + table + " SET V='ONE' WHERE ID=1; UPDATE " + table + " SET V='one' WHERE ID=1; END;"
 	}
 	execution, err := oceanbase.Execute(ctx, c, query)

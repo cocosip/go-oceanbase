@@ -34,7 +34,7 @@ func driverFixtureBatchArrayPacket(t testing.TB, values []any, options wire.Exec
 	t.Helper()
 	rows := make([][]wire.Parameter, len(values))
 	for i, value := range values {
-		parameter, err := valuecodec.EncodeParameter(value, oceanbase.ModeOracle, oceanbase.SessionOptions{}, 1<<20)
+		parameter, err := valuecodec.EncodeParameter(value, oceanbase.CompatibilityModeOracle, oceanbase.SessionOptions{}, 1<<20)
 		if err != nil {
 			t.Fatal(err)
 		}

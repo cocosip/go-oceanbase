@@ -14,26 +14,26 @@ func TestXMLTypeScalarIdentity(t *testing.T) {
 	options := config.SessionOptions{Charset: "latin1"}
 	for _, binary := range []bool{false, true} {
 		for _, want := range []string{"", "<x>患者</x>\n"} {
-			got, err := DecodeRowValue(c, binary, []byte(want), config.ModeOracle, options)
+			got, err := DecodeRowValue(c, binary, []byte(want), config.CompatibilityModeOracle, options)
 			if err != nil || got != want {
 				t.Fatal(got, err)
 			}
 		}
-		if got, err := DecodeRowValue(c, binary, nil, config.ModeOracle, options); err != nil || got != nil {
+		if got, err := DecodeRowValue(c, binary, nil, config.CompatibilityModeOracle, options); err != nil || got != nil {
 			t.Fatal(got, err)
 		}
-		if _, err := DecodeRowValue(c, binary, []byte{255}, config.ModeOracle, options); !errors.Is(err, charset.ErrEncoding) {
+		if _, err := DecodeRowValue(c, binary, []byte{255}, config.CompatibilityModeOracle, options); !errors.Is(err, charset.ErrEncoding) {
 			t.Fatal(err)
 		}
-		if _, err := DecodeRowValue(c, binary, []byte("<x/>"), config.ModeMySQL, options); err == nil {
+		if _, err := DecodeRowValue(c, binary, []byte("<x/>"), config.CompatibilityModeMySQL, options); err == nil {
 			t.Fatal("MySQL XML accepted")
 		}
 	}
-	if TextTypeName(c, config.ModeOracle) != "XMLTYPE" {
+	if TextTypeName(c, config.CompatibilityModeOracle) != "XMLTYPE" {
 		t.Fatal("XML metadata")
 	}
 	c.ComplexSchema = "APP"
-	if TextTypeName(c, config.ModeOracle) != "OBJECT/ARRAY" {
+	if TextTypeName(c, config.CompatibilityModeOracle) != "OBJECT/ARRAY" {
 		t.Fatal("user XMLTYPE mistaken for system XML")
 	}
 }

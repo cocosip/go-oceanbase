@@ -37,12 +37,12 @@ const (
 
 var geometryBytes = []byte{0, 0, 0, 0, 1, 2, 3}
 
-func scenarioDefinition(t *testing.T, name string, mode oceanbase.Mode) caseDefinition {
+func scenarioDefinition(t *testing.T, name string, mode oceanbase.CompatibilityMode) caseDefinition {
 	t.Helper()
 	for _, definition := range caseDefinitions() {
 		if definition.name == name {
-			if definition.run == nil || definition.mysqlOnly == definition.oracleOnly || (mode == oceanbase.ModeMySQL) != definition.mysqlOnly {
-				t.Fatalf("%s scenario is missing or not %s-mode gated", name, map[oceanbase.Mode]string{oceanbase.ModeMySQL: "MySQL", oceanbase.ModeOracle: "Oracle"}[mode])
+			if definition.run == nil || definition.mysqlOnly == definition.oracleOnly || (mode == oceanbase.CompatibilityModeMySQL) != definition.mysqlOnly {
+				t.Fatalf("%s scenario is missing or not %s-mode gated", name, map[oceanbase.CompatibilityMode]string{oceanbase.CompatibilityModeMySQL: "MySQL", oceanbase.CompatibilityModeOracle: "Oracle"}[mode])
 			}
 			return definition
 		}
@@ -93,7 +93,7 @@ func extendedTypeCases() []extendedTypeCase {
 }
 
 func TestExtendedTypesWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, extendedTypesCase, oceanbase.ModeMySQL)
+	definition := scenarioDefinition(t, extendedTypesCase, oceanbase.CompatibilityModeMySQL)
 	for _, tc := range extendedTypeCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := extendedTypeSeed(t)
@@ -120,7 +120,7 @@ func TestExtendedTypesWorkflow(t *testing.T) {
 			}
 			steps = append(steps, fixtureStep{query: fixtureDropTableSQL})
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeMySQL
+			s.mode = oceanbase.CompatibilityModeMySQL
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {
@@ -199,12 +199,12 @@ func geometryCases() []geometryWorkflowCase {
 }
 
 func TestGeometryWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, geometryCase, oceanbase.ModeMySQL)
+	definition := scenarioDefinition(t, geometryCase, oceanbase.CompatibilityModeMySQL)
 	for _, tc := range geometryCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := geometrySteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeMySQL
+			s.mode = oceanbase.CompatibilityModeMySQL
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

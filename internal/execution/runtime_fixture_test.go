@@ -12,7 +12,7 @@ import (
 
 func runtimeOperation(t *testing.T, cfg config.Config) *session.Operation {
 	t.Helper()
-	s := session.New(cfg, &session.Negotiated{Mode: cfg.Mode})
+	s := session.New(cfg, &session.Negotiated{Mode: cfg.CompatibilityMode})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

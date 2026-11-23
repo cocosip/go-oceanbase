@@ -18,12 +18,12 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-func rowsProtocolEngine(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO)) (context.Context, *Engine) {
+func rowsProtocolEngine(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO)) (context.Context, *Engine) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	t.Cleanup(cancel)
 	client, peer := net.Pipe()
-	cfg, err := config.Normalize(config.Config{User: "app", Mode: mode})
+	cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: mode})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func rowsProtocolEngine(t *testing.T, mode config.Mode, serve func(context.Conte
 }
 
 func TestRowsMixedResults(t *testing.T) {
-	ctx, engine := rowsProtocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, []byte("\x03mixed")) || !testpeer.SendPackets(ctx, t, p,
 			[]byte{0, 0, 0, 10, 0, 3, 0}, []byte{1}, testpeer.TextColumn("v", 3, 63, 0), []byte{254, 0, 0, 10, 0}, []byte{1, '7'}, []byte{254, 4, 0, 10, 0}, []byte{0, 2, 9, 2, 0, 5, 0}) {
 			return
@@ -82,7 +82,7 @@ func TestRowsMixedResults(t *testing.T) {
 func TestRowsServerErrorPreservesSession(t *testing.T) {
 	for _, midRows := range []bool{false, true} {
 		t.Run(map[bool]string{false: "header", true: "row"}[midRows], func(t *testing.T) {
-			ctx, engine := rowsProtocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadCommand(ctx, t, p, []byte("\x03failure")) {
 					return
 				}
@@ -117,7 +117,7 @@ func TestRowsServerErrorPreservesSession(t *testing.T) {
 }
 
 func TestRowsBuffersResourcesBeforeRelease(t *testing.T) {
-	ctx, engine := rowsProtocolEngine(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, engine := rowsProtocolEngine(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, []byte("\x03resources")) || !testpeer.SendPackets(ctx, t, p,
 			[]byte{1}, testpeer.TextColumn("child", 163, 63, 0), []byte{254, 0, 0, 14, 0}, []byte{0, 0, 9, 0, 0, 0}, []byte{254, 0, 0, 14, 0},
 			[]byte{1}, testpeer.TextColumn("tail", 253, 45, 0), []byte{254, 0, 0, 6, 0}, []byte{0, 0, 1, 'x'}, []byte{254, 0, 0, 6, 0}) {

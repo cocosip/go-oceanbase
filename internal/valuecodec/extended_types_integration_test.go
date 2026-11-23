@@ -25,7 +25,7 @@ func TestMySQLExtendedTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeMySQL {
+		if profile.Mode != oceanbase.CompatibilityModeMySQL {
 			continue
 		}
 		for _, client := range []bool{false, true} {

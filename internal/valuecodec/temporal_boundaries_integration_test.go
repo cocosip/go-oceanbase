@@ -22,7 +22,7 @@ func TestTemporalStorageBoundaries(t *testing.T) {
 	}
 	for _, p := range profiles {
 		t.Run(p.Name, func(t *testing.T) {
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				integrationOracleDSTStorage(t, p)
 			} else {
 				integrationMySQLZeroDates(t, p)

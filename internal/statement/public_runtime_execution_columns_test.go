@@ -14,7 +14,7 @@ import (
 func TestExecutionColumnPrepareExecute(t *testing.T) {
 	want := oceanbase.ResultColumn{Name: "combined_label", OriginalName: executionColumnOrigin}
 	column := executionColumnPacket(t, want, "utf8mb4")
-	db := optimizationDB(t, oceanbase.ModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, oceanbase.CompatibilityModeOracle, oceanbase.ExecutionOptions{PrepareExecute: true}, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, publictest.CombinedQueryPacket(0, optimizedSelect, 7, false, false)) || !testpeer.SendPackets(ctx, t, p,
 			publictest.CombinedHeader(7, 1, 1, 0), testpeer.TextColumn("p", 8, 63, 0), []byte{254, 0, 0, 6, 0},
 			column, []byte{254, 0, 0, 6, 0}, []byte{0, 0, 7, 0, 0, 0}, []byte{254, 0, 0, 6, 0}, publictest.CommandPacket(0, 0, 6)) ||

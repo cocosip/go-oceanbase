@@ -30,7 +30,7 @@
 | `OB_TEST_REQUIRE` | `1` 时缺少 fixture 视为失败 |
 | `OB_TEST_STABILITY_ROUNDS` / `OB_TEST_STABILITY_TIMEOUT` | 耐力测试轮数（1–20000，默认 16）与超时（默认 3m，≤1h） |
 
-DSN 形式：`oceanbase://user%40tenant:password@host:2881/db?mode=mysql|oracle`；口令中的 `#`/`!`/`@` 等需 URL 转义（如 `%23`/`%21`/`%40`）。
+DSN 形式：`oceanbase://user%40tenant:password@host:2881/db?compatibilityMode=mysql|oracle`；口令中的 `#`/`!`/`@` 等需 URL 转义（如 `%23`/`%21`/`%40`）。
 
 ## 3. 换机后的验证命令
 

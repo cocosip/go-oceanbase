@@ -23,7 +23,7 @@ import (
 
 func resourceEngine(t *testing.T, cleanup time.Duration, serve func(context.Context, *wire.PacketIO)) *Engine {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: testpeer.User, Mode: config.ModeMySQL, Limits: config.Limits{CleanupTimeout: cleanup}})
+	cfg, err := config.Normalize(config.Config{User: testpeer.User, CompatibilityMode: config.CompatibilityModeMySQL, Limits: config.Limits{CleanupTimeout: cleanup}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func resourceEngine(t *testing.T, cleanup time.Duration, serve func(context.Cont
 		defer close(done)
 		serve(ctx, wire.NewPacketIO(server, cfg.Limits.MaxMessageBytes))
 	}()
-	e := New(nil, session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, cfg.Limits.MaxMessageBytes), Capabilities: wire.ClientProtocol41, Mode: config.ModeMySQL, OBVersion: "4.3.5.1", OK: wire.OK{Status: 2}}))
+	e := New(nil, session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, cfg.Limits.MaxMessageBytes), Capabilities: wire.ClientProtocol41, Mode: config.CompatibilityModeMySQL, OBVersion: "4.3.5.1", OK: wire.OK{Status: 2}}))
 	t.Cleanup(func() { cancel(); e.Discard(); _ = server.Close(); <-done })
 	return e
 }

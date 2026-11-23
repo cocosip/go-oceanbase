@@ -15,10 +15,10 @@ import (
 const testNativeVersion = "4.3.0"
 
 func sqlPlan(query string) sqltext.Plan {
-	return sqltext.Plan{Query: query, SQL: query, Mode: config.ModeMySQL}
+	return sqltext.Plan{Query: query, SQL: query, Mode: config.CompatibilityModeMySQL}
 }
 
-func testOperation(t *testing.T, cfg config.Config, mode config.Mode, version string) *session.Operation {
+func testOperation(t *testing.T, cfg config.Config, mode config.CompatibilityMode, version string) *session.Operation {
 	t.Helper()
 	if cfg.Limits.MaxMessageBytes == 0 {
 		cfg.Limits.MaxMessageBytes = 1 << 20
@@ -33,7 +33,7 @@ func testOperation(t *testing.T, cfg config.Config, mode config.Mode, version st
 }
 
 func TestStatementParameterTypes(t *testing.T) {
-	op := testOperation(t, config.Config{Execution: config.ExecutionOptions{ReuseParameterTypes: true}}, config.ModeMySQL, "")
+	op := testOperation(t, config.Config{Execution: config.ExecutionOptions{ReuseParameterTypes: true}}, config.CompatibilityModeMySQL, "")
 	s := Adopt(op, 7, sqlPlan("SELECT ?"), nil)
 	for i, p := range []wire.Parameter{
 		{Type: 8}, {Type: 8}, {Type: 8 | 0x8000}, {Type: 6}, {Type: 6},
@@ -58,21 +58,21 @@ func TestStatementParameterTypes(t *testing.T) {
 
 func TestPrepareExecuteGate(t *testing.T) {
 	for _, tc := range []struct {
-		mode          config.Mode
+		mode          config.CompatibilityMode
 		version       string
 		enabled, want bool
 	}{
-		{config.ModeOracle, "2.2.76", true, true}, {config.ModeOracle, "2.2.74", true, false},
-		{config.ModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", true, true},
-		{config.ModeOracle, "4.4.2.2", true, false},
-		{config.ModeOracle, "v4.4.2.2", true, false},
-		{config.ModeOracle, "5.7.25-OceanBase-v4.4.2.2", true, false},
-		{config.ModeOracle, "OceanBase 4.4.2.2 (build)", true, false},
-		{config.ModeOracle, "4.4.2.2.1", true, true},
-		{config.ModeOracle, "4.4.2.20", true, true},
-		{config.ModeOracle, "4.4.2.3", true, true},
-		{config.ModeOracle, "4.4.2", true, true},
-		{config.ModeOracle, "", true, false}, {config.ModeMySQL, testNativeVersion, true, false}, {config.ModeOracle, testNativeVersion, false, false},
+		{config.CompatibilityModeOracle, "2.2.76", true, true}, {config.CompatibilityModeOracle, "2.2.74", true, false},
+		{config.CompatibilityModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", true, true},
+		{config.CompatibilityModeOracle, "4.4.2.2", true, false},
+		{config.CompatibilityModeOracle, "v4.4.2.2", true, false},
+		{config.CompatibilityModeOracle, "5.7.25-OceanBase-v4.4.2.2", true, false},
+		{config.CompatibilityModeOracle, "OceanBase 4.4.2.2 (build)", true, false},
+		{config.CompatibilityModeOracle, "4.4.2.2.1", true, true},
+		{config.CompatibilityModeOracle, "4.4.2.20", true, true},
+		{config.CompatibilityModeOracle, "4.4.2.3", true, true},
+		{config.CompatibilityModeOracle, "4.4.2", true, true},
+		{config.CompatibilityModeOracle, "", true, false}, {config.CompatibilityModeMySQL, testNativeVersion, true, false}, {config.CompatibilityModeOracle, testNativeVersion, false, false},
 	} {
 		op := testOperation(t, config.Config{Execution: config.ExecutionOptions{PrepareExecute: tc.enabled}}, tc.mode, tc.version)
 		if UsePrepareExecute(op) != tc.want {
@@ -92,13 +92,13 @@ func TestPrepareExecuteGate(t *testing.T) {
 
 func TestStatementChecksumGate(t *testing.T) {
 	for _, tc := range []struct {
-		mode           config.Mode
+		mode           config.CompatibilityMode
 		version        string
 		combined, want bool
 	}{
-		{config.ModeOracle, "4.1.1", false, false}, {config.ModeOracle, "4.1.2", false, true},
-		{config.ModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", false, true},
-		{config.ModeOracle, "", false, false}, {config.ModeMySQL, testNativeVersion, false, false}, {config.ModeOracle, "2.2.76", true, true},
+		{config.CompatibilityModeOracle, "4.1.1", false, false}, {config.CompatibilityModeOracle, "4.1.2", false, true},
+		{config.CompatibilityModeOracle, "5.7.25-OceanBase_CE-v4.2.1.0", false, true},
+		{config.CompatibilityModeOracle, "", false, false}, {config.CompatibilityModeMySQL, testNativeVersion, false, false}, {config.CompatibilityModeOracle, "2.2.76", true, true},
 	} {
 		op := testOperation(t, config.Config{Execution: config.ExecutionOptions{StatementChecksum: true}}, tc.mode, tc.version)
 		o := ExecuteOptions(op, []byte("123456789"), tc.combined)
@@ -113,7 +113,7 @@ func TestStatementChecksumGate(t *testing.T) {
 }
 
 func TestStatementScopeAndDeferredClose(t *testing.T) {
-	op := testOperation(t, config.Config{}, config.ModeMySQL, "")
+	op := testOperation(t, config.Config{}, config.CompatibilityModeMySQL, "")
 	s := Adopt(op, 0, sqlPlan("SELECT 1"), nil)
 	use, err := s.AcquireLease(op)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestStatementScopeAndDeferredClose(t *testing.T) {
 	if err = use.Release(context.Background(), op); err != nil || s.leases != 0 {
 		t.Fatal("lease released twice", err)
 	}
-	foreign := testOperation(t, config.Config{}, config.ModeMySQL, "")
+	foreign := testOperation(t, config.Config{}, config.CompatibilityModeMySQL, "")
 	if err = s.CheckOpen(foreign); !errors.Is(err, dberrors.ErrResource) {
 		t.Fatal("foreign session scope", err)
 	}

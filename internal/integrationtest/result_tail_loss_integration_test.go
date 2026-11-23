@@ -31,7 +31,7 @@ func integrationTestResultTailLoss(t *testing.T, p integrationtest.Profile) {
 	pinned, fault := integrationtest.OpenReceiptLoss(t, p)
 	ctx := integrationtest.TestContext(t)
 	query := "SELECT 1"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		query += " FROM dual"
 	}
 	fault.ArmTextResult()

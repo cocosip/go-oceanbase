@@ -20,7 +20,7 @@ func TestScalarClientLiteralQuoting(t *testing.T) {
 		types.TimestampTZ("2026-01-02 03:04:05 +00:00'"),
 		types.TimestampLTZ("2026-01-02 03:04:05 +00:00'"),
 	} {
-		text, err := ClientLiteral(value, config.ModeOracle, options, 1024, 1024)
+		text, err := ClientLiteral(value, config.CompatibilityModeOracle, options, 1024, 1024)
 		if err != nil {
 			continue
 		}
@@ -44,11 +44,11 @@ func TestScalarClientLiterals(t *testing.T) {
 		{types.IntervalYM("-1-02"), "INTERVAL '-1-02' YEAR(9) TO MONTH"},
 		{types.IntervalDS("1 02:03:04.123456789"), "INTERVAL '1 02:03:04.123456789' DAY(9) TO SECOND(9)"},
 	} {
-		text, err := ClientLiteral(tc.value, config.ModeOracle, options, 1024, 1024)
+		text, err := ClientLiteral(tc.value, config.CompatibilityModeOracle, options, 1024, 1024)
 		if err != nil || text != tc.want {
 			t.Fatal(tc.value, text, err)
 		}
-		if _, err = ClientLiteral(tc.value, config.ModeOracle, options, 1024, 2); err == nil {
+		if _, err = ClientLiteral(tc.value, config.CompatibilityModeOracle, options, 1024, 2); err == nil {
 			t.Fatal("expanded literal escaped limit", tc.value)
 		}
 	}
@@ -58,11 +58,11 @@ func TestGeneratedLiteralTokens(t *testing.T) {
 	const variable = "@_obgo_0123456789abcdef0123456789abcdef_0"
 	for _, mode := range []struct {
 		name                       string
-		mode                       config.Mode
+		mode                       config.CompatibilityMode
 		variableData, questionData string
 	}{
-		{"mysql", config.ModeMySQL, "_utf8mb4 X'405f6f62676f5f30313233343536373839616263646566303132333435363738396162636465665f30'", "_utf8mb4 X'3f'"},
-		{"oracle", config.ModeOracle, "'" + variable + "'", "'?'"},
+		{"mysql", config.CompatibilityModeMySQL, "_utf8mb4 X'405f6f62676f5f30313233343536373839616263646566303132333435363738396162636465665f30'", "_utf8mb4 X'3f'"},
+		{"oracle", config.CompatibilityModeOracle, "'" + variable + "'", "'?'"},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
 			options := config.SessionOptions{Charset: charsetUTF8MB4, Location: time.UTC}

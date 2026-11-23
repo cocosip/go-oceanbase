@@ -175,7 +175,7 @@ func TestCreateDatabaseChangeUser(t *testing.T) {
 			return
 		}
 		ctx = context.Background()
-		if !testpeer.ServeOK(ctx, t, p, changeUserPacket(t, config.ModeMySQL, "next-db"), 2) || !testpeer.ServeBaseline(ctx, t, p, 2) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
+		if !testpeer.ServeOK(ctx, t, p, changeUserPacket(t, config.CompatibilityModeMySQL, "next-db"), 2) || !testpeer.ServeBaseline(ctx, t, p, 2) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 			return
 		}
 		p.ResetSequence()

@@ -25,7 +25,7 @@ const (
 )
 
 func TestXACommitContextBoundary(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			for _, boundary := range []string{xaContextBeforeSend, xaContextAfterSend, xaContextDeadline} {
 				t.Run(fmt.Sprintf("%v/%s/%s", mode, framing, boundary), func(t *testing.T) {
@@ -36,7 +36,7 @@ func TestXACommitContextBoundary(t *testing.T) {
 	}
 }
 
-func testXACommitContextBoundary(t *testing.T, mode config.Mode, framing, boundary string) {
+func testXACommitContextBoundary(t *testing.T, mode config.CompatibilityMode, framing, boundary string) {
 	t.Helper()
 	xid := oceanbase.XID{FormatID: 1, GlobalID: []byte("g")}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,7 +46,7 @@ func testXACommitContextBoundary(t *testing.T, mode config.Mode, framing, bounda
 	db := localInfileDB(t, mode, false, func(peerCtx context.Context, p *wire.PacketIO) {
 		if boundary == xaContextBeforeSend {
 			status := byte(2)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				status = 6
 			}
 			if !testpeer.ServeOK(peerCtx, t, p, []byte{14}, status) {
@@ -56,7 +56,7 @@ func testXACommitContextBoundary(t *testing.T, mode config.Mode, framing, bounda
 			testpeer.ServeQuit(t, p)
 			return
 		}
-		if mode == config.ModeMySQL {
+		if mode == config.CompatibilityModeMySQL {
 			if !testpeer.ReadQuery(peerCtx, t, p, xaContextCommitSQL) {
 				return
 			}

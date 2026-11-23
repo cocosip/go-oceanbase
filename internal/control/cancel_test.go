@@ -23,7 +23,7 @@ func TestCancelTargetGateAndPendingBoundary(t *testing.T) {
 	defer cancel()
 	started, ack, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var discoveries atomic.Int32
-	cfg, err := config.Normalize(config.Config{User: testpeer.User, Mode: config.ModeMySQL,
+	cfg, err := config.Normalize(config.Config{User: testpeer.User, CompatibilityMode: config.CompatibilityModeMySQL,
 		Discovery: config.DiscoveryOptions{Service: "orders", Source: func(context.Context) (config.Topology, error) {
 			discoveries.Add(1)
 			return config.Topology{}, errors.New("discovery must not run")
@@ -64,7 +64,7 @@ func TestCancelTargetGateAndPendingBoundary(t *testing.T) {
 	defer func() { _ = configured.Close() }()
 	targetCfg := cfg
 	targetCfg.Addr = cancelEntryAddress
-	physical := session.New(targetCfg, &session.Negotiated{Mode: config.ModeMySQL, Hello: wire.Handshake{ConnectionID: 42}, User: testpeer.User})
+	physical := session.New(targetCfg, &session.Negotiated{Mode: config.CompatibilityModeMySQL, Hello: wire.Handshake{ConnectionID: 42}, User: testpeer.User})
 	defer physical.Discard()
 	op, err := physical.Acquire(ctx)
 	if err != nil {

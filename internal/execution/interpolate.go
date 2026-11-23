@@ -51,9 +51,9 @@ func interpolateClient(ctx context.Context, op *session.Operation, plan sqltext.
 			var key valuecodec.Key
 			switch v := value.(type) {
 			case types.Object:
-				key = valuecodec.Key{Mode: config.ModeOracle, Schema: v.Schema, Name: v.Type, Version: v.Version}
+				key = valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: v.Schema, Name: v.Type, Version: v.Version}
 			case types.Array:
-				key = valuecodec.Key{Mode: config.ModeOracle, Schema: v.Schema, Name: v.Type, Version: v.Version}
+				key = valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: v.Schema, Name: v.Type, Version: v.Version}
 			default:
 				continue
 			}
@@ -71,7 +71,7 @@ func interpolateClient(ctx context.Context, op *session.Operation, plan sqltext.
 }
 
 func clientMultiStatement(op *session.Operation, query string) bool {
-	if op.Config().PrepareMode != config.PrepareClient || !op.Config().AllowMultiStatements || op.Protocol().Mode != config.ModeMySQL || op.Protocol().Capabilities&wire.ClientMultiStatements == 0 {
+	if op.Config().PrepareMode != config.PrepareClient || !op.Config().AllowMultiStatements || op.Protocol().Mode != config.CompatibilityModeMySQL || op.Protocol().Capabilities&wire.ClientMultiStatements == 0 {
 		return false
 	}
 	noBackslash := op.Protocol().OK.Status&512 != 0
@@ -153,13 +153,13 @@ func materializeClientLongData(ctx context.Context, op *session.Operation, value
 }
 
 func validateConstructorSQL(op *session.Operation, query string) error {
-	if op.Protocol().Mode != config.ModeOracle {
+	if op.Protocol().Mode != config.CompatibilityModeOracle {
 		return dberrors.ErrUnsupported
 	}
 	if _, err := command.EncodeSQL(query, op.Config().Session.Charset, op.Config().Limits.MaxMessageBytes-1); err != nil {
 		return err
 	}
-	tokens, err := sqltext.LexSQL(query, config.ModeOracle, false, false)
+	tokens, err := sqltext.LexSQL(query, config.CompatibilityModeOracle, false, false)
 	if err != nil {
 		return err
 	}

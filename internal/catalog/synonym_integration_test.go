@@ -21,7 +21,7 @@ func TestOracleSynonymUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeOracle {
+		if p.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) { integrationTestOracleSynonymUsage(t, p) })
@@ -128,7 +128,7 @@ func TestOracleSynonymChain(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeOracle {
+		if p.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) { integrationTestOracleSynonymChain(t, p) })

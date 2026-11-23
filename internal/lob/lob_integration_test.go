@@ -18,7 +18,7 @@ func TestNativeLOB(t *testing.T) {
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
 			t.Run("BLOB-CLOB", func(t *testing.T) { integrationTestNativeLOBProfile(t, p) })
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				t.Run("NCLOB", func(t *testing.T) { integrationTestNativeNCLOB(t, p) })
 			}
 		})

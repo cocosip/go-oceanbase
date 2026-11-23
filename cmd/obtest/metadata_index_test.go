@@ -23,50 +23,50 @@ const (
 type metadataIndexFixtureCase struct {
 	name   string
 	failAt int
-	mutate func(body *[]fixtureStep, mode oceanbase.Mode)
+	mutate func(body *[]fixtureStep, mode oceanbase.CompatibilityMode)
 	wantOK bool
 }
 
 func metadataIndexFixtureCases() []metadataIndexFixtureCase {
 	return []metadataIndexFixtureCase{
 		{name: caseRoundTrip, failAt: -1, wantOK: true},
-		{name: "unique-flagged", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "unique-flagged", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataIndexRows(mode)
 			rows.values[0][4] = int64(1)
 			(*body)[3].rows = rows
 		}},
-		{name: "unique-column", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "unique-column", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataIndexRows(mode)
 			rows.values[0][5] = "V"
 			(*body)[3].rows = rows
 		}},
-		{name: "composite-order", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "composite-order", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataIndexRows(mode)
 			rows.values[1][5] = "W"
 			rows.values[2][5] = "V"
 			(*body)[3].rows = rows
 		}},
-		{name: "composite-missing", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "composite-missing", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataIndexRows(mode)
 			rows.values = rows.values[:2]
 			(*body)[3].rows = rows
 		}},
-		{name: "no-primary", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "no-primary", failAt: 3, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataIndexRows(mode)
 			rows.values = rows.values[:3]
 			(*body)[3].rows = rows
 		}},
-		{name: "server-mode", failAt: 4, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "server-mode", failAt: 4, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataServerInfoRows(mode)
 			rows.values[0][1] = "BOGUS"
 			(*body)[4].rows = rows
 		}},
-		{name: "server-version", failAt: 4, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "server-version", failAt: 4, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataServerInfoRows(mode)
 			rows.values[0][0] = "MariaDB 10.5"
 			(*body)[4].rows = rows
 		}},
-		{name: "server-extra-row", failAt: 4, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "server-extra-row", failAt: 4, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newMetadataServerInfoRows(mode)
 			rows.values = append(rows.values, rows.values[0])
 			(*body)[4].rows = rows
@@ -76,7 +76,7 @@ func metadataIndexFixtureCases() []metadataIndexFixtureCase {
 
 func TestMetadataIndexWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, metadataIndexCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range metadataIndexFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				steps := metadataIndexSteps(t, mode, tc)
@@ -100,10 +100,10 @@ func TestMetadataIndexWorkflow(t *testing.T) {
 	}
 }
 
-func metadataIndexSteps(t *testing.T, mode oceanbase.Mode, tc metadataIndexFixtureCase) []fixtureStep {
+func metadataIndexSteps(t *testing.T, mode oceanbase.CompatibilityMode, tc metadataIndexFixtureCase) []fixtureStep {
 	t.Helper()
 	create := metadataIndexCreateFix
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		create = metadataIndexCreateOra
 	} else {
 		create += parameterFixtureEngine
@@ -122,7 +122,7 @@ func metadataIndexSteps(t *testing.T, mode oceanbase.Mode, tc metadataIndexFixtu
 		body = body[:tc.failAt+1]
 	}
 	drops := []fixtureStep{{query: metadataIndexDropIX + " ON OBT_OFFLINE_IDX"}, {query: metadataIndexDropUX + " ON OBT_OFFLINE_IDX"}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		drops = []fixtureStep{{query: metadataIndexDropIX}, {query: metadataIndexDropUX}}
 	}
 	return append(append(body, drops...), fixtureStep{query: "DROP TABLE OBT_OFFLINE_IDX"})
@@ -132,9 +132,9 @@ type metadataIndexFixtureRows struct {
 	fixtureRows
 }
 
-func newMetadataIndexRows(mode oceanbase.Mode) *metadataIndexFixtureRows {
+func newMetadataIndexRows(mode oceanbase.CompatibilityMode) *metadataIndexFixtureRows {
 	primary := "PRIMARY"
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		primary = "OBT_OFFLINE_IDX_PK"
 	}
 	return &metadataIndexFixtureRows{fixtureRows: fixtureRows{width: 10, values: [][]driver.Value{
@@ -149,10 +149,10 @@ type metadataServerInfoRows struct {
 	fixtureRows
 }
 
-func newMetadataServerInfoRows(mode oceanbase.Mode) *metadataServerInfoRows {
+func newMetadataServerInfoRows(mode oceanbase.CompatibilityMode) *metadataServerInfoRows {
 	reported := metadataIndexServerMode
 	flag := int64(0)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		reported = "ORACLE"
 		flag = 1
 	}

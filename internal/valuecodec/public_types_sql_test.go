@@ -15,7 +15,7 @@ import (
 func TestAllScalarPaths(t *testing.T) {
 	for _, path := range []string{testTextStrategy, testServerStrategy, testClientStrategy} {
 		t.Run(path, func(t *testing.T) {
-			cfg := oceanbase.Config{User: publictest.TestUser, Mode: oceanbase.ModeOracle, Session: oceanbase.SessionOptions{NCharset: testCharsetUTF16}}
+			cfg := oceanbase.Config{User: publictest.TestUser, CompatibilityMode: oceanbase.CompatibilityModeOracle, Session: oceanbase.SessionOptions{NCharset: testCharsetUTF16}}
 			if path == testClientStrategy {
 				cfg.PrepareMode = oceanbase.PrepareClient
 			}

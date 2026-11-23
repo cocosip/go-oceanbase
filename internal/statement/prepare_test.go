@@ -14,7 +14,7 @@ import (
 
 func TestPrepareServerAuthoritativeSlots(t *testing.T) {
 	query := "SELECT '?'"
-	ctx, op := protocolOperation(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := protocolOperation(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, query...)) {
 			return
 		}
@@ -45,7 +45,7 @@ func TestPrepareServerAuthoritativeSlots(t *testing.T) {
 }
 
 func TestPrepareOracleCountMismatch(t *testing.T) {
-	ctx, op := protocolOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := protocolOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if testpeer.ReadCommand(ctx, t, p, []byte("\x16SELECT ? FROM dual")) {
 			testpeer.SendPackets(ctx, t, p, []byte{0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
 		}

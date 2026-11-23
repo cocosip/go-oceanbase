@@ -11,7 +11,7 @@ import (
 
 func ExampleExecBatch_rewrite() {
 	cfg := oceanbase.Config{
-		User: "app@tenant#cluster", Addr: "localhost:2883", Mode: oceanbase.ModeMySQL,
+		User: "app@tenant#cluster", Addr: "localhost:2883", CompatibilityMode: oceanbase.CompatibilityModeMySQL,
 		AllowMultiStatements: true,
 		Logger:               slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 	}
@@ -32,7 +32,7 @@ func ExampleExecBatch_rewrite() {
 
 func ExampleExecBatch_arrayBinding() {
 	connector, err := oceanbase.NewConnector(oceanbase.Config{
-		User: "app@tenant#cluster", Addr: "localhost:2883", Mode: oceanbase.ModeOracle,
+		User: "app@tenant#cluster", Addr: "localhost:2883", CompatibilityMode: oceanbase.CompatibilityModeOracle,
 		Logger: slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 	})
 	if err != nil {

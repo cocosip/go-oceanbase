@@ -35,8 +35,8 @@ func DecodeColumn(data []byte, options config.SessionOptions, newMetadata bool) 
 var charsetWidth = map[string]uint32{"binary": 1, charsetASCII: 1, charsetLatin1: 1, "dec8": 1, "tis620": 1, "cp850": 1, "hp8": 1, "macroman": 1, "swe7": 1, charsetGBK: 2, "gb2312": 2, "euckr": 2, "sjis": 2, "big5": 2, "hkscs": 2, "hkscs31": 2, "ujis": 2, "cp932": 2, "eucjpms": 2, charsetUTF8MB3: 3, charsetUTF8MB4: 4, charsetUTF16: 4, "utf16le": 4, charsetGB18030: 4, "gb18030_2022": 4}
 
 // ColumnLength reports the protocol-defined column length in bytes or characters.
-func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
-	if c.NewMetadata && mode == config.ModeOracle {
+func ColumnLength(c wire.Column, mode config.CompatibilityMode) (int64, bool) {
+	if c.NewMetadata && mode == config.CompatibilityModeOracle {
 		switch c.Type {
 		case 203, 209:
 			return int64(c.Precision), c.Precision != 0
@@ -47,7 +47,7 @@ func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 	if c.Length == 0 {
 		return 0, false
 	}
-	if c.NewMetadata && mode == config.ModeOracle && (c.Type == 207 || c.Type == 208) {
+	if c.NewMetadata && mode == config.CompatibilityModeOracle && (c.Type == 207 || c.Type == 208) {
 		return int64(c.Length), true
 	}
 	if c.Type == 203 || c.Type == 16 || c.Type >= 249 && c.Type <= 254 && c.Charset == 63 {
@@ -55,7 +55,7 @@ func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 	}
 	switch c.Type {
 	case 15, 253, 254, 207, 208, 249, 250, 251, 252:
-		if mode == config.ModeOracle && (c.Type == 15 || c.Type == 253 || c.Type == 254) {
+		if mode == config.CompatibilityModeOracle && (c.Type == 15 || c.Type == 253 || c.Type == 254) {
 			return int64(c.Length), true
 		}
 		name, ok := charset.Collation(c.Charset)
@@ -70,11 +70,11 @@ func ColumnLength(c wire.Column, mode config.Mode) (int64, bool) {
 }
 
 // ColumnPrecisionScale reports decimal precision and scale for the compatibility mode.
-func ColumnPrecisionScale(c wire.Column, mode config.Mode) (int64, int64, bool) {
-	if c.Type != 0 && c.Type != 246 && (mode != config.ModeOracle || c.Type != 3) {
+func ColumnPrecisionScale(c wire.Column, mode config.CompatibilityMode) (int64, int64, bool) {
+	if c.Type != 0 && c.Type != 246 && (mode != config.CompatibilityModeOracle || c.Type != 3) {
 		return 0, 0, false
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		if c.Precision == 0 || c.Precision > 38 || int8(c.Decimals) < -84 {
 			return 0, 0, false
 		}
@@ -97,14 +97,14 @@ func ColumnPrecisionScale(c wire.Column, mode config.Mode) (int64, int64, bool) 
 }
 
 // ColumnScanType reports the standard scan destination type for a column.
-func ColumnScanType(c wire.Column, mode config.Mode, options config.SessionOptions) reflect.Type {
-	if c.Type == wire.TypeRefCursor && mode == config.ModeOracle {
+func ColumnScanType(c wire.Column, mode config.CompatibilityMode, options config.SessionOptions) reflect.Type {
+	if c.Type == wire.TypeRefCursor && mode == config.CompatibilityModeOracle {
 		return reflect.TypeFor[sql.Rows]()
 	}
-	if c.Type == wire.TypeBlob && mode == config.ModeOracle {
+	if c.Type == wire.TypeBlob && mode == config.CompatibilityModeOracle {
 		return reflect.TypeFor[[]byte]()
 	}
-	if options.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type >= 200 && c.Type <= 202 && mode == config.ModeOracle) {
+	if options.ParseTime && (c.Type == 7 || c.Type == 10 || c.Type == 12 || c.Type == 14 || c.Type >= 200 && c.Type <= 202 && mode == config.CompatibilityModeOracle) {
 		return reflect.TypeFor[time.Time]()
 	}
 	if c.Charset == 63 && (c.Type == 15 || c.Type >= 249) || c.Type == 16 || c.Type == 203 {
@@ -119,7 +119,7 @@ func ColumnScanType(c wire.Column, mode config.Mode, options config.SessionOptio
 	case 1, 2, 9, 13:
 		return reflect.TypeFor[int64]()
 	case 3:
-		if mode != config.ModeOracle {
+		if mode != config.CompatibilityModeOracle {
 			return reflect.TypeFor[int64]()
 		}
 	case 4, 5:

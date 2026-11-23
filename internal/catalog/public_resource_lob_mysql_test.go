@@ -41,7 +41,7 @@ func TestBlobTargetRejections(t *testing.T) {
 				dict[0][3] = publictest.TestNonLockingEngine
 				dict[1][3] = publictest.TestNonLockingEngine
 			}
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTableDictionary(ctx, t, p, 2, dict...) {
 					return
 				}
@@ -82,7 +82,7 @@ func TestBlobTarget(t *testing.T) {
 	}
 	t.Run("immutable-composite-key", func(t *testing.T) {
 		v := &tableKeyValuer{value: []byte{1, 2}}
-		db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+		db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 			if !publictest.ServeTableRows(ctx, t, p, 2, []string{integrationDatabaseQuery}, []byte{253}, []any{"s"}) {
 				return
 			}

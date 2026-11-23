@@ -13,15 +13,15 @@ import (
 )
 
 func TestPreparedParameterEncodedBudget(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, national := range []bool{false, true} {
-			if national && mode != oceanbase.ModeOracle {
+			if national && mode != oceanbase.CompatibilityModeOracle {
 				continue
 			}
 			for _, variant := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
 				t.Run(fmt.Sprintf("%d/%t/%s", mode, national, variant), func(t *testing.T) {
 					status, typ := byte(2), uint16(253)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						status = 6
 					}
 					if national {
@@ -32,7 +32,7 @@ func TestPreparedParameterEncodedBudget(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}, Limits: oceanbase.Limits{MaxMessageBytes: int64(len(payload))}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}, Limits: oceanbase.Limits{MaxMessageBytes: int64(len(payload))}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						if !publictest.ServePrepareStatus(ctx, t, p, testBatchSQL, 84, 1, nil, status) || !testpeer.ServeOK(ctx, t, p, payload, status) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 84)) || !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 							return
 						}

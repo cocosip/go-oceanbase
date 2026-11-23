@@ -12,7 +12,7 @@ import (
 func ExampleNewConnector_pool() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).With("pool", "orders")
 	connector, err := NewConnector(Config{
-		User: "pool_app", Mode: ModeMySQL, Logger: logger,
+		User: "pool_app", CompatibilityMode: CompatibilityModeMySQL, Logger: logger,
 		// Set deployment credentials, address and TLSConfig before connecting.
 	})
 	if err != nil {

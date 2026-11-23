@@ -21,8 +21,8 @@ func TestProxyUserSessions(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
-			if p.Mode == oceanbase.ModeMySQL {
-				_, err := oceanbase.NewConnector(oceanbase.Config{User: "app", Mode: p.Mode, ProxyUser: "client_user"})
+			if p.Mode == oceanbase.CompatibilityModeMySQL {
+				_, err := oceanbase.NewConnector(oceanbase.Config{User: "app", CompatibilityMode: p.Mode, ProxyUser: "client_user"})
 				var invalid *oceanbase.ConfigError
 				if !errors.As(err, &invalid) || invalid.Field != "ProxyUser" {
 					t.Fatal("MySQL proxy login not explicitly rejected")
@@ -50,10 +50,10 @@ func testProxyUserSession(t *testing.T, p integrationtest.Profile) {
 		t.Fatal("proxy fixture must distinguish authenticating and effective users")
 	}
 	cfg, err := oceanbase.ParseDSN(dsn)
-	if err != nil || cfg.ProxyUser == "" || cfg.Mode != oceanbase.ModeAuto && cfg.Mode != p.Mode {
+	if err != nil || cfg.ProxyUser == "" || cfg.CompatibilityMode != oceanbase.CompatibilityModeAuto && cfg.CompatibilityMode != p.Mode {
 		t.Fatal("invalid proxy identity fixture: " + p.Name)
 	}
-	cfg.Mode = p.Mode
+	cfg.CompatibilityMode = p.Mode
 	created, err := oceanbase.NewConnector(cfg)
 	if err != nil {
 		integrationtest.FailOperation(t, "proxy connector", err)

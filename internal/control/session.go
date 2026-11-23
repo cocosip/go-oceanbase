@@ -71,7 +71,7 @@ func (m *Manager) Session(ctx context.Context, op *session.Operation, cache *sta
 		// A complete server error can still accompany a partial state change.
 		op.MarkDirty()
 		kind := byte(3)
-		if op.Protocol().Mode == config.ModeMySQL && (r.Kind == SetSchema || r.Kind == SetCatalog) {
+		if op.Protocol().Mode == config.CompatibilityModeMySQL && (r.Kind == SetSchema || r.Kind == SetCatalog) {
 			kind = 2
 		}
 		_, err = command.ExecOK(ctx, op, append([]byte{kind}, encoded...))
@@ -84,14 +84,14 @@ func (m *Manager) Session(ctx context.Context, op *session.Operation, cache *sta
 // SessionSQL validates a helper and constructs SQL without performing I/O.
 func SessionSQL(op *session.Operation, r SessionRequest) (query string, columns int, mutate bool, err error) {
 	p := op.Protocol()
-	if p.Mode == config.ModeOracle && (r.Kind == Catalog || r.Kind == SetCatalog) {
+	if p.Mode == config.CompatibilityModeOracle && (r.Kind == Catalog || r.Kind == SetCatalog) {
 		return "", 0, false, fmt.Errorf("%w: Oracle compatibility mode has no catalog", dberrors.ErrUnsupported)
 	}
 	quote := func(value string) string { return valuecodec.QuoteSessionValue(p.Mode, p.OK.Status, value) }
 	switch r.Kind {
 	case Schema, Catalog:
 		query, columns = "SELECT DATABASE()", 1
-		if p.Mode == config.ModeOracle {
+		if p.Mode == config.CompatibilityModeOracle {
 			query = "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
 		}
 	case SetSchema, SetCatalog:
@@ -99,7 +99,7 @@ func SessionSQL(op *session.Operation, r SessionRequest) (query string, columns 
 			return "", 0, false, fmt.Errorf("%w: invalid schema name", dberrors.ErrBind)
 		}
 		query, mutate = r.Name, true
-		if p.Mode == config.ModeOracle {
+		if p.Mode == config.CompatibilityModeOracle {
 			query = "ALTER SESSION SET CURRENT_SCHEMA = " + sqltext.QuoteIdentifier(p.Mode, r.Name)
 		}
 	case ClientInfo:
@@ -128,7 +128,7 @@ func SessionSQL(op *session.Operation, r SessionRequest) (query string, columns 
 	default:
 		return "", 0, false, dberrors.ErrUnsupported
 	}
-	if !mutate && p.Mode == config.ModeOracle {
+	if !mutate && p.Mode == config.CompatibilityModeOracle {
 		query += " FROM dual"
 	}
 	return query, columns, mutate, nil
@@ -139,7 +139,7 @@ func SystemVariableLiteral(ctx context.Context, op *session.Operation, name, val
 	p := op.Protocol()
 	if _, integer := valuecodec.SessionInteger(value); integer {
 		query := "SELECT @@SESSION." + name
-		if p.Mode == config.ModeOracle {
+		if p.Mode == config.CompatibilityModeOracle {
 			query += " FROM dual"
 		}
 		_, columns, err := command.QueryScalars(ctx, op, []byte(query), 1)

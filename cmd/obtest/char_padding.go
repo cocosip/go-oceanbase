@@ -33,8 +33,8 @@ type charPaddingProfile struct {
 	overflow  uint32
 }
 
-func charPaddingProfileFor(mode oceanbase.Mode) charPaddingProfile {
-	if mode == oceanbase.ModeOracle {
+func charPaddingProfileFor(mode oceanbase.CompatibilityMode) charPaddingProfile {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return charPaddingProfile{
 			ddl: "(ID INTEGER PRIMARY KEY,C CHAR(5),V VARCHAR2(10))", padded: "ab   ",
 			typeNameC: extendedCharType, typeNameV: typeNameVarchar2, overflow: 12899,

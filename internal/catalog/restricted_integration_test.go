@@ -41,7 +41,7 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 	if err != nil {
 		t.Fatal("invalid restricted DSN for profile: " + p.Name)
 	}
-	if restrictedCfg.Mode != oceanbase.ModeAuto && restrictedCfg.Mode != p.Mode {
+	if restrictedCfg.CompatibilityMode != oceanbase.CompatibilityModeAuto && restrictedCfg.CompatibilityMode != p.Mode {
 		t.Fatal("restricted identity mode differs from profile: " + p.Name)
 	}
 	connector, err := oceanbase.NewConnector(restrictedCfg)
@@ -56,7 +56,7 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 	var schema string
 	schemaSQL := integrationDatabaseQuery
 	unreadable := "mysql"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		schemaSQL = "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual"
 		unreadable = "SYS"
 	}
@@ -65,7 +65,7 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 	}
 	table := fmt.Sprintf("OBGR_%d", time.Now().UnixNano())
 	definition := "ID INT PRIMARY KEY,AMOUNT DECIMAL(10,2),NOTE VARCHAR(12)"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		definition = "ID INTEGER PRIMARY KEY,AMOUNT NUMBER(10,2),NOTE VARCHAR2(12)"
 	}
 	if _, err = admin.ExecContext(ctx, "CREATE TABLE "+table+" ("+definition+")"); err != nil {
@@ -77,7 +77,7 @@ func integrationTestRestrictedVisibility(t *testing.T, p integrationtest.Profile
 		}
 	}()
 	// Oracle has no schema-wide SELECT grant, so the owner grants the created table.
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		user, _, _ := strings.Cut(restrictedCfg.User, "@")
 		if _, err = admin.ExecContext(ctx, "GRANT SELECT ON "+table+" TO "+user); err != nil {
 			integrationtest.FailOperation(t, "grant restricted metadata table", err)

@@ -17,7 +17,7 @@ type DiagnosticOptions struct {
 // RequestDiagnostic describes one physical protocol command, including consumer time for Rows.
 type RequestDiagnostic struct {
 	Operation                        string
-	Mode                             Mode
+	Mode                             CompatibilityMode
 	ConnectionID, RequestID          uint32
 	Duration                         time.Duration
 	ReadBytes, WriteBytes            int64

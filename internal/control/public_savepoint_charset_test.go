@@ -16,19 +16,19 @@ import (
 )
 
 func TestSavepointUnrepresentable(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: transactionMySQLLabel, config.ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: transactionMySQLLabel, config.CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			start := []txStep{{testMySQLReadWrite, 3}}
 			end := []txStep{{testRollbackSQL, 2}}
 			active := byte(3)
 			quoted := "`after_rejection`"
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				start = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}
 				end = []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}
 				active = 5
 				quoted = "\"after_rejection\""
 			}
-			db := batchRewriteDB(t, config.Config{Mode: mode, Session: config.SessionOptions{Charset: localFilenameCharset}}, testStandard, func(ctx context.Context, p *wire.PacketIO) {
+			db := batchRewriteDB(t, config.Config{CompatibilityMode: mode, Session: config.SessionOptions{Charset: localFilenameCharset}}, testStandard, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveTxSteps(ctx, t, p, start) || !serveTxSteps(ctx, t, p, []txStep{{"SAVEPOINT " + quoted, active}}) || !serveTxSteps(ctx, t, p, end) {
 					return
 				}
@@ -49,7 +49,7 @@ func TestSavepointUnrepresentable(t *testing.T) {
 			if err = oceanbase.RollbackTo(ctx, tx, "emoji_😀"); !errors.Is(err, charset.ErrEncoding) {
 				t.Fatal("unrepresentable ROLLBACK TO reached the wire", err)
 			}
-			if mode == config.ModeMySQL {
+			if mode == config.CompatibilityModeMySQL {
 				if err = oceanbase.ReleaseSavepoint(ctx, tx, "emoji_😀"); !errors.Is(err, charset.ErrEncoding) {
 					t.Fatal("unrepresentable RELEASE reached the wire", err)
 				}
@@ -65,7 +65,7 @@ func TestSavepointUnrepresentable(t *testing.T) {
 }
 
 func TestSavepointCharset(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, encoding := range []string{testUTF8MB4, localFilenameCharset} {
 			for _, framing := range []string{testStandard, testCompression, testOB20} {
 				t.Run(fmt.Sprintf("%d/%s/%s", mode, encoding, framing), func(t *testing.T) {

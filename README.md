@@ -38,12 +38,12 @@ import (
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	connector, err := oceanbase.NewConnector(oceanbase.Config{
-		Addr:     os.Getenv("OB_ADDR"),
-		User:     os.Getenv("OB_USER"),
-		Password: os.Getenv("OB_PASSWORD"),
-		Database: os.Getenv("OB_DATABASE"),
-		Mode:     oceanbase.ModeMySQL,
-		Logger:   logger,
+		Addr:              os.Getenv("OB_ADDR"),
+		User:              os.Getenv("OB_USER"),
+		Password:          os.Getenv("OB_PASSWORD"),
+		Database:          os.Getenv("OB_DATABASE"),
+		CompatibilityMode: oceanbase.CompatibilityModeMySQL,
+		Logger:            logger,
 	})
 	if err != nil {
 		panic(err)
@@ -68,18 +68,18 @@ func main() {
 
 Applications can also import [`config`](config), [`types`](types), [`dberrors`](dberrors), [`metadata`](metadata), and [`obproxy`](obproxy) directly for their public models and helpers. The root package retains aliases for those contracts, so existing `oceanbase.Config`, value, error, and metadata names remain usable. Driver registration and connection-bound operations stay in the root package; `internal` packages are implementation details.
 
-For Oracle compatibility mode, use `ModeOracle` and `SELECT ? FROM dual`. `ModeAuto` detects and pins the mode on each authenticated physical connection; it does not translate SQL dialects.
+For Oracle compatibility mode, use `CompatibilityModeOracle` and `SELECT ? FROM dual`. `CompatibilityModeAuto` (or omitting `CompatibilityMode`, or `compatibilityMode=auto`) accepts and pins whatever mode the server reports, which is always MySQL or Oracle; it does not translate SQL dialects.
 
 ### DSN configuration
 
 `sql.Open("oceanbase", dsn)` also supports URL-style connection strings:
 
 ```text
-oceanbase://app%40tenant:password@127.0.0.1:2881/demo?mode=mysql
-oceanbase://app%40tenant:password@127.0.0.1:2881/?mode=oracle
+oceanbase://app%40tenant:password@127.0.0.1:2881/demo?compatibilityMode=mysql
+oceanbase://app%40tenant:password@127.0.0.1:2881/?compatibilityMode=oracle
 ```
 
-These are placeholders. URL-escape credentials (`%40` represents `@`), or use `Config` to avoid constructing credential-bearing URLs. Supported DSN option names ignore case; duplicate names after case folding are rejected, while values keep their existing semantics. DSNs reject unknown options and option names borrowed from other drivers. See the [usage guide](docs/go-driver-usage.md) for supported configuration.
+These are placeholders. URL-escape credentials (`%40` represents `@`), or use `Config` to avoid constructing credential-bearing URLs. Supported DSN option names ignore case; duplicate names after case folding are rejected, while `compatibilityMode` values are case-insensitive (`auto`, `mysql`, `oracle`). DSNs reject unknown options and option names borrowed from other drivers. See the [usage guide](docs/go-driver-usage.md) for supported configuration.
 
 Configure `TLSConfig` with trusted CAs and a server name when encryption is required; leaving it nil does not enable TLS. Use a context for each operation. Network timeouts or an uncertain commit outcome do not make writes safe to replay.
 

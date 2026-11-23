@@ -17,11 +17,11 @@ import (
 )
 
 // DecodeRowValue decodes one row field using the explicit mode and session options.
-func DecodeRowValue(column wire.Column, binaryRows bool, data []byte, mode config.Mode, options config.SessionOptions) (driver.Value, error) {
+func DecodeRowValue(column wire.Column, binaryRows bool, data []byte, mode config.CompatibilityMode, options config.SessionOptions) (driver.Value, error) {
 	if data == nil {
 		return nil, nil
 	}
-	if mode == config.ModeOracle && oracleTemporal(column.Type) {
+	if mode == config.CompatibilityModeOracle && oracleTemporal(column.Type) {
 		value, err := DecodeOracleTemporal(column.Type, data, options.Location)
 		if err == nil && options.ParseTime {
 			switch column.Type {
@@ -46,7 +46,7 @@ func DecodeRowValue(column wire.Column, binaryRows bool, data []byte, mode confi
 		}
 		return value, err
 	}
-	if mode == config.ModeOracle && (column.Type == 207 || column.Type == 208) {
+	if mode == config.CompatibilityModeOracle && (column.Type == 207 || column.Type == 208) {
 		name := options.NCharset
 		if name == "" {
 			name = options.Charset
@@ -56,7 +56,7 @@ func DecodeRowValue(column wire.Column, binaryRows bool, data []byte, mode confi
 		}
 		return charset.Decode(name, data)
 	}
-	if column.Type == 209 && mode == config.ModeOracle {
+	if column.Type == 209 && mode == config.CompatibilityModeOracle {
 		if _, err := types.RowID(string(data)).Value(); err != nil {
 			return nil, err
 		}

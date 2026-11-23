@@ -15,7 +15,7 @@ import (
 )
 
 func encodeComplex(ctx context.Context, op *session.Operation, resolver *catalog.Resolver, value any, null bool, key valuecodec.Key, limit int64) (wire.Parameter, error) {
-	if op.Protocol().Mode != config.ModeOracle {
+	if op.Protocol().Mode != config.CompatibilityModeOracle {
 		return wire.Parameter{}, dberrors.ErrUnsupported
 	}
 	if null {
@@ -34,7 +34,7 @@ func encodeComplex(ctx context.Context, op *session.Operation, resolver *catalog
 				return wire.Parameter{}, dberrors.ErrUnsupported
 			}
 			var element *valuecodec.Descriptor
-			element, err = resolver.Resolve(ctx, op, valuecodec.Key{Mode: config.ModeOracle, Schema: a.Schema, Name: a.ElementType, Version: a.ElementVersion})
+			element, err = resolver.Resolve(ctx, op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: a.Schema, Name: a.ElementType, Version: a.ElementVersion})
 			if err == nil {
 				d = catalog.AnonymousComplexDescriptor(a.Version, element)
 			}
@@ -95,7 +95,7 @@ func (e *complexEncoder) value(d *valuecodec.Descriptor, value any, depth int, c
 		return err
 	}
 	if checkName && (schema != "" && schema != d.Key.Schema || name != d.Key.Name) {
-		resolved, err := e.resolver.ResolveAt(e.ctx, e.op, valuecodec.Key{Mode: config.ModeOracle, Schema: schema, Name: name}, depth)
+		resolved, err := e.resolver.ResolveAt(e.ctx, e.op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: schema, Name: name}, depth)
 		if err != nil {
 			return err
 		}

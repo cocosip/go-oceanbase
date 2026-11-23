@@ -30,9 +30,9 @@ type unreadReader struct{ reads *int }
 
 func (r unreadReader) Read([]byte) (int, error) { *r.reads++; return 0, io.EOF }
 
-func parameterOperation(t *testing.T, mode config.Mode) *session.Operation {
+func parameterOperation(t *testing.T, mode config.CompatibilityMode) *session.Operation {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: "app", Mode: mode})
+	cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: mode})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func parameterOperation(t *testing.T, mode config.Mode) *session.Operation {
 }
 
 func TestBindConversionOnce(t *testing.T) {
-	plan, err := sqltext.BuildBindPlan("SELECT :a,:A FROM dual", config.ModeOracle)
+	plan, err := sqltext.BuildBindPlan("SELECT :a,:A FROM dual", config.CompatibilityModeOracle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestBindConversionOnce(t *testing.T) {
 }
 
 func TestArgumentResolutionOrder(t *testing.T) {
-	op := parameterOperation(t, config.ModeOracle)
+	op := parameterOperation(t, config.CompatibilityModeOracle)
 	var first, second int
 	want := errors.New("current argument failed")
 	if _, err := PrepareArguments(op, "SELECT :a,:b FROM dual", []driver.NamedValue{{Name: "a", Value: argumentSource{calls: &first, err: want}}, {Name: "b", Value: argumentSource{calls: &second}}}); !errors.Is(err, want) || first != 1 || second != 0 {
@@ -79,7 +79,7 @@ func TestArgumentResolutionOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := sqltext.BuildBindPlan("SELECT :a,:A FROM dual", config.ModeOracle)
+	plan, err := sqltext.BuildBindPlan("SELECT :a,:A FROM dual", config.CompatibilityModeOracle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestArgumentResolutionOrder(t *testing.T) {
 }
 
 func TestBindDeferredResolutionOrder(t *testing.T) {
-	plan, err := sqltext.BuildBindPlan("SELECT :a,:A,:b FROM dual", config.ModeOracle)
+	plan, err := sqltext.BuildBindPlan("SELECT :a,:A,:b FROM dual", config.CompatibilityModeOracle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,21 +124,21 @@ func TestBindDeferredResolutionOrder(t *testing.T) {
 }
 
 func TestPrepareArgumentsStopsAtCurrentLongData(t *testing.T) {
-	op := parameterOperation(t, config.ModeOracle)
+	op := parameterOperation(t, config.CompatibilityModeOracle)
 	var calls [2]int
 	var reader *strings.Reader
 	args := []driver.NamedValue{{Name: "a", Value: argumentSource{value: &streaminput.Source{Reader: reader, State: new(atomic.Bool)}, calls: &calls[0]}}, {Name: "b", Value: argumentSource{value: int64(2), calls: &calls[1]}}}
 	if _, err := PrepareArguments(op, "SELECT :a,:b FROM dual", args); !errors.Is(err, dberrors.ErrLongData) || calls != [2]int{1, 0} {
 		t.Fatal(calls, err)
 	}
-	mySQL := parameterOperation(t, config.ModeMySQL)
+	mySQL := parameterOperation(t, config.CompatibilityModeMySQL)
 	if _, err := PrepareArguments(mySQL, "SELECT ?", args[:1]); !errors.Is(err, dberrors.ErrBind) || calls != [2]int{1, 0} {
 		t.Fatal(calls, err)
 	}
 }
 
 func TestPrevalidationAndEncodedBudget(t *testing.T) {
-	op := parameterOperation(t, config.ModeOracle)
+	op := parameterOperation(t, config.CompatibilityModeOracle)
 	if _, err := PrepareArguments(op, "SELECT :x FROM dual", nil); !errors.Is(err, dberrors.ErrBind) {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestPrevalidationAndEncodedBudget(t *testing.T) {
 }
 
 func TestOracleBytesLOBAndMessageBudgets(t *testing.T) {
-	s := session.New(config.Config{Limits: config.Limits{MaxLOBBytes: 4}}, &session.Negotiated{Mode: config.ModeOracle})
+	s := session.New(config.Config{Limits: config.Limits{MaxLOBBytes: 4}}, &session.Negotiated{Mode: config.CompatibilityModeOracle})
 	op, err := s.Acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)

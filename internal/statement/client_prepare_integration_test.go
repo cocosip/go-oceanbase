@@ -21,7 +21,7 @@ func TestPrepareEquivalence(t *testing.T) {
 			var results [2]sql.NullString
 			for i, mode := range []oceanbase.PrepareMode{oceanbase.PrepareServer, oceanbase.PrepareClient} {
 				cfg := integrationtest.ProfileConfig(t, p)
-				cfg.Mode = p.Mode
+				cfg.CompatibilityMode = p.Mode
 				cfg.PrepareMode = mode
 				connector, err := oceanbase.NewConnector(cfg)
 				if err != nil {
@@ -29,7 +29,7 @@ func TestPrepareEquivalence(t *testing.T) {
 				}
 				db := sql.OpenDB(connector)
 				query := integrationtest.SelectParameterSQL
-				if p.Mode == oceanbase.ModeOracle {
+				if p.Mode == oceanbase.CompatibilityModeOracle {
 					query += integrationtest.OracleDualSuffix
 				}
 				stmt, err := db.PrepareContext(integrationtest.TestContext(t), query)

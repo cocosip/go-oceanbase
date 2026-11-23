@@ -29,20 +29,20 @@ func TestMySQLTimePrecision(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("binary", func(t *testing.T) {
-				p, err := EncodeParameter(tc.value, config.ModeMySQL, options, 1024)
+				p, err := EncodeParameter(tc.value, config.CompatibilityModeMySQL, options, 1024)
 				if err != nil {
 					t.Fatal(err)
 				}
 				if p.Type != 12 || p.LengthEncoded || len(p.Data) != 12 || p.Data[0] != 11 {
 					t.Fatalf("invalid DATETIME parameter: %#v", p)
 				}
-				got, err := DecodeBinaryValue(wire.Column{Type: 12}, config.ModeMySQL, p.Data[1:])
+				got, err := DecodeBinaryValue(wire.Column{Type: 12}, config.CompatibilityModeMySQL, p.Data[1:])
 				if err != nil || got != tc.want {
 					t.Fatalf("got %v (%v), want %s", got, err, tc.want)
 				}
 			})
 			t.Run("client", func(t *testing.T) {
-				got, err := ClientLiteral(tc.value, config.ModeMySQL, options, 1024, 1024)
+				got, err := ClientLiteral(tc.value, config.CompatibilityModeMySQL, options, 1024, 1024)
 				if err != nil || got != "'"+tc.want+"'" {
 					t.Fatalf("got %s (%v), want '%s'", got, err, tc.want)
 				}
@@ -59,10 +59,10 @@ func TestMySQLTimeRange(t *testing.T) {
 		time.Date(1, 1, 1, 0, 0, 0, 999, time.FixedZone("east", 8*3600)),
 		time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.FixedZone("west", -8*3600)),
 	} {
-		if _, err := EncodeParameter(value, config.ModeMySQL, options, 1024); !errors.Is(err, dberrors.ErrBind) {
+		if _, err := EncodeParameter(value, config.CompatibilityModeMySQL, options, 1024); !errors.Is(err, dberrors.ErrBind) {
 			t.Fatalf("binary accepted out-of-range time %v: %v", value, err)
 		}
-		if _, err := ClientLiteral(value, config.ModeMySQL, options, 1024, 1024); !errors.Is(err, dberrors.ErrBind) {
+		if _, err := ClientLiteral(value, config.CompatibilityModeMySQL, options, 1024, 1024); !errors.Is(err, dberrors.ErrBind) {
 			t.Fatalf("client accepted out-of-range time %v: %v", value, err)
 		}
 	}

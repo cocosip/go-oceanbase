@@ -56,7 +56,7 @@ func TestGeneratedKeyWorkflows(t *testing.T) {
 	for _, fault := range []string{"valid-keys", generatedMaxStandard, generatedMaxSummary, "standard-no-id", "standard-mismatch", "standard-count", "standard-update-id", "summary-no-id", "summary-mismatch", "summary-count", "summary-update-id", "alter-error", "wide-standard-no-id", "wide-standard-range", "wide-standard-count", "wide-standard-in-range", "wide-standard-update-id", "wide-summary-no-id", "wide-summary-mismatch", "wide-summary-range", "wide-summary-count", "wide-summary-update-id", "final-count", "standard-read-error", "summary-error", "no-standard-row", "no-summary-row", "zero-data", generatedNegativeData, generatedCleanupError, "summary-extra-result"} {
 		t.Run(fault, func(t *testing.T) {
 			var primary atomic.Pointer[closeTracker]
-			cfg := oceanbase.Config{User: "generated_key_fixture", Mode: oceanbase.ModeMySQL, Session: oceanbase.SessionOptions{SkipVersionProbe: true}, DialContext: generatedKeyPeer(t, fault, &primary)}
+			cfg := oceanbase.Config{User: "generated_key_fixture", CompatibilityMode: oceanbase.CompatibilityModeMySQL, Session: oceanbase.SessionOptions{SkipVersionProbe: true}, DialContext: generatedKeyPeer(t, fault, &primary)}
 			connector, err := oceanbase.NewConnector(cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -64,7 +64,7 @@ func TestGeneratedKeyWorkflows(t *testing.T) {
 			db := sql.OpenDB(connector)
 			db.SetMaxOpenConns(1)
 			defer func() { _ = db.Close() }()
-			s := &scenario{db: db, cfg: cfg, prefix: fixturePrefix, mode: oceanbase.ModeMySQL, cleanupTimeout: time.Second}
+			s := &scenario{db: db, cfg: cfg, prefix: fixturePrefix, mode: oceanbase.CompatibilityModeMySQL, cleanupTimeout: time.Second}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			result := runScenario(ctx, s, definition.run)

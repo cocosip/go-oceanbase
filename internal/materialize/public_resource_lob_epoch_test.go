@@ -17,7 +17,7 @@ import (
 
 func TestLOBMaterializationTransactionEndsBetweenChunks(t *testing.T) {
 	locator := publictest.LobOutFixture(6)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) ||
 			!publictest.ServeLOBQueryStatus(ctx, t, p, "SELECT lob FROM t", 210, 5, locator) {
 			return

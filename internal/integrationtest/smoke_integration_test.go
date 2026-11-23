@@ -26,7 +26,7 @@ func TestSmoke(t *testing.T) {
 				integrationtest.FailOperation(t, "Ping", err)
 			}
 			query := "SELECT ob_version()"
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query += integrationtest.OracleDualSuffix
 			}
 			var version string

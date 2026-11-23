@@ -9,13 +9,13 @@ import (
 func TestSessionLiteralTypeSelection(t *testing.T) {
 	for _, mode := range []struct {
 		name   string
-		mode   config.Mode
+		mode   config.CompatibilityMode
 		status uint16
 		quoted string
 	}{
-		{"mysql", config.ModeMySQL, 0, `'a\\b''c'`},
-		{"mysql-no-backslash", config.ModeMySQL, 512, `'a\b''c'`},
-		{"oracle", config.ModeOracle, 0, `'a\b''c'`},
+		{"mysql", config.CompatibilityModeMySQL, 0, `'a\\b''c'`},
+		{"mysql-no-backslash", config.CompatibilityModeMySQL, 512, `'a\b''c'`},
+		{"oracle", config.CompatibilityModeOracle, 0, `'a\b''c'`},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
 			for _, tc := range []struct {

@@ -88,7 +88,7 @@ func integrationCursorFixture(t *testing.T, p integrationtest.Profile) (*sql.DB,
 	t.Helper()
 	cfg := integrationtest.ProfileConfig(t, p)
 	cfg.PrepareMode = oceanbase.PrepareServer
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		cfg.RowsAffectedMode = oceanbase.ChangedRows
 	}
 	connector, err := oceanbase.NewConnector(cfg)
@@ -100,7 +100,7 @@ func integrationCursorFixture(t *testing.T, p integrationtest.Profile) (*sql.DB,
 	t.Cleanup(func() { _ = db.Close() })
 	table := fmt.Sprintf("OBGCU_%d", time.Now().UnixNano())
 	typ, blob, suffix := integrationIntegrationLongBlobType, "X'616263'", integrationIntegrationInnoDBSuffix
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		typ, blob, suffix = integrationIntegrationBlobType, "TO_BLOB(HEXTORAW('616263'))", ""
 	}
 	if _, err = db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(20),B "+typ+")"+suffix); err != nil {
@@ -215,7 +215,7 @@ func integrationTestCursorModes(t *testing.T, p integrationtest.Profile) {
 		}
 	}
 	sensitive, err := oceanbase.OpenCursor(integrationtest.TestContext(t), session, query, oceanbase.CursorOptions{Mode: oceanbase.CursorSensitive})
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		if !errors.Is(err, oceanbase.ErrUnsupported) {
 			t.Fatal("MySQL sensitive cursor support boundary", err)
 		}

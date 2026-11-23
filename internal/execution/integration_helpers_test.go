@@ -76,7 +76,7 @@ func integrationTestLocalImportProfile(t *testing.T, p integrationtest.Profile) 
 	}
 	command = strings.ReplaceAll(command, "{table}", table)
 	suffix := ""
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		suffix = integrationIntegrationInnoDBSuffix
 	}
 	if _, err := db.ExecContext(integrationtest.TestContext(t), "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(32))"+suffix); err != nil {

@@ -20,7 +20,7 @@ import (
 )
 
 // EncodeParameter encodes a scalar parameter within its payload budget.
-func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, limit int64) (wire.Parameter, error) {
+func EncodeParameter(v any, mode config.CompatibilityMode, options config.SessionOptions, limit int64) (wire.Parameter, error) {
 	switch v.(type) {
 	case types.Number, types.NString, types.Raw, types.RowID, types.URowID, *types.URowID, types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
 		return encodeScalarParameter(v, mode, options, limit)
@@ -36,7 +36,7 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 		p.Type = 8 | 128<<8
 		p.Data = binary.LittleEndian.AppendUint64(nil, v)
 	case float64:
-		if mode != config.ModeOracle && (math.IsNaN(v) || math.IsInf(v, 0)) {
+		if mode != config.CompatibilityModeOracle && (math.IsNaN(v) || math.IsInf(v, 0)) {
 			return p, fmt.Errorf("%w: non-finite parameter", dberrors.ErrBind)
 		}
 		p.Type = 5
@@ -57,7 +57,7 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 		}
 		p.Type = 252
 		p.Data = v
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			if int64(len(v)) > limit/2 || len(v) > math.MaxInt/2 {
 				return wire.Parameter{}, wire.ErrMessageTooLarge
 			}
@@ -88,7 +88,7 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 		p.Data = data
 		p.LengthEncoded = true
 	case time.Time:
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			return encodeTemporal(v, options)
 		}
 		if options.Location == nil {
@@ -107,9 +107,9 @@ func EncodeParameter(v any, mode config.Mode, options config.SessionOptions, lim
 	return p, nil
 }
 
-func encodeScalarParameter(v any, mode config.Mode, options config.SessionOptions, limit int64) (wire.Parameter, error) {
+func encodeScalarParameter(v any, mode config.CompatibilityMode, options config.SessionOptions, limit int64) (wire.Parameter, error) {
 	if id, ok := v.(*types.URowID); ok {
-		if mode != config.ModeOracle {
+		if mode != config.CompatibilityModeOracle {
 			return wire.Parameter{}, dberrors.ErrUnsupported
 		}
 		if id == nil {
@@ -120,7 +120,7 @@ func encodeScalarParameter(v any, mode config.Mode, options config.SessionOption
 	p := wire.Parameter{}
 	switch v := v.(type) {
 	case types.TimestampTZ, types.TimestampLTZ, types.IntervalYM, types.IntervalDS:
-		if mode != config.ModeOracle {
+		if mode != config.CompatibilityModeOracle {
 			return p, dberrors.ErrUnsupported
 		}
 		var err error
@@ -138,7 +138,7 @@ func encodeScalarParameter(v any, mode config.Mode, options config.SessionOption
 		}
 		p.Type, p.LengthEncoded, p.Data = 246, true, []byte(text)
 	case types.NString, types.Raw, types.RowID, types.URowID:
-		if mode != config.ModeOracle {
+		if mode != config.CompatibilityModeOracle {
 			return p, dberrors.ErrUnsupported
 		}
 		p.LengthEncoded = true
@@ -185,7 +185,7 @@ func encodeScalarParameter(v any, mode config.Mode, options config.SessionOption
 }
 
 // DecodeBinaryValue decodes one buffered binary row field.
-func DecodeBinaryValue(c wire.Column, mode config.Mode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
+func DecodeBinaryValue(c wire.Column, mode config.CompatibilityMode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
 	if data == nil {
 		return nil, nil
 	}
@@ -216,7 +216,7 @@ func DecodeBinaryValue(c wire.Column, mode config.Mode, data []byte, session ...
 			return int64(n), nil
 		}
 		signed := int64(n<<uint(64-bits)) >> uint(64-bits)
-		if c.Type == 3 && mode == config.ModeOracle {
+		if c.Type == 3 && mode == config.CompatibilityModeOracle {
 			return strconv.FormatInt(signed, 10), nil
 		}
 		return signed, nil
@@ -241,9 +241,9 @@ func DecodeBinaryValue(c wire.Column, mode config.Mode, data []byte, session ...
 	}
 }
 
-func mysqlBinaryTemporalText(c wire.Column, mode config.Mode, text string, session ...config.SessionOptions) string {
+func mysqlBinaryTemporalText(c wire.Column, mode config.CompatibilityMode, text string, session ...config.SessionOptions) string {
 	text = mysqlTemporalText(mode, c.Type, text, session...)
-	if mode != config.ModeMySQL || len(session) == 0 || session[0].CompatibleMysqlVersion != 8 {
+	if mode != config.CompatibilityModeMySQL || len(session) == 0 || session[0].CompatibleMysqlVersion != 8 {
 		return text
 	}
 	dot := strings.LastIndexByte(text, '.')
@@ -370,8 +370,8 @@ func binaryDurationText(data []byte) (string, error) {
 	return string(text), nil
 }
 
-func binaryFloatValue(n float64, mode config.Mode) (driver.Value, error) {
-	if mode != config.ModeOracle && (math.IsNaN(n) || math.IsInf(n, 0)) {
+func binaryFloatValue(n float64, mode config.CompatibilityMode) (driver.Value, error) {
+	if mode != config.CompatibilityModeOracle && (math.IsNaN(n) || math.IsInf(n, 0)) {
 		return nil, fmt.Errorf("oceanbase: invalid floating point value")
 	}
 	return n, nil

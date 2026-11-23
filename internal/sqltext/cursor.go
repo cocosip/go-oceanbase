@@ -8,7 +8,7 @@ import (
 )
 
 // CursorUpdatableQuery checks the supported updatable-cursor SQL shape.
-func CursorUpdatableQuery(query string, mode config.Mode, noBackslash bool) error {
+func CursorUpdatableQuery(query string, mode config.CompatibilityMode, noBackslash bool) error {
 	tokens, err := LexSQL(query, mode, noBackslash, false)
 	if err != nil || len(tokens) < 4 {
 		return errors.Join(dberrors.ErrCursor, err)
@@ -62,12 +62,12 @@ func CursorUpdatableQuery(query string, mode config.Mode, noBackslash bool) erro
 	}
 	return nil
 }
-func cursorIdentifierToken(query string, t Token, mode config.Mode) bool {
+func cursorIdentifierToken(query string, t Token, mode config.CompatibilityMode) bool {
 	if t.Kind == 'w' {
 		return true
 	}
 	quote := byte('`')
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		quote = '"'
 	}
 	return t.Kind == 'q' && query[t.Start] == quote
@@ -88,10 +88,10 @@ func cursorClause(query string, t Token) bool {
 
 // SensitiveCursorQuery rewrites a supported query to include its ROWID identity.
 func SensitiveCursorQuery(query string) (string, error) {
-	if err := CursorUpdatableQuery(query, config.ModeOracle, false); err != nil {
+	if err := CursorUpdatableQuery(query, config.CompatibilityModeOracle, false); err != nil {
 		return "", err
 	}
-	tokens, err := LexSQL(query, config.ModeOracle, false, false)
+	tokens, err := LexSQL(query, config.CompatibilityModeOracle, false, false)
 	if err != nil || len(tokens) < 4 {
 		return "", errors.Join(dberrors.ErrCursor, err)
 	}
@@ -115,7 +115,7 @@ func SensitiveCursorQuery(query string) (string, error) {
 		if i < len(tokens) && strings.EqualFold(original[tokens[i].Start:tokens[i].End], "AS") {
 			i++
 		}
-		if i < len(tokens) && !cursorClause(original, tokens[i]) && cursorIdentifierToken(original, tokens[i], config.ModeOracle) {
+		if i < len(tokens) && !cursorClause(original, tokens[i]) && cursorIdentifierToken(original, tokens[i], config.CompatibilityModeOracle) {
 			name = original[tokens[i].Start:tokens[i].End]
 		}
 		query = query[:tokens[1].Start] + name + ".*" + query[tokens[1].End:]

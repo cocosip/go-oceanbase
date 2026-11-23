@@ -31,7 +31,7 @@ type baseline struct {
 }
 
 func (b baseline) initialize(ctx context.Context) error {
-	if b.cfg.CreateDatabaseIfMissing && b.op.Protocol().Mode != config.ModeMySQL {
+	if b.cfg.CreateDatabaseIfMissing && b.op.Protocol().Mode != config.CompatibilityModeMySQL {
 		return fmt.Errorf("%w: database creation requires MySQL compatibility mode", dberrors.ErrUnsupported)
 	}
 	charset := strings.ToLower(b.cfg.Session.Charset)
@@ -40,7 +40,7 @@ func (b baseline) initialize(ctx context.Context) error {
 	}
 	names := "SET NAMES " + charset
 	if collation := b.cfg.Session.Collation; collation != "" {
-		if b.op.Protocol().Mode != config.ModeMySQL {
+		if b.op.Protocol().Mode != config.CompatibilityModeMySQL {
 			return fmt.Errorf("%w: connection collation requires MySQL compatibility mode", dberrors.ErrUnsupported)
 		}
 		names += " COLLATE " + collation
@@ -64,7 +64,7 @@ func (b baseline) initialize(ctx context.Context) error {
 		return err
 	}
 	if name := b.cfg.Session.NCharset; name != "" {
-		if b.op.Protocol().Mode != config.ModeOracle {
+		if b.op.Protocol().Mode != config.CompatibilityModeOracle {
 			return &config.ConfigError{Field: "Session.NCharset"}
 		}
 		if err := b.initSQL(ctx, "SET NCHARACTER_SET_CONNECTION = "+b.quote(name)); err != nil {
@@ -131,7 +131,7 @@ func (b baseline) systemVariableLiteral(ctx context.Context, name, value string)
 	p := b.op.Protocol()
 	if _, integer := valuecodec.SessionInteger(value); integer {
 		query := "SELECT @@SESSION." + name
-		if p.Mode == config.ModeOracle {
+		if p.Mode == config.CompatibilityModeOracle {
 			query += sessionReadDualSuffix
 		}
 		_, columns, err := command.QueryScalars(ctx, b.op, []byte(query), 1)
@@ -151,7 +151,7 @@ func (b baseline) createInitialDatabase(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	identifier := sqltext.QuoteIdentifier(config.ModeMySQL, b.cfg.Database)
+	identifier := sqltext.QuoteIdentifier(config.CompatibilityModeMySQL, b.cfg.Database)
 	if err = b.initSQL(ctx, "CREATE DATABASE IF NOT EXISTS "+identifier); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (b baseline) createInitialDatabase(ctx context.Context) error {
 
 func (b baseline) readOceanBaseVersion(ctx context.Context) error {
 	query := "SELECT ob_version()"
-	if b.op.Protocol().Mode == config.ModeOracle {
+	if b.op.Protocol().Mode == config.CompatibilityModeOracle {
 		query += sessionReadDualSuffix
 	}
 	encoded, err := b.encodeSQL(query)

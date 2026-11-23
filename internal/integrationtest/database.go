@@ -16,7 +16,7 @@ import (
 // Profile identifies an optional real database environment.
 type Profile struct {
 	Name, Env string
-	Mode      oceanbase.Mode
+	Mode      oceanbase.CompatibilityMode
 }
 
 // SelectParameterSQL is the shared scalar parameter query.
@@ -27,7 +27,7 @@ const OracleDualSuffix = " FROM dual"
 
 // Profiles selects the requested direct or proxy test environments.
 func Profiles(name string) ([]Profile, error) {
-	all := []Profile{{"mysql", "OB_MYSQL_DSN", oceanbase.ModeMySQL}, {"oracle", "OB_ORACLE_DSN", oceanbase.ModeOracle}, {"proxy-mysql", "OBPROXY_MYSQL_DSN", oceanbase.ModeMySQL}, {"proxy-oracle", "OBPROXY_ORACLE_DSN", oceanbase.ModeOracle}}
+	all := []Profile{{"mysql", "OB_MYSQL_DSN", oceanbase.CompatibilityModeMySQL}, {"oracle", "OB_ORACLE_DSN", oceanbase.CompatibilityModeOracle}, {"proxy-mysql", "OBPROXY_MYSQL_DSN", oceanbase.CompatibilityModeMySQL}, {"proxy-oracle", "OBPROXY_ORACLE_DSN", oceanbase.CompatibilityModeOracle}}
 	if name == "" || name == "all" {
 		return all, nil
 	}
@@ -53,10 +53,10 @@ func ProfileConfig(t *testing.T, p Profile) oceanbase.Config {
 	if err != nil {
 		t.Fatal("invalid DSN for profile: " + p.Name)
 	}
-	if cfg.Mode != oceanbase.ModeAuto && cfg.Mode != p.Mode {
+	if cfg.CompatibilityMode != oceanbase.CompatibilityModeAuto && cfg.CompatibilityMode != p.Mode {
 		t.Fatal("DSN mode differs from profile: " + p.Name)
 	}
-	cfg.Mode = p.Mode
+	cfg.CompatibilityMode = p.Mode
 	return cfg
 }
 
@@ -98,9 +98,9 @@ func FailOperation(t *testing.T, operation string, err error) {
 }
 
 // DuplicateKey accepts only the mode-specific duplicate server error.
-func DuplicateKey(err error, mode oceanbase.Mode) bool {
+func DuplicateKey(err error, mode oceanbase.CompatibilityMode) bool {
 	code := uint32(1062)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		code = 1
 	}
 	return OnlyServerErrorCode(err, code)
@@ -133,7 +133,7 @@ func OnlyServerErrorCode(err error, code uint32, allowed ...error) bool {
 }
 
 // XAFlagRejected identifies the established MySQL flag rejection response.
-func XAFlagRejected(err error, mode oceanbase.Mode) bool {
+func XAFlagRejected(err error, mode oceanbase.CompatibilityMode) bool {
 	var server *oceanbase.Error
-	return mode == oceanbase.ModeMySQL && errors.As(err, &server) && server != nil && OnlyServerErrorCode(err, 1398, oceanbase.ErrXA)
+	return mode == oceanbase.CompatibilityModeMySQL && errors.As(err, &server) && server != nil && OnlyServerErrorCode(err, 1398, oceanbase.ErrXA)
 }

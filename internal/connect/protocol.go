@@ -86,7 +86,7 @@ func ProtocolAttributes(cfg config.Config) map[string]string {
 
 // ConnectionAttributes combines and encodes attributes within the message budget.
 func ConnectionAttributes(cfg config.Config, proxyUser string) (map[string]string, error) {
-	attrs, field := configspec.ConnectionAttributes(ProtocolAttributes(cfg), cfg.ConnectionAttributes, proxyUser, cfg.Session.Charset, cfg.Mode == config.ModeMySQL, cfg.Limits.MaxMessageBytes)
+	attrs, field := configspec.ConnectionAttributes(ProtocolAttributes(cfg), cfg.ConnectionAttributes, proxyUser, cfg.Session.Charset, cfg.CompatibilityMode == config.CompatibilityModeMySQL, cfg.Limits.MaxMessageBytes)
 	if field != "" {
 		return nil, &config.ConfigError{Field: field}
 	}

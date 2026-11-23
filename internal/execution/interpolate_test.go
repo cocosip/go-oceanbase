@@ -18,9 +18,9 @@ import (
 	"github.com/cocosip/go-oceanbase/types"
 )
 
-func interpolateConstructorTest(t *testing.T, mode config.Mode, query string, args []driver.NamedValue) error {
+func interpolateConstructorTest(t *testing.T, mode config.CompatibilityMode, query string, args []driver.NamedValue) error {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: "constructor-test", Mode: mode})
+	cfg, err := config.Normalize(config.Config{User: "constructor-test", CompatibilityMode: mode})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,14 +74,14 @@ func TestClientConstructorsRejectBeforeIO(t *testing.T) {
 		"SELECT ? FROM dual; /*x*/ ALTER TYPE T ADD ATTRIBUTE x NUMBER",
 		"BEGIN EXECUTE IMMEDIATE 'DROP TYPE T'; p(?); END;",
 	} {
-		if err := interpolateConstructorTest(t, config.ModeOracle, query, []driver.NamedValue{{Value: value}}); !errors.Is(err, dberrors.ErrUnsupported) {
+		if err := interpolateConstructorTest(t, config.CompatibilityModeOracle, query, []driver.NamedValue{{Value: value}}); !errors.Is(err, dberrors.ErrUnsupported) {
 			t.Fatal(err)
 		}
 	}
-	if err := interpolateConstructorTest(t, config.ModeOracle, "SELECT ? FROM dual", []driver.NamedValue{{Value: types.Array{ElementType: valueformat.TypeNameNumber}}}); !errors.Is(err, dberrors.ErrUnsupported) {
+	if err := interpolateConstructorTest(t, config.CompatibilityModeOracle, "SELECT ? FROM dual", []driver.NamedValue{{Value: types.Array{ElementType: valueformat.TypeNameNumber}}}); !errors.Is(err, dberrors.ErrUnsupported) {
 		t.Fatal(err)
 	}
-	if err := interpolateConstructorTest(t, config.ModeMySQL, "SELECT ?", []driver.NamedValue{{Value: value}}); !errors.Is(err, dberrors.ErrUnsupported) {
+	if err := interpolateConstructorTest(t, config.CompatibilityModeMySQL, "SELECT ?", []driver.NamedValue{{Value: value}}); !errors.Is(err, dberrors.ErrUnsupported) {
 		t.Fatal(err)
 	}
 }

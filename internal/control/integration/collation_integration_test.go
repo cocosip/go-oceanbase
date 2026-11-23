@@ -19,7 +19,7 @@ func TestSessionCollation(t *testing.T) {
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
 			cfg := integrationtest.ProfileConfig(t, p)
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				cfg.Session.Collation = "utf8mb4_bin"
 				_, err := oceanbase.NewConnector(cfg)
 				var configErr *oceanbase.ConfigError

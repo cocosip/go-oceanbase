@@ -18,7 +18,7 @@ func TestStatementCacheANSIQuotesSwitchDatabase(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	connector, err := oceanbase.NewConnector(oceanbase.Config{
-		User: testUser, Mode: oceanbase.ModeMySQL, AllowMultiStatements: true,
+		User: testUser, CompatibilityMode: oceanbase.CompatibilityModeMySQL, AllowMultiStatements: true,
 		Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true},
 		DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 			if !testpeer.ServeConnect(ctx, t, p, 2) || !testpeer.ServeBaseline(ctx, t, p, 2) {

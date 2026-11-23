@@ -22,7 +22,7 @@ func (e *Engine) BeginTx(ctx context.Context, opts driver.TxOptions) (*control.T
 	if e.Config().Routing.Role == config.RoleReadOnly && !opts.ReadOnly {
 		return nil, fmt.Errorf("%w: read-write transaction on read-only service", dberrors.ErrUnsupported)
 	}
-	if _, err := sqltext.TransactionCommands(e.Config().Mode, opts); err != nil {
+	if _, err := sqltext.TransactionCommands(e.Config().CompatibilityMode, opts); err != nil {
 		return nil, err
 	}
 	op, err := e.acquire(ctx)
@@ -175,7 +175,7 @@ func (e *Engine) XA(ctx context.Context, request *xa.Request) error {
 	if err = e.xa.Validate(op, request, e.control.ActiveTransaction() != nil); err != nil {
 		return err
 	}
-	if op.Protocol().Mode == config.ModeOracle && !statement.SupportsPrepareExecute(op.Protocol().OBVersion) {
+	if op.Protocol().Mode == config.CompatibilityModeOracle && !statement.SupportsPrepareExecute(op.Protocol().OBVersion) {
 		return errors.Join(dberrors.ErrXA, dberrors.ErrUnsupported)
 	}
 	op.AdvanceResources()

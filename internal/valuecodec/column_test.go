@@ -20,7 +20,7 @@ func TestTextScanTypes(t *testing.T) {
 		{252, 45, reflect.TypeFor[string]()},
 		{3, 63, reflect.TypeFor[int64]()},
 	} {
-		if got := ColumnScanType(wire.Column{Type: tc.typ, Charset: tc.charset}, config.ModeMySQL, config.SessionOptions{}); got != tc.want {
+		if got := ColumnScanType(wire.Column{Type: tc.typ, Charset: tc.charset}, config.CompatibilityModeMySQL, config.SessionOptions{}); got != tc.want {
 			t.Errorf("type=%d charset=%d: got %v, want %v", tc.typ, tc.charset, got, tc.want)
 		}
 	}

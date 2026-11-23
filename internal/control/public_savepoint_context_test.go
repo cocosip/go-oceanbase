@@ -10,7 +10,7 @@ import (
 )
 
 func TestSavepointTxDeadline(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			testSavepointTxContext(t, mode, testStandard, control.CreateSavepoint, true)
 		})
@@ -18,10 +18,10 @@ func TestSavepointTxDeadline(t *testing.T) {
 }
 
 func TestSavepointTxCancellation(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			operations := []control.SavepointKind{control.CreateSavepoint, control.RollbackSavepoint}
-			if mode == config.ModeMySQL {
+			if mode == config.CompatibilityModeMySQL {
 				operations = append(operations, control.ReleaseSavepoint)
 			}
 			for _, operation := range operations {

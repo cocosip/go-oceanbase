@@ -21,20 +21,20 @@ import (
 )
 
 func TestChangeUserIsolation(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, prepare := range []config.PrepareMode{config.PrepareServer, config.PrepareClient} {
 			t.Run(fmt.Sprintf("%d/%d", mode, prepare), func(t *testing.T) { testChangeUserIsolation(t, mode, prepare) })
 		}
 	}
 }
 
-func testChangeUserIsolation(t *testing.T, mode config.Mode, prepare config.PrepareMode) {
+func testChangeUserIsolation(t *testing.T, mode config.CompatibilityMode, prepare config.PrepareMode) {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
-	cfg := config.Config{User: testUser, Mode: mode, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	cfg := config.Config{User: testUser, CompatibilityMode: mode, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		serveChangeUserIsolation(ctx, t, p, mode, prepare, status)
 	})}
 	connector, err := oceanbase.NewConnector(cfg)
@@ -63,7 +63,7 @@ func testChangeUserIsolation(t *testing.T, mode config.Mode, prepare config.Prep
 	if err = oceanbase.CancelQuery(ctx, connector, target); !errors.Is(err, oceanbase.ErrResource) {
 		t.Fatal("old cancel target survived identity change")
 	}
-	if mode == config.ModeMySQL {
+	if mode == config.CompatibilityModeMySQL {
 		if got, err := oceanbase.ReadWarnings(ctx, pinned); err != nil || len(got) != 0 {
 			t.Fatalf("identity change exposed old warning details: %+v %v", got, err)
 		}
@@ -92,7 +92,7 @@ func testChangeUserIsolation(t *testing.T, mode config.Mode, prepare config.Prep
 	}
 }
 
-func serveChangeUserIsolation(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode, prepare config.PrepareMode, status byte) {
+func serveChangeUserIsolation(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode, prepare config.PrepareMode, status byte) {
 	t.Helper()
 
 	if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
@@ -120,7 +120,7 @@ func serveChangeUserIsolation(ctx context.Context, t *testing.T, p *wire.PacketI
 }
 
 func TestChangeUserConversation(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, path := range []string{authNilOutputPath, authEmptyOutputPath, "token-output", authTLSDeniedPath, serverErrorPath, rejectExtraTokenPath, requiresFinalOKPath, authCloseErrorPath} {
 			t.Run(fmt.Sprintf("%d/%s", mode, path), func(t *testing.T) {
 				testChangeUserConversation(t, mode, path)
@@ -135,10 +135,10 @@ const authEmptyOutputPath = "empty-output"
 
 const rejectExtraTokenPath = "reject-extra-token"
 
-func testChangeUserConversation(t *testing.T, mode config.Mode, path string) {
+func testChangeUserConversation(t *testing.T, mode config.CompatibilityMode, path string) {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	seed := []byte("service/db.example\x00Kerberos\x00")
@@ -167,7 +167,7 @@ func testChangeUserConversation(t *testing.T, mode config.Mode, path string) {
 	}
 	var providers, dialed atomic.Int32
 	created := 0
-	cfg := config.Config{Mode: mode, Credentials: func(context.Context) (config.Credentials, error) {
+	cfg := config.Config{CompatibilityMode: mode, Credentials: func(context.Context) (config.Credentials, error) {
 		providers.Add(1)
 		return config.Credentials{User: testUser, Password: testPassword}, nil
 	}, Auth: config.AuthOptions{Plugins: map[string]config.AuthFactory{testGSSPlugin: func() config.AuthPlugin {
@@ -264,7 +264,7 @@ func (p *changeUserConversation) Respond(ctx context.Context, credentials config
 	return p.scriptedConversation.Respond(ctx, credentials, challenge)
 }
 
-func serveChangeUserConversation(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode, status byte, seed []byte, plugins [2]*changeUserConversation, path string) {
+func serveChangeUserConversation(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode, status byte, seed []byte, plugins [2]*changeUserConversation, path string) {
 	t.Helper()
 	if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 		return
@@ -277,7 +277,7 @@ func serveChangeUserConversation(ctx context.Context, t *testing.T, p *wire.Pack
 			packet = append([]byte{17}, changeUserName...)
 			packet = append(packet, 0, byte(len("initial-token")))
 			packet = append(packet, "initial-token"...)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				packet = append(packet, "next"...)
 			}
 			packet = append(packet, 0)
@@ -358,7 +358,7 @@ const requiresFinalOKPath = "requires-final-ok"
 
 const testPassword = "secret"
 
-func checkChangeUserConversation(ctx context.Context, t *testing.T, pinned *sql.Conn, plugin *changeUserConversation, credentials config.Credentials, _ []byte, _ config.Mode, path string, last bool, err error) {
+func checkChangeUserConversation(ctx context.Context, t *testing.T, pinned *sql.Conn, plugin *changeUserConversation, credentials config.Credentials, _ []byte, _ config.CompatibilityMode, path string, last bool, err error) {
 	t.Helper()
 	wantFailure := last && conversationFailure(path)
 	if (err != nil) != wantFailure {

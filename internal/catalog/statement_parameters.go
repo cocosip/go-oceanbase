@@ -10,7 +10,7 @@ import (
 )
 
 // StatementParameters projects authoritative preparation metadata without inferring directions.
-func StatementParameters(mode config.Mode, plan sqltext.Plan, parameters []wire.Column, session ...config.SessionOptions) [][]driver.Value {
+func StatementParameters(mode config.CompatibilityMode, plan sqltext.Plan, parameters []wire.Column, session ...config.SessionOptions) [][]driver.Value {
 	values := make([][]driver.Value, len(parameters))
 	for i, column := range parameters {
 		slot := plan.Slots[i]
@@ -23,7 +23,7 @@ func StatementParameters(mode config.Mode, plan sqltext.Plan, parameters []wire.
 				row[4] = name
 			}
 		}
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			row[5] = int64(0)
 			if column.Flags&1 == 0 {
 				row[5] = int64(1)

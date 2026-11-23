@@ -58,7 +58,7 @@ func sessionStabilityIterations(t *testing.T) int {
 // Keep the original physical session across mixed operations, including recoverable SQL errors.
 func TestDriverSessionStability(t *testing.T) {
 	iterations := sessionStabilityIterations(t)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{driverFixtureStandard, driverFixtureCompression, driverFixtureOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				runDriverSessionStability(t, mode, framing, iterations)
@@ -67,12 +67,12 @@ func TestDriverSessionStability(t *testing.T) {
 	}
 }
 
-func runDriverSessionStability(t *testing.T, mode oceanbase.Mode, framing string, iterations int) {
+func runDriverSessionStability(t *testing.T, mode oceanbase.CompatibilityMode, framing string, iterations int) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 2*time.Minute)
 	t.Cleanup(cancel)
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
 	peer := testpeer.PeerDial(t, func(_ context.Context, p *wire.PacketIO) {
@@ -89,7 +89,7 @@ func runDriverSessionStability(t *testing.T, mode oceanbase.Mode, framing string
 	}, 2*time.Minute)
 	var dials atomic.Int32
 	var transport *driverTrackedConn
-	cfg := oceanbase.Config{User: driverFixtureUser, Mode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
+	cfg := oceanbase.Config{User: driverFixtureUser, CompatibilityMode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
 	cfg.Protocol = sessionStabilityProtocol(framing)
 	cfg.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if dials.Add(1) != 1 {
@@ -152,11 +152,11 @@ func runDriverSessionStability(t *testing.T, mode oceanbase.Mode, framing string
 	}
 }
 
-func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.Mode, i int, barrier func() bool) bool {
+func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.CompatibilityMode, i int, barrier func() bool) bool {
 	t.Helper()
 	status, active := byte(2), byte(3)
 	begin := []publictest.TxStep{{Query: driverFixtureMySQLReadWrite, Status: active}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status, active = 6, 5
 		begin = []publictest.TxStep{{Query: driverFixtureAutocommitOff, Status: 4}, {Query: driverFixtureOracleReadWrite, Status: active}}
 	}
@@ -189,11 +189,11 @@ func serveDriverSessionCycle(ctx context.Context, t *testing.T, p *wire.PacketIO
 		finish = driverFixtureRollbackSQL
 	}
 	end := []publictest.TxStep{{Query: finish, Status: status}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		end = []publictest.TxStep{{Query: finish, Status: 4}, {Query: driverFixtureAutocommitOn, Status: status}}
 	}
 	probeEnd := []publictest.TxStep{{Query: driverFixtureRollbackSQL, Status: status}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		probeEnd = []publictest.TxStep{{Query: driverFixtureRollbackSQL, Status: 4}, {Query: driverFixtureAutocommitOn, Status: status}}
 	}
 	if !publictest.ServeTxSteps(ctx, t, p, end) || !publictest.ServeTxSteps(ctx, t, p, begin) || !publictest.ServeTxSteps(ctx, t, p, probeEnd) ||

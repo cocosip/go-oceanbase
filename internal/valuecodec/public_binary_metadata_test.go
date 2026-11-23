@@ -23,15 +23,15 @@ func binaryStringColumns() [][]byte {
 	return columns
 }
 
-func binaryStringTypeNames(mode oceanbase.Mode) []string {
-	if mode == oceanbase.ModeOracle {
+func binaryStringTypeNames(mode oceanbase.CompatibilityMode) []string {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return []string{valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar2, valueformat.TypeNameChar, valueformat.TypeNameVarchar2, valueformat.TypeNameVarchar2, valueformat.TypeNameChar}
 	}
 	return []string{valueformat.TypeNameVarbinary, valueformat.TypeNameVarbinary, valueformat.TypeNameBinary, valueformat.TypeNameVarchar, valueformat.TypeNameVarchar, valueformat.TypeNameChar}
 }
 
 func TestBinaryStringColumnTypes(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, path := range []string{testTextStrategy, testServerStrategy, testClientStrategy} {
 			for _, framing := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
 				t.Run(fmt.Sprintf("%d/%s/%s", mode, path, framing), func(t *testing.T) {
@@ -42,14 +42,14 @@ func TestBinaryStringColumnTypes(t *testing.T) {
 	}
 }
 
-func testBinaryStringColumnTypes(t *testing.T, mode oceanbase.Mode, path, framing string) {
+func testBinaryStringColumnTypes(t *testing.T, mode oceanbase.CompatibilityMode, path, framing string) {
 	t.Helper()
 	const query = "SELECT vb,vb_old,b,v,v_old,c FROM t"
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
-	cfg := oceanbase.Config{Mode: mode}
+	cfg := oceanbase.Config{CompatibilityMode: mode}
 	if path == testClientStrategy {
 		cfg.PrepareMode = oceanbase.PrepareClient
 	}
@@ -133,7 +133,7 @@ func testBinaryStringColumnTypes(t *testing.T, mode oceanbase.Mode, path, framin
 	}
 }
 
-func assertBinaryStringRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode) {
+func assertBinaryStringRows(t *testing.T, rows *sql.Rows, mode oceanbase.CompatibilityMode) {
 	t.Helper()
 	defer func() { _ = rows.Close() }()
 	columns, err := rows.ColumnTypes()
@@ -191,15 +191,15 @@ func assertBinaryStringRows(t *testing.T, rows *sql.Rows, mode oceanbase.Mode) {
 }
 
 func TestBinaryStringParameterMetadata(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{publictest.TestStandard, publictest.TestCompression, publictest.TestOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				const query = "SELECT ?,?,?,?,?,? FROM dual"
 				status := byte(2)
-				if mode == oceanbase.ModeOracle {
+				if mode == oceanbase.CompatibilityModeOracle {
 					status = 6
 				}
-				db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
 					packets := append([][]byte{{0, 7, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0}}, binaryStringColumns()...)
 					packets = append(packets, []byte{254, 0, 0, status, 0})
 					if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, query...)) || !testpeer.SendPackets(ctx, t, p, packets...) ||

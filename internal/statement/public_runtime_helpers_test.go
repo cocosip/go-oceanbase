@@ -23,13 +23,13 @@ import (
 	wire "github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-func optimizationDB(t *testing.T, mode oceanbase.Mode, options oceanbase.ExecutionOptions, serve func(context.Context, *wire.PacketIO)) *sql.DB {
+func optimizationDB(t *testing.T, mode oceanbase.CompatibilityMode, options oceanbase.ExecutionOptions, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status = 6
 	}
-	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: mode, Execution: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: mode, Execution: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 			return
 		}
@@ -89,7 +89,7 @@ const (
 
 func batchExecutePacket(t *testing.T, value int64) []byte {
 	t.Helper()
-	p, err := valuecodec.EncodeParameter(value, oceanbase.ModeMySQL, oceanbase.SessionOptions{}, 64)
+	p, err := valuecodec.EncodeParameter(value, oceanbase.CompatibilityModeMySQL, oceanbase.SessionOptions{}, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +100,9 @@ func batchExecutePacket(t *testing.T, value int64) []byte {
 	return b
 }
 
-func longDataPacket(mode oceanbase.Mode, id uint32, index uint16, piece byte, data []byte) []byte {
+func longDataPacket(mode oceanbase.CompatibilityMode, id uint32, index uint16, piece byte, data []byte) []byte {
 	b := binary.LittleEndian.AppendUint16(publictest.StmtPacket(24, id), index)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		b[0] = 162
 		b = append(b, piece, 0)
 		b = binary.LittleEndian.AppendUint64(b, uint64(len(data)))
@@ -164,14 +164,14 @@ type longReaderFunc func([]byte) (int, error)
 
 func (f longReaderFunc) Read(p []byte) (int, error) { return f(p) }
 
-func serveLongContent(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.Mode, id uint32, index uint16, text bool, want []byte) bool {
+func serveLongContent(ctx context.Context, t *testing.T, p *wire.PacketIO, mode oceanbase.CompatibilityMode, id uint32, index uint16, text bool, want []byte) bool {
 	t.Helper()
 	var got []byte
 	for {
 		p.ResetSequence()
 		b, err := p.ReadMessage(ctx)
 		header := 7
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			header = 17
 		}
 		if err != nil || len(b) < header || binary.LittleEndian.Uint32(b[1:]) != id || binary.LittleEndian.Uint16(b[5:]) != index {
@@ -179,7 +179,7 @@ func serveLongContent(ctx context.Context, t *testing.T, p *wire.PacketIO, mode 
 			return false
 		}
 		data := b[header:]
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			if b[0] != 162 || b[8] != 0 || binary.LittleEndian.Uint64(b[9:]) != uint64(len(data)) {
 				t.Error("invalid piece header")
 				return false
@@ -203,7 +203,7 @@ func serveLongContent(ctx context.Context, t *testing.T, p *wire.PacketIO, mode 
 			t.Error("too much data")
 			return false
 		}
-		if mode == oceanbase.ModeOracle && b[7] == 3 || mode != oceanbase.ModeOracle && len(got) == len(want) {
+		if mode == oceanbase.CompatibilityModeOracle && b[7] == 3 || mode != oceanbase.CompatibilityModeOracle && len(got) == len(want) {
 			break
 		}
 	}

@@ -19,7 +19,7 @@ const (
 // type and bind direction but no name, and the same text really binds values.
 func runStatementParameters(ctx context.Context, s *scenario) error {
 	query := statementParameterMySQL
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		query = statementParameterOra
 	}
 	var sum int64
@@ -36,7 +36,7 @@ func runStatementParameters(ctx context.Context, s *scenario) error {
 	if err = expect(len(parameters) == 2, "statement parameter count changed"); err != nil {
 		return err
 	}
-	nullable := s.mode == oceanbase.ModeOracle
+	nullable := s.mode == oceanbase.CompatibilityModeOracle
 	for i, parameter := range parameters {
 		ordinal := int64(i + 1)
 		if err = expect(parameter.physical == ordinal && parameter.logical == ordinal,

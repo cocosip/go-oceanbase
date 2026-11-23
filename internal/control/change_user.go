@@ -32,10 +32,10 @@ func (m *Manager) ChangeUser(ctx context.Context, op *session.Operation, cache *
 	}
 	cfg.User, cfg.Password, cfg.Credentials = credentials.User, credentials.Password, nil
 	cfg.ProxyUser = credentials.ProxyUser
-	cfg.Database, cfg.Mode = database, identity.Mode
+	cfg.Database, cfg.CompatibilityMode = database, identity.Mode
 	// Connector/J uppercases an explicit Oracle database in COM_CHANGE_USER, while a
 	// database derived from user@tenant keeps its original case.
-	if identity.Mode == config.ModeOracle && database != "" {
+	if identity.Mode == config.CompatibilityModeOracle && database != "" {
 		database = strings.ToUpper(database)
 		cfg.Database = database
 	}
@@ -51,7 +51,7 @@ func (m *Manager) ChangeUser(ctx context.Context, op *session.Operation, cache *
 	if err != nil {
 		return err
 	}
-	if database == "" && identity.Mode == config.ModeOracle {
+	if database == "" && identity.Mode == config.CompatibilityModeOracle {
 		database, _, _ = strings.Cut(credentials.User, "@")
 	}
 	db, err := encode(database)
@@ -142,7 +142,7 @@ func (m *Manager) ChangeUser(ctx context.Context, op *session.Operation, cache *
 // the authenticating account effective; recording the requested target would be
 // false. Initial proxy login and clearing the target remain available.
 func rejectUnappliedProxyTarget(credentials config.Credentials, identity session.Negotiated) error {
-	if credentials.ProxyUser == "" || identity.Mode != config.ModeOracle || !configspec.IsVersion(identity.OBVersion, "4.4.2.2") {
+	if credentials.ProxyUser == "" || identity.Mode != config.CompatibilityModeOracle || !configspec.IsVersion(identity.OBVersion, "4.4.2.2") {
 		return nil
 	}
 	return fmt.Errorf("%w: proxy identity on COM_CHANGE_USER", dberrors.ErrUnsupported)

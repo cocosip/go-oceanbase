@@ -8,7 +8,7 @@ import (
 
 // Key identifies a type in the physical session's compatibility mode.
 type Key struct {
-	Mode         config.Mode
+	Mode         config.CompatibilityMode
 	Schema, Name string
 	Version      uint64
 }

@@ -25,9 +25,9 @@ func TestTLSNativePolicy(t *testing.T) {
 	_, server := testpeer.TLSConfig(t)
 	caFile, certFile, keyFile := tlsClientFiles(t, server)
 	for _, version := range []uint16{tls.VersionTLS12, tls.VersionTLS13} {
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 			for _, callback := range []bool{false, true} {
-				name := fmt.Sprintf("%s/%s/callback=%t", tls.VersionName(version), map[config.Mode]string{config.ModeMySQL: "mysql-mode", config.ModeOracle: "oracle-mode"}[mode], callback)
+				name := fmt.Sprintf("%s/%s/callback=%t", tls.VersionName(version), map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: "mysql-mode", config.CompatibilityModeOracle: "oracle-mode"}[mode], callback)
 				t.Run(name, func(t *testing.T) {
 					client, err := tlsExampleConfig(caFile, certFile, keyFile, testServerName)
 					if err != nil {
@@ -57,7 +57,7 @@ func TestTLSNativePolicy(t *testing.T) {
 					peer.ClientAuth, peer.ClientCAs = tls.RequireAndVerifyClientCert, client.RootCAs
 					peer.CipherSuites = []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}
 					var observed atomic.Bool
-					result, err := runAuthConnTest(t, config.Config{User: testUser, Password: testPassword, Mode: mode, TLSConfig: client}, nil,
+					result, err := runAuthConnTest(t, config.Config{User: testUser, Password: testPassword, CompatibilityMode: mode, TLSConfig: client}, nil,
 						func(ctx context.Context, raw net.Conn, p *wire.PacketIO) {
 							if !testpeer.SendPackets(ctx, t, p, testpeer.AuthGreeting(authentication.Clear, true)) || !testpeer.ReadAuthResponse(ctx, t, p) {
 								return
@@ -83,7 +83,7 @@ func TestTLSNativePolicy(t *testing.T) {
 							}
 							observed.Store(true)
 							status := byte(2)
-							if mode == config.ModeOracle {
+							if mode == config.CompatibilityModeOracle {
 								status = 6
 							}
 							testpeer.SendPackets(ctx, t, p, testpeer.ProtocolOK(status, nil))

@@ -38,11 +38,11 @@ func TestComplexAnonymousArray(t *testing.T) {
 	if err = got.Scan(value); err != nil || !reflect.DeepEqual(got, v) {
 		t.Fatal(got, err)
 	}
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		protocol := op.Protocol()
 		protocol.Mode = mode
 		op.SetIdentity(protocol)
-		if mode == config.ModeMySQL {
+		if mode == config.CompatibilityModeMySQL {
 			if _, err = parameters.EncodeValue(context.Background(), op, resolver, v, 4096); !errors.Is(err, dberrors.ErrUnsupported) {
 				t.Fatal(err)
 			}
@@ -126,7 +126,7 @@ func materializeTypeOperation(t *testing.T, version uint64, names, types []strin
 	t.Helper()
 	op := testpeer.DictionaryOperation(t, config.Config{}, func(ctx context.Context, p *wire.PacketIO) { testpeer.ServeComplexType(ctx, t, p, names, types) })
 	resolver := new(catalog.Resolver)
-	d, err := resolver.Resolve(t.Context(), op, valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: "T", Version: version})
+	d, err := resolver.Resolve(t.Context(), op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "T", Version: version})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -117,9 +117,9 @@ func optimizedConfig(cfg *oceanbase.Config) {
 func fullResetConfig(cfg *oceanbase.Config)    { cfg.ResetMode = oceanbase.ResetFull }
 func multiResultsConfig(cfg *oceanbase.Config) { cfg.AllowMultiStatements = true }
 
-func duplicateKey(err error, mode oceanbase.Mode) bool {
+func duplicateKey(err error, mode oceanbase.CompatibilityMode) bool {
 	code := uint32(1062)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		code = 1
 	}
 	return onlyServerErrorCode(err, code)
@@ -150,12 +150,12 @@ func onlyServerErrorCode(err error, code uint32, allowed ...error) bool {
 	return ok && server != nil && server.Code == code
 }
 
-func xaFlagRejected(err error, mode oceanbase.Mode) bool {
+func xaFlagRejected(err error, mode oceanbase.CompatibilityMode) bool {
 	var server *oceanbase.Error
-	return mode == oceanbase.ModeMySQL && errors.As(err, &server) && server != nil && onlyServerErrorCode(err, 1398, oceanbase.ErrXA)
+	return mode == oceanbase.CompatibilityModeMySQL && errors.As(err, &server) && server != nil && onlyServerErrorCode(err, 1398, oceanbase.ErrXA)
 }
 
-func checkBatchDuplicate(result oceanbase.BatchResult, err error, mode oceanbase.Mode, keepGoing bool) error {
+func checkBatchDuplicate(result oceanbase.BatchResult, err error, mode oceanbase.CompatibilityMode, keepGoing bool) error {
 	completed, last := 1, oceanbase.BatchNotExecuted
 	if keepGoing {
 		completed, last = 2, oceanbase.BatchSucceeded

@@ -24,7 +24,7 @@ func diagnosticConn(t *testing.T, serve func(context.Context, *wire.PacketIO), c
 	for _, apply := range configure {
 		apply(&cfg)
 	}
-	physical := session.New(cfg, &session.Negotiated{Raw: raw, Conn: raw, Packets: wire.NewPacketIO(raw, 4096), Mode: config.ModeOracle, Capabilities: wire.ClientProtocol41})
+	physical := session.New(cfg, &session.Negotiated{Raw: raw, Conn: raw, Packets: wire.NewPacketIO(raw, 4096), Mode: config.CompatibilityModeOracle, Capabilities: wire.ClientProtocol41})
 	t.Cleanup(physical.Discard)
 	return execution.New(nil, physical)
 }

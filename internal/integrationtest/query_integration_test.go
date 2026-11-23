@@ -24,7 +24,7 @@ func TestQueryResults(t *testing.T) {
 			db := integrationtest.OpenProfile(t, p)
 			ctx := integrationtest.TestContext(t)
 			query := "SELECT 42 AS v, NULL AS n"
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query += integrationtest.OracleDualSuffix
 			}
 			rows, err := db.QueryContext(ctx, query)

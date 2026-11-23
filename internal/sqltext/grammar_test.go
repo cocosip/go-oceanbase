@@ -22,12 +22,12 @@ func TestBatchValuesShape(t *testing.T) {
 
 func TestBatchSQLGate(t *testing.T) {
 	for _, q := range []string{"SELECT ?", "CALL p(?)", "UPDATE t SET v=?; DELETE FROM t", "INSERT INTO t VALUES (?) RETURNING id INTO ?", "SET x=?", "INSERT /*! FROM */ INTO t VALUES (?)"} {
-		if BatchDML(q, config.ModeMySQL, false) {
+		if BatchDML(q, config.CompatibilityModeMySQL, false) {
 			t.Fatal("unsafe pipeline SQL", q)
 		}
 	}
 	for _, q := range []string{"INSERT INTO t VALUES (?)", "UPDATE t SET v=';' WHERE id=?", "/* ordinary */ DELETE FROM t WHERE id=?"} {
-		if !BatchDML(q, config.ModeMySQL, false) {
+		if !BatchDML(q, config.CompatibilityModeMySQL, false) {
 			t.Fatal("ordinary DML rejected", q)
 		}
 	}
@@ -70,7 +70,7 @@ func TestMySQLImportStatementSyntax(t *testing.T) {
 		{"LOAD DATA LOCAL INFILE 'input' INTO TABLE t" + " /* unterminated", false, false},
 		{"SELECT 'LOAD DATA'", false, false},
 	} {
-		err := LocalImportStatement(tc.query, config.ModeMySQL, tc.noBackslash)
+		err := LocalImportStatement(tc.query, config.CompatibilityModeMySQL, tc.noBackslash)
 		if (err == nil) != tc.valid || err != nil && !errors.Is(err, dberrors.ErrUnsupported) {
 			t.Errorf("query=%q noBackslash=%v: %v", tc.query, tc.noBackslash, err)
 		}
@@ -79,7 +79,7 @@ func TestMySQLImportStatementSyntax(t *testing.T) {
 
 func TestCursorUpdateShape(t *testing.T) {
 	for _, query := range []string{"SELECT t.id FROM t JOIN u ON t.id=u.id", "SELECT COUNT(*) FROM t", "SELECT id FROM t,u", "SELECT DISTINCT id FROM t", "SELECT id FROM t UNION SELECT id FROM t", "SELECT id FROM (SELECT id FROM t) x"} {
-		if err := CursorUpdatableQuery(query, config.ModeMySQL, false); !errors.Is(err, dberrors.ErrCursor) {
+		if err := CursorUpdatableQuery(query, config.CompatibilityModeMySQL, false); !errors.Is(err, dberrors.ErrCursor) {
 			t.Fatal(query, err)
 		}
 	}

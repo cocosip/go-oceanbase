@@ -42,11 +42,11 @@ func TestTransactionNativeRoleFailure(t *testing.T) {
 }
 
 func TestTransactionNativeInitialization(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, variable := range []bool{false, true} {
-			t.Run(map[config.Mode]string{config.ModeMySQL: transactionMySQLLabel, config.ModeOracle: transactionOracleLabel}[mode]+"/"+map[bool]string{false: "sql", true: "variable"}[variable], func(t *testing.T) {
+			t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: transactionMySQLLabel, config.CompatibilityModeOracle: transactionOracleLabel}[mode]+"/"+map[bool]string{false: "sql", true: "variable"}[variable], func(t *testing.T) {
 				ready := byte(2)
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					ready = 6
 				}
 				off := ready &^ 2
@@ -56,13 +56,13 @@ func TestTransactionNativeInitialization(t *testing.T) {
 					options = config.SessionOptions{Variables: map[string]string{"autocommit": "0"}}
 					query = "SET SESSION autocommit = 0"
 				}
-				connector, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: mode, Session: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+				connector, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: mode, Session: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 					if !testpeer.ServeConnect(ctx, t, p, ready) || !testpeer.ServeBaseline(ctx, t, p, ready) {
 						return
 					}
 					if variable {
 						lookup := "SELECT @@SESSION.autocommit"
-						if mode == config.ModeOracle {
+						if mode == config.CompatibilityModeOracle {
 							lookup += testDualSuffix
 						}
 						if !sessionScalarTyped(ctx, t, p, lookup, ready, 8, "1") {
@@ -94,10 +94,10 @@ func TestTransactionNativeInitialization(t *testing.T) {
 }
 
 func TestTransactionNativeAutocommit(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: transactionMySQLLabel, config.ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: transactionMySQLLabel, config.CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			ready := byte(2)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				ready = 6
 			}
 			off, active := ready&^2, (ready&^2)|1
@@ -144,14 +144,14 @@ func TestTransactionNativeAutocommit(t *testing.T) {
 }
 
 func TestTransactionNativeReadOnly(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, role := range []config.EndpointRole{config.RoleAny, config.RoleReadOnly} {
-			t.Run(map[config.Mode]string{config.ModeMySQL: transactionMySQLLabel, config.ModeOracle: transactionOracleLabel}[mode]+"/"+map[config.EndpointRole]string{config.RoleAny: "any", config.RoleReadOnly: "readonly-service"}[role], func(t *testing.T) {
+			t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: transactionMySQLLabel, config.CompatibilityModeOracle: transactionOracleLabel}[mode]+"/"+map[config.EndpointRole]string{config.RoleAny: "any", config.RoleReadOnly: "readonly-service"}[role], func(t *testing.T) {
 				ready, active := byte(2), byte(3)
 				begin := []txStep{{testSerializableSQL, ready}, {transactionMySQLReadOnly, active}}
 				end := []txStep{{testRollbackSQL, ready}}
 				code := uint16(1792)
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					ready, active, code = 6, 5, 16000
 					begin = []txStep{{testAutocommitOff, 4}, {transactionOracleReadOnly, active}}
 					end = []txStep{{testRollbackSQL, 4}, {testAutocommitOn, ready}}
@@ -172,7 +172,7 @@ func TestTransactionNativeReadOnly(t *testing.T) {
 					}
 					if role == config.RoleAny {
 						steps := []txStep{{testMySQLReadWrite, 3}, {testCommitSQL, ready}}
-						if mode == config.ModeOracle {
+						if mode == config.CompatibilityModeOracle {
 							steps = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, active}, {testCommitSQL, 4}, {testAutocommitOn, ready}}
 						}
 						if !serveTxSteps(ctx, t, p, steps) {
@@ -185,7 +185,7 @@ func TestTransactionNativeReadOnly(t *testing.T) {
 					p.ResetSequence()
 					testpeer.ServeQuit(t, p)
 				})
-				connector, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: mode, Routing: config.RoutingOptions{Role: role}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				connector, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: mode, Routing: config.RoutingOptions{Role: role}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 					dials.Add(1)
 					return dial(ctx, network, address)
 				}})

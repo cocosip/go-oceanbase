@@ -22,7 +22,7 @@ func TestMySQLAdditionalCharsetColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeMySQL {
+		if profile.Mode != oceanbase.CompatibilityModeMySQL {
 			continue
 		}
 		for _, tc := range []struct{ name, text, raw string }{

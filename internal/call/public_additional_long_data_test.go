@@ -16,8 +16,8 @@ import (
 
 func TestLongDataOracleOutputs(t *testing.T) {
 	const query = "BEGIN proc(?,?); END;"
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
-		if !publictest.ServePrepare(ctx, t, p, query, 79, 2, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(config.ModeOracle, 79, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+		if !publictest.ServePrepare(ctx, t, p, query, 79, 2, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(config.CompatibilityModeOracle, 79, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
 			return
 		}
 		params := []wire.Parameter{{Type: 254, LongData: true}, {Type: 6}}
@@ -54,7 +54,7 @@ func TestLongDataMySQLOutputs(t *testing.T) {
 		if !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) || !publictest.ServePrepare(ctx, t, p, "CALL p( ? , "+variable+" )", 81, 1, nil) {
 			return
 		}
-		if !testpeer.ReadCommand(ctx, t, p, longDataPacket(config.ModeMySQL, 81, 0, 3, []byte("ab"))) || !testpeer.ServeOK(ctx, t, p, append(publictest.ExecuteHeader(81), 0, 1, 252, 0), 2) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 81)) {
+		if !testpeer.ReadCommand(ctx, t, p, longDataPacket(config.CompatibilityModeMySQL, 81, 0, 3, []byte("ab"))) || !testpeer.ServeOK(ctx, t, p, append(publictest.ExecuteHeader(81), 0, 1, 252, 0), 2) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 81)) {
 			return
 		}
 		if !testpeer.ReadQuery(ctx, t, p, "SELECT "+variable) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("o", 8, 63, 0), []byte{254, 0, 0, 2, 0}, []byte{2, '4', '2'}, []byte{254, 0, 0, 2, 0}) {

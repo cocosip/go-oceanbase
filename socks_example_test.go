@@ -17,7 +17,7 @@ func ExampleConfig_socks5() {
 		panic(err)
 	}
 	connector, err := NewConnector(Config{
-		User: "socks_app", Addr: "database.internal:2881", Mode: ModeMySQL,
+		User: "socks_app", Addr: "database.internal:2881", CompatibilityMode: CompatibilityModeMySQL,
 		DialContext: dial,
 		// Supply the real database's TLSConfig when encryption/identity verification is required.
 	})

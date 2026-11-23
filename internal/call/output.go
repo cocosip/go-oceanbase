@@ -68,7 +68,7 @@ func (b *Binding) Input() any { return b.input }
 func (b *Binding) Destination() ResourceDestination { return b.destination }
 
 // ValidateMode checks the declared type against the compatibility mode.
-func (b *Binding) ValidateMode(mode config.Mode) error { return b.validateMode(mode) }
+func (b *Binding) ValidateMode(mode config.CompatibilityMode) error { return b.validateMode(mode) }
 
 type assignment struct {
 	op             *session.Operation

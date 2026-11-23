@@ -15,7 +15,7 @@ import (
 )
 
 func TestCursorColumn(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, "SELECT cursor_column FROM t", 91, 0, nil) || !testpeer.ReadCommand(ctx, t, p, publictest.ExecuteHeader(91)) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("child", 163, 63, 0), []byte{254, 0, 0, 6, 0}, binary.LittleEndian.AppendUint32([]byte{0, 0}, 92), []byte{254, 0, 0, 6, 0}) {
 			return
 		}

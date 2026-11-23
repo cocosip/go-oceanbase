@@ -20,11 +20,11 @@ import (
 )
 
 func TestExecutionColumnMetadata(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, prepared := range []bool{false, true} {
-			t.Run(map[oceanbase.Mode]string{oceanbase.ModeMySQL: "mysql-columns", oceanbase.ModeOracle: "oracle-columns"}[mode]+"/"+map[bool]string{false: "text", true: "binary"}[prepared], func(t *testing.T) {
+			t.Run(map[oceanbase.CompatibilityMode]string{oceanbase.CompatibilityModeMySQL: "mysql-columns", oceanbase.CompatibilityModeOracle: "oracle-columns"}[mode]+"/"+map[bool]string{false: "text", true: "binary"}[prepared], func(t *testing.T) {
 				ready := byte(2)
-				if mode == oceanbase.ModeOracle {
+				if mode == oceanbase.CompatibilityModeOracle {
 					ready = 6
 				}
 				want := oceanbase.ResultColumn{Catalog: executionColumnCatalog, Schema: "业务", Table: "t", OriginalTable: "原表", Name: "别名", OriginalName: "原列"}
@@ -35,7 +35,7 @@ func TestExecutionColumnMetadata(t *testing.T) {
 					query += " WHERE t.id=?"
 					args = []any{int64(7)}
 				}
-				connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, Mode: mode, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+				connector, err := oceanbase.NewConnector(oceanbase.Config{User: testUser, CompatibilityMode: mode, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 					if !testpeer.ServeConnect(ctx, t, p, ready) || !testpeer.ServeOK(ctx, t, p, []byte("\x03SET NAMES gbk"), ready) || !testpeer.ServeOK(ctx, t, p, []byte("\x03"+testAutocommitOn), ready) || !testpeer.ServeVersion(ctx, t, p, ready, false) || !testpeer.ServeOK(ctx, t, p, []byte("\x03"+transactionUTCZone), ready) {
 						return
 					}

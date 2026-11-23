@@ -22,7 +22,7 @@ func TestOracleMetadataOverloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range profiles {
-		if p.Mode == oceanbase.ModeOracle {
+		if p.Mode == oceanbase.CompatibilityModeOracle {
 			t.Run(p.Name, func(t *testing.T) { integrationOracleOverloads(t, p) })
 		}
 	}

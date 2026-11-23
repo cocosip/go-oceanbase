@@ -11,12 +11,12 @@ import (
 )
 
 // TransactionCommands builds transaction-start SQL in the original command order.
-func TransactionCommands(mode config.Mode, opts driver.TxOptions) ([]string, error) {
+func TransactionCommands(mode config.CompatibilityMode, opts driver.TxOptions) ([]string, error) {
 	level, err := IsolationSQL(opts.Isolation)
 	if err != nil {
 		return nil, err
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		iso := sql.IsolationLevel(opts.Isolation)
 		if iso != sql.LevelDefault && iso != sql.LevelReadCommitted && iso != sql.LevelSerializable || opts.ReadOnly && iso == sql.LevelReadCommitted {
 			return nil, fmt.Errorf("%w: Oracle transaction options", dberrors.ErrUnsupported)

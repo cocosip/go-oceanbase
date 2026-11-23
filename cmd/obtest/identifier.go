@@ -25,7 +25,7 @@ const (
 func runIdentifierLength(ctx context.Context, s *scenario) error {
 	tableLimit := identifierMySQLTable
 	rejectedCode := uint32(identifierMySQLCode)
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		tableLimit = identifierOracleTable
 		rejectedCode = identifierOracleCode
 	}
@@ -94,7 +94,7 @@ const (
 	identifierSelect = "SELECT ID,%s FROM %s"
 )
 
-func checkIdentifierTable(ctx context.Context, db *sql.DB, table string, mode oceanbase.Mode) (err error) {
+func checkIdentifierTable(ctx context.Context, db *sql.DB, table string, mode oceanbase.CompatibilityMode) (err error) {
 	return withSession(ctx, db, func(c *sql.Conn) error {
 		rows, err := oceanbase.Metadata(ctx, c, oceanbase.MetadataFilter{
 			Kind:        oceanbase.MetadataTables,
@@ -117,7 +117,7 @@ func checkIdentifierTable(ctx context.Context, db *sql.DB, table string, mode oc
 		// OceanBase MySQL mode may fold table identifiers (lower_case_table_names=1), so the
 		// dictionary can return a complete case-folded name; truncation still fails the length check.
 		got := name.String
-		matched := got == table || mode == oceanbase.ModeMySQL && strings.EqualFold(got, table)
+		matched := got == table || mode == oceanbase.CompatibilityModeMySQL && strings.EqualFold(got, table)
 		if err = expect(matched && len(got) == len(table), "long table name was truncated in the dictionary"); err != nil {
 			return err
 		}

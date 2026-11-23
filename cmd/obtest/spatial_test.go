@@ -55,12 +55,12 @@ func spatialCases() []spatialCase {
 }
 
 func TestOracleSpatialWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, oracleSpatialCase, oceanbase.ModeOracle)
+	definition := scenarioDefinition(t, oracleSpatialCase, oceanbase.CompatibilityModeOracle)
 	for _, tc := range spatialCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := spatialSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeOracle
+			s.mode = oceanbase.CompatibilityModeOracle
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

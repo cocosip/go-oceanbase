@@ -26,7 +26,7 @@ func ownershipError(e *Engine, op *session.Operation, stats sql.DBStats) error {
 func TestDriverResourceGuard(t *testing.T) {
 	for _, name := range []string{"clean", "lease", ownershipTransaction, "unread-response", "resource", "closed"} {
 		t.Run(name, func(t *testing.T) {
-			ctx, e := protocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, e := protocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if name == ownershipTransaction {
 					testpeer.ServeOK(ctx, t, p, []byte("\x03START TRANSACTION READ WRITE"), 3)
 				}

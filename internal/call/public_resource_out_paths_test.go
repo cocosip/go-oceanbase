@@ -157,7 +157,7 @@ func TestOutMySQLErrors(t *testing.T) {
 				} else {
 					testpeer.ServeQuit(t, p)
 				}
-			}, func(cfg *config.Config) { cfg.Mode = config.ModeMySQL })
+			}, func(cfg *config.Config) { cfg.CompatibilityMode = config.CompatibilityModeMySQL })
 			defer func() { _ = c.Close() }()
 			value := []byte(testOutBefore)
 			out := oceanbase.Out{Dest: &value, Type: valueformat.TypeNameVarbinary}
@@ -196,7 +196,7 @@ func TestOutCancellationDuringFinalization(t *testing.T) {
 
 func TestOutLogicalParameterError(t *testing.T) {
 	op := outputOperation(t)
-	plan, err := sqltext.BuildBindPlan("BEGIN :2:=1; :1:=2; END;", config.ModeOracle)
+	plan, err := sqltext.BuildBindPlan("BEGIN :2:=1; :1:=2; END;", config.CompatibilityModeOracle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,20 +380,20 @@ func TestOutPreSendValidation(t *testing.T) {
 	goodID := "AAAA"
 	for _, tc := range []struct {
 		name, version string
-		mode          config.Mode
+		mode          config.CompatibilityMode
 		value         any
 		want          error
 	}{
-		{"old-version", "2.2.75", config.ModeOracle, sql.Out{Dest: &scalar}, dberrors.ErrUnsupported},
-		{"unknown-version", "", config.ModeOracle, sql.Out{Dest: &scalar}, dberrors.ErrUnsupported},
-		{"invalid-destination", testOutVersion, config.ModeOracle, sql.Out{}, oceanbase.ErrOut},
-		{"oracle-precision", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &n, Precision: 39}, oceanbase.ErrOut},
-		{"mysql-scale", testOutVersion, config.ModeMySQL, oceanbase.Out{Dest: &n, Precision: 2, Scale: 3}, oceanbase.ErrOut},
-		{"mysql-native-type", testOutVersion, config.ModeMySQL, oceanbase.Out{Dest: &scalar, Type: "ROWID"}, dberrors.ErrUnsupported},
-		{"mysql-urowid", testOutVersion, config.ModeMySQL, oceanbase.Out{Dest: &goodID, Type: valueformat.TypeNameURowID}, dberrors.ErrUnsupported},
-		{"bad-urowid", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &badID, Type: valueformat.TypeNameURowID, In: true}, dberrors.ErrType},
-		{"urowid-length", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &goodID, Type: valueformat.TypeNameURowID, In: true, Length: 3}, dberrors.ErrOut},
-		{"numeric-length", testOutVersion, config.ModeOracle, oceanbase.Out{Dest: &scalar, Length: 5}, oceanbase.ErrOut},
+		{"old-version", "2.2.75", config.CompatibilityModeOracle, sql.Out{Dest: &scalar}, dberrors.ErrUnsupported},
+		{"unknown-version", "", config.CompatibilityModeOracle, sql.Out{Dest: &scalar}, dberrors.ErrUnsupported},
+		{"invalid-destination", testOutVersion, config.CompatibilityModeOracle, sql.Out{}, oceanbase.ErrOut},
+		{"oracle-precision", testOutVersion, config.CompatibilityModeOracle, oceanbase.Out{Dest: &n, Precision: 39}, oceanbase.ErrOut},
+		{"mysql-scale", testOutVersion, config.CompatibilityModeMySQL, oceanbase.Out{Dest: &n, Precision: 2, Scale: 3}, oceanbase.ErrOut},
+		{"mysql-native-type", testOutVersion, config.CompatibilityModeMySQL, oceanbase.Out{Dest: &scalar, Type: "ROWID"}, dberrors.ErrUnsupported},
+		{"mysql-urowid", testOutVersion, config.CompatibilityModeMySQL, oceanbase.Out{Dest: &goodID, Type: valueformat.TypeNameURowID}, dberrors.ErrUnsupported},
+		{"bad-urowid", testOutVersion, config.CompatibilityModeOracle, oceanbase.Out{Dest: &badID, Type: valueformat.TypeNameURowID, In: true}, dberrors.ErrType},
+		{"urowid-length", testOutVersion, config.CompatibilityModeOracle, oceanbase.Out{Dest: &goodID, Type: valueformat.TypeNameURowID, In: true, Length: 3}, dberrors.ErrOut},
+		{"numeric-length", testOutVersion, config.CompatibilityModeOracle, oceanbase.Out{Dest: &scalar, Length: 5}, oceanbase.ErrOut},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client, server := net.Pipe()

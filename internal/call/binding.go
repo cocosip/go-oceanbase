@@ -73,7 +73,7 @@ func validOutputType(name string) bool {
 	return false
 }
 
-func (b *Binding) validateMode(mode config.Mode) error {
+func (b *Binding) validateMode(mode config.CompatibilityMode) error {
 	if b.Length > 0 {
 		switch b.Type {
 		case valueformat.TypeNameVarchar, valueformat.TypeNameVarchar2, valueformat.TypeNameChar, valueformat.TypeNameNChar, valueformat.TypeNameNVarchar2, valueformat.TypeNameRaw, valueformat.TypeNameRowID, valueformat.TypeNameURowID, valueformat.TypeNameVarbinary, valueformat.TypeNameBlob, valueformat.TypeNameClob, valueformat.TypeNameNClob:
@@ -81,10 +81,10 @@ func (b *Binding) validateMode(mode config.Mode) error {
 			return fmt.Errorf("%w: length requires a text or binary output type", dberrors.ErrOut)
 		}
 	}
-	if b.resource != 0 && mode != config.ModeOracle {
+	if b.resource != 0 && mode != config.CompatibilityModeOracle {
 		return dberrors.ErrUnsupported
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		if b.Precision > 38 {
 			return fmt.Errorf("%w: Oracle NUMBER precision exceeds 38", dberrors.ErrOut)
 		}

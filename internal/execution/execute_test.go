@@ -16,12 +16,12 @@ import (
 	"github.com/cocosip/go-oceanbase/internal/wire"
 )
 
-func protocolEngine(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO)) (context.Context, *Engine) {
+func protocolEngine(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO)) (context.Context, *Engine) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	client, server := net.Pipe()
 	t.Cleanup(func() { cancel(); _ = client.Close(); _ = server.Close() })
-	cfg, err := config.Normalize(config.Config{Mode: mode, User: "app"})
+	cfg, err := config.Normalize(config.Config{CompatibilityMode: mode, User: "app"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func protocolEngine(t *testing.T, mode config.Mode, serve func(context.Context, 
 }
 
 func TestQueryServerErrorKeepsSession(t *testing.T) {
-	ctx, e := protocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, e := protocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, []byte("\x03bad")) {
 			return
 		}
@@ -58,7 +58,7 @@ func TestQueryServerErrorKeepsSession(t *testing.T) {
 }
 
 func TestQueryRecordsRowsAndFollowingCommand(t *testing.T) {
-	ctx, e := protocolEngine(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, e := protocolEngine(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if testpeer.ReadCommand(ctx, t, p, []byte("\x03select 42;update t set v=1")) {
 			testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("v", 253, 45, 0), []byte{254, 0, 0, 2, 0}, []byte{2, '4', '2'}, []byte{254, 0, 0, 10, 0}, []byte{0, 1, 0, 2, 0, 0, 0})
 		}

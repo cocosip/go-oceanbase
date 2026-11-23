@@ -17,13 +17,13 @@ import (
 )
 
 func TestFetchErrorResponseBoundary(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, malformed := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/malformed=%v", mode, malformed), func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 				t.Cleanup(cancel)
 				client, peer := net.Pipe()
-				cfg, err := config.Normalize(config.Config{User: "app", Mode: mode})
+				cfg, err := config.Normalize(config.Config{User: "app", CompatibilityMode: mode})
 				if err != nil {
 					t.Fatal(err)
 				}

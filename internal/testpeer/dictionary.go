@@ -13,7 +13,7 @@ import (
 // DictionaryOperation opens a raw owner fixture without public facade or handshake dependencies.
 func DictionaryOperation(t *testing.T, cfg config.Config, serve func(context.Context, *wire.PacketIO)) *session.Operation {
 	t.Helper()
-	cfg.User, cfg.Mode = User, config.ModeOracle
+	cfg.User, cfg.CompatibilityMode = User, config.CompatibilityModeOracle
 	normalized, err := config.Normalize(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func DictionaryOperation(t *testing.T, cfg config.Config, serve func(context.Con
 	if err != nil {
 		t.Fatal(err)
 	}
-	physical := session.New(normalized, &session.Negotiated{Raw: raw, Conn: raw, Packets: wire.NewPacketIO(raw, normalized.Limits.MaxMessageBytes), Mode: config.ModeOracle, Capabilities: wire.ClientProtocol41, OBVersion: "4.3.5.1"})
+	physical := session.New(normalized, &session.Negotiated{Raw: raw, Conn: raw, Packets: wire.NewPacketIO(raw, normalized.Limits.MaxMessageBytes), Mode: config.CompatibilityModeOracle, Capabilities: wire.ClientProtocol41, OBVersion: "4.3.5.1"})
 	op, err := physical.Acquire(t.Context())
 	if err != nil {
 		t.Fatal(err)

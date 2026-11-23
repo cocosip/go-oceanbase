@@ -92,7 +92,7 @@ func UploadLongData(ctx context.Context, op *session.Operation, id uint32, value
 func sendLongPiece(ctx context.Context, op *session.Operation, id uint32, index uint16, piece streaminput.Piece) error {
 	b := binary.LittleEndian.AppendUint32([]byte{24}, id)
 	b = binary.LittleEndian.AppendUint16(b, index)
-	oracle := op.Protocol().Mode == config.ModeOracle
+	oracle := op.Protocol().Mode == config.CompatibilityModeOracle
 	if oracle {
 		b[0] = 162
 		b = append(b, piece.Kind, 0)

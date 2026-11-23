@@ -12,7 +12,7 @@ import (
 )
 
 func TestClientPrepareReject(t *testing.T) {
-	cfg, mode := oceanbase.Config{Session: oceanbase.SessionOptions{Charset: testUTF8MB4, Location: time.UTC}, Limits: oceanbase.Limits{MaxMessageBytes: 64, MaxLOBBytes: 32}}, oceanbase.ModeMySQL
+	cfg, mode := oceanbase.Config{Session: oceanbase.SessionOptions{Charset: testUTF8MB4, Location: time.UTC}, Limits: oceanbase.Limits{MaxMessageBytes: 64, MaxLOBBytes: 32}}, oceanbase.CompatibilityModeMySQL
 	for _, tc := range []struct {
 		query string
 		value any

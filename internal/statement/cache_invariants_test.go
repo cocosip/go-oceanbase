@@ -24,7 +24,7 @@ func cacheStateError(cache *Cache, capacity int) error {
 
 func TestStatementCacheInvariants(t *testing.T) {
 	const capacity = 2
-	op := testOperation(t, config.Config{Execution: config.ExecutionOptions{StatementCacheSize: capacity, StatementCacheSQLLimit: 1024}}, config.ModeMySQL, "")
+	op := testOperation(t, config.Config{Execution: config.ExecutionOptions{StatementCacheSize: capacity, StatementCacheSQLLimit: 1024}}, config.CompatibilityModeMySQL, "")
 	ctx := context.Background()
 	var cache Cache
 	var statements []*Statement

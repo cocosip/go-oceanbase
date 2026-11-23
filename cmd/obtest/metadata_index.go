@@ -24,7 +24,7 @@ const (
 // and the server-info row names the mode the driver is connected in.
 func runMetadataIndexes(ctx context.Context, s *scenario) error {
 	definition := metadataIndexMySQL
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		definition = metadataIndexOracle
 	}
 	table, err := s.tableNamed(ctx, metadataIndexTable, definition)
@@ -56,7 +56,7 @@ func createScenarioIndex(ctx context.Context, s *scenario, table, suffix, statem
 	}
 	record.State = objectStateCreated
 	drop := "DROP INDEX " + name
-	if s.mode == oceanbase.ModeMySQL {
+	if s.mode == oceanbase.CompatibilityModeMySQL {
 		drop += " ON " + table
 	}
 	s.cleanups = append(s.cleanups, cleanupAction{"drop index " + name, func(ctx context.Context) error {
@@ -133,7 +133,7 @@ func metadataIndexByName(rows []metadataIndexRow, name string) []metadataIndexRo
 	return matched
 }
 
-func readMetadataServerInfo(ctx context.Context, db *sql.DB, mode oceanbase.Mode) (err error) {
+func readMetadataServerInfo(ctx context.Context, db *sql.DB, mode oceanbase.CompatibilityMode) (err error) {
 	return withSession(ctx, db, func(c *sql.Conn) error {
 		rows, err := oceanbase.Metadata(ctx, c, oceanbase.MetadataFilter{Kind: oceanbase.MetadataServerInfo})
 		if err != nil {
@@ -152,7 +152,7 @@ func readMetadataServerInfo(ctx context.Context, db *sql.DB, mode oceanbase.Mode
 			return err
 		}
 		wantMode := "MYSQL"
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			wantMode = "ORACLE"
 		}
 		if err = expect(strings.EqualFold(reportedMode.String, wantMode), "server info reported the wrong mode"); err != nil {

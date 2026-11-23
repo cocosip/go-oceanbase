@@ -11,47 +11,47 @@ import (
 type statementParameterFixtureCase struct {
 	name   string
 	failAt int
-	mutate func(body *[]fixtureStep, mode oceanbase.Mode)
+	mutate func(body *[]fixtureStep, mode oceanbase.CompatibilityMode)
 	wantOK bool
 }
 
 func statementParameterFixtureCases() []statementParameterFixtureCase {
 	return []statementParameterFixtureCase{
 		{name: caseRoundTrip, failAt: -1, wantOK: true},
-		{name: "bind-wrong", failAt: 0, mutate: func(body *[]fixtureStep, _ oceanbase.Mode) {
+		{name: "bind-wrong", failAt: 0, mutate: func(body *[]fixtureStep, _ oceanbase.CompatibilityMode) {
 			(*body)[0].values = [][]driver.Value{{int64(8)}}
 		}},
-		{name: "logical-ordinal", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "logical-ordinal", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values[1][1] = "3"
 			(*body)[1].rows = rows
 		}},
-		{name: "physical-order", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "physical-order", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values[0][0] = "2"
 			(*body)[1].rows = rows
 		}},
-		{name: "missing-parameter", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "missing-parameter", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values = rows.values[:1]
 			(*body)[1].rows = rows
 		}},
-		{name: "direction", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "direction", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values[0][10] = "1"
 			(*body)[1].rows = rows
 		}},
-		{name: "data-type", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "data-type", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values[0][4] = ""
 			(*body)[1].rows = rows
 		}},
-		{name: "column-count", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: "column-count", failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values[0][9] = nil
 			(*body)[1].rows = rows
 		}},
-		{name: caseExtraRow, failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.Mode) {
+		{name: caseExtraRow, failAt: 1, mutate: func(body *[]fixtureStep, mode oceanbase.CompatibilityMode) {
 			rows := newStatementParameterRows(mode)
 			rows.values = append(rows.values, rows.values[1])
 			(*body)[1].rows = rows
@@ -61,7 +61,7 @@ func statementParameterFixtureCases() []statementParameterFixtureCase {
 
 func TestStatementParameterWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, statementParameterCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range statementParameterFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				steps := statementParameterSteps(t, mode, tc)
@@ -80,10 +80,10 @@ func TestStatementParameterWorkflow(t *testing.T) {
 	}
 }
 
-func statementParameterSteps(t *testing.T, mode oceanbase.Mode, tc statementParameterFixtureCase) []fixtureStep {
+func statementParameterSteps(t *testing.T, mode oceanbase.CompatibilityMode, tc statementParameterFixtureCase) []fixtureStep {
 	t.Helper()
 	query := statementParameterMySQL
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		query = statementParameterOra
 	}
 	body := []fixtureStep{
@@ -112,9 +112,9 @@ type statementParameterRows struct {
 	fixtureRows
 }
 
-func newStatementParameterRows(mode oceanbase.Mode) *statementParameterRows {
+func newStatementParameterRows(mode oceanbase.CompatibilityMode) *statementParameterRows {
 	nullable := driver.Value(nil)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		nullable = "1"
 	}
 	return &statementParameterRows{fixtureRows: fixtureRows{width: 11, values: [][]driver.Value{

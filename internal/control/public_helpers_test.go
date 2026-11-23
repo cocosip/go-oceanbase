@@ -108,7 +108,7 @@ const serverErrorPath = "server-error"
 
 func batchExecutePacket(t *testing.T, value int64) []byte {
 	t.Helper()
-	p, err := valuecodec.EncodeParameter(value, config.ModeMySQL, config.SessionOptions{}, 64)
+	p, err := valuecodec.EncodeParameter(value, config.CompatibilityModeMySQL, config.SessionOptions{}, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,9 +119,9 @@ func batchExecutePacket(t *testing.T, value int64) []byte {
 	return b
 }
 
-func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
+func localInfileDB(t *testing.T, mode config.CompatibilityMode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
 	t.Helper()
-	cfg := config.Config{User: testUser, Mode: mode}
+	cfg := config.Config{User: testUser, CompatibilityMode: mode}
 	cfg.DialContext = testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		greeting := testpeer.AuthGreeting(authentication.Native, false)
 		compressed := cfg.Protocol.Compression == config.FeatureRequired
@@ -142,7 +142,7 @@ func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(cont
 			return
 		}
 		status := byte(2)
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			status = 6
 		}
 		var variables map[string]string
@@ -234,7 +234,7 @@ const warningByteLimitPath = "byte-limit"
 
 func testWarningDetailsResponse(t *testing.T, path string) {
 	t.Helper()
-	db := localInfileDB(t, config.ModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
+	db := localInfileDB(t, config.CompatibilityModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
 		serveWarningDetailsResponse(ctx, t, p, path)
 	}, func(cfg *config.Config) {
 		cfg.Limits.MaxMessageBytes = 128
@@ -380,13 +380,13 @@ func sessionScalarTyped(ctx context.Context, t *testing.T, p *wire.PacketIO, que
 	return testpeer.SendPackets(ctx, t, p, []byte{254, 0, 0, status, 0}, row, []byte{254, 0, 0, status, 0})
 }
 
-func txDB(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO)) *sql.DB {
+func txDB(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
-	connector, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 			return
 		}
@@ -411,8 +411,8 @@ const (
 
 func testCommitContextAfterWrite(t *testing.T, deadline bool) {
 	t.Helper()
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: transactionMySQLLabel, config.ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: transactionMySQLLabel, config.CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			if deadline {
 				cancel()
@@ -429,7 +429,7 @@ func testCommitContextAfterWrite(t *testing.T, deadline bool) {
 			closed := make(chan struct{})
 			status := byte(2)
 			start := []txStep{{testMySQLReadWrite, 3}}
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				status = 6
 				start = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}
 			}
@@ -448,7 +448,7 @@ func testCommitContextAfterWrite(t *testing.T, deadline bool) {
 					t.Error("unconfirmed commit retained its connection or sent another command")
 				}
 			})
-			connector, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: mode, DialContext: func(dialctx context.Context, network, addr string) (net.Conn, error) {
+			connector, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: mode, DialContext: func(dialctx context.Context, network, addr string) (net.Conn, error) {
 				dials.Add(1)
 				raw, err := dial(dialctx, network, addr)
 				if err != nil {
@@ -526,13 +526,13 @@ func optimizationExecute(id uint32, value int64, reuse bool) []byte { //nolint:u
 
 func executeHeader(id uint32) []byte { return append(stmtPacket(23, id), 0, 1, 0, 0, 0) }
 
-func optimizationDB(t *testing.T, mode config.Mode, options config.ExecutionOptions, serve func(context.Context, *wire.PacketIO)) *sql.DB {
+func optimizationDB(t *testing.T, mode config.CompatibilityMode, options config.ExecutionOptions, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
-	connector, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: mode, Execution: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: mode, Execution: options, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 			return
 		}
@@ -572,11 +572,11 @@ const (
 	sessionReadExtraRow    = "extra-row"
 )
 
-func testSessionReadResponse(t *testing.T, mode config.Mode, framing, path, helper string) {
+func testSessionReadResponse(t *testing.T, mode config.CompatibilityMode, framing, path, helper string) {
 	t.Helper()
 	query, columns := sessionReadFixture(mode, helper)
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	db := localInfileDB(t, mode, false, func(ctx context.Context, p *wire.PacketIO) {
@@ -618,11 +618,11 @@ func testSessionReadResponse(t *testing.T, mode config.Mode, framing, path, help
 	}
 }
 
-func sessionReadFixture(mode config.Mode, helper string) (string, int) {
+func sessionReadFixture(mode config.CompatibilityMode, helper string) (string, int) {
 	query, columns := sessionReadDatabaseSQL, 1
 	switch helper {
 	case sessionReadSchema:
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			query = "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')"
 		}
 	case sessionReadInfo:
@@ -630,7 +630,7 @@ func sessionReadFixture(mode config.Mode, helper string) (string, int) {
 	case sessionReadVariable:
 		query = testReadSessionVariable
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		query += testDualSuffix
 	}
 	return query, columns
@@ -694,7 +694,7 @@ func readSessionFixture(ctx context.Context, pinned *sql.Conn, helper string) (a
 	}
 }
 
-func testSavepointTxContext(t *testing.T, mode config.Mode, framing string, operation control.SavepointKind, deadline bool) {
+func testSavepointTxContext(t *testing.T, mode config.CompatibilityMode, framing string, operation control.SavepointKind, deadline bool) {
 	t.Helper()
 	txctx, cancelTx := context.WithCancel(t.Context())
 	if deadline {
@@ -705,7 +705,7 @@ func testSavepointTxContext(t *testing.T, mode config.Mode, framing string, oper
 	start := []txStep{{testMySQLReadWrite, 3}}
 	active := byte(3)
 	quoted := "`pending`"
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		start = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}
 		active, quoted = 5, "\"pending\""
 	}
@@ -718,7 +718,7 @@ func testSavepointTxContext(t *testing.T, mode config.Mode, framing string, oper
 	}
 	var sessions atomic.Int32
 	closed := make(chan struct{})
-	db := batchRewriteDB(t, config.Config{Mode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
+	db := batchRewriteDB(t, config.Config{CompatibilityMode: mode}, framing, func(ctx context.Context, p *wire.PacketIO) {
 		if sessions.Add(1) != 1 {
 			t.Error("canceled savepoint opened a second physical connection")
 			return
@@ -774,7 +774,7 @@ func testSavepointTxContext(t *testing.T, mode config.Mode, framing string, oper
 func batchRewriteDB(t *testing.T, cfg config.Config, variant string, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
 	status := byte(2)
-	if cfg.Mode == config.ModeOracle {
+	if cfg.CompatibilityMode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	cfg.User = testUser
@@ -844,7 +844,7 @@ func batchRewriteDB(t *testing.T, cfg config.Config, variant string, serve func(
 
 const localFilenameCharset = "gbk"
 
-func testSavepointCharset(t *testing.T, mode config.Mode, encoding, framing string) {
+func testSavepointCharset(t *testing.T, mode config.CompatibilityMode, encoding, framing string) {
 	t.Helper()
 	start := []txStep{{testMySQLReadWrite, 3}}
 	end := []txStep{{testRollbackSQL, 2}}
@@ -853,7 +853,7 @@ func testSavepointCharset(t *testing.T, mode config.Mode, encoding, framing stri
 	if encoding == localFilenameCharset {
 		quoted = "`\xd6\xd0\"``;x`"
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		start = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}
 		end = []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}
 		active, ready = 5, 6
@@ -864,7 +864,7 @@ func testSavepointCharset(t *testing.T, mode config.Mode, encoding, framing stri
 	}
 	var sessions atomic.Int32
 	done := make(chan struct{})
-	db := batchRewriteDB(t, config.Config{Mode: mode, Session: config.SessionOptions{Charset: encoding}}, framing, func(ctx context.Context, p *wire.PacketIO) {
+	db := batchRewriteDB(t, config.Config{CompatibilityMode: mode, Session: config.SessionOptions{Charset: encoding}}, framing, func(ctx context.Context, p *wire.PacketIO) {
 		if sessions.Add(1) != 1 {
 			t.Error("savepoint opened a second physical connection")
 			return
@@ -874,7 +874,7 @@ func testSavepointCharset(t *testing.T, mode config.Mode, encoding, framing stri
 			return
 		}
 		steps := []txStep{{"SAVEPOINT " + quoted, active}, {"ROLLBACK TO SAVEPOINT " + quoted, active}}
-		if mode == config.ModeMySQL {
+		if mode == config.CompatibilityModeMySQL {
 			steps = append(steps, txStep{"RELEASE SAVEPOINT " + quoted, active})
 		}
 		if !serveTxSteps(ctx, t, p, steps) || !serveTxSteps(ctx, t, p, end) || !testpeer.ServeOK(ctx, t, p, []byte{14}, ready) {
@@ -900,7 +900,7 @@ func testSavepointCharset(t *testing.T, mode config.Mode, encoding, framing stri
 		t.Fatal(err)
 	}
 	err = oceanbase.ReleaseSavepoint(ctx, tx, name)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		if !errors.Is(err, dberrors.ErrUnsupported) {
 			t.Fatal("Oracle RELEASE did not reject before sending", err)
 		}
@@ -957,13 +957,13 @@ const testProxyRequestCapability = "__proxy_capability_flag"
 
 const testCollationLatin1 = "latin1_bin"
 
-func changeUserPacket(t *testing.T, mode config.Mode, database string) []byte {
+func changeUserPacket(t *testing.T, mode config.CompatibilityMode, database string) []byte {
 	t.Helper()
 	response, err := auth.Native(changeUserPassword, []byte("12345678901234567890"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode == config.ModeOracle && database == "" {
+	if mode == config.CompatibilityModeOracle && database == "" {
 		database = "next"
 	}
 	b := append([]byte{17}, changeUserName...)

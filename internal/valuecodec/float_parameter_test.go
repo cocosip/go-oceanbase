@@ -13,7 +13,7 @@ import (
 )
 
 func TestFloat64ParameterEncoding(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeOracle, config.ModeMySQL} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeOracle, config.CompatibilityModeMySQL} {
 		for _, tc := range []struct {
 			name string
 			bits uint64
@@ -33,7 +33,7 @@ func TestFloat64ParameterEncoding(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/%s", mode, tc.name), func(t *testing.T) {
 				value := math.Float64frombits(tc.bits)
 				p, err := EncodeParameter(value, mode, config.SessionOptions{}, 1024)
-				if mode == config.ModeMySQL && (math.IsNaN(value) || math.IsInf(value, 0)) {
+				if mode == config.CompatibilityModeMySQL && (math.IsNaN(value) || math.IsInf(value, 0)) {
 					if !errors.Is(err, dberrors.ErrBind) {
 						t.Fatalf("nonfinite parameter: %v", err)
 					}

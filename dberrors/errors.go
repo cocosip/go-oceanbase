@@ -11,25 +11,25 @@ import (
 
 // Runtime error classifications retain their original identities through root aliases.
 var (
-	ErrTLSRequired      = errors.New("oceanbase: authentication requires verified TLS")
-	ErrModeMismatch     = errors.New("oceanbase: compatibility mode mismatch")
-	ErrIdentityMismatch = errors.New("oceanbase: authenticated identity mismatch")
-	ErrUnsupported      = errors.New("oceanbase: unsupported capability")
-	ErrBind             = errors.New("oceanbase: invalid SQL binding")
-	ErrOut              = errors.New("oceanbase: invalid output binding")
-	ErrComplex          = errors.New("oceanbase: invalid complex value or type description")
-	ErrCursor           = errors.New("oceanbase: invalid cursor operation")
-	ErrCursorBusy       = errors.New("oceanbase: cursor has an active operation or row batch")
-	ErrLOB              = errors.New("oceanbase: invalid LOB operation")
-	ErrLongData         = errors.New("oceanbase: invalid or failed long data")
-	ErrLocalInfile      = errors.New("oceanbase: refused or failed local infile")
-	ErrResource         = errors.New("oceanbase: resource is no longer valid")
-	ErrType             = errors.New("oceanbase: invalid scalar value")
-	ErrCommitUnknown    = errors.New("oceanbase: commit outcome unknown")
-	ErrTxCleanup        = errors.New("oceanbase: transaction completed but session restoration failed")
-	ErrXA               = errors.New("oceanbase: XA error")
-	ErrXAOutcomeUnknown = errors.New("oceanbase: XA outcome unknown; recover on a new connection")
-	ErrConnectorClosed  = routing.ErrClosed
+	ErrTLSRequired               = errors.New("oceanbase: authentication requires verified TLS")
+	ErrCompatibilityModeMismatch = errors.New("oceanbase: compatibility mode mismatch")
+	ErrIdentityMismatch          = errors.New("oceanbase: authenticated identity mismatch")
+	ErrUnsupported               = errors.New("oceanbase: unsupported capability")
+	ErrBind                      = errors.New("oceanbase: invalid SQL binding")
+	ErrOut                       = errors.New("oceanbase: invalid output binding")
+	ErrComplex                   = errors.New("oceanbase: invalid complex value or type description")
+	ErrCursor                    = errors.New("oceanbase: invalid cursor operation")
+	ErrCursorBusy                = errors.New("oceanbase: cursor has an active operation or row batch")
+	ErrLOB                       = errors.New("oceanbase: invalid LOB operation")
+	ErrLongData                  = errors.New("oceanbase: invalid or failed long data")
+	ErrLocalInfile               = errors.New("oceanbase: refused or failed local infile")
+	ErrResource                  = errors.New("oceanbase: resource is no longer valid")
+	ErrType                      = errors.New("oceanbase: invalid scalar value")
+	ErrCommitUnknown             = errors.New("oceanbase: commit outcome unknown")
+	ErrTxCleanup                 = errors.New("oceanbase: transaction completed but session restoration failed")
+	ErrXA                        = errors.New("oceanbase: XA error")
+	ErrXAOutcomeUnknown          = errors.New("oceanbase: XA outcome unknown; recover on a new connection")
+	ErrConnectorClosed           = routing.ErrClosed
 )
 
 // Error preserves the server's error code, SQLSTATE and message in either mode.
@@ -47,7 +47,7 @@ func (e *Error) Error() string {
 // UnsupportedTypeError identifies a type whose decoding is not implemented for this mode.
 type UnsupportedTypeError struct {
 	Type byte
-	Mode config.Mode
+	Mode config.CompatibilityMode
 }
 
 func (e *UnsupportedTypeError) Error() string {

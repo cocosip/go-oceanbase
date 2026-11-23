@@ -88,12 +88,12 @@ const testCursorPrepareEnded = "prepare-ended-transaction"
 
 const testCursorWarning = "warning"
 
-func serveUpdatableEpochCursor(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode, typ byte) bool {
+func serveUpdatableEpochCursor(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode, typ byte) bool {
 	t.Helper()
 	const columnsDictionary = "ALL_TAB_COLS"
 	status := byte(3)
 	steps := []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 5
 		steps = []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}
 	}
@@ -102,7 +102,7 @@ func serveUpdatableEpochCursor(ctx context.Context, t *testing.T, p *wire.Packet
 		!testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", typ), []byte{254, 0, 0, status | 64, 0}) {
 		return false
 	}
-	if mode == config.ModeMySQL {
+	if mode == config.CompatibilityModeMySQL {
 		return publictest.ServeTableDictionary(ctx, t, p, status, publictest.TableDictionary()...)
 	}
 	typeName := "VARCHAR2"

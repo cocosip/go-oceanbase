@@ -6,14 +6,15 @@ import (
 	http "net/http"
 )
 
-// Mode is an OceanBase compatibility mode. Auto is pinned after initialization.
-type Mode = config.Mode
+// CompatibilityMode identifies the tenant mode of a connection: MySQL or
+// Oracle. CompatibilityModeAuto means no constraint and is only valid in Config.
+type CompatibilityMode = config.CompatibilityMode
 
-// Compatibility modes. Auto requires detection from the authenticated session.
+// Compatibility modes. CompatibilityModeAuto means no constraint.
 const (
-	ModeAuto   = config.ModeAuto
-	ModeMySQL  = config.ModeMySQL
-	ModeOracle = config.ModeOracle
+	CompatibilityModeAuto   = config.CompatibilityModeAuto
+	CompatibilityModeMySQL  = config.CompatibilityModeMySQL
+	CompatibilityModeOracle = config.CompatibilityModeOracle
 )
 
 // RowsAffectedMode selects matched or changed UPDATE counts.
@@ -57,9 +58,9 @@ type ConfigError = config.ConfigError
 
 // Authentication and mode errors are safe to inspect with errors.Is.
 var (
-	ErrTLSRequired      = dberrors.ErrTLSRequired
-	ErrModeMismatch     = dberrors.ErrModeMismatch
-	ErrIdentityMismatch = dberrors.ErrIdentityMismatch
+	ErrTLSRequired               = dberrors.ErrTLSRequired
+	ErrCompatibilityModeMismatch = dberrors.ErrCompatibilityModeMismatch
+	ErrIdentityMismatch          = dberrors.ErrIdentityMismatch
 )
 
 // Credentials are obtained for each new authentication, never during a transaction.

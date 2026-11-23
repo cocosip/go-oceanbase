@@ -26,7 +26,7 @@ func TestResourceOutTransactionInvalidation(t *testing.T) {
 				for _, metadata := range []bool{false, true} {
 					name := variant + "/" + map[byte]string{163: "cursor", 210: valueformat.TypeNameBlob, 211: valueformat.TypeNameClob}[typ] + "/" + style + "/" + map[bool]string{false: publictest.LobOpenFinal, true: publictest.LobOpenMetadata}[metadata]
 					t.Run(name, func(t *testing.T) {
-						db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+						db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 							if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !serveEpochResourceOut(ctx, t, p, typ, map[bool]byte{false: 0, true: 8}[style != immediate], metadata, 4) {
 								return
 							}
@@ -99,7 +99,7 @@ func TestBufferedResourceOutTransactionEnd(t *testing.T) {
 					continue
 				}
 				t.Run(variant+"/"+map[byte]string{163: "cursor", 210: valueformat.TypeNameBlob, 211: valueformat.TypeNameClob, 160: valueformat.TypeNameObject}[typ]+"/"+stage, func(t *testing.T) {
-					db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						tail := byte(4)
 						if stage == nestedLOBStage {
 							tail = 5
@@ -143,7 +143,7 @@ func TestComplexResourceOutTransactionEnd(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		for _, stage := range []string{publictest.LobOpenFinal, descriptorStage} {
 			t.Run(variant+"/"+stage, func(t *testing.T) {
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					payload, err := wire.EncodePrepareExecute(0, []byte(resourceOutEpochQuery), []wire.Parameter{{Type: 6}, {Type: 6}}, 4096)
 					if err != nil {
 						t.Error(err)
@@ -187,7 +187,7 @@ func TestResourceOutEncodingInvalidation(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		for _, invalid := range []bool{false, true} {
 			t.Run(variant+"/"+map[bool]string{false: "valid", true: "invalid"}[invalid], func(t *testing.T) {
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !publictest.ServeComplexDictionary(ctx, t, p, []string{"N"}) || !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TableBlobEpochPingSQL, Status: 6}, {Query: publictest.TestRollbackSQL, Status: 6}}) {
 						return
 					}
@@ -225,7 +225,7 @@ func TestResourceOutEncodingInvalidation(t *testing.T) {
 func TestScalarOutTransactionEnd(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		t.Run(variant, func(t *testing.T) {
-			db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !serveEpochResourceOut(ctx, t, p, 8, 0, false, 4) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 96)) || !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TableBlobEpochPingSQL, Status: 4}, {Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}) {
 					return
 				}
@@ -259,7 +259,7 @@ func TestResourceOutBeforeExecutionInvalidation(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		for _, stage := range []string{publictest.LobOpenPrepare, "upload"} {
 			t.Run(variant+"/"+stage, func(t *testing.T) {
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					status := byte(5)
 					if stage == publictest.LobOpenPrepare {
 						status = 4
@@ -267,7 +267,7 @@ func TestResourceOutBeforeExecutionInvalidation(t *testing.T) {
 					if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !publictest.ServePrepareStatus(ctx, t, p, resourceOutEpochQuery, 96, 2, nil, status) {
 						return
 					}
-					if stage == "upload" && (!testpeer.ReadCommand(ctx, t, p, longDataPacket(config.ModeOracle, 96, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(0, 0, 4))) {
+					if stage == "upload" && (!testpeer.ReadCommand(ctx, t, p, longDataPacket(config.CompatibilityModeOracle, 96, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(0, 0, 4))) {
 						return
 					}
 					if !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 96)) || !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TableBlobEpochPingSQL, Status: 4}, {Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}) {

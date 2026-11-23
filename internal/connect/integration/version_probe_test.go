@@ -39,7 +39,7 @@ func TestVersionProbeSessions(t *testing.T) {
 			}
 			defer func() { _ = tx.Rollback() }()
 			query := integrationtest.SelectParameterSQL
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query += integrationtest.OracleDualSuffix
 			}
 			var value int
@@ -49,7 +49,7 @@ func TestVersionProbeSessions(t *testing.T) {
 			if err = tx.Rollback(); err != nil {
 				integrationtest.FailOperation(t, "rollback without version probe", err)
 			}
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				_, err = oceanbase.OpenCursor(ctx, pinned, query, oceanbase.CursorOptions{Mode: oceanbase.CursorSensitive}, 42)
 				if !errors.Is(err, oceanbase.ErrUnsupported) {
 					t.Fatal("unknown version enabled sensitive cursor")

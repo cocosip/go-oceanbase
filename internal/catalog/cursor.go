@@ -20,7 +20,7 @@ type CursorIdentity struct {
 }
 
 // ResolveCursorIdentity validates projected columns against the table primary-key dictionary.
-func ResolveCursorIdentity(mode config.Mode, cols []wire.Column, sets []Result) (*CursorIdentity, error) {
+func ResolveCursorIdentity(mode config.CompatibilityMode, cols []wire.Column, sets []Result) (*CursorIdentity, error) {
 	if len(cols) == 0 || len(sets) != 1 || len(sets[0].Columns) != 8 || len(sets[0].Rows) == 0 {
 		return nil, dberrors.ErrCursor
 	}
@@ -50,7 +50,7 @@ func ResolveCursorIdentity(mode config.Mode, cols []wire.Column, sets []Result) 
 			return nil, dberrors.ErrCursor
 		}
 		seen[name] = true
-		id.Locking = mode == config.ModeOracle || strings.EqualFold(Text(row[3]), blobLockingEngine)
+		id.Locking = mode == config.CompatibilityModeOracle || strings.EqualFold(Text(row[3]), blobLockingEngine)
 		if !id.Locking {
 			return nil, dberrors.ErrUnsupported
 		}
@@ -83,7 +83,7 @@ func ResolveCursorIdentity(mode config.Mode, cols []wire.Column, sets []Result) 
 }
 
 // ProjectedCursorIdentity extracts a single projected base-table identity.
-func ProjectedCursorIdentity(mode config.Mode, cols []wire.Column) (*CursorIdentity, error) {
+func ProjectedCursorIdentity(mode config.CompatibilityMode, cols []wire.Column) (*CursorIdentity, error) {
 	first := cols[0]
 	id := &CursorIdentity{Schema: first.Schema, Name: first.OriginalTable, Generated: make(map[string]bool)}
 	if !valueformat.Identifier(id.Schema) || !valueformat.Identifier(id.Name) {

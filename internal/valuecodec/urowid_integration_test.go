@@ -21,7 +21,7 @@ func TestOracleURowID(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, profile := range profiles {
-		if profile.Mode != oceanbase.ModeOracle {
+		if profile.Mode != oceanbase.CompatibilityModeOracle {
 			continue
 		}
 		for _, path := range []string{testServerStrategy, testClientStrategy, testURowIDCombined} {

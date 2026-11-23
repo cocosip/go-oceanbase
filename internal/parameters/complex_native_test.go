@@ -24,12 +24,12 @@ import (
 func parameterDictionaryOperation(t *testing.T, element string) (context.Context, *session.Operation) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-	cfg, err := config.Normalize(config.Config{User: testpeer.User, Mode: config.ModeOracle, Limits: config.Limits{MaxMessageBytes: 1 << 16}})
+	cfg, err := config.Normalize(config.Config{User: testpeer.User, CompatibilityMode: config.CompatibilityModeOracle, Limits: config.Limits{MaxMessageBytes: 1 << 16}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	client, peer := net.Pipe()
-	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, cfg.Limits.MaxMessageBytes), Mode: config.ModeOracle, OBVersion: "4.3.5.1", Capabilities: wire.ClientProtocol41, OK: wire.OK{Status: 6}})
+	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, cfg.Limits.MaxMessageBytes), Mode: config.CompatibilityModeOracle, OBVersion: "4.3.5.1", Capabilities: wire.ClientProtocol41, OK: wire.OK{Status: 6}})
 	op, err := s.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func parameterDictionaryOperation(t *testing.T, element string) (context.Context
 	}
 	queries := make([][]byte, len(entries))
 	for i, entry := range entries {
-		plan, err := catalog.Plan(config.ModeOracle, "4.3.5.1", metadata.MetadataFilter{Kind: entry.kind, SchemaPattern: "S", NamePattern: "TA"})
+		plan, err := catalog.Plan(config.CompatibilityModeOracle, "4.3.5.1", metadata.MetadataFilter{Kind: entry.kind, SchemaPattern: "S", NamePattern: "TA"})
 		if err != nil {
 			t.Fatal(err)
 		}

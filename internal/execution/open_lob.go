@@ -26,7 +26,7 @@ func (e *Engine) OpenLOB(ctx context.Context, query string, args []driver.NamedV
 		return ref, err
 	}
 	defer e.release(op)
-	if op.Protocol().Mode != config.ModeOracle {
+	if op.Protocol().Mode != config.CompatibilityModeOracle {
 		return ref, dberrors.ErrUnsupported
 	}
 	defer func() { ref, err = e.completeLOBOpen(ctx, op, ref, err) }()
@@ -128,7 +128,7 @@ func (e *Engine) OpenTableBlob(ctx context.Context, target catalog.Target, trans
 	if err != nil {
 		return ref, err
 	}
-	if op.Protocol().Mode == config.ModeOracle {
+	if op.Protocol().Mode == config.CompatibilityModeOracle {
 		query := "SELECT " + plan.Column + plan.From()
 		if e.writable(op, transactionSession) {
 			query += " FOR UPDATE"

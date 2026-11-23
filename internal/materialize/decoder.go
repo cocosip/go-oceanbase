@@ -54,7 +54,7 @@ func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [
 	for i, field := range fields {
 		switch columns[i].Type {
 		case wire.TypeRefCursor:
-			if op.Protocol().Mode != config.ModeOracle || !binaryRows {
+			if op.Protocol().Mode != config.CompatibilityModeOracle || !binaryRows {
 				return dberrors.ErrUnsupported
 			}
 			if field != nil {
@@ -72,7 +72,7 @@ func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [
 			if columns[i].IsXMLType() {
 				break
 			}
-			if op.Protocol().Mode != config.ModeOracle {
+			if op.Protocol().Mode != config.CompatibilityModeOracle {
 				return dberrors.ErrUnsupported
 			}
 			if field != nil {
@@ -80,7 +80,7 @@ func Row(op *session.Operation, columns []wire.Column, binaryRows bool, fields [
 			}
 			continue
 		case wire.TypeBlob, wire.TypeClob:
-			if captureLOB && op.Protocol().Mode == config.ModeOracle {
+			if captureLOB && op.Protocol().Mode == config.CompatibilityModeOracle {
 				if field != nil {
 					dest[i] = slices.Clone(field)
 				}

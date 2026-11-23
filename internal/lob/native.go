@@ -358,7 +358,7 @@ func (c *nativeOperation) lobTextParameter(name, text string) (wire.Parameter, e
 	if name == charsetUTF16 {
 		value = types.NString(text)
 	}
-	return valuecodec.EncodeParameter(value, config.ModeOracle, c.op.Config().Session, 32767)
+	return valuecodec.EncodeParameter(value, config.CompatibilityModeOracle, c.op.Config().Session, 32767)
 }
 
 func (c *nativeOperation) freeLOBLocked(ctx context.Context, lob *Native) error {

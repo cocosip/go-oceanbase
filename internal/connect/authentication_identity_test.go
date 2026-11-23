@@ -22,7 +22,7 @@ const (
 )
 
 func TestHandshakeIdentityEncoding(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, tc := range []struct {
 			charset, user, database, encodedUser, encodedDatabase string
 			collation                                             byte
@@ -37,7 +37,7 @@ func TestHandshakeIdentityEncoding(t *testing.T) {
 			for _, dynamic := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%d/%s/callback-%t", mode, tc.charset, dynamic), func(t *testing.T) {
 					calls := 0
-					cfg := config.Config{User: tc.user, Database: tc.database, Mode: mode, Session: config.SessionOptions{Charset: tc.charset}}
+					cfg := config.Config{User: tc.user, Database: tc.database, CompatibilityMode: mode, Session: config.SessionOptions{Charset: tc.charset}}
 					if dynamic {
 						cfg.User = testUser
 						cfg.Credentials = func(context.Context) (config.Credentials, error) {
@@ -55,7 +55,7 @@ func TestHandshakeIdentityEncoding(t *testing.T) {
 							t.Error("authentication identity does not match declared handshake charset", err)
 						}
 						status := byte(2)
-						if mode == config.ModeOracle {
+						if mode == config.CompatibilityModeOracle {
 							status = 6
 						}
 						sendPackets(ctx, t, p, commandPacket(0, 0, status))

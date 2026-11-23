@@ -20,7 +20,7 @@ func TestCursorFetchTransactionInvalidation(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		for _, mode := range []oceanbase.CursorMode{oceanbase.CursorForward, oceanbase.CursorStatic} {
 			t.Run(variant+"/"+map[oceanbase.CursorMode]string{oceanbase.CursorForward: "forward", oceanbase.CursorStatic: "static"}[mode], func(t *testing.T) {
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle, Limits: config.Limits{FetchSize: 1}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle, Limits: config.Limits{FetchSize: 1}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) ||
 						!publictest.ServePrepareStatus(ctx, t, p, query, 54, 0, nil, 5) ||
 						!testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(54)) ||

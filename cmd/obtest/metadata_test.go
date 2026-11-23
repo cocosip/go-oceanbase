@@ -16,14 +16,14 @@ const metadataFixtureFloat = "FLOAT"
 
 func TestMySQLIntegerDictionaryPrecision(t *testing.T) {
 	for _, precision := range []int64{10, 11, 12} {
-		r := metadataFixtureParts(oceanbase.ModeMySQL)[1]
+		r := metadataFixtureParts(oceanbase.CompatibilityModeMySQL)[1]
 		r.values[0][7] = precision
 		s := fixtureScenario(t, []fixtureStep{{rows: r}})
 		c, err := s.db.Conn(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = checkDictionaryMetadata(context.Background(), c, oceanbase.ModeMySQL, "", metadataFixtureTable, oceanbase.MetadataColumns)
+		err = checkDictionaryMetadata(context.Background(), c, oceanbase.CompatibilityModeMySQL, "", metadataFixtureTable, oceanbase.MetadataColumns)
 		if e := c.Close(); e != nil {
 			t.Fatal(e)
 		}
@@ -34,7 +34,7 @@ func TestMySQLIntegerDictionaryPrecision(t *testing.T) {
 }
 
 func TestMetadataContentWorkflow(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range []struct {
 			name   string
 			part   int
@@ -91,7 +91,7 @@ func TestMetadataContentWorkflow(t *testing.T) {
 }
 
 func TestMetadataSchemaFilters(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for i, kind := range []oceanbase.MetadataKind{oceanbase.MetadataTables, oceanbase.MetadataColumns, oceanbase.MetadataPrimaryKeys} {
 			for _, wrongSchema := range []bool{false, true} {
 				t.Run(modeName(mode)+"/"+string(rune('A'+i))+"/"+map[bool]string{false: "escaped-schema", true: "schema-case-changed"}[wrongSchema], func(t *testing.T) {
@@ -127,10 +127,10 @@ func TestMetadataSchemaFilters(t *testing.T) {
 	}
 }
 
-func metadataWorkflow(t *testing.T, mode oceanbase.Mode, failPart int, change func(*metadataFixtureRows)) {
+func metadataWorkflow(t *testing.T, mode oceanbase.CompatibilityMode, failPart int, change func(*metadataFixtureRows)) {
 	t.Helper()
 	ddl := "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V VARCHAR(100))"
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		ddl += " ENGINE=InnoDB"
 	} else {
 		ddl = "CREATE TABLE OBT_OFFLINE_T (ID NUMBER(38,0) PRIMARY KEY,V VARCHAR(100))"
@@ -186,11 +186,11 @@ type metadataFixtureRows struct {
 	readErr, closeErr error
 }
 
-func metadataFixtureParts(mode oceanbase.Mode) []*metadataFixtureRows {
+func metadataFixtureParts(mode oceanbase.CompatibilityMode) []*metadataFixtureRows {
 	var catalog, autoIncrement driver.Value
 	idType, textType, precision := metadataFixtureNumber, caseVarchar2, int64(38)
 	resultTypes := []string{metadataFixtureNumber, caseVarchar2}
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		catalog, idType, textType, precision = "def", "int", "varchar", 10
 		autoIncrement = int64(0)
 		resultTypes = []string{generatedTypeName, typeNameVarchar}

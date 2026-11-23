@@ -58,12 +58,12 @@ func generatedFixtureCases() []generatedFixtureCase {
 }
 
 func TestMySQLGeneratedColumnsWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, generatedCase, oceanbase.ModeMySQL)
+	definition := scenarioDefinition(t, generatedCase, oceanbase.CompatibilityModeMySQL)
 	for _, tc := range generatedFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := generatedSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeMySQL
+			s.mode = oceanbase.CompatibilityModeMySQL
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

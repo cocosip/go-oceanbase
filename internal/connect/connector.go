@@ -18,7 +18,7 @@ import (
 type Connector struct {
 	cfg         config.Config
 	modeMu      sync.Mutex
-	mode        config.Mode
+	mode        config.CompatibilityMode
 	identityMu  sync.Mutex
 	identitySet bool
 	user        string
@@ -49,7 +49,7 @@ func New(cfg config.Config) (*Connector, error) {
 
 type established struct {
 	session *session.Session
-	mode    config.Mode
+	mode    config.CompatibilityMode
 	id      uint32
 }
 
@@ -57,7 +57,7 @@ type established struct {
 func (c *Connector) Connect(ctx context.Context) (result *session.Session, err error) {
 	started := time.Now()
 	requestCtx := ctx
-	mode, id := c.cfg.Mode, uint32(0)
+	mode, id := c.cfg.CompatibilityMode, uint32(0)
 	defer func() {
 		diagnostic.Emit(requestCtx, c.cfg, config.RequestDiagnostic{Operation: "connect", Mode: mode, ConnectionID: id, Duration: time.Since(started), Failed: err != nil})
 	}()
@@ -124,11 +124,11 @@ func DialCandidate(ctx context.Context, cfg config.Config, addr string) (*sessio
 	return connected.session, err
 }
 
-func (c *Connector) checkMode(actual config.Mode, pin bool) error {
+func (c *Connector) checkMode(actual config.CompatibilityMode, pin bool) error {
 	c.modeMu.Lock()
 	defer c.modeMu.Unlock()
-	if c.mode != config.ModeAuto && c.mode != actual {
-		return dberrors.ErrModeMismatch
+	if c.mode != config.CompatibilityModeAuto && c.mode != actual {
+		return dberrors.ErrCompatibilityModeMismatch
 	}
 	if pin {
 		c.mode = actual

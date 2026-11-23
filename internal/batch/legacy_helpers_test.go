@@ -38,9 +38,9 @@ func batchSucceeded(result *oceanbase.BatchResult) int {
 	return n
 }
 
-func longDataPacket(mode oceanbase.Mode, id uint32, index uint16, piece byte, data []byte) []byte {
+func longDataPacket(mode oceanbase.CompatibilityMode, id uint32, index uint16, piece byte, data []byte) []byte {
 	b := binary.LittleEndian.AppendUint16(publictest.StmtPacket(24, id), index)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		b[0] = 162
 		b = append(b, piece, 0)
 		b = binary.LittleEndian.AppendUint64(b, uint64(len(data)))

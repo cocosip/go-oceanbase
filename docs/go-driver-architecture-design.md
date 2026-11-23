@@ -67,7 +67,7 @@ The extension layer reuses the same core, connections, and error rules; it does 
 
 | Source fact | Required Go architecture response |
 | --- | --- |
-| Authentication OK status bits identify Oracle compatibility mode | `Config.Mode` does not force another interpreter; validate the actual mode after connecting.[J01] |
+| Authentication OK status bits identify Oracle compatibility mode | `Config.CompatibilityMode` does not force another interpreter; validate the actual mode after connecting.[J01] |
 | The same type codes have two interpretations | Decoding context must include the actual mode; type code alone is insufficient.[J03] |
 | Java receives ordinary, callable OUT, cursor, and multiple-result responses | Response parsing is a complete state machine; do not return the connection after reading only the first result.[J04] |
 | Java COM_RESET_CONNECTION clears the prepare cache | Go session reset must also invalidate statement IDs and prepare statements again.[J05] |
@@ -117,7 +117,7 @@ Use concrete functions and small mode switches where behavior differs between My
 Retain the connection string entry point:
 
 ```go
-db, err := sql.Open("oceanbase", "oceanbase://app:secret@127.0.0.1:2881/demo?mode=auto")
+db, err := sql.Open("oceanbase", "oceanbase://app:secret@127.0.0.1:2881/demo?compatibilityMode=auto")
 ```
 
 For logging, TLS, or external credentials, prefer programmatic configuration:
@@ -127,12 +127,12 @@ For logging, TLS, or external credentials, prefer programmatic configuration:
 logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 connector, err := oceanbase.NewConnector(oceanbase.Config{
-    Addr:     "127.0.0.1:2881",
-    User:     "app@tenant#cluster",
-    Password: password,
-    Database: "demo",
-    Mode:     oceanbase.ModeAuto,
-    Logger:   logger,
+    Addr:              "127.0.0.1:2881",
+    User:              "app@tenant#cluster",
+    Password:          password,
+    Database:          "demo",
+    CompatibilityMode: oceanbase.CompatibilityModeMySQL,
+    Logger:            logger,
 })
 if err != nil {
     return err
@@ -177,7 +177,7 @@ Local TestPool* tests use the actual driver and database/sql. Protocol peers che
 
 ## 6. Configuration Model and Defaults
 
-Keep common `Config` fields at the top level: `Addr`, `User`, `Password`, `Database`, `Mode`, `Logger`, `TLSConfig`, and `ConnectTimeout`. Group advanced options by actual responsibility rather than copying every Java boolean switch.
+Keep common `Config` fields at the top level: `Addr`, `User`, `Password`, `Database`, `CompatibilityMode`, `Logger`, `TLSConfig`, and `ConnectTimeout`. Group advanced options by actual responsibility rather than copying every Java boolean switch.
 
 | Group | Capabilities and proposed defaults |
 | --- | --- |
@@ -185,7 +185,7 @@ Keep common `Config` fields at the top level: `Addr`, `User`, `Password`, `Datab
 | Connection declarations | `Interactive` defaults to false; `ConnectionAttributes` defaults to nil and sends application metadata only when explicitly supplied; see §6.1 |
 | Initial database | `CreateDatabaseIfMissing` defaults to false; only new MySQL-mode physical connections may explicitly create and select a nonempty Database; see §6.4 |
 | Read budget | `ReadTimeout` defaults to 0, disabling the separate read timeout; a positive value limits each underlying network Read, while any earlier context deadline still applies; see §12.5.1 |
-| Mode | `ModeAuto` is the zero value; `ModeMySQL` / `ModeOracle` constrain actual mode validation |
+| CompatibilityMode | `CompatibilityModeAuto` is the zero value (no constraint); `CompatibilityModeMySQL` / `CompatibilityModeOracle` constrain actual mode validation |
 | Transport | `TLSConfig *tls.Config`, `DialContext`; TCP is the default. nil does not proactively enable TLS; non-nil requires successfully verified TLS and forbids downgrade. See §17.2 for plaintext credential restrictions |
 | Credentials/authentication | External Credentials callback and per-Connector authentication plugin factories; use static User/Password/ProxyUser without a callback. See §6.3 for proxy login |
 | Protocol | `Config.Protocol`: Compression, OB20, Checksum, ProxyChecksum, NewMetadata, FullLinkTrace; zero `FeatureDefault` resolves to compression off and all other policies auto; explicit FeatureAuto/FeatureOff/FeatureRequired select negotiation behavior |
@@ -204,7 +204,7 @@ The initial handshake username and database name selected by CLIENT_CONNECT_WITH
 Configuration rules:
 
 - DSNs use `net/url` escaping rules. Validate parameter names strictly; reject unknown options and duplicated sensitive options.
-- Never silently ignore behavioral parameters such as `mode`; error messages must not contain the complete DSN or password.
+- Never silently ignore behavioral parameters such as `compatibilityMode`; error messages must not contain the complete DSN or password.
 - Pass loggers, function callbacks, and TLS objects through Go configuration, without global registries or instance lookup by string name.
 - The Connector copies slices/maps and clones TLS configuration; subsequent changes to public cfg do not change an existing Connector. External callbacks and loggers must meet their own concurrency contracts.
 - Do not provide a `map[string]any` that forwards arbitrary Java options. Every public option must correspond to an existing feature and explicit semantics.
@@ -229,7 +229,7 @@ MySQL compatibility mode initializes with `SET NAMES <Charset> COLLATE <Collatio
 
 After Session.Variables/InitSQL, the same setting restores the baseline. ChangeUser initialization and new Full reset replacement connections continue applying it; the Managed reset boundary is unchanged. Driver encoding always follows Charset; result decoding follows each column's actual collation ID without guessing encoding from its name.
 
-Java ignores this option in Oracle compatibility mode; Go rejects explicit configuration. With ModeOracle set, NewConnector returns `ConfigError{Field:"Session.Collation"}`; with ModeAuto identified as Oracle after authentication, it returns ErrUnsupported before initialization SQL. This field does not replace Oracle NLS settings.
+Java ignores this option in Oracle compatibility mode; Go rejects explicit configuration. With CompatibilityModeOracle set, NewConnector returns `ConfigError{Field:"Session.Collation"}`; with CompatibilityModeAuto identified as Oracle after authentication, it returns ErrUnsupported before initialization SQL. This field does not replace Oracle NLS settings.
 
 Local coverage includes configuration/DSN, UTF-8/GBK/utf8mb3 aliases, initialization restoration, ChangeUser, Full reset replacement, ordinary/compressed/OB20 streams, server errors, and Oracle rejection. `ExampleSessionOptions_collation` runs offline. Four-target TestSessionCollation integration source is wired into manual CI: MySQL checks session state, comparisons, prepared Unicode, and baseline reconstruction; Oracle checks configuration rejection. This phase compiles it only and makes no real-effect or version-compatibility commitment.
 
@@ -237,11 +237,11 @@ Local coverage includes configuration/DSN, UTF-8/GBK/utf8mb3 aliases, initializa
 
 `Config.ProxyUser string` / DSN `proxyUser` specifies an Oracle-mode proxy target; `User`/`Password` always identify the authenticating account and its password. The empty zero value disables proxy login, corresponding to Java `useProxyUser=false`. A nonempty value directly names the target; the driver does not parse Java's `padmin[admin]@tenant` syntax, fold case, or strip quotes. It generates no proxy authorization SQL; the server confirms target identity and authorization.
 
-`Credentials` adds a `ProxyUser` field. Each credential callback completely replaces User/Password/`ProxyUser`, including clearing a static target with empty `ProxyUser`. Static fields must still pass NewConnector validation; callbacks cannot bypass invalid configuration such as a nonempty static target in ModeMySQL. Construct this public struct with named fields. Existing unkeyed two-field literals must become `Credentials{User: user, Password: password}`; adding the field is not source-compatible with that usage. String snapshots, callback concurrency/context contracts, password rules, and TLS gates remain unchanged.
+`Credentials` adds a `ProxyUser` field. Each credential callback completely replaces User/Password/`ProxyUser`, including clearing a static target with empty `ProxyUser`. Static fields must still pass NewConnector validation; callbacks cannot bypass invalid configuration such as a nonempty static target in CompatibilityModeMySQL. Construct this public struct with named fields. Existing unkeyed two-field literals must become `Credentials{User: user, Password: password}`; adding the field is not source-compatible with that usage. String snapshots, callback concurrency/context contracts, password rules, and TLS gates remain unchanged.
 
 The target is strictly encoded using Session.Charset into dedicated `__ob_client_proxy_user_name`. NUL, invalid UTF-8, and unrepresentable characters are rejected. It shares the attribute-area budget with application attributes, protocol declarations, and all length prefixes and remains subject to the complete authentication-message limit. Application maps cannot override this key. NewConnector validates static configuration; dynamic credentials are validated before authentication plugin creation/response transmission. With TLS enabled, the target is sent only after successful verification.
 
-A nonempty target without CLIENT_CONNECT_ATTRS returns ErrUnsupported. A static target without a callback is rejected before requesting credentials. With a callback, obtain full credentials first, allowing it to clear the target; reject only if it remains nonempty. Explicit ModeMySQL is rejected during configuration/ChangeUser preflight. If ModeAuto identifies MySQL, return ErrUnsupported and close before initialization SQL. Preserve server rejection errors (including 1235) without retrying ordinary login. Attribute support and authentication OK do not independently prove the proxy target; actual identity still requires target integration validation.
+A nonempty target without CLIENT_CONNECT_ATTRS returns ErrUnsupported. A static target without a callback is rejected before requesting credentials. With a callback, obtain full credentials first, allowing it to clear the target; reject only if it remains nonempty. Explicit CompatibilityModeMySQL is rejected during configuration/ChangeUser preflight. If CompatibilityModeAuto identifies MySQL, return ErrUnsupported and close before initialization SQL. Preserve server rejection errors (including 1235) without retrying ordinary login. Attribute support and authentication OK do not independently prove the proxy target; actual identity still requires target integration validation.
 
 Every ChangeUser call explicitly supplies its proxy target; empty clears it without inheriting the previous target or calling the original credential callback. Success records the authenticating user and target and reinitializes the session. Default Oracle schema still derives from the authenticating username before @, matching pinned Java sendChangeUser; the target does not implicitly replace explicit Database. Existing rules invalidating old handles/CancelTarget, discarding failures, and preventing return to the original pool after switching remain. New pool connections still use the original Connector target. On exactly OceanBase 4.4.2.2, ChangeUser with a nonempty proxy target returns ErrUnsupported before sending: that target accepts the command but leaves the authenticating account effective (B21), so recording the requested target would be false. Initial proxy login and clearing remain available; other versions stay unverified rather than assumed.
 
@@ -251,7 +251,7 @@ Pinned evidence: target separation in `Credential.java`, dedicated attributes in
 
 ### 6.4 D32 Implemented Initial Database Creation
 
-`Config.CreateDatabaseIfMissing` / DSN `createDatabaseIfMissing=true/false` corresponds to Java `createDatabaseIfNotExist`; both default to false. Explicit enabling and nonempty Database are required. Strict Session.Charset encoding rejects NUL, invalid UTF-8, and unrepresentable characters without echoing names in configuration errors. NewConnector rejects explicit ModeOracle. If ModeAuto authenticates as Oracle, return ErrUnsupported and close before initialization SQL, rather than silently ignoring creation as Java does.
+`Config.CreateDatabaseIfMissing` / DSN `createDatabaseIfMissing=true/false` corresponds to Java `createDatabaseIfNotExist`; both default to false. Explicit enabling and nonempty Database are required. Strict Session.Charset encoding rejects NUL, invalid UTF-8, and unrepresentable characters without echoing names in configuration errors. NewConnector rejects explicit CompatibilityModeOracle. If CompatibilityModeAuto authenticates as Oracle, return ErrUnsupported and close before initialization SQL, rather than silently ignoring creation as Java does.
 
 When enabled, the initial handshake neither declares CLIENT_CONNECT_WITH_DB nor sends a database name and does not require server support for that bit. After authentication, mode checks, and protocol negotiation, establish charset/autocommit/version/timezone baseline on the same physical connection, send `CREATE DATABASE IF NOT EXISTS` and COM_INIT_DB, then run Session.Variables/InitSQL. Quote identifiers with backticks and double embedded backticks; do not concatenate names as SQL values or unescaped fragments. COM_INIT_DB encodes the original name using connection charset. When disabled, ordinary handshake database selection applies.
 
@@ -292,12 +292,12 @@ Go 1.26 provides neither `RowsColumnScanner` nor `sql.ConvertAssign`; ordinary `
 ## 8. Mode, Version, Capabilities, and Session State
 
 ```go
-type Mode uint8
+type CompatibilityMode uint8
 
 const (
-    ModeAuto Mode = iota
-    ModeMySQL
-    ModeOracle
+    CompatibilityModeAuto CompatibilityMode = iota
+    CompatibilityModeMySQL
+    CompatibilityModeOracle
 )
 ```
 
@@ -329,7 +329,7 @@ value could enable a feature that the selected endpoint does not support. Java's
 not the OceanBase server version. If `ob_version()` is unavailable, use
 `SkipVersionProbe` and keep version-gated features on conservative paths.
 
-A pool keeps one compatibility mode and one logical login identity. ModeAuto atomically locks the Connector to its first successfully initialized connection's mode; reject later candidates returning another mode. After authentication, the Connector pins `User` and `ProxyUser` for subsequent physical sessions and returns `ErrIdentityMismatch` if a credentials callback changes either field. Password changes remain allowed for rotation. Address sources must represent the same logical OceanBase service, never mixing tenants/database services. This identity lock prevents one pool from silently mixing configured logins; it does not prove that different endpoints resolve to the same server-side tenant. Deployment acceptance must verify tenant identity on every candidate with a service-specific SQL check. Checks do not log passwords.
+A pool keeps one compatibility mode and one logical login identity. CompatibilityModeAuto atomically locks the Connector to its first successfully initialized connection's mode; reject later candidates returning another mode. After authentication, the Connector pins `User` and `ProxyUser` for subsequent physical sessions and returns `ErrIdentityMismatch` if a credentials callback changes either field. Password changes remain allowed for rotation. Address sources must represent the same logical OceanBase service, never mixing tenants/database services. This identity lock prevents one pool from silently mixing configured logins; it does not prove that different endpoints resolve to the same server-side tenant. Deployment acceptance must verify tenant identity on every candidate with a service-specific SQL check. Checks do not log passwords.
 
 ## 9. Connection Establishment, Transport, and Protocol Layer
 
@@ -522,7 +522,7 @@ No Java-style callable facade, global SQL cache, or shared server IDs. Failures 
 
 ### 10.2 Placeholders and Named Binding
 
-| Mode | Supported rules |
+| CompatibilityMode | Supported rules |
 | --- | --- |
 | MySQL compatibility | Positional `?`; explicitly reject named parameters rather than silently treating them positionally |
 | Oracle compatibility | Positional `?`; `:name` with `sql.Named("name", value)`; numeric names such as `:1` follow positional plans |
@@ -1490,7 +1490,7 @@ Usage:
 source, err := oceanbase.NewTNSFileSource("tnsnames.ob", "orders")
 if err != nil { return err }
 connector, err := oceanbase.NewConnector(oceanbase.Config{
-    User: "app", Mode: oceanbase.ModeOracle,
+    User: "app", CompatibilityMode: oceanbase.CompatibilityModeOracle,
     Discovery: oceanbase.DiscoveryOptions{Service: "orders", Source: source},
 })
 if err != nil { return err }

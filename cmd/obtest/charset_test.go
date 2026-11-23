@@ -29,12 +29,12 @@ func charsetFixtureCases() []charsetFixtureCase {
 }
 
 func TestMySQLCharsetWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, charsetCase, oceanbase.ModeMySQL)
+	definition := scenarioDefinition(t, charsetCase, oceanbase.CompatibilityModeMySQL)
 	for _, tc := range charsetFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := charsetSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeMySQL
+			s.mode = oceanbase.CompatibilityModeMySQL
 			result := runScenario(context.Background(), s, definition.run)
 			want, wantObjects := statusFail, 1
 			if tc.mutate == nil {

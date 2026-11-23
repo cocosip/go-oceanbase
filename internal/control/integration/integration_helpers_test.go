@@ -50,7 +50,7 @@ func integrationTestWarningDetails(t *testing.T, p integrationtest.Profile) {
 		t.Fatal("fixture did not produce a protocol warning count")
 	}
 	details, err := oceanbase.ReadWarnings(ctx, pinned)
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		if !errors.Is(err, oceanbase.ErrUnsupported) {
 			t.Fatal("Oracle warning detail boundary was not explicit")
 		}
@@ -78,7 +78,7 @@ func integrationTestWarningDetails(t *testing.T, p integrationtest.Profile) {
 	if err != nil || after != (oceanbase.WarningSummary{Known: true}) {
 		t.Fatal("local warning clear failed")
 	}
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		if details, err = oceanbase.ReadWarnings(ctx, pinned); err != nil || len(details) != 0 {
 			t.Fatal("cleared warning details reappeared")
 		}
@@ -107,7 +107,7 @@ func integrationTestChangeUserSession(t *testing.T, p integrationtest.Profile) {
 	}
 	defer func() { _ = pinned.Close() }()
 	identitySQL, probe := identityMySQLSQL, sessionProbeSQL
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		identitySQL, probe = identityOracleSQL, sessionProbeSQL+integrationtest.OracleDualSuffix
 	}
 	var original string
@@ -131,7 +131,7 @@ func integrationTestChangeUserSession(t *testing.T, p integrationtest.Profile) {
 		want = next.ProxyUser
 	}
 	actual := changed
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		actual, _, _ = strings.Cut(changed, "@")
 	}
 	if changed == original || actual != want {
@@ -175,7 +175,7 @@ func integrationTestSessionOperations(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "read schema", err)
 	}
 	catalog, err := oceanbase.CurrentCatalog(ctx, pinned)
-	if p.Mode == oceanbase.ModeMySQL && (err != nil || catalog != schema) || p.Mode == oceanbase.ModeOracle && !errors.Is(err, oceanbase.ErrUnsupported) {
+	if p.Mode == oceanbase.CompatibilityModeMySQL && (err != nil || catalog != schema) || p.Mode == oceanbase.CompatibilityModeOracle && !errors.Is(err, oceanbase.ErrUnsupported) {
 		t.Fatal("catalog does not match the compatibility mode")
 	}
 	variable, err := oceanbase.SessionVariable(ctx, pinned, "wait_timeout")
@@ -197,7 +197,7 @@ func integrationTestSessionOperations(t *testing.T, p integrationtest.Profile) {
 		integrationtest.FailOperation(t, "read client info", err)
 	}
 	query := sessionProbeSQL
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		query += integrationtest.OracleDualSuffix
 	}
 	e, err := oceanbase.Execute(ctx, pinned, query)

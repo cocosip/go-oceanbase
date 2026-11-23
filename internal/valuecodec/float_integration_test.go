@@ -52,7 +52,7 @@ func testBinaryDoubleRange(t *testing.T, profile integrationtest.Profile, path s
 	ctx := integrationtest.TestContext(t)
 	table := fmt.Sprintf("OBGD_%d", time.Now().UnixNano())
 	column := "DOUBLE"
-	if profile.Mode == oceanbase.ModeOracle {
+	if profile.Mode == oceanbase.CompatibilityModeOracle {
 		column = "BINARY_DOUBLE"
 	}
 	if _, err := db.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V "+column+",LABEL VARCHAR(80))"); err != nil {
@@ -91,7 +91,7 @@ func testBinaryDoubleRange(t *testing.T, profile integrationtest.Profile, path s
 			integrationtest.FailOperation(t, "batch double insert", err)
 		}
 		want := oceanbase.BatchSequential
-		if profile.Mode == oceanbase.ModeOracle {
+		if profile.Mode == oceanbase.CompatibilityModeOracle {
 			want = oceanbase.BatchArrayBinding
 		}
 		if result.Strategy != want {
@@ -119,10 +119,10 @@ func testBinaryDoubleRange(t *testing.T, profile integrationtest.Profile, path s
 	testBinaryDoubleReadback(ctx, t, db, profile.Mode, table, inputs)
 }
 
-func testBinaryDoubleReadback(ctx context.Context, t *testing.T, db *sql.DB, mode oceanbase.Mode, table string, inputs []any) {
+func testBinaryDoubleReadback(ctx context.Context, t *testing.T, db *sql.DB, mode oceanbase.CompatibilityMode, table string, inputs []any) {
 	t.Helper()
 	var zeroControl string
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		var boundZero string
 		if err := db.QueryRowContext(ctx, "SELECT DUMP(?) FROM dual", math.Copysign(0, -1)).Scan(&boundZero); err != nil {
 			integrationtest.FailOperation(t, "inspect bound negative zero", err)
@@ -157,7 +157,7 @@ func testBinaryDoubleReadback(ctx context.Context, t *testing.T, db *sql.DB, mod
 		if err := db.QueryRowContext(ctx, "SELECT V,LABEL FROM "+table+" WHERE ID=?", i).Scan(&got, &label); err != nil {
 			integrationtest.FailOperation(t, "read double", err)
 		}
-		oracleNegativeZero := mode == oceanbase.ModeOracle && want.Valid && want.Float64 == 0 && math.Signbit(want.Float64)
+		oracleNegativeZero := mode == oceanbase.CompatibilityModeOracle && want.Valid && want.Float64 == 0 && math.Signbit(want.Float64)
 		if oracleNegativeZero {
 			// Compare storage with a literal control: Oracle may normalize negative zero.
 			var dump string
@@ -174,7 +174,7 @@ func testBinaryDoubleReadback(ctx context.Context, t *testing.T, db *sql.DB, mod
 		if label != fmt.Sprintf("after-float-%d", i) {
 			t.Errorf("row=%d following parameter=%q", i, label)
 		}
-		if mode == oceanbase.ModeOracle && i < 4 {
+		if mode == oceanbase.CompatibilityModeOracle && i < 4 {
 			var text string
 			if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT TO_CHAR(V) FROM %s WHERE ID=%d", table, i)).Scan(&text); err != nil {
 				integrationtest.FailOperation(t, "independent stored text", err)

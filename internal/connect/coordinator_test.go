@@ -230,7 +230,7 @@ func TestConnectorConcurrentModes(t *testing.T) {
 		err := <-results
 		if err == nil {
 			passed++
-		} else if errors.Is(err, dberrors.ErrModeMismatch) {
+		} else if errors.Is(err, dberrors.ErrCompatibilityModeMismatch) {
 			failed++
 		} else {
 			t.Fatal(err)
@@ -263,7 +263,7 @@ func TestConnectorRejectsIdentityChangeOnNewSession(t *testing.T) {
 	var dials atomic.Int32
 	var credentials atomic.Int32
 	c, err := newConnector(config.Config{
-		Mode: config.ModeMySQL,
+		CompatibilityMode: config.CompatibilityModeMySQL,
 		Credentials: func(context.Context) (config.Credentials, error) {
 			if credentials.Add(1) == 1 {
 				return config.Credentials{User: testUser, Password: "first"}, nil
@@ -428,7 +428,7 @@ func TestFailoverTerminalErrors(t *testing.T) {
 			var calls atomic.Int32
 			cfg := config.Config{User: testUser, Routing: config.RoutingOptions{Endpoints: []config.Endpoint{{Addr: routeFirst}, {Addr: routeSecond}}, MaxAttempts: 4, RetryDelay: time.Millisecond}}
 			if stage == failoverModeStage {
-				cfg.Mode = config.ModeOracle
+				cfg.CompatibilityMode = config.CompatibilityModeOracle
 			}
 			if stage == credentialsStage {
 				cfg.Credentials = func(context.Context) (config.Credentials, error) {

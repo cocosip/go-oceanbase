@@ -44,7 +44,7 @@ func TestFullLinkTrace(t *testing.T) {
 			defer func() { _ = db.Close() }()
 			ctx := integrationtest.TestContext(t)
 			query := "SELECT 1"
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query += integrationtest.OracleDualSuffix
 			}
 			for _, app := range []oceanbase.TraceInfo{{Module: "go-driver-flt", Action: traceFirst}, {}} {

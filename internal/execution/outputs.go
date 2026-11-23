@@ -58,7 +58,7 @@ func (e *Engine) queryOutputs(ctx context.Context, op *session.Operation, query 
 	if outputs.HasResources() && !options.AllowResources {
 		return nil, dberrors.ErrOut
 	}
-	if op.Protocol().Mode == config.ModeOracle {
+	if op.Protocol().Mode == config.CompatibilityModeOracle {
 		for _, value := range values {
 			if source, ok := value.(*streaminput.Source); ok {
 				if _, err = statement.LongDataParameter(op, source); err != nil {

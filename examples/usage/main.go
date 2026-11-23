@@ -29,12 +29,12 @@ func run() (err error) {
 	if err != nil {
 		return err
 	}
-	if cfg.Mode == oceanbase.ModeAuto {
-		return errors.New("set mode=mysql or mode=oracle in OB_DSN; this example uses mode-specific SQL")
+	if cfg.CompatibilityMode == oceanbase.CompatibilityModeAuto {
+		return errors.New("set compatibilityMode=mysql or compatibilityMode=oracle in OB_DSN; this example uses mode-specific SQL")
 	}
 	// These demonstrations need server cursors and trusted, parameter-free multi-SQL.
 	cfg.PrepareMode = oceanbase.PrepareServer
-	cfg.AllowMultiStatements = cfg.Mode == oceanbase.ModeMySQL
+	cfg.AllowMultiStatements = cfg.CompatibilityMode == oceanbase.CompatibilityModeMySQL
 	connector, err := oceanbase.NewConnector(cfg)
 	if err != nil {
 		return err
@@ -56,20 +56,20 @@ func run() (err error) {
 	// Only generated identifiers are concatenated; business values are bound below.
 	table := fmt.Sprintf("OBGE%X", id)
 	blobType, suffix := "LONGBLOB", " ENGINE=InnoDB"
-	if cfg.Mode == oceanbase.ModeOracle {
+	if cfg.CompatibilityMode == oceanbase.CompatibilityModeOracle {
 		blobType, suffix = "BLOB", ""
 	}
 	if _, err = c.ExecContext(ctx, "CREATE TABLE "+table+" (ID INTEGER PRIMARY KEY,V VARCHAR(40),B "+blobType+")"+suffix); err != nil {
 		return err
 	}
 	defer cleanup(c, "DROP TABLE "+table, &err)
-	if err = basic(ctx, c, table, cfg.Mode); err != nil {
+	if err = basic(ctx, c, table, cfg.CompatibilityMode); err != nil {
 		return err
 	}
-	if err = call(ctx, c, table+"P", cfg.Mode); err != nil {
+	if err = call(ctx, c, table+"P", cfg.CompatibilityMode); err != nil {
 		return err
 	}
-	if err = results(ctx, c, table, cfg.Mode); err != nil {
+	if err = results(ctx, c, table, cfg.CompatibilityMode); err != nil {
 		return err
 	}
 	if err = tableBlob(ctx, c, table); err != nil {
@@ -78,7 +78,7 @@ func run() (err error) {
 	if err = cursor(ctx, c, table); err != nil {
 		return err
 	}
-	if cfg.Mode == oceanbase.ModeOracle {
+	if cfg.CompatibilityMode == oceanbase.CompatibilityModeOracle {
 		if err = nativeBlob(ctx, c, table); err != nil {
 			return err
 		}

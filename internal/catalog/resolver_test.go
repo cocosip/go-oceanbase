@@ -31,14 +31,14 @@ func dictionaryOperation(t *testing.T, limit int64, entries []dictionaryEntry) (
 	client, peer := net.Pipe()
 	t.Cleanup(cancel)
 	t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-	cfg, err := config.Normalize(config.Config{User: routineApp, Addr: "127.0.0.1:2881", Mode: config.ModeOracle})
+	cfg, err := config.Normalize(config.Config{User: routineApp, Addr: "127.0.0.1:2881", CompatibilityMode: config.CompatibilityModeOracle})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if limit > 0 {
 		cfg.Limits.MaxMessageBytes = limit
 	}
-	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, 0), Mode: config.ModeOracle, Capabilities: wire.ClientProtocol41})
+	s := session.New(cfg, &session.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, 0), Mode: config.CompatibilityModeOracle, Capabilities: wire.ClientProtocol41})
 	op, err := s.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func dictionaryOperation(t *testing.T, limit int64, entries []dictionaryEntry) (
 	t.Cleanup(func() { op.Release() })
 	commands := make([][]byte, len(entries))
 	for i, e := range entries {
-		plan, err := Plan(config.ModeOracle, "4.3.5.0", metadata.MetadataFilter{Kind: e.kind, SchemaPattern: ExactDescriptorPattern(e.schema), NamePattern: ExactDescriptorPattern(e.name)})
+		plan, err := Plan(config.CompatibilityModeOracle, "4.3.5.0", metadata.MetadataFilter{Kind: e.kind, SchemaPattern: ExactDescriptorPattern(e.schema), NamePattern: ExactDescriptorPattern(e.name)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +94,7 @@ func TestDescriptorSynonymAndBoundary(t *testing.T) {
 	}
 	ctx, _, op := dictionaryOperation(t, 1<<16, entries)
 	var r Resolver
-	key := valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: descriptorAlias, Version: 9}
+	key := valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: descriptorAlias, Version: 9}
 	if err := op.BeginResponse(); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestDescriptorBudget(t *testing.T) {
 		{metadata.MetadataTypeAttributes, "S", "T", fields},
 	})
 	var r Resolver
-	_, err := r.Resolve(ctx, op, valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: "T"})
+	_, err := r.Resolve(ctx, op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "T"})
 	if !errors.Is(err, wire.ErrMessageTooLarge) || s.Closed() {
 		t.Fatal(err, s.Closed(), r.bytes)
 	}
@@ -181,7 +181,7 @@ func TestDescriptorSDOFallback(t *testing.T) {
 				entries[len(entries)-1].rows = [][]string{{"", tc.synonym, descriptorSDO, "S", "T", ""}}
 			}
 			ctx, _, op := dictionaryOperation(t, 0, entries)
-			key := valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: descriptorSDO}
+			key := valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: descriptorSDO}
 			sys := key
 			sys.Schema = descriptorSystemSchema
 			local := key
@@ -208,7 +208,7 @@ func TestDescriptorLocalSDOPrecedesFallback(t *testing.T) {
 		{metadata.MetadataTypeAttributes, "S", descriptorSDO, nil},
 	})
 	var r Resolver
-	d, err := r.Resolve(ctx, op, valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: descriptorSDO})
+	d, err := r.Resolve(ctx, op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: descriptorSDO})
 	if err != nil || d.Key.Schema != "S" {
 		t.Fatal(d, err)
 	}
@@ -218,7 +218,7 @@ func TestDescriptorFieldBuiltinIdentity(t *testing.T) {
 	ctx, _, op := dictionaryOperation(t, 0, nil)
 	for _, schema := range []string{"", descriptorSystemSchema, "S"} {
 		const typ = "VARCHAR2(80)"
-		key := valuecodec.Key{Mode: config.ModeOracle, Schema: schema, Name: typ}
+		key := valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: schema, Name: typ}
 		child := &valuecodec.Descriptor{Key: key}
 		r := Resolver{cache: map[valuecodec.Key]*valuecodec.Descriptor{key: child}}
 		f, err := r.descriptorFieldLocked(ctx, op, "V", typ, schema, 0, make(map[valuecodec.Key]bool))

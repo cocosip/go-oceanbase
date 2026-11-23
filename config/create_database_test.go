@@ -8,14 +8,14 @@ import (
 
 func TestDSNCreateDatabase(t *testing.T) {
 	for _, value := range []string{dsnTrue, dsnFalse} {
-		cfg, err := ParseDSN("oceanbase://app@localhost/example?mode=mysql&createDatabaseIfMissing=" + value)
+		cfg, err := ParseDSN("oceanbase://app@localhost/example?compatibilityMode=mysql&createDatabaseIfMissing=" + value)
 		if err != nil || cfg.CreateDatabaseIfMissing != (value == dsnTrue) {
 			t.Fatalf("valid explicit creation policy rejected: %v", err)
 		}
 	}
 	for _, dsn := range []string{
 		"oceanbase://app@localhost/?createDatabaseIfMissing=true",
-		"oceanbase://app@localhost/example?mode=oracle&createDatabaseIfMissing=true",
+		"oceanbase://app@localhost/example?compatibilityMode=oracle&createDatabaseIfMissing=true",
 		"oceanbase://app@localhost/example?createDatabaseIfMissing=1",
 		"oceanbase://app@localhost/example?createDatabaseIfMissing=TRUE",
 		"oceanbase://app@localhost/example?createDatabaseIfMissing=",
@@ -32,7 +32,7 @@ func TestDSNCreateDatabase(t *testing.T) {
 func TestCreateDatabaseConfig(t *testing.T) {
 	for _, cfg := range []Config{
 		{User: testUser, CreateDatabaseIfMissing: true},
-		{User: testUser, Mode: ModeOracle, Database: "private", CreateDatabaseIfMissing: true},
+		{User: testUser, CompatibilityMode: CompatibilityModeOracle, Database: "private", CreateDatabaseIfMissing: true},
 		{User: testUser, Database: "private-create\xff", CreateDatabaseIfMissing: true},
 		{User: testUser, Database: "private-create\x00", CreateDatabaseIfMissing: true},
 		{User: testUser, Database: "私有", Session: SessionOptions{Charset: "ASCII"}, CreateDatabaseIfMissing: true},

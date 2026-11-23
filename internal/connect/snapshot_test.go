@@ -159,13 +159,13 @@ func TestRoutingSnapshot(t *testing.T) {
 
 func TestConnectSessionValueEncoding(t *testing.T) {
 	for _, tc := range []struct {
-		mode        config.Mode
+		mode        config.CompatibilityMode
 		status      uint16
 		value, want string
 	}{
-		{config.ModeMySQL, 2, escapedValue, "'x\\\\''y'"},
-		{config.ModeMySQL, 514, escapedValue, testSessionQuotedNoBackslash},
-		{config.ModeOracle, 6, escapedValue, testSessionQuotedNoBackslash},
+		{config.CompatibilityModeMySQL, 2, escapedValue, "'x\\\\''y'"},
+		{config.CompatibilityModeMySQL, 514, escapedValue, testSessionQuotedNoBackslash},
+		{config.CompatibilityModeOracle, 6, escapedValue, testSessionQuotedNoBackslash},
 	} {
 		physical := session.New(config.Config{}, &session.Negotiated{Mode: tc.mode, OK: wire.OK{Status: tc.status}})
 		op, err := physical.Acquire(context.Background())

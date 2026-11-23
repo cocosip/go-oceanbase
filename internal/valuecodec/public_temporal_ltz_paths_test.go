@@ -23,7 +23,7 @@ func TestLTZSQLPrepareEquivalence(t *testing.T) {
 			for _, prepare := range []oceanbase.PrepareMode{oceanbase.PrepareServer, oceanbase.PrepareClient} {
 				t.Run(fmt.Sprintf("%s/%s/%d", location, variant, prepare), func(t *testing.T) {
 					const query = "UPDATE t SET v=?"
-					db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeOracle, PrepareMode: prepare, Session: oceanbase.SessionOptions{Location: location}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle, PrepareMode: prepare, Session: oceanbase.SessionOptions{Location: location}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						payload := []byte("\x03UPDATE t SET v= " + ltzSQLPrefix + "2024-07-01 16:34:56.123456789" + ltzSQLSuffix + " ")
 						if prepare == oceanbase.PrepareServer {
 							if !publictest.ServePrepareStatus(ctx, t, p, query, 88, 1, nil, 6) {

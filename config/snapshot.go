@@ -17,18 +17,18 @@ func cloneConfigOptions(cfg Config) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if cfg.Mode == ModeOracle && cfg.Session.Collation != "" {
+	if cfg.CompatibilityMode == CompatibilityModeOracle && cfg.Session.Collation != "" {
 		return Config{}, &ConfigError{Field: "Session.Collation"}
 	}
 	if cfg.CreateDatabaseIfMissing {
-		if cfg.Database == "" || cfg.Mode == ModeOracle {
+		if cfg.Database == "" || cfg.CompatibilityMode == CompatibilityModeOracle {
 			return Config{}, &ConfigError{Field: "CreateDatabaseIfMissing"}
 		}
 		if _, err = charset.Encode(cfg.Session.Charset, cfg.Database); err != nil {
 			return Config{}, &ConfigError{Field: configDatabaseField}
 		}
 	}
-	if _, field := configspec.ConnectionAttributes(protocolAttributes(cfg.Protocol), cfg.ConnectionAttributes, cfg.ProxyUser, cfg.Session.Charset, cfg.Mode == ModeMySQL, cfg.Limits.MaxMessageBytes); field != "" {
+	if _, field := configspec.ConnectionAttributes(protocolAttributes(cfg.Protocol), cfg.ConnectionAttributes, cfg.ProxyUser, cfg.Session.Charset, cfg.CompatibilityMode == CompatibilityModeMySQL, cfg.Limits.MaxMessageBytes); field != "" {
 		return Config{}, &ConfigError{Field: field}
 	}
 	cfg.ConnectionAttributes = maps.Clone(cfg.ConnectionAttributes)

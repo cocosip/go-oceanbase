@@ -57,12 +57,12 @@ func identityFixtureCases() []identityFixtureCase {
 }
 
 func TestOracleIdentityWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, identityCase, oceanbase.ModeOracle)
+	definition := scenarioDefinition(t, identityCase, oceanbase.CompatibilityModeOracle)
 	for _, tc := range identityFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := identitySteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeOracle
+			s.mode = oceanbase.CompatibilityModeOracle
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

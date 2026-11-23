@@ -65,7 +65,7 @@ func TestPacketModes(t *testing.T) {
 				{"compression", oceanbase.ProtocolOptions{Compression: oceanbase.FeatureRequired, OB20: oceanbase.FeatureOff}, true},
 				{"ob20", oceanbase.ProtocolOptions{OB20: oceanbase.FeatureRequired}, strings.HasPrefix(p.Name, "proxy-")},
 				{"checksum", oceanbase.ProtocolOptions{OB20: oceanbase.FeatureRequired, Checksum: oceanbase.FeatureRequired}, strings.HasPrefix(p.Name, "proxy-")},
-				{"metadata", oceanbase.ProtocolOptions{NewMetadata: oceanbase.FeatureRequired}, p.Mode == oceanbase.ModeOracle},
+				{"metadata", oceanbase.ProtocolOptions{NewMetadata: oceanbase.FeatureRequired}, p.Mode == oceanbase.CompatibilityModeOracle},
 				{"proxy-checksum", oceanbase.ProtocolOptions{ProxyChecksum: oceanbase.FeatureRequired}, strings.HasPrefix(p.Name, "proxy-")},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
@@ -86,7 +86,7 @@ func TestPacketModes(t *testing.T) {
 						integrationtest.FailOperation(t, "packet negotiation", err)
 					}
 					query := integrationtest.SelectParameterSQL
-					if p.Mode == oceanbase.ModeOracle {
+					if p.Mode == oceanbase.CompatibilityModeOracle {
 						query += integrationtest.OracleDualSuffix
 					}
 					for range 3 {

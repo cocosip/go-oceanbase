@@ -28,7 +28,7 @@ func TestOutputSQLTextEncodedBudget(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				cfg := oceanbase.Config{Mode: oceanbase.ModeOracle, PrepareMode: prepare, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}, Limits: oceanbase.Limits{MaxMessageBytes: int64(len(payload))}}
+				cfg := oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle, PrepareMode: prepare, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}, Limits: oceanbase.Limits{MaxMessageBytes: int64(len(payload))}}
 				db := publictest.BatchRewriteDB(t, cfg, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !testpeer.ReadCommand(ctx, t, p, payload) || !testpeer.SendPackets(ctx, t, p,
 						publictest.CombinedHeader(86, 1, 1, 1), testpeer.TextColumn("p", 8, 63, 0), []byte{254, 0, 0, 6, 0},
@@ -54,17 +54,17 @@ func TestOutputSQLTextEncodedBudget(t *testing.T) {
 }
 
 func TestSQLExecutionEncodedBudget(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, variant := range []string{testStandard, testCompression, testOB20} {
 			for _, path := range []string{lobOpenText, "server-explicit", "server-automatic", "client-explicit", "client-automatic"} {
 				t.Run(fmt.Sprintf("%d/%s/%s", mode, variant, path), func(t *testing.T) {
 					status := byte(2)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						status = 6
 					}
 					query := "UPDATE t SET v=? /*" + strings.Repeat("测", 150) + "*/"
 					encoded := "UPDATE t SET v=? /*" + strings.Repeat("\xb2\xe2", 150) + "*/"
-					cfg := oceanbase.Config{Mode: mode, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}}
+					cfg := oceanbase.Config{CompatibilityMode: mode, Session: oceanbase.SessionOptions{Charset: localFilenameCharset}}
 					if path == lobOpenText {
 						query = strings.Replace(query, "?", "1", 1)
 						encoded = strings.Replace(encoded, "?", "1", 1)
@@ -143,7 +143,7 @@ func TestSQLBudgetStrictEncoding(t *testing.T) {
 		{"utf8mb4", "\xff"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := oceanbase.Config{Session: oceanbase.SessionOptions{Charset: tc.name}, Limits: oceanbase.Limits{MaxMessageBytes: 64}, Mode: oceanbase.ModeOracle}
+			cfg := oceanbase.Config{Session: oceanbase.SessionOptions{Charset: tc.name}, Limits: oceanbase.Limits{MaxMessageBytes: 64}, CompatibilityMode: oceanbase.CompatibilityModeOracle}
 			op := runtimeOperation(t, cfg)
 			if _, err := runtimeEncodeSQL(op, "SELECT '"+tc.text+"'"); err == nil {
 				t.Fatal("invalid SQL encoding accepted")
@@ -161,20 +161,20 @@ func TestSQLBudgetStrictEncoding(t *testing.T) {
 func TestClientSQLTextEncodedBudget(t *testing.T) {
 	for _, tc := range []struct {
 		name, charset, query, want string
-		mode                       oceanbase.Mode
+		mode                       oceanbase.CompatibilityMode
 		args                       []driver.NamedValue
 	}{
-		{"spans", localFilenameCharset, "SELECT '测测', ?, '测测', ?", "SELECT '\xb2\xe2\xb2\xe2',  1 , '\xb2\xe2\xb2\xe2',  2 ", oceanbase.ModeMySQL, []driver.NamedValue{{Value: int64(1)}, {Value: int64(2)}}},
-		{"tail", localFilenameCharset, "SELECT ?, '测测'", "SELECT  1 , '\xb2\xe2\xb2\xe2'", oceanbase.ModeOracle, []driver.NamedValue{{Value: int64(1)}}},
-		{"oracle-literal", localFilenameCharset, selectBindSQL, "SELECT  REPLACE('" + strings.Repeat(parameterBudgetGBK, 10) + "''\\01','01',CHR(0)) ", oceanbase.ModeOracle, []driver.NamedValue{{Value: strings.Repeat(parameterBudgetText, 10) + "'\\\x00"}}},
-		{"mysql-literal", identityCharsetLatin, selectBindSQL, "SELECT  _latin1 X'" + strings.Repeat("80", 30) + "' ", oceanbase.ModeMySQL, []driver.NamedValue{{Value: strings.Repeat("€", 30)}}},
-		{"named", localFilenameCharset, "SELECT :v, '测测', :v", "SELECT  '\xb2\xe2\xb2\xe2' , '\xb2\xe2\xb2\xe2',  '\xb2\xe2\xb2\xe2' ", oceanbase.ModeOracle, []driver.NamedValue{{Name: "v", Value: parameterBudgetText}}},
-		{"expansion", testAttributeGB18030, selectBindSQL, "SELECT  '" + parameterBudgetExpansion + "' ", oceanbase.ModeOracle, []driver.NamedValue{{Value: "\u0080\u0080"}}},
+		{"spans", localFilenameCharset, "SELECT '测测', ?, '测测', ?", "SELECT '\xb2\xe2\xb2\xe2',  1 , '\xb2\xe2\xb2\xe2',  2 ", oceanbase.CompatibilityModeMySQL, []driver.NamedValue{{Value: int64(1)}, {Value: int64(2)}}},
+		{"tail", localFilenameCharset, "SELECT ?, '测测'", "SELECT  1 , '\xb2\xe2\xb2\xe2'", oceanbase.CompatibilityModeOracle, []driver.NamedValue{{Value: int64(1)}}},
+		{"oracle-literal", localFilenameCharset, selectBindSQL, "SELECT  REPLACE('" + strings.Repeat(parameterBudgetGBK, 10) + "''\\01','01',CHR(0)) ", oceanbase.CompatibilityModeOracle, []driver.NamedValue{{Value: strings.Repeat(parameterBudgetText, 10) + "'\\\x00"}}},
+		{"mysql-literal", identityCharsetLatin, selectBindSQL, "SELECT  _latin1 X'" + strings.Repeat("80", 30) + "' ", oceanbase.CompatibilityModeMySQL, []driver.NamedValue{{Value: strings.Repeat("€", 30)}}},
+		{"named", localFilenameCharset, "SELECT :v, '测测', :v", "SELECT  '\xb2\xe2\xb2\xe2' , '\xb2\xe2\xb2\xe2',  '\xb2\xe2\xb2\xe2' ", oceanbase.CompatibilityModeOracle, []driver.NamedValue{{Name: "v", Value: parameterBudgetText}}},
+		{"expansion", testAttributeGB18030, selectBindSQL, "SELECT  '" + parameterBudgetExpansion + "' ", oceanbase.CompatibilityModeOracle, []driver.NamedValue{{Value: "\u0080\u0080"}}},
 	} {
 		for _, extra := range []int64{1, 0} {
 			t.Run(fmt.Sprintf("%s/%d", tc.name, extra), func(t *testing.T) {
 				cfg := oceanbase.Config{Session: oceanbase.SessionOptions{Charset: tc.charset}, Limits: oceanbase.Limits{MaxMessageBytes: int64(len(tc.want)) + extra}}
-				cfg.Mode = tc.mode
+				cfg.CompatibilityMode = tc.mode
 				op := runtimeOperation(t, cfg)
 				got, err := runtimeInterpolate(op, tc.query, tc.args)
 				if extra == 0 {

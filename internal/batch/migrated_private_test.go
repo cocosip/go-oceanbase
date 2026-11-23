@@ -84,7 +84,7 @@ func (c *longQueuedContext) cancel() {
 
 func TestBatchCancellationPreservesPriorError(t *testing.T) {
 	ctx := &longQueuedContext{Context: context.Background(), done: make(chan struct{})}
-	_, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(peerctx context.Context, p *wire.PacketIO) {
+	_, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(peerctx context.Context, p *wire.PacketIO) {
 		if !serveNativePrepare(peerctx, t, p, 2) || !testpeer.ReadCommand(peerctx, t, p, nativeExecuteSigned(t, 1)) || !testpeer.SendPackets(peerctx, t, p, []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'd', 'u', 'p'}) || !testpeer.ReadCommand(peerctx, t, p, nativeExecuteSigned(t, 2)) || !testpeer.SendPackets(peerctx, t, p, commandPacket(17, 2)) {
 			return
 		}
@@ -108,7 +108,7 @@ func TestBatchCancellationPreservesPriorError(t *testing.T) {
 
 func TestBatchLateWritePreservesServerError(t *testing.T) {
 	response := []byte{255, 38, 4, '#', '2', '3', '0', '0', '0', 'd', 'u', 'p'}
-	_, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+	_, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveNativePrepare(ctx, t, p, 2) || !testpeer.ReadCommand(ctx, t, p, nativeExecuteSigned(t, 1)) || !testpeer.SendPackets(ctx, t, p, commandPacket(1, 2)) || !testpeer.ReadCommand(ctx, t, p, nativeExecuteSigned(t, 2)) {
 			return
 		}
@@ -141,7 +141,7 @@ func TestBatchArrayResponseBudget(t *testing.T) {
 				if deprecated {
 					capabilities = wire.ClientDeprecateEOF
 				}
-				_, op := nativeOperation(t, config.ModeOracle, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+				_, op := nativeOperation(t, config.CompatibilityModeOracle, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 					if !testpeer.ReadCommand(ctx, t, p, arrayPacket(t, []any{1, 2}, wire.ExecuteOptions{})) {
 						return
 					}
@@ -181,7 +181,7 @@ func TestBatchArrayCancellation(t *testing.T) {
 		t.Run(fmt.Sprint(acknowledged), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			_, op := nativeOperation(t, config.ModeOracle, testpeer.Standard, func(peerCtx context.Context, p *wire.PacketIO) {
+			_, op := nativeOperation(t, config.CompatibilityModeOracle, testpeer.Standard, func(peerCtx context.Context, p *wire.PacketIO) {
 				if !serveNativePrepare(peerCtx, t, p, 5) || !testpeer.ReadCommand(peerCtx, t, p, arrayPacket(t, []any{1, 2}, wire.ExecuteOptions{})) {
 					return
 				}
@@ -223,7 +223,7 @@ func TestBatchArrayCancellation(t *testing.T) {
 func TestBatchRewriteAcknowledgedErrorAndCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, op := nativeOperation(t, config.ModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
+	_, op := nativeOperation(t, config.CompatibilityModeMySQL, testpeer.Standard, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveBatchRewriteGuard(ctx, t, p, "0", 2) || !testpeer.ReadQuery(ctx, t, p, rewritePair) {
 			return
 		}
@@ -257,7 +257,7 @@ func arrayPacket(t testing.TB, values []any, options wire.ExecuteOptions) []byte
 		if err != nil {
 			t.Fatal(err)
 		}
-		parameter, err := valuecodec.EncodeParameter(normalized, config.ModeOracle, config.SessionOptions{}, 1<<20)
+		parameter, err := valuecodec.EncodeParameter(normalized, config.CompatibilityModeOracle, config.SessionOptions{}, 1<<20)
 		if err != nil {
 			t.Fatal(err)
 		}

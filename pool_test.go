@@ -20,14 +20,14 @@ type poolPeer struct {
 }
 
 // Keep real driver initialization, reset and close in every pool lifecycle check.
-func newPoolTestDB(t *testing.T, mode Mode, configure func(*Config)) (*sql.DB, *poolPeer) {
+func newPoolTestDB(t *testing.T, mode CompatibilityMode, configure func(*Config)) (*sql.DB, *poolPeer) {
 	t.Helper()
 	peer := new(poolPeer)
 	status := byte(2)
-	if mode == ModeOracle {
+	if mode == CompatibilityModeOracle {
 		status = 6
 	}
-	cfg := Config{User: testUser, Mode: mode, Session: SessionOptions{InitSQL: []string{readySQL}}}
+	cfg := Config{User: testUser, CompatibilityMode: mode, Session: SessionOptions{InitSQL: []string{readySQL}}}
 	cfg.DialContext = peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		peer.sessions.Add(1)
 		if !serveConnect(ctx, t, p, status) || !serveBaseline(ctx, t, p, status) ||
@@ -74,8 +74,8 @@ func newPoolTestDB(t *testing.T, mode Mode, configure func(*Config)) (*sql.DB, *
 }
 
 func TestPoolExampleWarmup(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			db, peer := newPoolTestDB(t, mode, nil)
 			defer func() { _ = db.Close() }()
 			db.SetMaxOpenConns(3)
@@ -113,8 +113,8 @@ func TestPoolExampleWarmup(t *testing.T) {
 }
 
 func TestPoolExampleWarmupFailure(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			failed := errors.New("pool dial rejected")
 			var attempts atomic.Int32
 			db, peer := newPoolTestDB(t, mode, func(cfg *Config) {
@@ -147,8 +147,8 @@ func TestPoolExampleWarmupFailure(t *testing.T) {
 }
 
 func TestPoolExampleWarmupCancellation(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			db, peer := newPoolTestDB(t, mode, nil)
 			defer func() { _ = db.Close() }()
 			db.SetMaxOpenConns(2)
@@ -181,13 +181,13 @@ func TestPoolExampleWarmupCancellation(t *testing.T) {
 }
 
 func TestPoolExampleWarmupPingFailure(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			status := byte(2)
-			if mode == ModeOracle {
+			if mode == CompatibilityModeOracle {
 				status = 6
 			}
-			connector, err := NewConnector(Config{User: testUser, Mode: mode, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+			connector, err := NewConnector(Config{User: testUser, CompatibilityMode: mode, DialContext: peerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 				if !serveConnect(ctx, t, p, status) || !serveBaseline(ctx, t, p, status) {
 					return
 				}
@@ -217,8 +217,8 @@ func TestPoolExampleWarmupPingFailure(t *testing.T) {
 }
 
 func TestPoolBoundedWaitAndReuse(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			db, peer := newPoolTestDB(t, mode, nil)
 			defer func() { _ = db.Close() }()
 			db.SetMaxOpenConns(1)
@@ -252,8 +252,8 @@ func TestPoolBoundedWaitAndReuse(t *testing.T) {
 }
 
 func TestPoolLifetimeAndIdleExpiry(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode]+"/lifetime", func(t *testing.T) {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode]+"/lifetime", func(t *testing.T) {
 			db, peer := newPoolTestDB(t, mode, nil)
 			defer func() { _ = db.Close() }()
 			db.SetMaxOpenConns(1)
@@ -283,7 +283,7 @@ func TestPoolLifetimeAndIdleExpiry(t *testing.T) {
 				t.Fatalf("expired session not replaced: %+v, sessions=%d, QUIT=%d", got, peer.sessions.Load(), peer.closed.Load())
 			}
 		})
-		t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode]+"/idle", func(t *testing.T) {
+		t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode]+"/idle", func(t *testing.T) {
 			db, peer := newPoolTestDB(t, mode, nil)
 			defer func() { _ = db.Close() }()
 			db.SetConnMaxIdleTime(time.Millisecond)
@@ -304,9 +304,9 @@ func TestPoolLifetimeAndIdleExpiry(t *testing.T) {
 }
 
 func TestPoolIdleValidation(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
 		for _, enabled := range []bool{false, true} {
-			t.Run(map[Mode]string{ModeMySQL: transactionMySQLLabel, ModeOracle: transactionOracleLabel}[mode]+"/"+map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {
+			t.Run(map[CompatibilityMode]string{CompatibilityModeMySQL: transactionMySQLLabel, CompatibilityModeOracle: transactionOracleLabel}[mode]+"/"+map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {
 				db, peer := newPoolTestDB(t, mode, func(cfg *Config) {
 					if enabled {
 						cfg.Routing.ValidationInterval = time.Millisecond
@@ -336,8 +336,8 @@ func TestPoolIdleValidation(t *testing.T) {
 }
 
 func TestPoolModeIsolation(t *testing.T) {
-	for _, mode := range []Mode{ModeMySQL, ModeOracle} {
-		db, peer := newPoolTestDB(t, mode, func(cfg *Config) { cfg.Mode = ModeAuto })
+	for _, mode := range []CompatibilityMode{CompatibilityModeMySQL, CompatibilityModeOracle} {
+		db, peer := newPoolTestDB(t, mode, func(cfg *Config) { cfg.CompatibilityMode = CompatibilityModeAuto })
 		defer func() { _ = db.Close() }()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		if err := db.PingContext(ctx); err != nil || peer.sessions.Load() != 1 {

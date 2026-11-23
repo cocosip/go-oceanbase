@@ -22,14 +22,14 @@ func SupportsPrepareExecute(version string) bool { return configspec.SupportsPre
 func UsePrepareExecute(op *session.Operation) bool {
 	p := op.Protocol()
 	// 4.4.2.2 can silently omit XMLTYPE rows; separate preparation/execution is safe.
-	return op.Config().Execution.PrepareExecute && p.Mode == config.ModeOracle && SupportsPrepareExecute(p.OBVersion) && !configspec.IsVersion(p.OBVersion, "4.4.2.2")
+	return op.Config().Execution.PrepareExecute && p.Mode == config.CompatibilityModeOracle && SupportsPrepareExecute(p.OBVersion) && !configspec.IsVersion(p.OBVersion, "4.4.2.2")
 }
 
 // ExecuteOptions applies the SQL checksum compatibility gate.
 func ExecuteOptions(op *session.Operation, query []byte, combined bool) wire.ExecuteOptions {
 	o := wire.ExecuteOptions{}
 	p := op.Protocol()
-	if op.Config().Execution.StatementChecksum && p.Mode == config.ModeOracle && (combined || SupportsVersion(p.OBVersion, 4, 1, 2)) {
+	if op.Config().Execution.StatementChecksum && p.Mode == config.CompatibilityModeOracle && (combined || SupportsVersion(p.OBVersion, 4, 1, 2)) {
 		o.UseChecksum, o.SQLChecksum = true, wire.SQLChecksum(query)
 	}
 	return o

@@ -24,10 +24,10 @@ import (
 func TestChangeUserFraming(t *testing.T) {
 	for _, framing := range []string{testCompression, testOB20} {
 		t.Run(framing, func(t *testing.T) {
-			db := localInfileDB(t, config.ModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, config.CompatibilityModeMySQL, true, func(ctx context.Context, p *wire.PacketIO) {
 				p.ResetSequence()
 				data, err := p.ReadMessage(ctx)
-				prefix := changeUserPacket(t, config.ModeMySQL, "")
+				prefix := changeUserPacket(t, config.CompatibilityModeMySQL, "")
 				if err != nil || !p.Framed() || !bytes.HasPrefix(data, prefix) || !bytes.Contains(data[len(prefix):], []byte("__proxy_capability_flag")) {
 					t.Error("framed change-user layout or attributes missing", err)
 					return
@@ -90,7 +90,7 @@ func TestChangeUserVerifiedTLS(t *testing.T) {
 				return
 			}
 			ctx = context.Background()
-			if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.ModeMySQL, "")) || !testpeer.SendPackets(ctx, t, p, append(append([]byte{254}, authentication.Clear...), 0)) {
+			if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.CompatibilityModeMySQL, "")) || !testpeer.SendPackets(ctx, t, p, append(append([]byte{254}, authentication.Clear...), 0)) {
 				return
 			}
 			if data, err := p.ReadMessage(ctx); err != nil || !bytes.Equal(data, append([]byte(changeUserPassword), 0)) {
@@ -123,7 +123,7 @@ func TestChangeUserVerifiedTLS(t *testing.T) {
 func TestChangeUserCancel(t *testing.T) {
 	received := make(chan struct{})
 	db := queryDB(t, func(ctx context.Context, p *wire.PacketIO) {
-		if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.ModeMySQL, "")) {
+		if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.CompatibilityModeMySQL, "")) {
 			return
 		}
 		close(received)
@@ -168,7 +168,7 @@ func TestChangeUserPluginLifecycle(t *testing.T) {
 					return
 				}
 				ctx = context.Background()
-				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.ModeMySQL, "")) || !testpeer.SendPackets(ctx, t, p, append(append(append([]byte{254}, testCustomPlugin...), 0), []byte("12345678901234567890")...)) {
+				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.CompatibilityModeMySQL, "")) || !testpeer.SendPackets(ctx, t, p, append(append(append([]byte{254}, testCustomPlugin...), 0), []byte("12345678901234567890")...)) {
 					return
 				}
 				if data, err := p.ReadMessage(ctx); err != nil || string(data) != "response" {
@@ -225,15 +225,15 @@ func TestChangeUserPluginLifecycle(t *testing.T) {
 }
 
 func TestChangeUserDatabase(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			status := byte(2)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				status = 6
 			}
 			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
 				want := "NewSchema"
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					// COM_CHANGE_USER uppercases an explicit Oracle database, matching Connector/J.
 					want = "NEWSCHEMA"
 				}
@@ -322,7 +322,7 @@ func TestChangeUserFailure(t *testing.T) {
 	for _, path := range []string{serverErrorPath, authTLSDeniedPath, changeUserModeChange, "baseline-failure"} {
 		t.Run(path, func(t *testing.T) {
 			db := queryDB(t, func(ctx context.Context, p *wire.PacketIO) {
-				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.ModeMySQL, "")) {
+				if !testpeer.ReadCommand(ctx, t, p, changeUserPacket(t, config.CompatibilityModeMySQL, "")) {
 					return
 				}
 				switch path {
@@ -355,7 +355,7 @@ func TestChangeUserFailure(t *testing.T) {
 			}
 			defer func() { _ = pinned.Close() }()
 			err = oceanbase.ChangeUser(ctx, pinned, config.Credentials{User: changeUserName, Password: changeUserPassword}, "")
-			if err == nil || path == authTLSDeniedPath && !errors.Is(err, dberrors.ErrTLSRequired) || path == changeUserModeChange && !errors.Is(err, dberrors.ErrModeMismatch) {
+			if err == nil || path == authTLSDeniedPath && !errors.Is(err, dberrors.ErrTLSRequired) || path == changeUserModeChange && !errors.Is(err, dberrors.ErrCompatibilityModeMismatch) {
 				t.Fatalf("change failure=%v", err)
 			}
 			if err = pinned.PingContext(ctx); err == nil {
@@ -367,7 +367,7 @@ func TestChangeUserFailure(t *testing.T) {
 
 func TestChangeUserRejectsProxyTargetOnIgnoringVersion(t *testing.T) {
 	status := byte(6)
-	cfg := config.Config{User: testUser, Mode: config.ModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	cfg := config.Config{User: testUser, CompatibilityMode: config.CompatibilityModeOracle, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaselineVersion(ctx, t, p, status, "4.4.2.2") {
 			return
 		}

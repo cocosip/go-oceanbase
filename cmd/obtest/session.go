@@ -23,7 +23,7 @@ func runSession(ctx context.Context, s *scenario) error {
 			return err
 		}
 		catalog, err := oceanbase.CurrentCatalog(ctx, c)
-		if s.mode == oceanbase.ModeOracle {
+		if s.mode == oceanbase.CompatibilityModeOracle {
 			if !errors.Is(err, oceanbase.ErrUnsupported) {
 				return checkFailure("Oracle catalog boundary changed")
 			}
@@ -72,7 +72,7 @@ func runSession(ctx context.Context, s *scenario) error {
 func runWarnings(ctx context.Context, s *scenario) error {
 	query := s.target.WarningSQL
 	if query == "" {
-		if s.mode == oceanbase.ModeOracle {
+		if s.mode == oceanbase.CompatibilityModeOracle {
 			definition := "IS BEGIN " + s.prefix + "_M; END;"
 			name, err := s.create(ctx, "PROCEDURE", "W", definition)
 			if err != nil {
@@ -96,7 +96,7 @@ func runWarnings(ctx context.Context, s *scenario) error {
 			return err
 		}
 		details, err := oceanbase.ReadWarnings(ctx, c)
-		if s.mode == oceanbase.ModeOracle {
+		if s.mode == oceanbase.CompatibilityModeOracle {
 			if !errors.Is(err, oceanbase.ErrUnsupported) {
 				return checkFailure("Oracle warning detail boundary changed")
 			}
@@ -247,8 +247,8 @@ func runCancelQuery(ctx context.Context, s *scenario) (err error) {
 	return expect(value == 0, "explicitly canceled command changed persisted data")
 }
 
-func checkCancellation(outcome error, mode oceanbase.Mode, expected uint32) error {
-	if mode == oceanbase.ModeOracle && expected == 0 {
+func checkCancellation(outcome error, mode oceanbase.CompatibilityMode, expected uint32) error {
+	if mode == oceanbase.CompatibilityModeOracle && expected == 0 {
 		// OceanBase 4.4 reports interruption using an internal Oracle error envelope.
 		if oracleInterruption(outcome) {
 			return nil
@@ -256,7 +256,7 @@ func checkCancellation(outcome error, mode oceanbase.Mode, expected uint32) erro
 	}
 	if expected == 0 {
 		expected = 1317
-		if mode == oceanbase.ModeOracle {
+		if mode == oceanbase.CompatibilityModeOracle {
 			expected = 1013
 		}
 	}
@@ -272,7 +272,7 @@ func runChangeUser(ctx context.Context, s *scenario) error {
 		return checkFailure("invalid change-user DSN")
 	}
 	identity := s.scalar("SELECT USER")
-	if s.mode == oceanbase.ModeMySQL {
+	if s.mode == oceanbase.CompatibilityModeMySQL {
 		identity = "SELECT CURRENT_USER()"
 	}
 	var original string
@@ -297,7 +297,7 @@ func runChangeUser(ctx context.Context, s *scenario) error {
 			want = next.ProxyUser
 		}
 		actual := changed
-		if s.mode == oceanbase.ModeMySQL {
+		if s.mode == oceanbase.CompatibilityModeMySQL {
 			actual, _, _ = strings.Cut(changed, "@")
 		}
 		if err = expect(changed != original && actual == want, "distinct change-user identity was not observed"); err != nil {

@@ -69,13 +69,13 @@ func TestTxCancellationRollback(t *testing.T) {
 }
 
 func TestSavepoints(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: "mysql", config.ModeOracle: "oracle"}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: "mysql", config.CompatibilityModeOracle: "oracle"}[mode], func(t *testing.T) {
 			start := []txStep{{testMySQLReadWrite, 3}}
 			end := []txStep{{testRollbackSQL, 2}}
 			active := byte(3)
 			quoted := "`a\"``;x`"
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				start = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}
 				end = []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}
 				active = 5
@@ -86,7 +86,7 @@ func TestSavepoints(t *testing.T) {
 					return
 				}
 				steps := []txStep{{"SAVEPOINT " + quoted, active}, {"ROLLBACK TO SAVEPOINT " + quoted, active}}
-				if mode == config.ModeMySQL {
+				if mode == config.CompatibilityModeMySQL {
 					steps = append(steps, txStep{"RELEASE SAVEPOINT " + quoted, active})
 				}
 				if !serveTxSteps(ctx, t, p, steps) || !serveTxSteps(ctx, t, p, end) {
@@ -113,7 +113,7 @@ func TestSavepoints(t *testing.T) {
 				t.Fatal(err)
 			}
 			err = oceanbase.ReleaseSavepoint(context.Background(), tx, name)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				if !errors.Is(err, dberrors.ErrUnsupported) {
 					t.Fatal(err)
 				}
@@ -131,7 +131,7 @@ func TestSavepoints(t *testing.T) {
 }
 
 func TestTxCleanupFailure(t *testing.T) {
-	db := txDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := txDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveTxSteps(ctx, t, p, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}, {testCommitSQL, 4}}) {
 			return
 		}
@@ -182,8 +182,8 @@ func TestCommitUnknown(t *testing.T) {
 }
 
 func TestTxUnsupportedOptions(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: "mysql", config.ModeOracle: "oracle"}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: "mysql", config.CompatibilityModeOracle: "oracle"}[mode], func(t *testing.T) {
 			db := txDB(t, mode, func(_ context.Context, p *wire.PacketIO) { p.ResetSequence(); testpeer.ServeQuit(t, p) })
 			defer func() { _ = db.Close() }()
 			pinned, err := db.Conn(context.Background())
@@ -192,7 +192,7 @@ func TestTxUnsupportedOptions(t *testing.T) {
 			}
 			defer func() { _ = pinned.Close() }()
 			opts := []sql.TxOptions{{Isolation: sql.LevelReadUncommitted}, {Isolation: sql.LevelSnapshot}, {Isolation: sql.IsolationLevel(99)}}
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				opts = append(opts, sql.TxOptions{Isolation: sql.LevelRepeatableRead}, sql.TxOptions{Isolation: sql.LevelReadUncommitted}, sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: true})
 			}
 			for _, opt := range opts {
@@ -210,17 +210,17 @@ func TestTxUnsupportedOptions(t *testing.T) {
 func TestTxOptions(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		mode     config.Mode
+		mode     config.CompatibilityMode
 		opts     sql.TxOptions
 		steps    []txStep
 		end      []txStep
 		rollback bool
 	}{
-		{"mysql-default", config.ModeMySQL, sql.TxOptions{}, []txStep{{testMySQLReadWrite, 3}}, []txStep{{testCommitSQL, 2}}, false},
-		{"mysql-readonly", config.ModeMySQL, sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true}, []txStep{{testSerializableSQL, 2}, {"START TRANSACTION READ ONLY", 3}}, []txStep{{testRollbackSQL, 2}}, true},
-		{"oracle-default", config.ModeOracle, sql.TxOptions{}, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}, []txStep{{testCommitSQL, 4}, {testAutocommitOn, 6}}, false},
-		{"oracle-readonly", config.ModeOracle, sql.TxOptions{ReadOnly: true}, []txStep{{testAutocommitOff, 4}, {"SET TRANSACTION READ ONLY", 5}}, []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}, true},
-		{"oracle-serializable", config.ModeOracle, sql.TxOptions{Isolation: sql.LevelSerializable}, []txStep{{testAutocommitOff, 4}, {testSerializableSQL, 5}}, []txStep{{testCommitSQL, 4}, {testAutocommitOn, 6}}, false},
+		{"mysql-default", config.CompatibilityModeMySQL, sql.TxOptions{}, []txStep{{testMySQLReadWrite, 3}}, []txStep{{testCommitSQL, 2}}, false},
+		{"mysql-readonly", config.CompatibilityModeMySQL, sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true}, []txStep{{testSerializableSQL, 2}, {"START TRANSACTION READ ONLY", 3}}, []txStep{{testRollbackSQL, 2}}, true},
+		{"oracle-default", config.CompatibilityModeOracle, sql.TxOptions{}, []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}, []txStep{{testCommitSQL, 4}, {testAutocommitOn, 6}}, false},
+		{"oracle-readonly", config.CompatibilityModeOracle, sql.TxOptions{ReadOnly: true}, []txStep{{testAutocommitOff, 4}, {"SET TRANSACTION READ ONLY", 5}}, []txStep{{testRollbackSQL, 4}, {testAutocommitOn, 6}}, true},
+		{"oracle-serializable", config.CompatibilityModeOracle, sql.TxOptions{Isolation: sql.LevelSerializable}, []txStep{{testAutocommitOff, 4}, {testSerializableSQL, 5}}, []txStep{{testCommitSQL, 4}, {testAutocommitOn, 6}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := txDB(t, tc.mode, func(ctx context.Context, p *wire.PacketIO) {
@@ -229,7 +229,7 @@ func TestTxOptions(t *testing.T) {
 				}
 				active := byte(3)
 				ready := byte(2)
-				if tc.mode == config.ModeOracle {
+				if tc.mode == config.CompatibilityModeOracle {
 					active = 5
 					ready = 6
 				}

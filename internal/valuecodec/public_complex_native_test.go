@@ -12,7 +12,7 @@ import (
 
 func TestComplexNativeBinding(t *testing.T) {
 	const query = "INSERT INTO complex_fixture VALUES (?)"
-	db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, "INSERT INTO complex_fixture VALUES (?)", 19, 1, nil) || !publictest.ServeComplexDictionary(ctx, t, p, []string{"N"}) {
 			return
 		}

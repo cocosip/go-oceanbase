@@ -26,7 +26,7 @@ func TestTextColumnFlags(t *testing.T) {
 	if err != nil || c.Flags != 33 {
 		t.Fatal(c, err)
 	}
-	r := rowset.New(context.Background(), config.ModeMySQL, false, []rowset.Set{{Columns: []wire.Column{c}}})
+	r := rowset.New(context.Background(), config.CompatibilityModeMySQL, false, []rowset.Set{{Columns: []wire.Column{c}}})
 	if nullable, known := r.ColumnTypeNullable(0); nullable || !known {
 		t.Fatal(nullable, known)
 	}
@@ -103,7 +103,7 @@ func TestTextMidRowServerError(t *testing.T) {
 func TestTextOracleSpecialFloats(t *testing.T) {
 	for _, typ := range []byte{4, 5} {
 		for _, s := range []string{"NAN", "INF", "-INF"} {
-			v, err := valuecodec.DecodeTextValue(wire.Column{Type: typ}, oceanbase.ModeOracle, []byte(s))
+			v, err := valuecodec.DecodeTextValue(wire.Column{Type: typ}, oceanbase.CompatibilityModeOracle, []byte(s))
 			if err != nil {
 				t.Errorf("type=%d value=%s: %v", typ, s, err)
 				continue
@@ -213,7 +213,7 @@ func TestTextMaterializationLimits(t *testing.T) {
 }
 
 func TestTextJSONType(t *testing.T) {
-	value, err := valuecodec.DecodeTextValue(wire.Column{Type: 245, Charset: 63}, oceanbase.ModeMySQL, []byte(`{"n":9007199254740993}`))
+	value, err := valuecodec.DecodeTextValue(wire.Column{Type: 245, Charset: 63}, oceanbase.CompatibilityModeMySQL, []byte(`{"n":9007199254740993}`))
 	if err != nil || value != `{"n":9007199254740993}` {
 		t.Fatalf("JSON changed type or precision: %#v %v", value, err)
 	}

@@ -42,7 +42,7 @@ func (e *Engine) Metadata(ctx context.Context, filter metadata.MetadataFilter) (
 		return rowset.NewMetadata(ctx, []rowset.Set{{Columns: catalog.MetadataColumns(filter.Kind), Rows: values}}), nil
 	}
 	p := op.Protocol()
-	if filter.Kind == metadata.MetadataTypeInfo || filter.Kind == metadata.MetadataRoutineParameters && p.Mode == config.ModeMySQL && !catalog.HasParameterDictionary(p.OBVersion) {
+	if filter.Kind == metadata.MetadataTypeInfo || filter.Kind == metadata.MetadataRoutineParameters && p.Mode == config.CompatibilityModeMySQL && !catalog.HasParameterDictionary(p.OBVersion) {
 		result, err := catalog.Metadata(ctx, op, filter, false)
 		if err != nil {
 			return nil, err

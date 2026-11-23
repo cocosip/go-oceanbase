@@ -26,12 +26,12 @@ type countPeerStep struct {
 func TestRowsAffectedWorkflows(t *testing.T) {
 	for _, profile := range []struct {
 		name   string
-		mode   oceanbase.Mode
+		mode   oceanbase.CompatibilityMode
 		policy oceanbase.RowsAffectedMode
 	}{
-		{"counts-matched", oceanbase.ModeMySQL, oceanbase.MatchedRows},
-		{"counts-changed", oceanbase.ModeMySQL, oceanbase.ChangedRows},
-		{"counts-matched", oceanbase.ModeOracle, oceanbase.MatchedRows},
+		{"counts-matched", oceanbase.CompatibilityModeMySQL, oceanbase.MatchedRows},
+		{"counts-changed", oceanbase.CompatibilityModeMySQL, oceanbase.ChangedRows},
+		{"counts-matched", oceanbase.CompatibilityModeOracle, oceanbase.MatchedRows},
 	} {
 		var definition caseDefinition
 		for _, d := range caseDefinitions() {
@@ -46,11 +46,11 @@ func TestRowsAffectedWorkflows(t *testing.T) {
 			t.Fatal("row-count mode gate is incorrect")
 		}
 		for _, fault := range []string{"none", "exec-noop", "execution-noop", "batch-noop", "insert", "change", "missing", "upsert-noop", "upsert-change", "upsert-insert", "delete", "empty-delete", "persisted", "overflow", countExecutionOverflow, "batch-overflow", "execution-error", "batch-error"} {
-			if profile.mode == oceanbase.ModeOracle && (fault == "upsert-noop" || fault == "upsert-change" || fault == "upsert-insert") {
+			if profile.mode == oceanbase.CompatibilityModeOracle && (fault == "upsert-noop" || fault == "upsert-change" || fault == "upsert-insert") {
 				continue
 			}
 			t.Run(fmt.Sprintf("%s/%v/%s", profile.name, profile.mode, fault), func(t *testing.T) {
-				cfg := oceanbase.Config{User: "fixture", Mode: profile.mode, RowsAffectedMode: oceanbase.ChangedRows, Session: oceanbase.SessionOptions{SkipVersionProbe: true}}
+				cfg := oceanbase.Config{User: "fixture", CompatibilityMode: profile.mode, RowsAffectedMode: oceanbase.ChangedRows, Session: oceanbase.SessionOptions{SkipVersionProbe: true}}
 				if profile.policy == oceanbase.ChangedRows {
 					cfg.RowsAffectedMode = oceanbase.MatchedRows
 				}
@@ -82,7 +82,7 @@ func TestRowsAffectedWorkflows(t *testing.T) {
 	}
 }
 
-func countPeer(t *testing.T, mode oceanbase.Mode, policy oceanbase.RowsAffectedMode, fault string) func(context.Context, string, string) (net.Conn, error) {
+func countPeer(t *testing.T, mode oceanbase.CompatibilityMode, policy oceanbase.RowsAffectedMode, fault string) func(context.Context, string, string) (net.Conn, error) {
 	t.Helper()
 	var connections atomic.Int32
 	return func(context.Context, string, string) (net.Conn, error) {
@@ -106,10 +106,10 @@ func countPeer(t *testing.T, mode oceanbase.Mode, policy oceanbase.RowsAffectedM
 	}
 }
 
-func serveCountPeer(t *testing.T, c net.Conn, mode oceanbase.Mode, policy oceanbase.RowsAffectedMode, fault string, cleanupOnly bool) {
+func serveCountPeer(t *testing.T, c net.Conn, mode oceanbase.CompatibilityMode, policy oceanbase.RowsAffectedMode, fault string, cleanupOnly bool) {
 	t.Helper()
 	status := byte(2)
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status |= 4
 	}
 	// Literal protocol-4.1 greeting: native auth, transactions and CLIENT_FOUND_ROWS.
@@ -180,9 +180,9 @@ func serveCountPeer(t *testing.T, c net.Conn, mode oceanbase.Mode, policy oceanb
 	}
 }
 
-func countPeerScript(mode oceanbase.Mode, policy oceanbase.RowsAffectedMode, fault string) ([]countPeerStep, int) {
+func countPeerScript(mode oceanbase.CompatibilityMode, policy oceanbase.RowsAffectedMode, fault string) ([]countPeerStep, int) {
 	steps := []countPeerStep{{query: "SET NAMES utf8mb4"}, {query: "SET autocommit=1"}, {query: "SET SESSION time_zone = '+00:00'"}, {query: "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V INTEGER)"}}
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		steps[3].query += " ENGINE=InnoDB"
 	}
 	noChange := byte(1)
@@ -197,7 +197,7 @@ func countPeerScript(mode oceanbase.Mode, policy oceanbase.RowsAffectedMode, fau
 	}
 	names := []string{"insert", "noop", "change", "missing"}
 	deleted := byte(1)
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		operations = append(operations, countPeerStep{"INSERT INTO OBT_OFFLINE_T VALUES (1,8) ON DUPLICATE KEY UPDATE V=8", noChange}, countPeerStep{"INSERT INTO OBT_OFFLINE_T VALUES (1,9) ON DUPLICATE KEY UPDATE V=9", 2}, countPeerStep{"INSERT INTO OBT_OFFLINE_T VALUES (2,9) ON DUPLICATE KEY UPDATE V=9", 1})
 		names = append(names, "upsert-noop", "upsert-change", "upsert-insert")
 		deleted = 2

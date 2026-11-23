@@ -44,7 +44,7 @@ func VersionedOutputTestConn(t *testing.T, version string, caps uint64, serve fu
 
 func outputTestConn(t *testing.T, version string, caps uint64, serve func(context.Context, *wire.PacketIO), wrap func(net.Conn) net.Conn, configure ...func(*config.Config)) RawConn {
 	t.Helper()
-	cfg := config.Config{Mode: config.ModeOracle, Limits: config.Limits{MaxMessageBytes: 4096, MaxLOBBytes: 4096, MaxResultItems: 16, CleanupTimeout: time.Second}}
+	cfg := config.Config{CompatibilityMode: config.CompatibilityModeOracle, Limits: config.Limits{MaxMessageBytes: 4096, MaxLOBBytes: 4096, MaxResultItems: 16, CleanupTimeout: time.Second}}
 	for _, apply := range configure {
 		apply(&cfg)
 	}
@@ -80,11 +80,11 @@ func configuredConnector(t *testing.T, cfg config.Config, version string, caps u
 func wrappedConnector(t *testing.T, cfg config.Config, version string, caps uint64, serve func(context.Context, *wire.PacketIO), wrap func(net.Conn) net.Conn) driver.Connector {
 	t.Helper()
 	cfg.User = testpeer.User
-	if cfg.Mode == 0 {
-		cfg.Mode = config.ModeMySQL
+	if cfg.CompatibilityMode == oceanbase.CompatibilityModeAuto {
+		cfg.CompatibilityMode = config.CompatibilityModeMySQL
 	}
 	status := byte(2)
-	if cfg.Mode == config.ModeOracle {
+	if cfg.CompatibilityMode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	cfg.DialContext = testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
@@ -100,7 +100,7 @@ func wrappedConnector(t *testing.T, cfg config.Config, version string, caps uint
 		}
 		if !cfg.Session.SkipVersionProbe {
 			query := "SELECT ob_version()"
-			if cfg.Mode == config.ModeOracle {
+			if cfg.CompatibilityMode == config.CompatibilityModeOracle {
 				query += " FROM dual"
 			}
 			if !testpeer.ReadQuery(ctx, t, p, query) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("version", 253, 45, 0)) {

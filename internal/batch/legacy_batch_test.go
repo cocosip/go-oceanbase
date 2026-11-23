@@ -139,7 +139,7 @@ func TestBatchNilExecer(t *testing.T) {
 
 func batchExecutePacket(t *testing.T, value int64) []byte {
 	t.Helper()
-	p, err := valuecodec.EncodeParameter(value, oceanbase.ModeMySQL, oceanbase.SessionOptions{}, 64)
+	p, err := valuecodec.EncodeParameter(value, oceanbase.CompatibilityModeMySQL, oceanbase.SessionOptions{}, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,14 +200,14 @@ func TestBatchStrategies(t *testing.T) {
 }
 
 func TestBatchTxBoundary(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, strategy := range []oceanbase.BatchStrategy{oceanbase.BatchSequential, oceanbase.BatchMultiSend} {
 			t.Run(fmt.Sprint(mode, "/", strategy), func(t *testing.T) {
 				multi := strategy == oceanbase.BatchMultiSend
 				db := publictest.TxDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
 					setup := []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}
 					active := byte(3)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						setup = []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}
 						active = 5
 					}
@@ -236,7 +236,7 @@ func TestBatchTxBoundary(t *testing.T) {
 						return
 					}
 					ending := []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						ending = []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}
 					}
 					if !publictest.ServeTxSteps(ctx, t, p, ending) {
@@ -264,9 +264,9 @@ func TestBatchTxBoundary(t *testing.T) {
 
 func TestBatchLongAndOutputs(t *testing.T) {
 	const query = "BEGIN proc(?,?); END;"
-	db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		for n := uint64(42); n < 44; n++ {
-			if !publictest.ServePrepare(ctx, t, p, query, 79, 2, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.ModeOracle, 79, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
+			if !publictest.ServePrepare(ctx, t, p, query, 79, 2, nil) || !testpeer.ReadCommand(ctx, t, p, longDataPacket(oceanbase.CompatibilityModeOracle, 79, 0, 3, []byte("6162"))) || !testpeer.SendPackets(ctx, t, p, []byte{0, 0, 0, 2, 0, 0, 0}) {
 				return
 			}
 			payload, err := wire.EncodePrepareExecute(79, []byte(query), []wire.Parameter{{Type: 254, LongData: true}, {Type: 6}}, 1<<20)
@@ -460,9 +460,9 @@ func TestBatchNamedChunkLimit(t *testing.T) {
 	const query = "INSERT INTO t VALUES (:v,:v)"
 	for _, strategy := range []oceanbase.BatchStrategy{oceanbase.BatchSequential, oceanbase.BatchMultiSend} {
 		t.Run(fmt.Sprint(strategy), func(t *testing.T) {
-			db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				for i := int64(1); i <= 2; i++ {
-					param, err := valuecodec.EncodeParameter(i, oceanbase.ModeOracle, oceanbase.SessionOptions{}, 64)
+					param, err := valuecodec.EncodeParameter(i, oceanbase.CompatibilityModeOracle, oceanbase.SessionOptions{}, 64)
 					if err != nil {
 						t.Error(err)
 						return

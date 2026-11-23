@@ -35,7 +35,7 @@ func queryDB(t *testing.T, serve func(context.Context, *wire.PacketIO)) *sql.DB 
 
 func outOracleDB(t *testing.T, prepare config.PrepareMode, serve func(context.Context, *wire.PacketIO)) *sql.DB {
 	t.Helper()
-	c, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: config.ModeOracle, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	c, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: config.CompatibilityModeOracle, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if testpeer.ServeConnect(ctx, t, p, 6) && testpeer.ServeBaseline(ctx, t, p, 6) {
 			serve(context.Background(), p)
 		}
@@ -47,9 +47,9 @@ func outOracleDB(t *testing.T, prepare config.PrepareMode, serve func(context.Co
 }
 
 //nolint:unparam // Preserve explicit wire fields in the shared protocol fixture.
-func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
+func localInfileDB(t *testing.T, mode config.CompatibilityMode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
 	t.Helper()
-	cfg := config.Config{User: testUser, Mode: mode}
+	cfg := config.Config{User: testUser, CompatibilityMode: mode}
 	cfg.DialContext = testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		greeting := testpeer.AuthGreeting(authentication.Native, false)
 		compressed := cfg.Protocol.Compression == config.FeatureRequired
@@ -70,7 +70,7 @@ func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(cont
 			return
 		}
 		status := byte(2)
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			status = 6
 		}
 		var variables map[string]string
@@ -148,11 +148,11 @@ func nativeXID(x oceanbase.XID) wire.Parameter {
 
 func serveDescriptorRows(ctx context.Context, t *testing.T, p *wire.PacketIO, kind oceanbase.MetadataKind, schema, name string, rows [][]string) bool {
 	t.Helper()
-	plan, err := catalog.Plan(config.ModeOracle, "", oceanbase.MetadataFilter{Kind: kind, SchemaPattern: catalog.ExactDescriptorPattern(schema), NamePattern: catalog.ExactDescriptorPattern(name)})
+	plan, err := catalog.Plan(config.CompatibilityModeOracle, "", oceanbase.MetadataFilter{Kind: kind, SchemaPattern: catalog.ExactDescriptorPattern(schema), NamePattern: catalog.ExactDescriptorPattern(name)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := session.New(config.Config{Session: config.SessionOptions{Charset: "utf8mb4"}, Limits: config.Limits{MaxMessageBytes: 1 << 20}}, &session.Negotiated{Mode: config.ModeOracle})
+	s := session.New(config.Config{Session: config.SessionOptions{Charset: "utf8mb4"}, Limits: config.Limits{MaxMessageBytes: 1 << 20}}, &session.Negotiated{Mode: config.CompatibilityModeOracle})
 	op, err := s.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)

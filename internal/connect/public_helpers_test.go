@@ -229,13 +229,13 @@ const changeUserPassword = "next-secret"
 
 const changeUserName = "next@tenant"
 
-func changeUserPacket(t *testing.T, mode config.Mode, database string) []byte {
+func changeUserPacket(t *testing.T, mode config.CompatibilityMode, database string) []byte {
 	t.Helper()
 	response, err := auth.Native(changeUserPassword, []byte("12345678901234567890"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode == config.ModeOracle && database == "" {
+	if mode == config.CompatibilityModeOracle && database == "" {
 		database = "next"
 	}
 	b := append([]byte{17}, changeUserName...)
@@ -436,7 +436,7 @@ const (
 
 func batchExecutePacket(t *testing.T, value int64) []byte {
 	t.Helper()
-	p, err := valuecodec.EncodeParameter(value, config.ModeMySQL, config.SessionOptions{}, 64)
+	p, err := valuecodec.EncodeParameter(value, config.CompatibilityModeMySQL, config.SessionOptions{}, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,15 +530,15 @@ func checkPinnedCipher(t *testing.T, key *rsa.PrivateKey, ciphertext []byte, non
 	return true
 }
 
-func testAuthNativeRSAPath(t *testing.T, key *rsa.PrivateKey, mode config.Mode, plugin, path string) {
+func testAuthNativeRSAPath(t *testing.T, key *rsa.PrivateKey, mode config.CompatibilityMode, plugin, path string) {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	var calls atomic.Int32
 	public := &rsa.PublicKey{N: new(big.Int).Set(key.N), E: key.E}
-	configured, err := oceanbase.NewConnector(config.Config{Mode: mode, Auth: config.AuthOptions{RSAKey: public}, Credentials: func(context.Context) (config.Credentials, error) {
+	configured, err := oceanbase.NewConnector(config.Config{CompatibilityMode: mode, Auth: config.AuthOptions{RSAKey: public}, Credentials: func(context.Context) (config.Credentials, error) {
 		calls.Add(1)
 		return config.Credentials{User: testUser, Password: testPassword}, nil
 	}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
@@ -572,7 +572,7 @@ func testAuthNativeRSAPath(t *testing.T, key *rsa.PrivateKey, mode config.Mode, 
 
 const authRSAChangePath = "change"
 
-func serveNativeRSAPeer(ctx context.Context, t *testing.T, p *wire.PacketIO, key *rsa.PrivateKey, mode config.Mode, plugin, path string, status byte) {
+func serveNativeRSAPeer(ctx context.Context, t *testing.T, p *wire.PacketIO, key *rsa.PrivateKey, mode config.CompatibilityMode, plugin, path string, status byte) {
 	t.Helper()
 	password, nonce := testPassword, "12345678901234567890"
 	if path == "initial" {

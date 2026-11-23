@@ -43,7 +43,7 @@ func testZonedTimeSQLScan(t *testing.T, typ byte, parse bool, path, framing stri
 	case 201:
 		name, text = "TIMESTAMP WITH LOCAL TIME ZONE", text+" +00:00"
 	}
-	cfg := oceanbase.Config{Mode: oceanbase.ModeOracle, Session: oceanbase.SessionOptions{ParseTime: parse, Location: loc}}
+	cfg := oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeOracle, Session: oceanbase.SessionOptions{ParseTime: parse, Location: loc}}
 	if path == testClientStrategy {
 		cfg.PrepareMode = oceanbase.PrepareClient
 	}

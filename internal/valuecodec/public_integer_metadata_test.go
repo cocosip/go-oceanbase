@@ -30,7 +30,7 @@ func testUnsignedBigIntScanType(t *testing.T, path, framing string) {
 	unsigned := []uint64{0, math.MaxInt64, math.MaxInt64 + 1, math.MaxUint64}
 	signed := []int64{-1, 0, math.MaxInt64, math.MinInt64}
 	columns := [][]byte{testpeer.TextColumn("u", 8, 63, 32), testpeer.TextColumn("s", 8, 63, 0)}
-	cfg := oceanbase.Config{Mode: oceanbase.ModeMySQL}
+	cfg := oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeMySQL}
 	if path == testClientStrategy {
 		cfg.PrepareMode = oceanbase.PrepareClient
 	}

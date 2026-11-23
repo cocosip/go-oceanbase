@@ -37,26 +37,26 @@ func interpolateClient(op *session.Operation, query string, values []driver.Name
 func TestClientPrepareEncoding(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		mode   config.Mode
+		mode   config.CompatibilityMode
 		status uint16
 		value  any
 		want   string
 	}{
-		{"mysql-quote", config.ModeMySQL, 2, testClientQuotedText, `_utf8mb4 X'61275ce4b8ade69687'`},
-		{"mysql-no-backslash", config.ModeMySQL, 514, testClientQuotedText, `_utf8mb4 X'61275ce4b8ade69687'`},
-		{"oracle-quote", config.ModeOracle, 6, testClientQuotedText, `'a''\中文'`},
-		{"mysql-bytes", config.ModeMySQL, 2, []byte{0, 39, 255}, "X'0027ff'"},
-		{"oracle-bytes", config.ModeOracle, 6, []byte{0, 39, 255}, "HEXTORAW('0027ff')"},
-		{"nil-bytes", config.ModeMySQL, 2, []byte(nil), "NULL"},
-		{"empty-bytes", config.ModeMySQL, 2, []byte{}, "X''"},
-		{"null", config.ModeOracle, 6, nil, "NULL"},
-		{"uint64", config.ModeMySQL, 2, uint64(math.MaxUint64), testMaxUint64Text},
-		{"bool", config.ModeOracle, 6, true, "1"},
-		{"oracle-small-double", config.ModeOracle, 6, float64(1e-200), "1e-200d"},
-		{"oracle-large-double", config.ModeOracle, 6, float64(1e200), "1e+200d"},
-		{"mysql-double", config.ModeMySQL, 2, float64(0.1), "0.1e0"},
-		{"date", config.ModeOracle, 6, time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC), "TIMESTAMP '2026-01-02 03:04:05.123456'"},
-		{"oracle-nul", config.ModeOracle, 6, "a\x00b", "REPLACE('a01b','01',CHR(0))"},
+		{"mysql-quote", config.CompatibilityModeMySQL, 2, testClientQuotedText, `_utf8mb4 X'61275ce4b8ade69687'`},
+		{"mysql-no-backslash", config.CompatibilityModeMySQL, 514, testClientQuotedText, `_utf8mb4 X'61275ce4b8ade69687'`},
+		{"oracle-quote", config.CompatibilityModeOracle, 6, testClientQuotedText, `'a''\中文'`},
+		{"mysql-bytes", config.CompatibilityModeMySQL, 2, []byte{0, 39, 255}, "X'0027ff'"},
+		{"oracle-bytes", config.CompatibilityModeOracle, 6, []byte{0, 39, 255}, "HEXTORAW('0027ff')"},
+		{"nil-bytes", config.CompatibilityModeMySQL, 2, []byte(nil), "NULL"},
+		{"empty-bytes", config.CompatibilityModeMySQL, 2, []byte{}, "X''"},
+		{"null", config.CompatibilityModeOracle, 6, nil, "NULL"},
+		{"uint64", config.CompatibilityModeMySQL, 2, uint64(math.MaxUint64), testMaxUint64Text},
+		{"bool", config.CompatibilityModeOracle, 6, true, "1"},
+		{"oracle-small-double", config.CompatibilityModeOracle, 6, float64(1e-200), "1e-200d"},
+		{"oracle-large-double", config.CompatibilityModeOracle, 6, float64(1e200), "1e+200d"},
+		{"mysql-double", config.CompatibilityModeMySQL, 2, float64(0.1), "0.1e0"},
+		{"date", config.CompatibilityModeOracle, 6, time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC), "TIMESTAMP '2026-01-02 03:04:05.123456'"},
+		{"oracle-nul", config.CompatibilityModeOracle, 6, "a\x00b", "REPLACE('a01b','01',CHR(0))"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			op := clientOperation(t, config.Config{Session: config.SessionOptions{Charset: testClientCharset, Location: time.UTC}, Limits: config.Limits{MaxMessageBytes: 1024, MaxLOBBytes: 1024}}, session.Negotiated{Mode: tc.mode, OK: wire.OK{Status: tc.status}})
@@ -69,7 +69,7 @@ func TestClientPrepareEncoding(t *testing.T) {
 }
 
 func TestClientPrepareTokenBoundary(t *testing.T) {
-	op := clientOperation(t, config.Config{Session: config.SessionOptions{Charset: testClientCharset}, Limits: config.Limits{MaxMessageBytes: 1024}}, session.Negotiated{Mode: config.ModeOracle})
+	op := clientOperation(t, config.Config{Session: config.SessionOptions{Charset: testClientCharset}, Limits: config.Limits{MaxMessageBytes: 1024}}, session.Negotiated{Mode: config.CompatibilityModeOracle})
 	for _, tc := range []struct {
 		value any
 		want  string
@@ -86,7 +86,7 @@ func TestClientPrepareTokenBoundary(t *testing.T) {
 }
 
 func TestClientPrepareCharset(t *testing.T) {
-	op := clientOperation(t, config.Config{Session: config.SessionOptions{Charset: "latin1"}, Limits: config.Limits{MaxMessageBytes: 1024}}, session.Negotiated{Mode: config.ModeOracle})
+	op := clientOperation(t, config.Config{Session: config.SessionOptions{Charset: "latin1"}, Limits: config.Limits{MaxMessageBytes: 1024}}, session.Negotiated{Mode: config.CompatibilityModeOracle})
 	query, err := interpolateClient(op, "SELECT ?, 'é'", []driver.NamedValue{{Value: "€"}})
 	want := string([]byte{'S', 'E', 'L', 'E', 'C', 'T', ' ', ' ', '\'', 128, '\'', ' ', ',', ' ', '\'', 233, '\''})
 	if err != nil || query != want {

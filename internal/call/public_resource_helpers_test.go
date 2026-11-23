@@ -96,9 +96,9 @@ const (
 	testComplexAlias     = "ALIAS"
 )
 
-func longDataPacket(mode config.Mode, id uint32, index uint16, piece byte, data []byte) []byte {
+func longDataPacket(mode config.CompatibilityMode, id uint32, index uint16, piece byte, data []byte) []byte {
 	b := binary.LittleEndian.AppendUint16(publictest.StmtPacket(24, id), index)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		b[0] = 162
 		b = append(b, piece, 0)
 		b = binary.LittleEndian.AppendUint64(b, uint64(len(data)))
@@ -159,9 +159,9 @@ type callbackOutScanner struct{ scan func() }
 
 func (s callbackOutScanner) Scan(any) error { s.scan(); return nil }
 
-func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
+func localInfileDB(t *testing.T, mode config.CompatibilityMode, capable bool, serve func(context.Context, *wire.PacketIO), configure ...func(*config.Config)) *sql.DB {
 	t.Helper()
-	cfg := config.Config{User: publictest.TestUser, Mode: mode}
+	cfg := config.Config{User: publictest.TestUser, CompatibilityMode: mode}
 	cfg.DialContext = testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		greeting := testpeer.AuthGreeting(authentication.Native, false)
 		compressed := cfg.Protocol.Compression == config.FeatureRequired
@@ -182,7 +182,7 @@ func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(cont
 			return
 		}
 		status := byte(2)
-		if mode == config.ModeOracle {
+		if mode == config.CompatibilityModeOracle {
 			status = 6
 		}
 		var variables map[string]string
@@ -221,10 +221,10 @@ func localInfileDB(t *testing.T, mode config.Mode, capable bool, serve func(cont
 
 const outContextQuery = "CALL p(?,?,?)"
 
-func serveOutContextResponse(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode) bool {
+func serveOutContextResponse(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode) bool {
 	t.Helper()
 	columns := [][]byte{testpeer.TextColumn("a", 8, 63, 0), testpeer.TextColumn("b", 8, 63, 0), testpeer.TextColumn("c", 8, 63, 0)}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		row := []byte{0, 0}
 		for range columns {
 			row = binary.LittleEndian.AppendUint64(row, 42)
@@ -300,7 +300,7 @@ func serveResourceOut(ctx context.Context, t *testing.T, p *wire.PacketIO, query
 
 func outputOperation(t *testing.T) *session.Operation {
 	t.Helper()
-	physical := session.New(outputTestConfig(), &session.Negotiated{Mode: config.ModeOracle, OBVersion: testOutVersion})
+	physical := session.New(outputTestConfig(), &session.Negotiated{Mode: config.CompatibilityModeOracle, OBVersion: testOutVersion})
 	op, err := physical.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

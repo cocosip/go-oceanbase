@@ -17,7 +17,7 @@ import (
 
 func TestLOBOutputThenRows(t *testing.T) {
 	locator := publictest.LobInlineFixture(publictest.TestLOBABC)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		command, err := wire.EncodePrepareExecute(0, []byte("CALL p(?)"), []wire.Parameter{{Type: 6}}, 64<<20)
 		if err != nil || !testpeer.ReadCommand(ctx, t, p, command) || !testpeer.SendPackets(ctx, t, p,
 			publictest.CombinedHeader(41, 1, 1, 4), testpeer.TextColumn("p", 6, 63, 0), []byte{254, 0, 0, 6, 0},
@@ -50,7 +50,7 @@ func TestLOBOutputThenRows(t *testing.T) {
 func TestLOBOpenCardinalityCleanup(t *testing.T) {
 	locator := publictest.LobInlineFixture("x")
 	locator[5] |= 1
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator, locator) {
 			return
 		}

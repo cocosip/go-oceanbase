@@ -18,7 +18,7 @@ func TestMySQLTimeSQLPrepare(t *testing.T) {
 		for _, prepare := range []oceanbase.PrepareMode{oceanbase.PrepareServer, oceanbase.PrepareClient} {
 			t.Run(fmt.Sprintf("%s/%d", variant, prepare), func(t *testing.T) {
 				const query = "UPDATE t SET v=?"
-				db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeMySQL, PrepareMode: prepare}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeMySQL, PrepareMode: prepare}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					payload := []byte("\x03UPDATE t SET v= '2026-01-02 03:04:05.123456' ")
 					if prepare == oceanbase.PrepareServer {
 						if !publictest.ServePrepareStatus(ctx, t, p, query, 88, 1, nil, 2) {

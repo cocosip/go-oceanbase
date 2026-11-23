@@ -123,5 +123,5 @@ func OraclePlan(f metadata.MetadataFilter) (Query, error) {
 	default:
 		return Query{}, fmt.Errorf("%w: metadata kind %d in Oracle compatibility mode", dberrors.ErrUnsupported, f.Kind)
 	}
-	return buildMetadataQuery(config.ModeOracle, f, s)
+	return buildMetadataQuery(config.CompatibilityModeOracle, f, s)
 }

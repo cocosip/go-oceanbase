@@ -31,7 +31,7 @@ func integrationTestProcedureResources(t *testing.T, p integrationtest.Profile) 
 		integrationtest.FailOperation(t, "pin procedure session", err)
 	}
 	defer func() { _ = s.Close() }()
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		var cur *oceanbase.Cursor
 		var blob *oceanbase.Blob
 		for _, out := range []any{oceanbase.CursorOut{Dest: &cur}, oceanbase.Out{Dest: &blob, Type: integrationIntegrationBlobType}} {
@@ -181,7 +181,7 @@ func integrationTestScalarCallProfile(t *testing.T, p integrationtest.Profile, p
 		{"FUNCTION", function, "CREATE FUNCTION " + function + "(x BIGINT) RETURNS BIGINT DETERMINISTIC RETURN x*2"},
 		{"PROCEDURE", failing, "CREATE PROCEDURE " + failing + "(OUT y BIGINT) BEGIN SET y=100; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='out test'; END"},
 	}
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		definitions[0].sql = "CREATE PROCEDURE " + procedure + "(x IN NUMBER,y IN OUT NUMBER,z OUT VARCHAR2) AS BEGIN y:=x+y; z:='ok'; END;"
 		definitions[1].sql = "CREATE FUNCTION " + function + "(x IN NUMBER) RETURN NUMBER AS BEGIN RETURN x*2; END;"
 		definitions[2].sql = "CREATE PROCEDURE " + failing + "(y OUT NUMBER) AS BEGIN y:=100; RAISE_APPLICATION_ERROR(-20001,'out test'); END;"
@@ -199,7 +199,7 @@ func integrationTestScalarCallProfile(t *testing.T, p integrationtest.Profile, p
 	y, z := int64(40), "before"
 	call := "CALL " + procedure + "(?,?,?)"
 	args := []any{2, sql.Out{Dest: &y, In: true}, oceanbase.Out{Dest: &z, Type: "VARCHAR", Length: 40}}
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		call = "BEGIN " + procedure + "(:x,:y,:z); END;"
 		args = []any{sql.Named("x", 2), sql.Named("y", args[1]), sql.Named("z", args[2])}
 	}
@@ -220,7 +220,7 @@ func integrationTestScalarCallProfile(t *testing.T, p integrationtest.Profile, p
 	var result oceanbase.Number
 	query := "SELECT " + function + "(?) INTO ?"
 	args = []any{21, sql.Out{Dest: &result}}
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		query = "BEGIN :r:=" + function + "(:x); END;"
 		args = []any{sql.Named("r", args[1]), sql.Named("x", 21)}
 	}
@@ -232,11 +232,11 @@ func integrationTestScalarCallProfile(t *testing.T, p integrationtest.Profile, p
 	}
 	y = 7
 	query = "CALL " + failing + "(?)"
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		query = "BEGIN " + failing + "(?); END;"
 	}
 	failureCode := uint32(1644)
-	if p.Mode == oceanbase.ModeOracle {
+	if p.Mode == oceanbase.CompatibilityModeOracle {
 		failureCode = 20001
 	}
 	_, err = c.ExecContext(integrationtest.TestContext(t), query, sql.Out{Dest: &y})

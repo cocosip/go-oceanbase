@@ -22,7 +22,7 @@ func TestCollationConfig(t *testing.T) {
 			t.Fatalf("unsafe collation accepted or exposed: %v", err)
 		}
 	}
-	if _, err = Normalize(Config{User: testUser, Mode: ModeOracle, Session: SessionOptions{Collation: testCollationUTF8}}); err == nil {
+	if _, err = Normalize(Config{User: testUser, CompatibilityMode: CompatibilityModeOracle, Session: SessionOptions{Collation: testCollationUTF8}}); err == nil {
 		t.Fatal("Oracle collation silently accepted")
 	}
 }

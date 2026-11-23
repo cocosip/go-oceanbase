@@ -17,7 +17,7 @@ import (
 )
 
 func TestOracleBytesBlobRoundTrip(t *testing.T) {
-	profile := integrationtest.Profile{Name: "oracle", Env: "OB_ORACLE_DSN", Mode: oceanbase.ModeOracle}
+	profile := integrationtest.Profile{Name: "oracle", Env: "OB_ORACLE_DSN", Mode: oceanbase.CompatibilityModeOracle}
 	for _, combined := range []bool{false, true} {
 		for _, explicit := range []bool{false, true} {
 			t.Run(fmt.Sprintf("combined=%t/prepared=%t", combined, explicit), func(t *testing.T) {

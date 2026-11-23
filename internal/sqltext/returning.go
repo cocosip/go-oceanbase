@@ -9,7 +9,7 @@ import (
 // ReturningBindCount counts the trailing INTO slots of a single Oracle DML statement.
 // The query has already had named binds replaced with question marks.
 func ReturningBindCount(query string) int {
-	tokens, err := LexSQL(query, config.ModeOracle, false, false)
+	tokens, err := LexSQL(query, config.CompatibilityModeOracle, false, false)
 	if err != nil || len(tokens) == 0 {
 		return 0
 	}

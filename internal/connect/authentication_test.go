@@ -145,14 +145,14 @@ func TestTLSRequired(t *testing.T) {
 
 func TestActualMode(t *testing.T) {
 	for _, tc := range []struct {
-		expected config.Mode
+		expected config.CompatibilityMode
 		status   byte
-		want     config.Mode
+		want     config.CompatibilityMode
 		fail     bool
 	}{
-		{config.ModeAuto, 2, config.ModeMySQL, false}, {config.ModeAuto, 6, config.ModeOracle, false}, {config.ModeOracle, 2, config.ModeAuto, true},
+		{0, 2, config.CompatibilityModeMySQL, false}, {0, 6, config.CompatibilityModeOracle, false}, {config.CompatibilityModeOracle, 2, 0, true},
 	} {
-		result, err := runAuthTest(t, config.Config{User: testUser, Mode: tc.expected}, func(ctx context.Context, p *wire.PacketIO) {
+		result, err := runAuthTest(t, config.Config{User: testUser, CompatibilityMode: tc.expected}, func(ctx context.Context, p *wire.PacketIO) {
 			if err := p.WriteMessage(ctx, authGreeting(authentication.Native, false)); err != nil {
 				t.Error(err)
 				return
@@ -171,7 +171,7 @@ func TestActualMode(t *testing.T) {
 			}
 		})
 		if tc.fail {
-			if !errors.Is(err, dberrors.ErrModeMismatch) {
+			if !errors.Is(err, dberrors.ErrCompatibilityModeMismatch) {
 				t.Fatal(err)
 			}
 			continue

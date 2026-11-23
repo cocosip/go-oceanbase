@@ -25,8 +25,8 @@ func modeNeutralScenario(t *testing.T, name string) caseDefinition {
 	return caseDefinition{}
 }
 
-func floatCreateSQL(mode oceanbase.Mode) string {
-	if mode == oceanbase.ModeOracle {
+func floatCreateSQL(mode oceanbase.CompatibilityMode) string {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V BINARY_DOUBLE,LABEL VARCHAR(80))"
 	}
 	return "CREATE TABLE OBT_OFFLINE_T (ID INTEGER PRIMARY KEY,V DOUBLE,LABEL VARCHAR(80)) ENGINE=InnoDB"
@@ -48,7 +48,7 @@ const (
 
 type floatCase struct {
 	name   string
-	mode   oceanbase.Mode
+	mode   oceanbase.CompatibilityMode
 	value  func(id int, v driver.Value) driver.Value
 	dump   func(id int, dump string) string
 	text   func(id int, text string) string
@@ -60,46 +60,46 @@ type floatCase struct {
 
 func floatCases() []floatCase {
 	return []floatCase{
-		{name: "mysql-round-trip", mode: oceanbase.ModeMySQL, wantOK: true},
-		{name: "mysql-positive-zero", mode: oceanbase.ModeMySQL, stop: floatStopValue, failID: 6, value: func(id int, v driver.Value) driver.Value {
+		{name: "mysql-round-trip", mode: oceanbase.CompatibilityModeMySQL, wantOK: true},
+		{name: "mysql-positive-zero", mode: oceanbase.CompatibilityModeMySQL, stop: floatStopValue, failID: 6, value: func(id int, v driver.Value) driver.Value {
 			if id == 6 {
 				return float64(0)
 			}
 			return v
 		}},
-		{name: "mysql-null-valid", mode: oceanbase.ModeMySQL, stop: floatStopValue, failID: 7, value: func(id int, v driver.Value) driver.Value {
+		{name: "mysql-null-valid", mode: oceanbase.CompatibilityModeMySQL, stop: floatStopValue, failID: 7, value: func(id int, v driver.Value) driver.Value {
 			if id == 7 {
 				return float64(1)
 			}
 			return v
 		}},
-		{name: "mysql-widened", mode: oceanbase.ModeMySQL, stop: floatStopValue, failID: 8, value: func(id int, v driver.Value) driver.Value {
+		{name: "mysql-widened", mode: oceanbase.CompatibilityModeMySQL, stop: floatStopValue, failID: 8, value: func(id int, v driver.Value) driver.Value {
 			if id == 8 {
 				return 1.1
 			}
 			return v
 		}},
-		{name: "mysql-count", mode: oceanbase.ModeMySQL, stop: floatStopCount, count: 7},
-		{name: "oracle-round-trip", mode: oceanbase.ModeOracle, wantOK: true},
-		{name: "oracle-normalized-zero", mode: oceanbase.ModeOracle, wantOK: true, value: func(id int, v driver.Value) driver.Value {
+		{name: "mysql-count", mode: oceanbase.CompatibilityModeMySQL, stop: floatStopCount, count: 7},
+		{name: "oracle-round-trip", mode: oceanbase.CompatibilityModeOracle, wantOK: true},
+		{name: "oracle-normalized-zero", mode: oceanbase.CompatibilityModeOracle, wantOK: true, value: func(id int, v driver.Value) driver.Value {
 			if id == 6 {
 				return float64(0)
 			}
 			return v
 		}},
-		{name: "oracle-zero-dump", mode: oceanbase.ModeOracle, stop: floatStopDump, dump: func(id int, dump string) string {
+		{name: "oracle-zero-dump", mode: oceanbase.CompatibilityModeOracle, stop: floatStopDump, dump: func(id int, dump string) string {
 			if id == 9 {
 				return "Typ=12 Len=8: 0,0,0,0,0,0,0,0"
 			}
 			return dump
 		}},
-		{name: "oracle-stored-text", mode: oceanbase.ModeOracle, stop: floatStopText, text: func(id int, text string) string {
+		{name: "oracle-stored-text", mode: oceanbase.CompatibilityModeOracle, stop: floatStopText, text: func(id int, text string) string {
 			if id == 1 {
 				return "2.5"
 			}
 			return text
 		}},
-		{name: "oracle-count", mode: oceanbase.ModeOracle, stop: floatStopCount, count: 8},
+		{name: "oracle-count", mode: oceanbase.CompatibilityModeOracle, stop: floatStopCount, count: 8},
 	}
 }
 
@@ -154,7 +154,7 @@ func floatSteps(t *testing.T, tc floatCase) ([]fixtureStep, bool) {
 			return append(steps, fixtureStep{query: fixtureDropTableSQL}), true
 		}
 	}
-	if tc.mode == oceanbase.ModeOracle {
+	if tc.mode == oceanbase.CompatibilityModeOracle {
 		steps = append(steps, fixtureStep{query: floatZeroSQL})
 		for _, id := range []int{6, 9} {
 			dump := floatZeroDump
@@ -178,7 +178,7 @@ func floatSteps(t *testing.T, tc floatCase) ([]fixtureStep, bool) {
 		}
 	}
 	total := len(inputs)
-	if tc.mode == oceanbase.ModeOracle {
+	if tc.mode == oceanbase.CompatibilityModeOracle {
 		total++
 	}
 	if tc.count != 0 {

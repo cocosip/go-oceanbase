@@ -13,10 +13,10 @@ import (
 
 func TestUploadPlanFinalPiece(t *testing.T) {
 	const maxMessage = 65536
-	size := int(ChunkSize(config.ModeMySQL, false, maxMessage))
+	size := int(ChunkSize(config.CompatibilityModeMySQL, false, maxMessage))
 	// A known exact length marks the last data piece final and sends no empty terminator.
 	known := Source{Reader: strings.NewReader(strings.Repeat("b", size)), Length: int64(size), State: &atomic.Bool{}}
-	plan := NewUploadPlan(context.Background(), known, config.ModeMySQL, "utf8mb4", int64(size)+1, maxMessage)
+	plan := NewUploadPlan(context.Background(), known, config.CompatibilityModeMySQL, "utf8mb4", int64(size)+1, maxMessage)
 	piece, err := plan.Next()
 	if err != nil || !piece.Final || len(piece.Data) != size {
 		t.Fatalf("known exact piece=%+v err=%v", piece, err)
@@ -26,7 +26,7 @@ func TestUploadPlanFinalPiece(t *testing.T) {
 	}
 	// An unknown length still reports the same data piece as non-final plus the terminator.
 	unknown := Source{Reader: strings.NewReader(strings.Repeat("b", size)), Length: -1, State: &atomic.Bool{}}
-	plan = NewUploadPlan(context.Background(), unknown, config.ModeMySQL, "utf8mb4", int64(size)+1, maxMessage)
+	plan = NewUploadPlan(context.Background(), unknown, config.CompatibilityModeMySQL, "utf8mb4", int64(size)+1, maxMessage)
 	piece, err = plan.Next()
 	if err != nil || piece.Final || len(piece.Data) != size {
 		t.Fatalf("unknown exact piece=%+v err=%v", piece, err)
@@ -42,7 +42,7 @@ func TestUploadPlanFinalPiece(t *testing.T) {
 
 func TestUploadPlanPieceLimit(t *testing.T) {
 	const maxMessage = 64
-	size := int(ChunkSize(config.ModeMySQL, true, maxMessage))
+	size := int(ChunkSize(config.CompatibilityModeMySQL, true, maxMessage))
 	if size <= 0 {
 		t.Fatalf("unexpected chunk size %d", size)
 	}
@@ -61,7 +61,7 @@ func TestUploadPlanPieceLimit(t *testing.T) {
 				Text:   true,
 				State:  &atomic.Bool{},
 			}
-			plan := NewUploadPlan(context.Background(), source, config.ModeMySQL, "utf8mb4", int64(tc.length)+1, maxMessage)
+			plan := NewUploadPlan(context.Background(), source, config.CompatibilityModeMySQL, "utf8mb4", int64(tc.length)+1, maxMessage)
 			pieces := 0
 			var err error
 			for {

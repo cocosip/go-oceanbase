@@ -20,7 +20,7 @@ func TestCursorColumnTransactionInvalidation(t *testing.T) {
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 		for _, kind := range []string{"scalar-more", "scalar-last", lobKind, childKind} {
 			t.Run(variant+"/"+kind, func(t *testing.T) {
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: config.ModeOracle, PrepareMode: config.PrepareServer, Limits: config.Limits{FetchSize: 1}}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle, PrepareMode: config.PrepareServer, Limits: config.Limits{FetchSize: 1}}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) ||
 						!publictest.ServePrepareStatus(ctx, t, p, "SELECT child FROM t", 91, 0, nil, 5) ||
 						!testpeer.ReadCommand(ctx, t, p, publictest.ExecuteHeader(91)) ||

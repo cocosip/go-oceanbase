@@ -24,8 +24,8 @@ func TestCreateDatabaseSessions(t *testing.T) {
 	}
 	for _, p := range selected {
 		t.Run(p.Name, func(t *testing.T) {
-			if p.Mode == oceanbase.ModeOracle {
-				_, err := oceanbase.NewConnector(oceanbase.Config{User: "app", Mode: p.Mode, Database: "example", CreateDatabaseIfMissing: true})
+			if p.Mode == oceanbase.CompatibilityModeOracle {
+				_, err := oceanbase.NewConnector(oceanbase.Config{User: "app", CompatibilityMode: p.Mode, Database: "example", CreateDatabaseIfMissing: true})
 				var invalid *oceanbase.ConfigError
 				if !errors.As(err, &invalid) || invalid.Field != "CreateDatabaseIfMissing" {
 					t.Fatal("Oracle database creation not explicitly rejected")
@@ -48,10 +48,10 @@ func testCreateDatabaseSession(t *testing.T, p integrationtest.Profile) {
 		t.Skip("database creation fixture not configured: " + p.Name)
 	}
 	cfg, err := oceanbase.ParseDSN(dsn)
-	if err != nil || cfg.Mode != oceanbase.ModeAuto && cfg.Mode != p.Mode {
+	if err != nil || cfg.CompatibilityMode != oceanbase.CompatibilityModeAuto && cfg.CompatibilityMode != p.Mode {
 		t.Fatal("invalid database creation fixture: " + p.Name)
 	}
-	cfg.Mode = p.Mode
+	cfg.CompatibilityMode = p.Mode
 	adminConfig := cfg
 	adminConfig.Database, adminConfig.CreateDatabaseIfMissing = "", false
 	adminConfig.Session.InitSQL = nil

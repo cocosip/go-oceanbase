@@ -29,7 +29,7 @@ const testRoutineOldVersion = "3.2.4.0"
 func namedRoutineConn(t *testing.T, version string, serve func(context.Context, *wire.PacketIO)) publictest.RawConn {
 	t.Helper()
 	return publictest.VersionedOutputTestConn(t, version, 0, serve, func(cfg *config.Config) {
-		cfg.Mode, cfg.PrepareMode = config.ModeMySQL, config.PrepareClient
+		cfg.CompatibilityMode, cfg.PrepareMode = config.CompatibilityModeMySQL, config.PrepareClient
 	})
 }
 
@@ -42,7 +42,7 @@ func serveNamedRoutineMetadata(ctx context.Context, t *testing.T, p *wire.Packet
 		return false
 	}
 	cfg := outputTestConfig()
-	physical := session.New(cfg, &session.Negotiated{Mode: config.ModeMySQL})
+	physical := session.New(cfg, &session.Negotiated{Mode: config.CompatibilityModeMySQL})
 	op, err := physical.Acquire(ctx)
 	if err != nil {
 		t.Error(err)
@@ -203,7 +203,7 @@ func TestNamedRoutinePublicPaths(t *testing.T) {
 						p.ResetSequence()
 						testpeer.ServeQuit(t, p)
 					}, func(cfg *config.Config) {
-						cfg.Mode, cfg.PrepareMode = config.ModeMySQL, prepare
+						cfg.CompatibilityMode, cfg.PrepareMode = config.CompatibilityModeMySQL, prepare
 					})
 
 					defer func() { _ = db.Close() }()
@@ -253,7 +253,7 @@ func TestNamedRoutineOutputs(t *testing.T) {
 				p.ResetSequence()
 				testpeer.ServeQuit(t, p)
 			}, func(cfg *config.Config) {
-				cfg.Mode, cfg.PrepareMode = config.ModeMySQL, prepare
+				cfg.CompatibilityMode, cfg.PrepareMode = config.CompatibilityModeMySQL, prepare
 			})
 
 			defer func() { _ = db.Close() }()

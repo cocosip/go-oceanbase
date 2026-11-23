@@ -26,7 +26,7 @@ func runTemporalTimes(ctx context.Context, s *scenario) error {
 	values := []any{1, "2024-02-29", stamp, stamp, "-25:00:00.123456", 2024}
 	truncated := stamp.Truncate(time.Microsecond)
 	want := []time.Time{date, truncated, truncated}
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		definition = "(ID INTEGER PRIMARY KEY,D DATE,DT TIMESTAMP(9),TS TIMESTAMP(9) WITH TIME ZONE,LTZ TIMESTAMP(9) WITH LOCAL TIME ZONE)"
 		date = time.Date(2024, 2, 29, 12, 34, 56, 0, loc)
 		zoned := stamp.In(time.FixedZone("", -1800))
@@ -56,9 +56,9 @@ func runTemporalTimes(ctx context.Context, s *scenario) error {
 	})
 }
 
-func readTemporalTimes(ctx context.Context, c *sql.Conn, table string, mode oceanbase.Mode, want []time.Time, parameterized bool) (err error) {
+func readTemporalTimes(ctx context.Context, c *sql.Conn, table string, mode oceanbase.CompatibilityMode, want []time.Time, parameterized bool) (err error) {
 	fields, names := "D,DT,TS,TM,Y", []string{"DATE", "DATETIME", "TIMESTAMP", "TIME", "YEAR"}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		fields, names = "D,DT,TS,LTZ", []string{"DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITH LOCAL TIME ZONE"}
 	}
 	query, args := "SELECT "+fields+" FROM "+table+" WHERE ID>=1 ORDER BY ID", []any(nil)
@@ -99,7 +99,7 @@ func checkTemporalColumns(columns []*sql.ColumnType, names []string, timeColumns
 	return nil
 }
 
-func scanTemporalTimes(rows *sql.Rows, mode oceanbase.Mode, want []time.Time) error {
+func scanTemporalTimes(rows *sql.Rows, mode oceanbase.CompatibilityMode, want []time.Time) error {
 	for index := 0; index < 2; index++ {
 		if !rows.Next() {
 			if err := rows.Err(); err != nil {
@@ -114,7 +114,7 @@ func scanTemporalTimes(rows *sql.Rows, mode oceanbase.Mode, want []time.Time) er
 		}
 		var duration sql.NullString
 		var year sql.NullInt64
-		if mode == oceanbase.ModeMySQL {
+		if mode == oceanbase.CompatibilityModeMySQL {
 			dest = append(dest, &duration, &year)
 		}
 		if err := rows.Scan(dest...); err != nil {
@@ -129,7 +129,7 @@ func scanTemporalTimes(rows *sql.Rows, mode oceanbase.Mode, want []time.Time) er
 				return checkFailure("temporal instant, offset or precision mismatch")
 			}
 		}
-		if mode == oceanbase.ModeMySQL {
+		if mode == oceanbase.CompatibilityModeMySQL {
 			if index == 0 && (!duration.Valid || duration.String != "-25:00:00.123456" || !year.Valid || year.Int64 != 2024) || index == 1 && (duration.Valid || year.Valid) {
 				return checkFailure("TIME/YEAR semantics or NULL changed")
 			}

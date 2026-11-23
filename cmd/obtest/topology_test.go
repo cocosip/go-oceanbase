@@ -9,7 +9,7 @@ import (
 
 func TestTopologySourcesWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, topologyCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		t.Run(modeName(mode), func(t *testing.T) {
 			s := fixtureScenario(t, nil)
 			s.mode = mode

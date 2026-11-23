@@ -62,7 +62,7 @@ func TestConnectionFailover(t *testing.T) {
 			}
 			ctx := integrationtest.TestContext(t)
 			query := "SELECT 1"
-			if p.Mode == oceanbase.ModeOracle {
+			if p.Mode == oceanbase.CompatibilityModeOracle {
 				query += integrationtest.OracleDualSuffix
 			}
 			db := sql.OpenDB(connector)

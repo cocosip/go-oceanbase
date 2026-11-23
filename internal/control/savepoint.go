@@ -31,13 +31,13 @@ type SavepointRequest struct {
 }
 
 // SavepointSQL preserves mode-specific identifier and release restrictions.
-func SavepointSQL(mode config.Mode, r SavepointRequest) (string, error) {
+func SavepointSQL(mode config.CompatibilityMode, r SavepointRequest) (string, error) {
 	name := r.Name
 	if !sqltext.ValidSavepointName(name) {
 		return "", fmt.Errorf("%w: savepoint identifier", dberrors.ErrBind)
 	}
 	quote := "`"
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		if r.Kind == ReleaseSavepoint {
 			return "", fmt.Errorf("%w: Oracle RELEASE SAVEPOINT", dberrors.ErrUnsupported)
 		}

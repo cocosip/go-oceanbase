@@ -122,7 +122,7 @@ const (
 	integrationXaResolvedState = "resolved"
 )
 
-func integrationFailXAOperation(t *testing.T, mode oceanbase.Mode, operation string, err error, optionalFlag bool) {
+func integrationFailXAOperation(t *testing.T, mode oceanbase.CompatibilityMode, operation string, err error, optionalFlag bool) {
 	t.Helper()
 	if optionalFlag && integrationtest.XAFlagRejected(err, mode) && os.Getenv("OB_TEST_REQUIRE") != "1" {
 		t.Skip("server rejected " + operation + " flag (1398); XA suspend/resume or join unavailable")

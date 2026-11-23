@@ -38,12 +38,12 @@ func enumSetFixtureCases() []enumSetFixtureCase {
 }
 
 func TestMySQLEnumSetWorkflow(t *testing.T) {
-	definition := scenarioDefinition(t, enumSetCase, oceanbase.ModeMySQL)
+	definition := scenarioDefinition(t, enumSetCase, oceanbase.CompatibilityModeMySQL)
 	for _, tc := range enumSetFixtureCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			steps := enumSetSteps(t, tc)
 			s := fixtureScenario(t, steps)
-			s.mode = oceanbase.ModeMySQL
+			s.mode = oceanbase.CompatibilityModeMySQL
 			result := runScenario(context.Background(), s, definition.run)
 			want := statusFail
 			if tc.wantOK {

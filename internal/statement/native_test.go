@@ -40,7 +40,7 @@ func TestNativeCallRawBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			closed := make(chan struct{})
-			ctx, op := protocolOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := protocolOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				defer close(closed)
 				if !testpeer.ReadCommand(ctx, t, p, want) {
 					return
@@ -93,7 +93,7 @@ func TestNativeCallRawBoundary(t *testing.T) {
 }
 
 func TestNativeCallRawPreflight(t *testing.T) {
-	op := testOperation(t, config.Config{}, config.ModeOracle, "2.2.74")
+	op := testOperation(t, config.Config{}, config.CompatibilityModeOracle, "2.2.74")
 	got, err := NativeCallRaw(context.Background(), op, "q", nil, 1)
 	if !errors.Is(err, dberrors.ErrUnsupported) || got.Started {
 		t.Fatal(got, err)
@@ -123,7 +123,7 @@ func TestNativeCallRawStartedOnPartialWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := session.New(cfg, &session.Negotiated{Raw: fault, Conn: fault, Packets: wire.NewPacketIO(fault, 4096), Mode: config.ModeOracle, OBVersion: testNativeVersion})
+	s := session.New(cfg, &session.Negotiated{Raw: fault, Conn: fault, Packets: wire.NewPacketIO(fault, 4096), Mode: config.CompatibilityModeOracle, OBVersion: testNativeVersion})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestNativeCallRawWithoutRowsSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, op := protocolOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	ctx, op := protocolOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, want) {
 			return
 		}

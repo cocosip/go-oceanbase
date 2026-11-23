@@ -8,7 +8,7 @@ import (
 
 // EmitRecords maps protocol snapshots and preserves logger, request, then packet delivery order.
 // Callers release their operation gate before delivering records.
-func EmitRecords(cfg config.Config, mode config.Mode, connectionID uint32, records []wire.RequestDiagnostic, dropped int) {
+func EmitRecords(cfg config.Config, mode config.CompatibilityMode, connectionID uint32, records []wire.RequestDiagnostic, dropped int) {
 	for _, r := range records {
 		d := config.RequestDiagnostic{Operation: diagnosticOperation(r.Command), Mode: mode, ConnectionID: connectionID, RequestID: r.RequestID, Duration: r.Duration, ReadBytes: r.ReadBytes, WriteBytes: r.WriteBytes, SQLFingerprint: r.SQLFingerprint, SQLBytes: r.SQLBytes, ErrorCode: r.ErrorCode, SQLState: r.SQLState, Failed: r.Failed, DroppedPackets: r.DroppedPackets, DroppedRequests: dropped}
 		d.TraceID, d.SpanID = r.TraceID, r.SpanID

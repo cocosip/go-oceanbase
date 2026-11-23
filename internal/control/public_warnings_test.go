@@ -17,7 +17,7 @@ import (
 func TestWarningDetailsReenable(t *testing.T) {
 	for _, path := range []string{"prepared-server", warningClientPreparePath, serverErrorPath} {
 		t.Run(path, func(t *testing.T) {
-			db := localInfileDB(t, config.ModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, config.CompatibilityModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
 				serveWarningReenable(ctx, t, p, path)
 			}, func(cfg *config.Config) {
 				if path == warningClientPreparePath {
@@ -190,7 +190,7 @@ func TestWarningDetailsCancel(t *testing.T) {
 func TestWarningDetailsFraming(t *testing.T) {
 	for _, framing := range []string{testCompression, testOB20} {
 		t.Run(framing, func(t *testing.T) {
-			db := localInfileDB(t, config.ModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, config.CompatibilityModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeOK(ctx, t, p, []byte("\x03"+warningSQL), 2) || !testpeer.ReadQuery(ctx, t, p, "SHOW WARNINGS") || !p.Framed() {
 					return
 				}
@@ -306,7 +306,7 @@ func TestWarningDetailsClear(t *testing.T) {
 }
 
 func TestWarningDetailsModes(t *testing.T) {
-	db := txDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := txDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadQuery(ctx, t, p, warningSQL) || !testpeer.SendPackets(ctx, t, p, []byte{0, 1, 0, 6, 0, 1, 0}) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 6) {
 			return
 		}

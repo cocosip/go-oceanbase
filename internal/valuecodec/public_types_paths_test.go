@@ -92,12 +92,12 @@ func TestOracleParseTime(t *testing.T) {
 	data := []byte{20, 24, 2, 29, 12, 34, 56, 21, 205, 91, 7, 9}
 	want := time.Date(2024, 2, 29, 12, 34, 56, 123456789, time.UTC)
 	for _, binaryRows := range []bool{false, true} {
-		value, err := valuecodec.DecodeRowValue(wire.Column{Type: 202}, binaryRows, data, oceanbase.ModeOracle, options)
+		value, err := valuecodec.DecodeRowValue(wire.Column{Type: 202}, binaryRows, data, oceanbase.CompatibilityModeOracle, options)
 		if err != nil || value != want {
 			t.Fatal("Oracle TIMESTAMP ignored parseTime", value, err)
 		}
 	}
-	if valuecodec.ColumnScanType(wire.Column{Type: 202}, oceanbase.ModeOracle, options) != reflect.TypeFor[time.Time]() || valuecodec.ColumnScanType(wire.Column{Type: 201}, oceanbase.ModeOracle, options) != reflect.TypeFor[time.Time]() {
+	if valuecodec.ColumnScanType(wire.Column{Type: 202}, oceanbase.CompatibilityModeOracle, options) != reflect.TypeFor[time.Time]() || valuecodec.ColumnScanType(wire.Column{Type: 201}, oceanbase.CompatibilityModeOracle, options) != reflect.TypeFor[time.Time]() {
 		t.Fatal("parseTime scan metadata disagrees with values")
 	}
 }
@@ -131,7 +131,7 @@ func TestScalarClientCharsetRestrictions(t *testing.T) {
 }
 
 func TestScalarBinaryMaterializationLimit(t *testing.T) {
-	cfg := oceanbase.Config{User: publictest.TestUser, Mode: oceanbase.ModeOracle, Limits: oceanbase.Limits{MaxLOBBytes: 2}}
+	cfg := oceanbase.Config{User: publictest.TestUser, CompatibilityMode: oceanbase.CompatibilityModeOracle, Limits: oceanbase.Limits{MaxLOBBytes: 2}}
 	cfg.DialContext = testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, 6) || !testpeer.ServeBaseline(ctx, t, p, 6) {
 			return

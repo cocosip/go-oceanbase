@@ -42,7 +42,7 @@ func floatInputs() []floatInput {
 // control instead of demanding the sign survive storage.
 func runFloats(ctx context.Context, s *scenario) error {
 	column := "DOUBLE"
-	oracle := s.mode == oceanbase.ModeOracle
+	oracle := s.mode == oceanbase.CompatibilityModeOracle
 	if oracle {
 		column = "BINARY_DOUBLE"
 	}

@@ -18,7 +18,7 @@ import (
 
 // A canceled streaming response must not close another borrower's in-flight transaction.
 func TestPoolCancelIsolation(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{driverFixtureStandard, driverFixtureCompression, driverFixtureOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				ctx, stop := context.WithTimeout(t.Context(), 5*time.Second)
@@ -85,13 +85,13 @@ func TestPoolCancelIsolation(t *testing.T) {
 	}
 }
 
-func newPoolCancelDB(ctx context.Context, t *testing.T, mode oceanbase.Mode, framing string, cancelQuery context.CancelFunc) (*sql.DB, *atomic.Int32, <-chan struct{}) {
+func newPoolCancelDB(ctx context.Context, t *testing.T, mode oceanbase.CompatibilityMode, framing string, cancelQuery context.CancelFunc) (*sql.DB, *atomic.Int32, <-chan struct{}) {
 	t.Helper()
 	status, active := byte(2), byte(3)
 	begin := []publictest.TxStep{{Query: driverFixtureMySQLReadWrite, Status: active}}
 	end := []publictest.TxStep{{Query: driverFixtureCommitSQL, Status: status}}
 	probeEnd := []publictest.TxStep{{Query: driverFixtureRollbackSQL, Status: status}}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		status, active = 6, 5
 		begin = []publictest.TxStep{{Query: driverFixtureAutocommitOff, Status: 4}, {Query: driverFixtureOracleReadWrite, Status: active}}
 		end = []publictest.TxStep{{Query: driverFixtureCommitSQL, Status: 4}, {Query: driverFixtureAutocommitOn, Status: status}}
@@ -100,7 +100,7 @@ func newPoolCancelDB(ctx context.Context, t *testing.T, mode oceanbase.Mode, fra
 	var sessions atomic.Int32
 	firstClosed := make(chan struct{})
 	secondClosed := make(chan struct{})
-	db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode}, framing, func(_ context.Context, p *wire.PacketIO) {
+	db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode}, framing, func(_ context.Context, p *wire.PacketIO) {
 		switch sessions.Add(1) {
 		case 1:
 			defer close(firstClosed)

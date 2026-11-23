@@ -17,7 +17,7 @@ func TestBatchMultiValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range selected {
-		if p.Mode != oceanbase.ModeMySQL {
+		if p.Mode != oceanbase.CompatibilityModeMySQL {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) { integrationTestBatchMultiValues(t, p) })

@@ -52,13 +52,13 @@ func (resourceBoundaryConnector) Driver() driver.Driver { return drv{} }
 
 func resourceBoundarySession(t *testing.T, serve func(context.Context, *wire.PacketIO)) (*sql.Conn, *coresession.Session) {
 	t.Helper()
-	cfg, err := config.Normalize(config.Config{User: testpeer.User, Mode: config.ModeMySQL})
+	cfg, err := config.Normalize(config.Config{User: testpeer.User, CompatibilityMode: config.CompatibilityModeMySQL})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	client, server := net.Pipe()
-	physical := coresession.New(cfg, &coresession.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, cfg.Limits.MaxMessageBytes), Capabilities: wire.ClientProtocol41, Mode: config.ModeMySQL, OK: wire.OK{Status: 2}})
+	physical := coresession.New(cfg, &coresession.Negotiated{Raw: client, Conn: client, Packets: wire.NewPacketIO(client, cfg.Limits.MaxMessageBytes), Capabilities: wire.ClientProtocol41, Mode: config.CompatibilityModeMySQL, OK: wire.OK{Status: 2}})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

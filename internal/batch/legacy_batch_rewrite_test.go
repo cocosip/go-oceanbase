@@ -25,7 +25,7 @@ func serveBatchRewriteGuard(ctx context.Context, t testing.TB, p *wire.PacketIO,
 func TestBatchRewriteGuardServerError(t *testing.T) {
 	for _, code := range []uint16{1064, 1142, 1193} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
-			db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: oceanbase.ModeMySQL, AllowMultiStatements: true}, "standard", func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: oceanbase.CompatibilityModeMySQL, AllowMultiStatements: true}, "standard", func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadQuery(ctx, t, p, batchRewriteGuard) || !testpeer.SendPackets(ctx, t, p, []byte{255, byte(code), byte(code >> 8), '#', 'H', 'Y', '0', '0', '0', 'n', 'o'}) {
 					return
 				}
@@ -183,7 +183,7 @@ func TestBatchRewriteFallback(t *testing.T) {
 			cfg := oceanbase.Config{AllowMultiStatements: name != "permission-off"}
 			status := byte(2)
 			if name == publictest.TransactionOracleLabel {
-				cfg.Mode, status = oceanbase.ModeOracle, 6
+				cfg.CompatibilityMode, status = oceanbase.CompatibilityModeOracle, 6
 			}
 			opts := oceanbase.BatchOptions{Strategy: oceanbase.BatchRewrite, ContinueOnError: name == "keep-going"}
 			if name == "chunk-one" {

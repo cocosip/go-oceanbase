@@ -17,8 +17,8 @@ import (
 )
 
 // TextTypeName maps wire metadata to the compatibility mode type name.
-func TextTypeName(c wire.Column, mode config.Mode, session ...config.SessionOptions) string {
-	if mode == config.ModeOracle {
+func TextTypeName(c wire.Column, mode config.CompatibilityMode, session ...config.SessionOptions) string {
+	if mode == config.CompatibilityModeOracle {
 		switch c.Type {
 		case wire.TypeRefCursor:
 			return valueformat.TypeNameRefCursor
@@ -138,7 +138,7 @@ func mysqlTextTypeName(c wire.Column, session ...config.SessionOptions) string {
 }
 
 // ValidateTextColumn reports whether a column has a decodable text representation.
-func ValidateTextColumn(c wire.Column, mode config.Mode, session ...config.SessionOptions) error {
+func ValidateTextColumn(c wire.Column, mode config.CompatibilityMode, session ...config.SessionOptions) error {
 	if TextTypeName(c, mode, session...) == "" {
 		return &dberrors.UnsupportedTypeError{Type: c.Type, Mode: mode}
 	}
@@ -146,11 +146,11 @@ func ValidateTextColumn(c wire.Column, mode config.Mode, session ...config.Sessi
 }
 
 // DecodeTextValue decodes one buffered text row field without retaining packet bytes.
-func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
+func DecodeTextValue(c wire.Column, mode config.CompatibilityMode, data []byte, session ...config.SessionOptions) (driver.Value, error) {
 	if data == nil {
 		return nil, nil
 	}
-	if mode == config.ModeOracle && c.IsXMLType() {
+	if mode == config.CompatibilityModeOracle && c.IsXMLType() {
 		return charset.Decode(charsetUTF8MB4, data)
 	}
 	if err := ValidateTextColumn(c, mode, session...); err != nil {
@@ -165,7 +165,7 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...co
 		}
 		return string(data), nil
 	case 1, 2, 3, 8, 9, 13:
-		if mode == config.ModeOracle && c.Type == 3 {
+		if mode == config.CompatibilityModeOracle && c.Type == 3 {
 			return string(data), nil
 		}
 		if c.Flags&32 != 0 {
@@ -189,7 +189,7 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...co
 			bits = 32
 		}
 		n, err := strconv.ParseFloat(string(data), bits)
-		if err != nil || (mode != config.ModeOracle && (math.IsNaN(n) || math.IsInf(n, 0))) {
+		if err != nil || (mode != config.CompatibilityModeOracle && (math.IsNaN(n) || math.IsInf(n, 0))) {
 			return nil, fmt.Errorf("oceanbase: invalid floating point value")
 		}
 		return n, nil
@@ -215,8 +215,8 @@ func DecodeTextValue(c wire.Column, mode config.Mode, data []byte, session ...co
 	return charset.Decode(name, data)
 }
 
-func mysqlTemporalText(mode config.Mode, typ byte, text string, session ...config.SessionOptions) string {
-	if mode != config.ModeMySQL || len(session) == 0 {
+func mysqlTemporalText(mode config.CompatibilityMode, typ byte, text string, session ...config.SessionOptions) string {
+	if mode != config.CompatibilityModeMySQL || len(session) == 0 {
 		return text
 	}
 	version := session[0].CompatibleMysqlVersion

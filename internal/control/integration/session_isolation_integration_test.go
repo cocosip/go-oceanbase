@@ -110,7 +110,7 @@ func integrationTestBorrowerSessionIsolation(t *testing.T, p integrationtest.Pro
 	if _, err = db.ExecContext(ctx, "UPDATE "+table+" SET v='after' WHERE id=1"); err != nil {
 		integrationtest.FailOperation(t, "update after lock release", err)
 	}
-	if p.Mode == oceanbase.ModeMySQL {
+	if p.Mode == oceanbase.CompatibilityModeMySQL {
 		if _, err = holder.ExecContext(ctx, "SET @obgo_isolation = 7"); err != nil {
 			integrationtest.FailOperation(t, "set isolation variable", err)
 		}

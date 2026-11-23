@@ -11,34 +11,34 @@ import (
 type metadataTypeInfoFixtureCase struct {
 	name   string
 	failAt int
-	mutate func(rows *metadataTypeInfoFixtureRows, mode oceanbase.Mode)
+	mutate func(rows *metadataTypeInfoFixtureRows, mode oceanbase.CompatibilityMode)
 	wantOK bool
 }
 
 func metadataTypeInfoFixtureCases() []metadataTypeInfoFixtureCase {
 	return []metadataTypeInfoFixtureCase{
 		{name: caseRoundTrip, failAt: -1, wantOK: true},
-		{name: caseExtraRow, failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.Mode) {
+		{name: caseExtraRow, failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.CompatibilityMode) {
 			rows.values = rows.values[:len(rows.values)-1]
 		}},
-		{name: "duplicate-type", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.Mode) {
+		{name: "duplicate-type", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.CompatibilityMode) {
 			rows.values = append(rows.values, rows.values[0])
 		}},
-		{name: "unknown-category", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.Mode) {
+		{name: "unknown-category", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.CompatibilityMode) {
 			rows.values[0][1] = "spatial"
 		}},
-		{name: "unnamed-type", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.Mode) {
+		{name: "unnamed-type", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, _ oceanbase.CompatibilityMode) {
 			rows.values[0][0] = ""
 		}},
-		{name: "width", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, mode oceanbase.Mode) {
-			if mode == oceanbase.ModeOracle {
+		{name: "width", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, mode oceanbase.CompatibilityMode) {
+			if mode == oceanbase.CompatibilityModeOracle {
 				rows.values[0][2] = int64(39)
 				return
 			}
 			rows.values[3][2] = int64(9)
 		}},
-		{name: "auto-flag", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, mode oceanbase.Mode) {
-			if mode == oceanbase.ModeOracle {
+		{name: "auto-flag", failAt: 0, mutate: func(rows *metadataTypeInfoFixtureRows, mode oceanbase.CompatibilityMode) {
+			if mode == oceanbase.CompatibilityModeOracle {
 				rows.values[0][3] = int64(-85)
 				return
 			}
@@ -49,7 +49,7 @@ func metadataTypeInfoFixtureCases() []metadataTypeInfoFixtureCase {
 
 func TestMetadataTypeInfoWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, metadataTypeInfoCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, tc := range metadataTypeInfoFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
 				rows := newMetadataTypeInfoRows(mode)
@@ -79,8 +79,8 @@ type metadataTypeInfoFixtureRows struct {
 	fixtureRows
 }
 
-func newMetadataTypeInfoRows(mode oceanbase.Mode) *metadataTypeInfoFixtureRows {
-	if mode == oceanbase.ModeOracle {
+func newMetadataTypeInfoRows(mode oceanbase.CompatibilityMode) *metadataTypeInfoFixtureRows {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return &metadataTypeInfoFixtureRows{fixtureRows: fixtureRows{width: 10, values: oracleTypeInfoValues()}}
 	}
 	return &metadataTypeInfoFixtureRows{fixtureRows: fixtureRows{width: 10, values: mysqlTypeInfoValues()}}

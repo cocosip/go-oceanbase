@@ -100,21 +100,21 @@ func TestSourceStateAndBounds(t *testing.T) {
 
 func TestUploadPlan(t *testing.T) {
 	for _, tc := range []struct {
-		mode  config.Mode
+		mode  config.CompatibilityMode
 		text  bool
 		input string
 		want  []string
 	}{
-		{config.ModeMySQL, false, testChunkText, []string{testChunkText}},
-		{config.ModeOracle, false, testChunkText, []string{"61626364"}},
-		{config.ModeMySQL, true, "a你🙂", []string{"a你🙂"}},
+		{config.CompatibilityModeMySQL, false, testChunkText, []string{testChunkText}},
+		{config.CompatibilityModeOracle, false, testChunkText, []string{"61626364"}},
+		{config.CompatibilityModeMySQL, true, "a你🙂", []string{"a你🙂"}},
 	} {
 		s := Source{Reader: strings.NewReader(tc.input), Length: int64(len(tc.input)), Text: tc.text, State: new(atomic.Bool)}
 		maxMessage := int64(11)
 		if tc.text {
 			maxMessage = 23
 		}
-		if tc.mode == config.ModeOracle {
+		if tc.mode == config.CompatibilityModeOracle {
 			maxMessage = 25
 		}
 		plan := NewUploadPlan(context.Background(), s, tc.mode, "utf8mb4", 100, maxMessage)
@@ -141,7 +141,7 @@ func TestUploadPlanPartialRuneAndBudgets(t *testing.T) {
 	var calls int
 	reader := strings.NewReader("a你🙂")
 	s := Source{Reader: readerFunc(func(p []byte) (int, error) { calls++; return reader.Read(p) }), Length: 8, Text: true}
-	p := NewUploadPlan(context.Background(), s, config.ModeMySQL, "utf8mb4", 100, 12)
+	p := NewUploadPlan(context.Background(), s, config.CompatibilityModeMySQL, "utf8mb4", 100, 12)
 	if calls != 0 {
 		t.Fatal("planning read input")
 	}
@@ -167,7 +167,7 @@ func TestUploadPlanPartialRuneAndBudgets(t *testing.T) {
 		{"\xff", "utf8mb4", 10, charset.ErrEncoding},
 	} {
 		s := Source{Reader: strings.NewReader(tc.input), Length: -1, Text: true, MaxBytes: tc.sourceLimit}
-		p := NewUploadPlan(context.Background(), s, config.ModeMySQL, tc.charset, 100, 65536)
+		p := NewUploadPlan(context.Background(), s, config.CompatibilityModeMySQL, tc.charset, 100, 65536)
 		if _, err := p.Next(); !errors.Is(err, tc.want) {
 			t.Fatal(tc, err)
 		}

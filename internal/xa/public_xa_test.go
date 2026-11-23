@@ -330,7 +330,7 @@ func TestXAOracleRecoverProtocol(t *testing.T) {
 func TestXARecoveryResponse(t *testing.T) {
 	for _, path := range []string{"xa-null", "bad-length", "extra", "leading-ok", "no-rowset", "xa-limit", testXAServerPath} {
 		t.Run(path, func(t *testing.T) {
-			db := localInfileDB(t, config.ModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, config.CompatibilityModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ReadQuery(ctx, t, p, "XA RECOVER") {
 					return
 				}
@@ -404,7 +404,7 @@ func TestXARecoveryResponse(t *testing.T) {
 }
 
 func TestXAFraming(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, framing := range []string{testCompression, testOB20} {
 			t.Run(string(mode)+"/"+framing, func(t *testing.T) {
 				x := oceanbase.XID{FormatID: 1, GlobalID: []byte("g")}
@@ -413,7 +413,7 @@ func TestXAFraming(t *testing.T) {
 						t.Error("unframed XA")
 						return
 					}
-					if mode == config.ModeOracle {
+					if mode == config.CompatibilityModeOracle {
 						param := nativeXID(x)
 						if !testpeer.ServeOK(ctx, t, p, []byte("\x03SET autocommit=0"), 4) || !serveXAReturn(ctx, t, p, "BEGIN ? := SYS.DBMS_XA.XA_START(?, ?); END;", []wire.Parameter{{Type: 6}, param, lobInteger(0)}, 0, 4, false) {
 							return

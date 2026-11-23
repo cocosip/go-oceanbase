@@ -20,26 +20,26 @@ func TestCursorOpenTransactionInvalidation(t *testing.T) {
 	const prepareStage = "prepare"
 	const tailStage = "tail"
 	for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 			for _, cursorMode := range []oceanbase.CursorMode{oceanbase.CursorForward, oceanbase.CursorStatic, oceanbase.CursorSensitive} {
-				if mode == config.ModeMySQL && cursorMode == oceanbase.CursorSensitive {
+				if mode == config.CompatibilityModeMySQL && cursorMode == oceanbase.CursorSensitive {
 					continue
 				}
 				for _, stage := range []string{prepareStage, "execute", tailStage} {
 					if stage == tailStage && cursorMode != oceanbase.CursorSensitive {
 						continue
 					}
-					name := map[config.Mode]string{config.ModeMySQL: publictest.TransactionMySQLLabel, config.ModeOracle: publictest.TransactionOracleLabel}[mode] + "/" + variant + "/" + map[oceanbase.CursorMode]string{oceanbase.CursorForward: "forward", oceanbase.CursorStatic: "static", oceanbase.CursorSensitive: "sensitive"}[cursorMode] + "/" + stage
+					name := map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: publictest.TransactionMySQLLabel, config.CompatibilityModeOracle: publictest.TransactionOracleLabel}[mode] + "/" + variant + "/" + map[oceanbase.CursorMode]string{oceanbase.CursorForward: "forward", oceanbase.CursorStatic: "static", oceanbase.CursorSensitive: "sensitive"}[cursorMode] + "/" + stage
 					t.Run(name, func(t *testing.T) {
 						active, ended := byte(3), byte(2)
 						begin := []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}
 						finish := []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}
-						if mode == config.ModeOracle {
+						if mode == config.CompatibilityModeOracle {
 							active, ended = 5, 4
 							begin = []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}
 							finish = []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}
 						}
-						db := publictest.BatchRewriteDB(t, config.Config{Mode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
+						db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
 							native := query
 							if cursorMode == oceanbase.CursorSensitive {
 								native = "SELECT payload, ROWID FROM cursor_open_epoch"

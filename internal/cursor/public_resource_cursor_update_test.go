@@ -19,7 +19,7 @@ import (
 func TestCursorRefreshMissing(t *testing.T) {
 	const query = "SELECT id,b FROM s.t"
 	const refresh = "SELECT `id` AS `id`,`b` AS `b` FROM `s`.`t` WHERE `id` = ?"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServePrepare(ctx, t, p, query, 69, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(69)) || !testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", 252), []byte{254, 0, 0, 67, 0}) || !publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) || !publictest.ServePrepareStatus(ctx, t, p, refresh, 70, 1, nil, 3) || !testpeer.ReadCommand(ctx, t, p, append(publictest.ExecuteHeader(70), 0, 1, 8, 0, 7, 0, 0, 0, 0, 0, 0, 0)) || !testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", 252), []byte{254, 0, 0, 3, 0}, []byte{254, 0, 0, 3, 0}) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 70)) || !testpeer.ReadCommand(ctx, t, p, publictest.StmtPacket(25, 69)) || !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}) {
 			return
 		}
@@ -49,7 +49,7 @@ func TestCursorRefreshMissing(t *testing.T) {
 
 func TestCursorOracleUpdate(t *testing.T) {
 	const query = `SELECT "id","b" FROM "s"."t"`
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !publictest.ServePrepare(ctx, t, p, query, 65, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(65)) || !testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", 253), []byte{254, 0, 0, 69, 0}) || !publictest.ServeTableRows(ctx, t, p, 5, []string{"FROM ALL_TABLES t", "ALL_TAB_COLS"}, []byte{253, 253, 253, 253, 253, 253, 253, 253}, []any{"s", "t", publictest.BaseTable, nil, "id", valueformat.TypeNameNumber, "NO", "1"}, []any{"s", "t", publictest.BaseTable, nil, "b", "VARCHAR2", "NO", nil}) || !publictest.ServePrepareStatus(ctx, t, p, `UPDATE "s"."t" SET "b" = ? WHERE "id" = ?`, 66, 2, nil, 5) || !publictest.ServeTableRows(ctx, t, p, 5, []string{`SELECT 1 FROM "s"."t" WHERE "id" =  7  FOR UPDATE`}, []byte{8}, []any{"1"}) {
 			return
 		}
@@ -85,7 +85,7 @@ func TestCursorMutationFailure(t *testing.T) {
 	for _, kind := range []string{testCursorRowMissing, testCursorWarning, testCursorPrepareEnded, testCursorInsertEnded, testCursorLockEnded} {
 		t.Run(kind, func(t *testing.T) {
 			const query = "SELECT id,b FROM s.t"
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				serveCursorMutationFailure(ctx, t, p, kind)
 			})
 			defer func() { _ = db.Close() }()
@@ -125,7 +125,7 @@ func TestCursorMutationFailure(t *testing.T) {
 func TestCursorInsertRefresh(t *testing.T) {
 	const query = "SELECT id,b FROM s.t"
 	const refresh = "SELECT `id` AS `id`,`b` AS `b` FROM `s`.`t` WHERE `id` = ?"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServePrepare(ctx, t, p, query, 57, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(57)) || !testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", 252), []byte{254, 0, 0, 67, 0}) || !publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) {
 			return
 		}
@@ -175,7 +175,7 @@ func TestCursorInsertRefresh(t *testing.T) {
 
 func TestCursorUpdateIdentity(t *testing.T) {
 	const query = "SELECT id,b FROM s.t"
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServePrepare(ctx, t, p, query, 56, 0, nil) || !testpeer.ReadCommand(ctx, t, p, cursorExecuteFixture(56)) || !testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", 252), []byte{254, 0, 0, 67, 0}) || !publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) {
 			return
 		}

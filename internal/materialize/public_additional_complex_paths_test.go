@@ -16,7 +16,7 @@ import (
 
 func TestComplexNestedLOB(t *testing.T) {
 	const query = "SELECT v FROM complex_fixture"
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 22, 0, [][]byte{complexColumnFixture(1)}) || !testpeer.ReadCommand(ctx, t, p, publictest.ExecuteHeader(22)) {
 			return
 		}

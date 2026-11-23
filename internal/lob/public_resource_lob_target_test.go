@@ -20,7 +20,7 @@ import (
 )
 
 func TestBlobTargetDefaultExpression(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		dict := publictest.TableDictionary()
 		dict[1][6] = "DEFAULT_GENERATED"
 		if !publictest.ServeTableDictionary(ctx, t, p, 2, dict...) || !publictest.ServeTableRows(ctx, t, p, 2, []string{publictest.TestOctetLength}, []byte{8}, []any{"0"}) {
@@ -42,7 +42,7 @@ func TestBlobTargetDefaultExpression(t *testing.T) {
 }
 
 func TestTableBlobTxUnknownEngine(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) {
 			return
 		}
@@ -81,7 +81,7 @@ func TestTableBlobTxUnknownEngine(t *testing.T) {
 func TestTableBlobOracleTxLock(t *testing.T) {
 	for _, readonly := range []bool{false, true} {
 		t.Run(map[bool]string{false: "writable", true: "readonly"}[readonly], func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				start := publictest.TestOracleReadWrite
 				if readonly {
 					start = "SET TRANSACTION READ ONLY"
@@ -124,7 +124,7 @@ func TestTableBlobOracleTxLock(t *testing.T) {
 }
 
 func TestTableBlobNoopAtMaxOffset(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) {
 			return
 		}
@@ -167,7 +167,7 @@ func TestTableBlobNoopAtMaxOffset(t *testing.T) {
 }
 
 func TestTableBlobWriteWarning(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) {
 			return
 		}
@@ -208,7 +208,7 @@ func TestTableBlobWriteWarning(t *testing.T) {
 func TestTableBlobCapacity(t *testing.T) {
 	for typ, capacity := range map[string]int64{"tinyblob": 255, "blob": 65535, "mediumblob": 16777215, "longblob": 4294967295} {
 		t.Run(typ, func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) {
 					return
 				}

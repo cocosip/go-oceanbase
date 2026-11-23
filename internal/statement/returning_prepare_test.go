@@ -23,7 +23,7 @@ func TestPrepareOracleReturningMetadata(t *testing.T) {
 		t.Run(query, func(t *testing.T) {
 			done := make(chan struct{})
 			defer func() { <-done }()
-			ctx, op := protocolOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := protocolOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				defer close(done)
 				if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, query...)) {
 					return
@@ -64,7 +64,7 @@ func TestPrepareOracleReturningRejectsWrongCounts(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			done := make(chan struct{})
 			defer func() { <-done }()
-			ctx, op := protocolOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			ctx, op := protocolOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				defer close(done)
 				if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, tc.query...)) {
 					return

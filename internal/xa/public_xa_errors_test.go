@@ -44,7 +44,7 @@ func TestXAMySQLErrorCodes(t *testing.T) {
 func testXAMySQLErrorCode(t *testing.T, code uint16, state string, want int32, framing string, commit bool) {
 	t.Helper()
 	xid := oceanbase.XID{FormatID: 1, GlobalID: []byte("g")}
-	db := localInfileDB(t, config.ModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
+	db := localInfileDB(t, config.CompatibilityModeMySQL, false, func(ctx context.Context, p *wire.PacketIO) {
 		serveXAMySQLError(ctx, t, p, code, state, commit)
 	}, func(cfg *config.Config) {
 		switch framing {
@@ -127,7 +127,7 @@ func TestXAOracleServerErrorNamespace(t *testing.T) {
 	for _, code := range []uint16{1397, 1398, 1399, 1400, 1401, 1402, 1440, 1613, 1614} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			xid := oceanbase.XID{FormatID: 1, GlobalID: []byte("g")}
-			db := localInfileDB(t, config.ModeOracle, false, func(ctx context.Context, p *wire.PacketIO) {
+			db := localInfileDB(t, config.CompatibilityModeOracle, false, func(ctx context.Context, p *wire.PacketIO) {
 				query := "BEGIN ? := SYS.DBMS_XA.XA_ROLLBACK(?); END;"
 				want, err := wire.EncodePrepareExecute(0, []byte(query), []wire.Parameter{{Type: 6}, nativeXID(xid)}, 4096)
 				if err != nil {

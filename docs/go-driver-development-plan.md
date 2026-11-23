@@ -220,7 +220,7 @@ Dependencies: D02. Coverage: M03, M04; architecture §8–§9, §17.2.
 
 Files: add `internal/wire/handshake.go`, `internal/auth/auth.go`, `native.go`, `sha2.go`, `clear.go`, and corresponding tests; add `authentication.go`, `errors.go`, and update configuration snapshots; session-mode pinning is completed in D04.
 
-Deliver: handshake/authentication-response parsing, native/SHA/clear basic paths and switching; shared state-machine credential gates; separate actual mode/version/capabilities. ModeAuto locks only after the first successfully initialized session; failed attempts do not lock the Connector.
+Deliver: handshake/authentication-response parsing, native/SHA/clear basic paths and switching; shared state-machine credential gates; separate actual mode/version/capabilities. CompatibilityModeAuto locks only after the first successfully initialized session; failed attempts do not lock the Connector.
 
 - [x] Test `TestAuthSecurityGate`, `TestAuthSwitch`, `TestTLSRequired`, `TestActualMode`: zero plaintext credential bytes sent during clear/full-auth without TLS; no downgrade after certificate/hostname failure; custom Dial cannot forge verified security state; close mode-mismatched connections.
 - [x] Run `go test ./internal/auth ./internal/wire . -run 'Test(Auth|TLS|ActualMode)' -count=1` and confirm failure.

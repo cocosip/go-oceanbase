@@ -12,7 +12,7 @@ import (
 
 func runLongData(ctx context.Context, s *scenario) (err error) {
 	binaryType, textType := "LONGBLOB", "LONGTEXT"
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		binaryType, textType = blobType, "CLOB"
 	}
 	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,B "+binaryType+",C "+textType+")")
@@ -61,7 +61,7 @@ func longDataTransaction(ctx context.Context, s *scenario, table string, payload
 
 func runTableBlob(ctx context.Context, s *scenario) (err error) {
 	typ, empty := "LONGBLOB", "X''"
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		typ, empty = blobType, "EMPTY_BLOB()"
 	}
 	table, err := s.table(ctx, "(ID INTEGER PRIMARY KEY,B "+typ+")")

@@ -32,7 +32,7 @@ type Piece struct {
 type UploadPlan struct {
 	source                   *BoundedReader
 	value                    Source
-	mode                     config.Mode
+	mode                     config.CompatibilityMode
 	charset                  string
 	limit, encoded           int64
 	size, pending, tailStart int
@@ -43,7 +43,7 @@ type UploadPlan struct {
 
 // NewUploadPlan neither claims the input nor reads it. Its caller performs the
 // existing parameter validation and claim before requesting the first piece.
-func NewUploadPlan(ctx context.Context, value Source, mode config.Mode, charsetName string, maxLOBBytes, maxMessageBytes int64) *UploadPlan {
+func NewUploadPlan(ctx context.Context, value Source, mode config.CompatibilityMode, charsetName string, maxLOBBytes, maxMessageBytes int64) *UploadPlan {
 	limit := value.MaxBytes
 	if limit == 0 {
 		limit = maxLOBBytes
@@ -107,7 +107,7 @@ func (p *UploadPlan) Next() (Piece, error) {
 			return Piece{}, ErrTooManyPieces
 		}
 	}
-	if p.mode == config.ModeOracle && !p.value.Text {
+	if p.mode == config.CompatibilityModeOracle && !p.value.Text {
 		data = []byte(hex.EncodeToString(data))
 	}
 	kind := byte(2)
@@ -128,8 +128,8 @@ func (p *UploadPlan) Next() (Piece, error) {
 // ChunkSize computes a mode-specific bounded upload chunk size.
 // Oracle pieces reserve half the message for binary hex encoding; text pieces
 // stay within the same bounded frame and therefore need no further division.
-func ChunkSize(mode config.Mode, _ bool, maxMessageBytes int64) int64 {
-	if mode == config.ModeOracle {
+func ChunkSize(mode config.CompatibilityMode, _ bool, maxMessageBytes int64) int64 {
+	if mode == config.CompatibilityModeOracle {
 		return (min(int64(65536), maxMessageBytes) - 17) / 2
 	}
 	return min(int64(65536), maxMessageBytes-7)

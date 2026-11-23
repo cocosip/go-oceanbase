@@ -18,15 +18,15 @@ import (
 
 // A pre-send deadline must preserve the session; a sent command with no ACK must close it.
 func TestStatementContextDeadline(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			for _, prepare := range []oceanbase.PrepareMode{oceanbase.PrepareServer, oceanbase.PrepareClient} {
 				t.Run(fmt.Sprintf("%d/%s/%d", mode, framing, prepare), func(t *testing.T) {
 					status := byte(2)
-					if mode == oceanbase.ModeOracle {
+					if mode == oceanbase.CompatibilityModeOracle {
 						status = 6
 					}
-					db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode, PrepareMode: prepare, ReadTimeout: 2 * time.Second}, framing, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode, PrepareMode: prepare, ReadTimeout: 2 * time.Second}, framing, func(ctx context.Context, p *wire.PacketIO) {
 						if prepare == oceanbase.PrepareServer && !publictest.ServePrepareStatus(ctx, t, p, testBatchSQL, 7, 1, nil, status) {
 							return
 						}
@@ -87,20 +87,20 @@ func TestStatementContextDeadline(t *testing.T) {
 
 // Removing interpolation spaces can turn a negative parameter into a SQL comment or join an alias.
 func TestClientParameterBoundaries(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, framing := range []string{testStandard, testCompression, testOB20} {
 			t.Run(fmt.Sprintf("%d/%s", mode, framing), func(t *testing.T) {
 				query := "SELECT -?, ? e3, ?"
 				args := []any{-1, 1, "x';DELETE FROM t;--"}
 				want := "SELECT - -1 ,  1  e3,  _utf8mb4 X'78273b44454c4554452046524f4d20743b2d2d' "
 				status := byte(2)
-				if mode == oceanbase.ModeOracle {
+				if mode == oceanbase.CompatibilityModeOracle {
 					query = "SELECT -:x, :y e3, :message, :x FROM dual"
 					args = []any{sql.Named("message", "x';DELETE FROM t;--"), sql.Named("y", 1), sql.Named("x", -1)}
 					want = "SELECT - -1 ,  1  e3,  'x'';DELETE FROM t;--' ,  -1  FROM dual"
 					status = 6
 				}
-				db := publictest.BatchRewriteDB(t, oceanbase.Config{Mode: mode, PrepareMode: oceanbase.PrepareClient}, framing, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, oceanbase.Config{CompatibilityMode: mode, PrepareMode: oceanbase.PrepareClient}, framing, func(ctx context.Context, p *wire.PacketIO) {
 					for range 2 {
 						if !testpeer.ReadQuery(ctx, t, p, want) || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(1, 0, status)) {
 							return

@@ -14,10 +14,10 @@ import (
 )
 
 func TestCommitServerRejection(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: transactionMySQLLabel, config.ModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: transactionMySQLLabel, config.CompatibilityModeOracle: transactionOracleLabel}[mode], func(t *testing.T) {
 			start := []txStep{{testMySQLReadWrite, 3}}
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				start = []txStep{{testAutocommitOff, 4}, {testOracleReadWrite, 5}}
 			}
 			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {

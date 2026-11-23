@@ -23,7 +23,7 @@ import (
 func TestTableBlobTx(t *testing.T) {
 	for _, readonly := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "readonly"}[readonly], func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				start := publictest.TestMySQLReadWrite
 				if readonly {
 					start = "START TRANSACTION READ ONLY"
@@ -94,7 +94,7 @@ func TestTableBlobTx(t *testing.T) {
 func TestTableBlobBounds(t *testing.T) {
 	for _, kind := range []string{"missing", publictest.TestSQLNull, "empty", publictest.TestBlobRead} {
 		t.Run(kind, func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTableDictionary(ctx, t, p, 2, publictest.TableDictionary()...) {
 					return
 				}
@@ -160,7 +160,7 @@ func TestTableBlobBounds(t *testing.T) {
 }
 
 func TestTableBlobOpenTimeout(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTableDictionary(ctx, t, p, 2, publictest.TableDictionary()...) {
 			return
 		}
@@ -186,7 +186,7 @@ func TestTableBlobOpenTimeout(t *testing.T) {
 func TestTableBlobChangedRow(t *testing.T) {
 	for _, kind := range []string{"missing-row", publictest.TestBecameNull, "lock-error"} {
 		t.Run(kind, func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServeTableDictionary(ctx, t, p, 3, publictest.TableDictionary()...) || !publictest.ServeTableRows(ctx, t, p, 3, []string{publictest.TestOctetLength}, []byte{8}, []any{"3"}) {
 					return
 				}
@@ -253,7 +253,7 @@ func TestTableBlobWriteFailure(t *testing.T) {
 		t.Run(map[bool]string{false: "disconnect", true: "cancel"}[cancelled], func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			db := publictest.TxDB(t, config.ModeMySQL, func(peerCtx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(peerCtx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTxSteps(peerCtx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !publictest.ServeTableDictionary(peerCtx, t, p, 3, publictest.TableDictionary()...) || !publictest.ServeTableRows(peerCtx, t, p, 3, []string{publictest.TestOctetLength}, []byte{8}, []any{"0"}) || !publictest.ServeTableRows(peerCtx, t, p, 3, []string{publictest.TestForUpdate}, []byte{8}, []any{"0"}) {
 					return
 				}
@@ -304,7 +304,7 @@ func TestTableBlobWriteFailure(t *testing.T) {
 }
 
 func TestTableBlobChunks(t *testing.T) {
-	connector, err := oceanbase.NewConnector(config.Config{User: publictest.TestUser, Mode: config.ModeMySQL, Limits: config.Limits{MaxLOBBytes: 8}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+	connector, err := oceanbase.NewConnector(config.Config{User: publictest.TestUser, CompatibilityMode: config.CompatibilityModeMySQL, Limits: config.Limits{MaxLOBBytes: 8}, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ServeConnect(ctx, t, p, 2) || !testpeer.ServeBaseline(ctx, t, p, 2) {
 			return
 		}
@@ -350,7 +350,7 @@ func TestTableBlobChunks(t *testing.T) {
 }
 
 func TestBlobTargetInput(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeMySQL, func(_ context.Context, p *wire.PacketIO) { p.ResetSequence(); testpeer.ServeQuit(t, p) })
+	db := publictest.TxDB(t, config.CompatibilityModeMySQL, func(_ context.Context, p *wire.PacketIO) { p.ResetSequence(); testpeer.ServeQuit(t, p) })
 	defer func() { _ = db.Close() }()
 	pinned := publictest.PinnedSession(t, db)
 	for _, change := range []func(*oceanbase.BlobTarget){
@@ -373,7 +373,7 @@ func TestBlobTargetInput(t *testing.T) {
 func TestTableBlobOracle(t *testing.T) {
 	for _, keyType := range []string{valueformat.TypeNameNumber, valueformat.TypeNameChar, valueformat.TypeNameDate} {
 		t.Run(keyType, func(t *testing.T) {
-			db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 				if !publictest.ServeTableRows(ctx, t, p, 6, []string{"SYS_CONTEXT('USERENV','CURRENT_SCHEMA')"}, []byte{253}, []any{"S"}) {
 					return
 				}

@@ -49,19 +49,19 @@ func closeControlSession(ctx context.Context, s *session.Session, op *session.Op
 }
 
 func TestRoleReadOnlyTransaction(t *testing.T) {
-	_, op := controlOperation(t, config.Config{Routing: config.RoutingOptions{Role: config.RoleReadOnly}}, &session.Negotiated{Mode: config.ModeMySQL})
+	_, op := controlOperation(t, config.Config{Routing: config.RoutingOptions{Role: config.RoleReadOnly}}, &session.Negotiated{Mode: config.CompatibilityModeMySQL})
 	if _, err := New().Begin(context.Background(), op, &cursor.Manager{}, &lob.Manager{}, driver.TxOptions{}, false); !errors.Is(err, dberrors.ErrUnsupported) {
 		t.Fatal(err)
 	}
 }
 
 func TestSessionOperationQuoting(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, status := range []uint16{2, 514} {
 			_, op := controlOperation(t, config.Config{}, &session.Negotiated{Mode: mode, OK: wire.OK{Status: status}})
 			query, _, _, err := SessionSQL(op, SessionRequest{Kind: SetClientInfo, Info: [3]string{"x\\'y", "", ""}})
 			want := "SET @ApplicationName = 'x\\''y', @ClientUser = NULL, @ClientHostname = NULL"
-			if mode == config.ModeMySQL && status == 2 {
+			if mode == config.CompatibilityModeMySQL && status == 2 {
 				want = "SET @ApplicationName = 'x\\\\''y', @ClientUser = NULL, @ClientHostname = NULL"
 			}
 			if err != nil || query != want {

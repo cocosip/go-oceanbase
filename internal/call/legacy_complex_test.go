@@ -19,7 +19,7 @@ func TestComplexOutputColumnMismatch(t *testing.T) {
 		testpeer.ServeComplexType(ctx, t, p, []string{"N"}, []string{valueformat.TypeNameNumber})
 	})
 	resolver := new(catalog.Resolver)
-	_, err := resolver.Resolve(t.Context(), op, valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: "T"})
+	_, err := resolver.Resolve(t.Context(), op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: "T"})
 	if err != nil {
 		t.Fatal(err)
 	}

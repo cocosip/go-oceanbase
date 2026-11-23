@@ -36,8 +36,8 @@ type Query struct {
 }
 
 // Plan selects a supported metadata dictionary projection.
-func Plan(mode config.Mode, version string, filter metadata.MetadataFilter) (Query, error) {
-	if mode != config.ModeMySQL && mode != config.ModeOracle {
+func Plan(mode config.CompatibilityMode, version string, filter metadata.MetadataFilter) (Query, error) {
+	if mode != config.CompatibilityModeMySQL && mode != config.CompatibilityModeOracle {
 		return Query{}, dberrors.ErrUnsupported
 	}
 	if filter.Kind == metadata.MetadataTypeInfo {
@@ -55,7 +55,7 @@ func Plan(mode config.Mode, version string, filter metadata.MetadataFilter) (Que
 	if filter.Query != "" || filter.Kind < metadata.MetadataCatalogs || filter.Kind > metadata.MetadataServerInfo {
 		return Query{}, fmt.Errorf("%w: metadata kind or query", dberrors.ErrBind)
 	}
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		return OraclePlan(filter)
 	}
 	return MySQLPlan(version, filter, false)
@@ -117,7 +117,7 @@ func Columns(kind metadata.MetadataKind) []Column {
 }
 
 // Only source expressions are SQL; every caller-controlled value stays in args.
-func buildMetadataQuery(mode config.Mode, f metadata.MetadataFilter, s metadataSource) (Query, error) {
+func buildMetadataQuery(mode config.CompatibilityMode, f metadata.MetadataFilter, s metadataSource) (Query, error) {
 	if len(f.TableTypes) > 4 {
 		return Query{}, fmt.Errorf("%w: at most four metadata table types", dberrors.ErrBind)
 	}
@@ -150,7 +150,7 @@ func buildMetadataQuery(mode config.Mode, f metadata.MetadataFilter, s metadataS
 		return nil
 	}
 	catalog := "'def'"
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		catalog = sqlNullLiteral
 	}
 	for _, pair := range [][2]string{{catalog, f.Catalog}, {s.schema, f.SchemaPattern}, {s.name, f.NamePattern}, {s.column, f.ColumnPattern}, {s.refSchema, f.ReferencedSchemaPattern}, {s.refName, f.ReferencedNamePattern}} {

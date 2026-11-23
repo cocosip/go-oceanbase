@@ -37,7 +37,7 @@ func TestParsedTemporalTypes(t *testing.T) {
 						defer func() { _ = db.Close() }()
 						query := "SELECT CAST('2024-02-29' AS DATE),CAST('2024-06-01 12:30:45.123456' AS DATETIME(6))"
 						want := []time.Time{time.Date(2024, 2, 29, 0, 0, 0, 0, loc), time.Date(2024, 6, 1, 12, 30, 45, 123456000, loc)}
-						if profile.Mode == oceanbase.ModeOracle {
+						if profile.Mode == oceanbase.CompatibilityModeOracle {
 							query = "SELECT CAST(TIMESTAMP '2024-02-29 12:34:56' AS DATE),TIMESTAMP '2024-06-01 12:30:45.123456789',TIMESTAMP '2024-06-01 12:30:45.123456789 -00:30',CAST(TIMESTAMP '2024-06-01 12:30:45.123456789 +00:00' AS TIMESTAMP(9) WITH LOCAL TIME ZONE) FROM dual"
 							want = []time.Time{time.Date(2024, 2, 29, 12, 34, 56, 0, loc), time.Date(2024, 6, 1, 12, 30, 45, 123456789, loc), time.Date(2024, 6, 1, 12, 30, 45, 123456789, time.FixedZone("", -1800)), time.Date(2024, 6, 1, 12, 30, 45, 123456789, time.UTC).In(loc)}
 						}

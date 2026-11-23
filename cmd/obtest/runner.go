@@ -76,7 +76,7 @@ type scenario struct {
 	db             *sql.DB
 	cfg            oceanbase.Config
 	target         targetConfig
-	mode           oceanbase.Mode
+	mode           oceanbase.CompatibilityMode
 	prefix         string
 	cleanupTimeout time.Duration
 	cleanups       []cleanupAction
@@ -209,9 +209,9 @@ func runSuite(ctx context.Context, cfg configuration, configs []oceanbase.Config
 			if c.mysqlOnly {
 				result.Message = "MySQL compatibility mode only"
 			}
-			if (!c.oracleOnly || mode == oceanbase.ModeOracle) && (!c.mysqlOnly || mode == oceanbase.ModeMySQL) {
+			if (!c.oracleOnly || mode == oceanbase.CompatibilityModeOracle) && (!c.mysqlOnly || mode == oceanbase.CompatibilityModeMySQL) {
 				s := &scenario{cfg: configs[i], target: t, mode: mode, prefix: fmt.Sprintf("OBT_%s_%d_%d", strings.ToUpper(r.RunID), i, j), cleanupTimeout: cleanupTimeout}
-				s.cfg.Mode = mode
+				s.cfg.CompatibilityMode = mode
 				if c.configure != nil {
 					c.configure(&s.cfg)
 				}
@@ -250,7 +250,7 @@ func openDatabase(cfg oceanbase.Config) (*sql.DB, error) {
 	return db, nil
 }
 
-func detectMode(parent context.Context, cfg oceanbase.Config, timeout time.Duration) (mode oceanbase.Mode, err error) {
+func detectMode(parent context.Context, cfg oceanbase.Config, timeout time.Duration) (mode oceanbase.CompatibilityMode, err error) {
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	db, err := openDatabase(cfg)
@@ -265,13 +265,13 @@ func detectMode(parent context.Context, cfg oceanbase.Config, timeout time.Durat
 	defer func() { err = errors.Join(err, c.Close()) }()
 	_, err = oceanbase.CurrentCatalog(ctx, c)
 	if errors.Is(err, oceanbase.ErrUnsupported) {
-		return oceanbase.ModeOracle, nil
+		return oceanbase.CompatibilityModeOracle, nil
 	}
-	return oceanbase.ModeMySQL, err
+	return oceanbase.CompatibilityModeMySQL, err
 }
 
-func modeName(mode oceanbase.Mode) string {
-	if mode == oceanbase.ModeOracle {
+func modeName(mode oceanbase.CompatibilityMode) string {
+	if mode == oceanbase.CompatibilityModeOracle {
 		return "oracle"
 	}
 	return "mysql"
@@ -302,14 +302,14 @@ func (s *scenario) table(ctx context.Context, definition string) (string, error)
 }
 
 func (s *scenario) tableNamed(ctx context.Context, suffix, definition string) (string, error) {
-	if s.mode == oceanbase.ModeMySQL {
+	if s.mode == oceanbase.CompatibilityModeMySQL {
 		definition += " ENGINE=InnoDB"
 	}
 	return s.create(ctx, "TABLE", suffix, definition)
 }
 
 func (s *scenario) scalar(query string) string {
-	if s.mode == oceanbase.ModeOracle {
+	if s.mode == oceanbase.CompatibilityModeOracle {
 		return query + dualSuffix
 	}
 	return query

@@ -27,7 +27,7 @@ func statementOperation(t testing.TB, cfg config.Config, p *session.Negotiated) 
 	t.Cleanup(func() { op.Release(); s.Discard() })
 	return s, op
 }
-func rawStatementOperation(t *testing.T, mode config.Mode, serve func(context.Context, *wire.PacketIO)) (*session.Session, *session.Operation) {
+func rawStatementOperation(t *testing.T, mode config.CompatibilityMode, serve func(context.Context, *wire.PacketIO)) (*session.Session, *session.Operation) {
 	t.Helper()
 	raw, err := testpeer.PeerDial(t, serve)(context.Background(), "tcp", "fixture")
 	if err != nil {
@@ -41,7 +41,7 @@ func streamSource(value *oceanbase.LongData) *streaminput.Source {
 	}
 	return &streaminput.Source{Reader: value.Reader, Length: value.Length, MaxBytes: value.MaxBytes, Text: value.Text, State: new(atomic.Bool)}
 }
-func interpolateStatement(t testing.TB, cfg config.Config, mode config.Mode, query string, args []driver.NamedValue) ([]byte, error) {
+func interpolateStatement(t testing.TB, cfg config.Config, mode config.CompatibilityMode, query string, args []driver.NamedValue) ([]byte, error) {
 	t.Helper()
 	_, op := statementOperation(t, cfg, &session.Negotiated{Mode: mode})
 	plan, err := sqltext.BuildBindPlanEscapes(query, mode, false)
@@ -55,7 +55,7 @@ func interpolateStatement(t testing.TB, cfg config.Config, mode config.Mode, que
 	return statement.Interpolate(op, plan, values)
 }
 func TestOraclePrepareMetadataPreservesTransaction(t *testing.T) {
-	_, op := rawStatementOperation(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	_, op := rawStatementOperation(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !testpeer.ReadCommand(ctx, t, p, append([]byte{22}, "SELECT ? FROM dual"...)) {
 			return
 		}

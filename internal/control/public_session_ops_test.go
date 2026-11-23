@@ -17,7 +17,7 @@ import (
 )
 
 func TestSessionMutationStatementCache(t *testing.T) {
-	db := optimizationDB(t, config.ModeMySQL, config.ExecutionOptions{StatementCacheSize: 1}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, config.CompatibilityModeMySQL, config.ExecutionOptions{StatementCacheSize: 1}, func(ctx context.Context, p *wire.PacketIO) {
 		for id := uint32(7); id <= 8; id++ {
 			if !servePrepare(ctx, t, p, testBatchSQL, id, 1, nil) || !testpeer.ServeOK(ctx, t, p, optimizationExecute(id, 1, false), 2) || !testpeer.ReadCommand(ctx, t, p, stmtPacket(25, id)) {
 				return
@@ -48,7 +48,7 @@ func TestSessionMutationStatementCache(t *testing.T) {
 }
 
 func TestSessionNeutralStatementCache(t *testing.T) {
-	db := optimizationDB(t, config.ModeMySQL, config.ExecutionOptions{StatementCacheSize: 1}, func(ctx context.Context, p *wire.PacketIO) {
+	db := optimizationDB(t, config.CompatibilityModeMySQL, config.ExecutionOptions{StatementCacheSize: 1}, func(ctx context.Context, p *wire.PacketIO) {
 		if !servePrepare(ctx, t, p, testBatchSQL, 7, 1, nil) || !testpeer.ServeOK(ctx, t, p, optimizationExecute(7, 1, false), 2) {
 			return
 		}
@@ -274,7 +274,7 @@ func TestWarnings(t *testing.T) {
 
 func TestSessionVariableTypeProbeError(t *testing.T) {
 	for _, code := range []uint16{1193, 1142} {
-		db := txDB(t, config.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+		db := txDB(t, config.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 			if !testpeer.ReadQuery(ctx, t, p, testReadSessionVariable) || !testpeer.SendPackets(ctx, t, p, []byte{255, byte(code), byte(code >> 8), '#', 'H', 'Y', '0', '0', '0', 'e'}) || !testpeer.ServeOK(ctx, t, p, []byte{14}, 2) {
 				return
 			}
@@ -305,15 +305,15 @@ func TestSessionVariableIntegerAndStringSQL(t *testing.T) {
 		{"1' OR '1", "'1'' OR ''1'"}, {"1.5", "'1.5'"},
 		{"0x10", "'0x10'"}, {"1e3", "'1e3'"}, {" 1", "' 1'"},
 	} {
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 			want := tc.want
 			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
 				status := byte(2)
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					status = 6
 				}
 				variableQuery := testReadSessionVariable
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					variableQuery += testDualSuffix
 				}
 				if !strings.HasPrefix(tc.want, "'") && !sessionScalarTyped(ctx, t, p, variableQuery, status, 8, "28800") {
@@ -382,14 +382,14 @@ func TestSessionOperationValidation(t *testing.T) {
 }
 
 func TestSessionMutationIsolation(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: "mysql-session", config.ModeOracle: "oracle-session"}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: "mysql-session", config.CompatibilityModeOracle: "oracle-session"}[mode], func(t *testing.T) {
 			status := byte(2)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				status = 6
 			}
 			db := txDB(t, mode, func(ctx context.Context, p *wire.PacketIO) {
-				if mode == config.ModeMySQL {
+				if mode == config.CompatibilityModeMySQL {
 					if !testpeer.ServeOK(ctx, t, p, []byte("\x02a`b"), status) || !testpeer.ServeOK(ctx, t, p, []byte("\x02other"), status) {
 						return
 					}
@@ -401,7 +401,7 @@ func TestSessionMutationIsolation(t *testing.T) {
 					return
 				}
 				variableQuery := testReadSessionVariable
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					variableQuery += testDualSuffix
 				}
 				if !sessionScalarTyped(ctx, t, p, variableQuery, status, 8, "28800") {
@@ -420,14 +420,14 @@ func TestSessionMutationIsolation(t *testing.T) {
 				t.Fatal(err)
 			}
 			name := "a`b"
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				name = "a\"b"
 			}
 			if err = oceanbase.SetSchema(ctx, pinned, name); err != nil {
 				t.Fatal(err)
 			}
 			err = oceanbase.SetCatalog(ctx, pinned, "other")
-			if mode == config.ModeMySQL && err != nil || mode == config.ModeOracle && !errors.Is(err, dberrors.ErrUnsupported) {
+			if mode == config.CompatibilityModeMySQL && err != nil || mode == config.CompatibilityModeOracle && !errors.Is(err, dberrors.ErrUnsupported) {
 				t.Fatal(err)
 			}
 			if err = oceanbase.SetClientInfo(ctx, pinned, oceanbase.ClientInfo{ApplicationName: "svc'x", ClientHostname: "host"}); err != nil {
@@ -450,13 +450,13 @@ func TestSessionMutationIsolation(t *testing.T) {
 }
 
 func TestSessionOperations(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
-		t.Run(map[config.Mode]string{config.ModeMySQL: "mysql-session", config.ModeOracle: "oracle-session"}[mode], func(t *testing.T) {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
+		t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: "mysql-session", config.CompatibilityModeOracle: "oracle-session"}[mode], func(t *testing.T) {
 			status := byte(2)
 			schemaQuery := "SELECT DATABASE()"
 			clientQuery := "SELECT @ApplicationName, @ClientUser, @ClientHostname"
 			variableQuery := testReadSessionVariable
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				status = 6
 				schemaQuery = "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM dual"
 				clientQuery = "SELECT @ApplicationName, @ClientUser, @ClientHostname FROM dual"
@@ -468,7 +468,7 @@ func TestSessionOperations(t *testing.T) {
 					!sessionScalar(ctx, t, p, variableQuery, status, "600") {
 					return
 				}
-				if mode == config.ModeMySQL && !sessionScalar(ctx, t, p, schemaQuery, status, "APP") {
+				if mode == config.CompatibilityModeMySQL && !sessionScalar(ctx, t, p, schemaQuery, status, "APP") {
 					return
 				}
 				if !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
@@ -494,7 +494,7 @@ func TestSessionOperations(t *testing.T) {
 				t.Fatalf("variable=%+v error=%v", value, err)
 			}
 			catalog, err := oceanbase.CurrentCatalog(ctx, pinned)
-			if mode == config.ModeMySQL && (err != nil || catalog != "APP") || mode == config.ModeOracle && !errors.Is(err, dberrors.ErrUnsupported) {
+			if mode == config.CompatibilityModeMySQL && (err != nil || catalog != "APP") || mode == config.CompatibilityModeOracle && !errors.Is(err, dberrors.ErrUnsupported) {
 				t.Fatalf("catalog=%q error=%v", catalog, err)
 			}
 			if err := pinned.PingContext(ctx); err != nil {

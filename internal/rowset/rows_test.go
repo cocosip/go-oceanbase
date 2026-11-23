@@ -15,7 +15,7 @@ import (
 
 func TestRowsIterationAndMetadata(t *testing.T) {
 	columns := []wire.Column{{Name: "amount", Type: 246, Charset: 63, Length: 8, Decimals: 2, Flags: 1}}
-	r := New(context.Background(), config.ModeMySQL, false, []Set{
+	r := New(context.Background(), config.CompatibilityModeMySQL, false, []Set{
 		{Columns: columns, Rows: [][]driver.Value{{"12.34"}}},
 		{Columns: []wire.Column{{Name: "created", Type: 12}}},
 	})
@@ -52,7 +52,7 @@ func TestRowsIterationAndMetadata(t *testing.T) {
 	}
 	for _, typ := range []byte{200, 201, 202} {
 		instant := time.Date(2024, 2, 29, 12, 34, 56, 123456789, time.UTC)
-		parsed := New(context.Background(), config.ModeOracle, true, []Set{{Columns: []wire.Column{{Type: typ}}, Rows: [][]driver.Value{{instant}, {nil}}}})
+		parsed := New(context.Background(), config.CompatibilityModeOracle, true, []Set{{Columns: []wire.Column{{Type: typ}}, Rows: [][]driver.Value{{instant}, {nil}}}})
 		if parsed.ColumnTypeScanType(0) != reflect.TypeFor[time.Time]() {
 			t.Fatal("ParseTime metadata lost")
 		}
@@ -67,8 +67,8 @@ func TestRowsIterationAndMetadata(t *testing.T) {
 
 func TestRowsPreserveMySQLCompatibilityProfile(t *testing.T) {
 	column := wire.Column{Name: "body", Type: 250, Charset: 45, NewMetadata: true}
-	old := NewWithSession(context.Background(), config.ModeMySQL, config.SessionOptions{CompatibleMysqlVersion: 5}, []Set{{Columns: []wire.Column{column}}})
-	modern := NewWithSession(context.Background(), config.ModeMySQL, config.SessionOptions{CompatibleMysqlVersion: 8}, []Set{{Columns: []wire.Column{column}}})
+	old := NewWithSession(context.Background(), config.CompatibilityModeMySQL, config.SessionOptions{CompatibleMysqlVersion: 5}, []Set{{Columns: []wire.Column{column}}})
+	modern := NewWithSession(context.Background(), config.CompatibilityModeMySQL, config.SessionOptions{CompatibleMysqlVersion: 8}, []Set{{Columns: []wire.Column{column}}})
 	if old.ColumnTypeDatabaseTypeName(0) != "VARCHAR" || modern.ColumnTypeDatabaseTypeName(0) != "TEXT" {
 		t.Fatalf("compatibility profile lost: old=%q modern=%q", old.ColumnTypeDatabaseTypeName(0), modern.ColumnTypeDatabaseTypeName(0))
 	}
@@ -76,7 +76,7 @@ func TestRowsPreserveMySQLCompatibilityProfile(t *testing.T) {
 
 func TestSnapshotCloneIsolation(t *testing.T) {
 	columns := []wire.Column{{Name: "bytes", Type: 203, Charset: 63}}
-	child := New(context.Background(), config.ModeOracle, false, []Set{{Columns: columns, Rows: [][]driver.Value{{[]byte("child")}}}})
+	child := New(context.Background(), config.CompatibilityModeOracle, false, []Set{{Columns: columns, Rows: [][]driver.Value{{[]byte("child")}}}})
 	cache := [][]driver.Value{{[]byte("parent"), child}}
 	first := CloneSnapshot(context.Background(), cache)
 	second := CloneSnapshot(context.Background(), cache)
@@ -109,14 +109,14 @@ func TestSnapshotCloneIsolation(t *testing.T) {
 
 func TestSnapshotBudgetAndContext(t *testing.T) {
 	columns := []wire.Column{{Catalog: "def", Name: "n", Extra: []byte("extra")}}
-	child := New(context.Background(), config.ModeOracle, false, []Set{{Columns: columns, Rows: [][]driver.Value{{"abc", []byte("de")}}}})
+	child := New(context.Background(), config.CompatibilityModeOracle, false, []Set{{Columns: columns, Rows: [][]driver.Value{{"abc", []byte("de")}}}})
 	rows := [][]driver.Value{{child, int64(7)}}
 	want := int64(24+2*16) + 32 + 128 + int64(len("defnextra")) + int64(24+2*16+3+2)
 	if got := SnapshotSize(rows); got != want {
 		t.Fatalf("nested snapshot budget: got %d, want %d", got, want)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := New(ctx, config.ModeMySQL, false, []Set{{Columns: columns}, {Columns: columns}})
+	r := New(ctx, config.CompatibilityModeMySQL, false, []Set{{Columns: columns}, {Columns: columns}})
 	cancel()
 	if err := r.Next(make([]driver.Value, 1)); !errors.Is(err, context.Canceled) {
 		t.Fatal("empty snapshot ignored canceled iteration", err)

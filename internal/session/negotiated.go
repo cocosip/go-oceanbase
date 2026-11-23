@@ -8,12 +8,14 @@ import (
 
 // Negotiated records transport, authentication and server capabilities for a physical session.
 type Negotiated struct {
-	Conn          net.Conn
-	Raw           net.Conn
-	Packets       *wire.PacketIO
-	Hello         wire.Handshake
-	OK            wire.OK
-	Mode          config.Mode
+	Conn    net.Conn
+	Raw     net.Conn
+	Packets *wire.PacketIO
+	Hello   wire.Handshake
+	OK      wire.OK
+	// Mode is the mode reported by the login OK status; it is never the zero
+	// "no constraint" value.
+	Mode          config.CompatibilityMode
 	Capabilities  uint64
 	TLSVerified   bool
 	User          string

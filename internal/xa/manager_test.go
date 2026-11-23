@@ -23,7 +23,7 @@ import (
 func TestXAValidation(t *testing.T) {
 	x := XID{FormatID: 7, GlobalID: []byte("g")}
 	c := &Manager{}
-	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 2}}, &session.Negotiated{Mode: config.ModeMySQL, OK: wire.OK{Status: 2}})
+	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 2}}, &session.Negotiated{Mode: config.CompatibilityModeMySQL, OK: wire.OK{Status: 2}})
 	for _, flags := range []int32{Success, Fail, Join | Resume, -1} {
 		if err := c.Validate(op, &Request{Op: Start, XID: x, Flags: flags}, false); !errors.Is(err, dberrors.ErrXA) {
 			t.Fatal(flags, err)
@@ -94,7 +94,7 @@ func TestXAOracleRecoveryShape(t *testing.T) {
 
 func TestXARecoveredBranchLimit(t *testing.T) {
 	c := &Manager{used: true, branches: map[string]branch{"xa_identity": {stage: prepared}}}
-	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 1}}, &session.Negotiated{Mode: config.ModeMySQL})
+	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 1}}, &session.Negotiated{Mode: config.CompatibilityModeMySQL})
 	if e := c.Validate(op, &Request{Op: Prepare, XID: XID{FormatID: 1, GlobalID: []byte("g")}}, false); e == nil {
 		t.Fatal("unbounded recovered branch registration")
 	}
@@ -103,9 +103,9 @@ func TestXARecoveredBranchLimit(t *testing.T) {
 func TestXAOracleFlags(t *testing.T) {
 	x := XID{GlobalID: []byte("g")}
 	c := &Manager{used: true, branches: map[string]branch{xidKey(x): {stage: prepared}}}
-	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 8}}, &session.Negotiated{Mode: config.ModeOracle})
+	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 8}}, &session.Negotiated{Mode: config.CompatibilityModeOracle})
 	for _, flags := range []int32{OracleReadOnly, OracleSerializable, OracleLoose} {
-		if !validFlags(config.ModeOracle, &Request{Op: Start, Flags: flags}) || validFlags(config.ModeMySQL, &Request{Op: Start, Flags: flags}) {
+		if !validFlags(config.CompatibilityModeOracle, &Request{Op: Start, Flags: flags}) || validFlags(config.CompatibilityModeMySQL, &Request{Op: Start, Flags: flags}) {
 			t.Fatal(flags)
 		}
 		if e := c.Validate(op, &Request{Op: Start, XID: x, Flags: flags}, false); !errors.Is(e, dberrors.ErrXA) {
@@ -113,7 +113,7 @@ func TestXAOracleFlags(t *testing.T) {
 		}
 	}
 	for _, flags := range []int32{Migrate, Suspend | Migrate} {
-		if !validFlags(config.ModeOracle, &Request{Op: End, Flags: flags}) || validFlags(config.ModeMySQL, &Request{Op: End, Flags: flags}) {
+		if !validFlags(config.CompatibilityModeOracle, &Request{Op: End, Flags: flags}) || validFlags(config.CompatibilityModeMySQL, &Request{Op: End, Flags: flags}) {
 			t.Fatal(flags)
 		}
 	}
@@ -121,7 +121,7 @@ func TestXAOracleFlags(t *testing.T) {
 
 func TestXALocalTransactionGuard(t *testing.T) {
 	c := &Manager{}
-	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 4}}, &session.Negotiated{Mode: config.ModeMySQL, OK: wire.OK{Status: 3}})
+	op := testOperation(t, config.Config{Limits: config.Limits{MaxResultItems: 4}}, &session.Negotiated{Mode: config.CompatibilityModeMySQL, OK: wire.OK{Status: 3}})
 	if e := c.Validate(op, &Request{Op: Start, XID: XID{GlobalID: []byte("g")}}, false); !errors.Is(e, dberrors.ErrXA) {
 		t.Fatal(e)
 	}
@@ -132,7 +132,7 @@ func TestXALocalTransactionGuard(t *testing.T) {
 }
 
 func TestXAPartialSend(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		t.Run(string(mode), func(t *testing.T) {
 			client, server := net.Pipe()
 			defer func() { _ = client.Close(); _ = server.Close() }()

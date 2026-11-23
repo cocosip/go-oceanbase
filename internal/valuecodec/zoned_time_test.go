@@ -33,7 +33,7 @@ func TestTemporalParsedPrecision(t *testing.T) {
 				data = append(data, 0, 0, 0, 0)
 			}
 			for _, binaryRows := range []bool{false, true} {
-				value, err := DecodeRowValue(wire.Column{Type: typ}, binaryRows, data, config.ModeOracle, config.SessionOptions{ParseTime: true})
+				value, err := DecodeRowValue(wire.Column{Type: typ}, binaryRows, data, config.CompatibilityModeOracle, config.SessionOptions{ParseTime: true})
 				instant, ok := value.(time.Time)
 				if err != nil || !ok || instant.Nanosecond() != int(nanos) || instant.Day() != 29 || instant.Second() != 59 {
 					t.Fatalf("type %d scale %d: %v %v", typ, scale, value, err)
@@ -59,11 +59,11 @@ func TestMySQLParsedInvalidDates(t *testing.T) {
 					data = append([]byte{}, tc.data...)
 				}
 				options := config.SessionOptions{ParseTime: true, Location: time.UTC}
-				if _, err := DecodeRowValue(wire.Column{Type: typ}, binaryRows, data, config.ModeMySQL, options); !errors.Is(err, dberrors.ErrType) {
+				if _, err := DecodeRowValue(wire.Column{Type: typ}, binaryRows, data, config.CompatibilityModeMySQL, options); !errors.Is(err, dberrors.ErrType) {
 					t.Fatalf("invalid date accepted: %q %v", tc.text, err)
 				}
 				options.ParseTime = false
-				if value, err := DecodeRowValue(wire.Column{Type: typ}, binaryRows, data, config.ModeMySQL, options); err != nil || value != tc.text {
+				if value, err := DecodeRowValue(wire.Column{Type: typ}, binaryRows, data, config.CompatibilityModeMySQL, options); err != nil || value != tc.text {
 					t.Fatalf("text preservation changed: %v %v", value, err)
 				}
 			}
@@ -91,29 +91,29 @@ func TestOracleZonedParseTime(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			options := config.SessionOptions{Location: tc.location}
-			parameter, err := EncodeParameter(tc.value, config.ModeOracle, options, 1024)
+			parameter, err := EncodeParameter(tc.value, config.CompatibilityModeOracle, options, 1024)
 			if err != nil {
 				t.Fatal(err)
 			}
 			column := wire.Column{Type: byte(parameter.Type)}
 			for _, binaryRows := range []bool{false, true} {
-				text, err := DecodeRowValue(column, binaryRows, parameter.Data, config.ModeOracle, options)
+				text, err := DecodeRowValue(column, binaryRows, parameter.Data, config.CompatibilityModeOracle, options)
 				if err != nil || reflect.TypeOf(text) != reflect.TypeFor[string]() {
 					t.Fatal(text, err)
 				}
 				options.ParseTime = true
-				got, err := DecodeRowValue(column, binaryRows, parameter.Data, config.ModeOracle, options)
+				got, err := DecodeRowValue(column, binaryRows, parameter.Data, config.CompatibilityModeOracle, options)
 				instant, ok := got.(time.Time)
 				if err != nil || !ok || !instant.Equal(tc.want) || instant.Format("-07:00") != tc.want.Format("-07:00") {
 					t.Fatalf("got %v (%v), want %v", got, err, tc.want)
 				}
-				if ColumnScanType(column, config.ModeOracle, options) != reflect.TypeFor[time.Time]() {
+				if ColumnScanType(column, config.CompatibilityModeOracle, options) != reflect.TypeFor[time.Time]() {
 					t.Fatal("incorrect scan type")
 				}
 				if column.Type == 201 && tc.location != nil && instant.Location() != tc.location {
 					t.Fatal("LTZ session location lost")
 				}
-				if got, err := DecodeRowValue(column, binaryRows, nil, config.ModeOracle, options); got != nil || err != nil {
+				if got, err := DecodeRowValue(column, binaryRows, nil, config.CompatibilityModeOracle, options); got != nil || err != nil {
 					t.Fatal("NULL changed", got, err)
 				}
 				options.ParseTime = false
@@ -131,11 +131,11 @@ func TestOracleLTZParseTimeRejectsAmbiguity(t *testing.T) {
 		data := []byte{20, 24, date[0], date[1], date[2], date[3], 0, 0, 0, 0, 0, 0}
 		for _, binaryRows := range []bool{false, true} {
 			options := config.SessionOptions{Location: loc, ParseTime: true}
-			if _, err := DecodeRowValue(wire.Column{Type: 201}, binaryRows, data, config.ModeOracle, options); !errors.Is(err, dberrors.ErrType) {
+			if _, err := DecodeRowValue(wire.Column{Type: 201}, binaryRows, data, config.CompatibilityModeOracle, options); !errors.Is(err, dberrors.ErrType) {
 				t.Fatalf("ambiguous/invalid wall time accepted: %v", err)
 			}
 			options.ParseTime = false
-			if _, err := DecodeRowValue(wire.Column{Type: 201}, binaryRows, data, config.ModeOracle, options); err != nil {
+			if _, err := DecodeRowValue(wire.Column{Type: 201}, binaryRows, data, config.CompatibilityModeOracle, options); err != nil {
 				t.Fatal("text preservation failed", err)
 			}
 		}

@@ -13,11 +13,11 @@ import (
 )
 
 func TestPacketModes(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, variant := range []string{testStandard, testCompression, testOB20} {
 			t.Run(fmt.Sprint(mode, "/", variant), func(t *testing.T) {
 				status := byte(2)
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					status = 6
 				}
 				options := config.ProtocolOptions{OB20: config.FeatureOff, Compression: config.FeatureOff}
@@ -73,7 +73,7 @@ func TestPacketModes(t *testing.T) {
 					p.ResetSequence()
 					testpeer.ServeQuit(t, p)
 				})
-				connector, err := oceanbase.NewConnector(config.Config{User: testUser, Mode: mode, Protocol: options, DialContext: dial})
+				connector, err := oceanbase.NewConnector(config.Config{User: testUser, CompatibilityMode: mode, Protocol: options, DialContext: dial})
 				if err != nil {
 					t.Fatal(err)
 				}

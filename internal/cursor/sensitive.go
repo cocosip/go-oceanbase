@@ -24,13 +24,13 @@ func (o *operation) refreshSensitive(ctx context.Context, rows [][]driver.Value)
 		return nil, dberrors.ErrCursor
 	}
 	visible := o.cur.columns[:len(o.cur.columns)-1]
-	id, err := catalog.ProjectedCursorIdentity(config.ModeOracle, visible)
+	id, err := catalog.ProjectedCursorIdentity(config.CompatibilityModeOracle, visible)
 	if err != nil {
 		return nil, err
 	}
 	names := make([]string, len(id.Columns))
 	for i, name := range id.Columns {
-		names[i] = sqltext.QuoteIdentifier(config.ModeOracle, name)
+		names[i] = sqltext.QuoteIdentifier(config.CompatibilityModeOracle, name)
 	}
 	query := "SELECT " + strings.Join(names, ",") + " FROM " + id.Table + " WHERE ROWID = ?"
 	prepared, err := statement.Prepare(ctx, o.op, query)

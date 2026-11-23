@@ -78,7 +78,7 @@ func (p *changeUserConversation) Respond(ctx context.Context, credentials config
 	return p.scriptedConversation.Respond(ctx, credentials, challenge)
 }
 
-func serveChangeUserConversation(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.Mode, status byte, seed []byte, plugins [2]*changeUserConversation, path string) {
+func serveChangeUserConversation(ctx context.Context, t *testing.T, p *wire.PacketIO, mode config.CompatibilityMode, status byte, seed []byte, plugins [2]*changeUserConversation, path string) {
 	t.Helper()
 	if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 		return
@@ -91,7 +91,7 @@ func serveChangeUserConversation(ctx context.Context, t *testing.T, p *wire.Pack
 			packet = append([]byte{17}, stateUserName...)
 			packet = append(packet, 0, byte(len("initial-token")))
 			packet = append(packet, "initial-token"...)
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				packet = append(packet, "next"...)
 			}
 			packet = append(packet, 0)
@@ -186,13 +186,13 @@ const stateUserName = "next@tenant"
 
 const stateUserPassword = "next-secret"
 
-func changeUserPacket(t *testing.T, mode config.Mode, database string) []byte {
+func changeUserPacket(t *testing.T, mode config.CompatibilityMode, database string) []byte {
 	t.Helper()
 	response, err := auth.Native(stateUserPassword, []byte("12345678901234567890"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode == config.ModeOracle && database == "" {
+	if mode == config.CompatibilityModeOracle && database == "" {
 		database = "next"
 	}
 	b := append([]byte{17}, stateUserName...)
@@ -207,7 +207,7 @@ func changeUserPacket(t *testing.T, mode config.Mode, database string) []byte {
 const authTLSDeniedPath = "tls-denied"
 
 func TestChangeUserConversationState(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, path := range []string{authNilOutputPath, authEmptyOutputPath, "token-output", authTLSDeniedPath, serverErrorPath, rejectExtraTokenPath, requiresFinalOKPath, authCloseErrorPath} {
 			t.Run(fmt.Sprintf("%d/%s", mode, path), func(t *testing.T) {
 				testChangeUserConversationState(t, mode, path)
@@ -216,10 +216,10 @@ func TestChangeUserConversationState(t *testing.T) {
 	}
 }
 
-func testChangeUserConversationState(t *testing.T, mode config.Mode, path string) {
+func testChangeUserConversationState(t *testing.T, mode config.CompatibilityMode, path string) {
 	t.Helper()
 	status := byte(2)
-	if mode == config.ModeOracle {
+	if mode == config.CompatibilityModeOracle {
 		status = 6
 	}
 	seed := []byte("service/db.example\x00Kerberos\x00")
@@ -243,7 +243,7 @@ func testChangeUserConversationState(t *testing.T, mode config.Mode, path string
 	var providers atomic.Int32
 	created := 0
 	peerDone := make(chan struct{})
-	cfg := config.Config{Mode: mode, Credentials: func(context.Context) (config.Credentials, error) {
+	cfg := config.Config{CompatibilityMode: mode, Credentials: func(context.Context) (config.Credentials, error) {
 		providers.Add(1)
 		return config.Credentials{User: testUser, Password: statePassword}, nil
 	}, Auth: config.AuthOptions{Plugins: map[string]config.AuthFactory{testGSSPlugin: func() config.AuthPlugin {
@@ -314,18 +314,18 @@ func testChangeUserConversationState(t *testing.T, mode config.Mode, path string
 
 func TestChangeUserOracleDatabaseCase(t *testing.T) {
 	for _, tc := range []struct {
-		mode config.Mode
+		mode config.CompatibilityMode
 		want string
 	}{
-		{config.ModeMySQL, "next"},
-		{config.ModeOracle, "NEXT"},
+		{config.CompatibilityModeMySQL, "next"},
+		{config.CompatibilityModeOracle, "NEXT"},
 	} {
 		t.Run(fmt.Sprintf("%d", tc.mode), func(t *testing.T) {
 			status := byte(2)
-			if tc.mode == config.ModeOracle {
+			if tc.mode == config.CompatibilityModeOracle {
 				status = 6
 			}
-			configured, err := controlConnector(config.Config{User: testUser, Mode: tc.mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+			configured, err := controlConnector(config.Config{User: testUser, CompatibilityMode: tc.mode, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 				if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 					return
 				}
@@ -363,14 +363,14 @@ func TestChangeUserOracleDatabaseCase(t *testing.T) {
 }
 
 func TestChangeUserResourceIsolation(t *testing.T) {
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, prepare := range []config.PrepareMode{config.PrepareServer, config.PrepareClient} {
 			t.Run(fmt.Sprintf("%d/%d", mode, prepare), func(t *testing.T) {
 				status := byte(2)
-				if mode == config.ModeOracle {
+				if mode == config.CompatibilityModeOracle {
 					status = 6
 				}
-				configured, err := controlConnector(config.Config{User: testUser, Mode: mode, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
+				configured, err := controlConnector(config.Config{User: testUser, CompatibilityMode: mode, PrepareMode: prepare, DialContext: testpeer.PeerDial(t, func(ctx context.Context, p *wire.PacketIO) {
 					if !testpeer.ServeConnect(ctx, t, p, status) || !testpeer.ServeBaseline(ctx, t, p, status) {
 						return
 					}

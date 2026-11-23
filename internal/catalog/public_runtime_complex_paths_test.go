@@ -15,7 +15,7 @@ import (
 )
 
 func TestDescriptorPublicSynonym(t *testing.T) {
-	op := catalogOperation(t, config.Config{Mode: config.ModeOracle, Limits: config.Limits{MaxMessageBytes: 1 << 16}}, func(ctx context.Context, p *wire.PacketIO) {
+	op := catalogOperation(t, config.Config{CompatibilityMode: config.CompatibilityModeOracle, Limits: config.Limits{MaxMessageBytes: 1 << 16}}, func(ctx context.Context, p *wire.PacketIO) {
 		if !serveDescriptorRows(ctx, t, p, oceanbase.MetadataTypes, "S", testComplexAlias, nil) || !serveDescriptorRows(ctx, t, p, oceanbase.MetadataSynonyms, "S", testComplexAlias, nil) || !serveDescriptorRows(ctx, t, p, oceanbase.MetadataSynonyms, "PUBLIC", testComplexAlias, [][]string{{"", "PUBLIC", testComplexAlias, "S", "T", ""}}) || !serveComplexDictionary(ctx, t, p, []string{"N"}) {
 			return
 		}
@@ -25,7 +25,7 @@ func TestDescriptorPublicSynonym(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	var resolver catalog.Resolver
-	d, err := resolver.Resolve(ctx, op, valuecodec.Key{Mode: config.ModeOracle, Schema: "S", Name: testComplexAlias})
+	d, err := resolver.Resolve(ctx, op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: "S", Name: testComplexAlias})
 	if err != nil || d.Key.Name != "T" || d.Key.Schema != "S" {
 		t.Fatal(d, err)
 	}

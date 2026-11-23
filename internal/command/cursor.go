@@ -57,7 +57,7 @@ func FetchRaw(ctx context.Context, op *session.Operation, id uint32, count int, 
 		return nil, err
 	}
 	r.boundBytes = true
-	if op.Protocol().Mode == config.ModeOracle {
+	if op.Protocol().Mode == config.CompatibilityModeOracle {
 		if _, err = r.Advance(ctx); err != nil {
 			return nil, err
 		}

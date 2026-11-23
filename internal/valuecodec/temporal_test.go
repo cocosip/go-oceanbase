@@ -30,7 +30,7 @@ func TestTemporalWire(t *testing.T) {
 			{205, []byte{1, 255, 201, 154, 59, 23, 59, 59, 0x15, 0xcd, 0x5b, 7, 9, 9}, "-999999999 23:59:59.123456789"},
 		} {
 			options := config.SessionOptions{Location: time.FixedZone("", 8*3600)}
-			v, err := DecodeRowValue(wire.Column{Type: tc.typ}, binary, tc.data, config.ModeOracle, options)
+			v, err := DecodeRowValue(wire.Column{Type: tc.typ}, binary, tc.data, config.CompatibilityModeOracle, options)
 			if err != nil || v != tc.want {
 				t.Fatal(binary, tc.typ, v, err)
 			}
@@ -41,7 +41,7 @@ func TestTemporalWire(t *testing.T) {
 	}
 	options := config.SessionOptions{Charset: charsetUTF8MB4, Location: time.UTC}
 	value := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
-	p, err := EncodeParameter(value, config.ModeOracle, options, 1024)
+	p, err := EncodeParameter(value, config.CompatibilityModeOracle, options, 1024)
 	if err != nil || p.Type != 202 || !p.LengthEncoded || !reflect.DeepEqual(p.Data, base) {
 		t.Fatal(p, err)
 	}
@@ -57,7 +57,7 @@ func TestTemporalWire(t *testing.T) {
 		{types.IntervalYM("-999999999-11"), 204, []byte{1, 255, 201, 154, 59, 11, 9}},
 		{types.IntervalDS("-999999999 23:59:59.123456789"), 205, []byte{1, 255, 201, 154, 59, 23, 59, 59, 0x15, 0xcd, 0x5b, 7, 9, 9}},
 	} {
-		p, err = EncodeParameter(tc.value, config.ModeOracle, options, 1024)
+		p, err = EncodeParameter(tc.value, config.CompatibilityModeOracle, options, 1024)
 		if err != nil || p.Type != tc.typ || !p.LengthEncoded || !reflect.DeepEqual(p.Data, tc.data) {
 			t.Fatal(tc.value, p, err)
 		}
@@ -71,7 +71,7 @@ func TestTemporalWire(t *testing.T) {
 		{205, []byte{0, 1, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 1, 0}},
 	} {
 		options := config.SessionOptions{}
-		if _, err = DecodeRowValue(wire.Column{Type: tc.typ}, false, tc.data, config.ModeOracle, options); err == nil {
+		if _, err = DecodeRowValue(wire.Column{Type: tc.typ}, false, tc.data, config.CompatibilityModeOracle, options); err == nil {
 			t.Fatal("invalid temporal packet", tc)
 		}
 	}
@@ -84,7 +84,7 @@ func TestTimestampLTZAmbiguity(t *testing.T) {
 	}
 	data := []byte{20, 24, 11, 3, 1, 30, 0, 1, 0, 0, 0, 9}
 	options := config.SessionOptions{Location: loc}
-	value, err := DecodeRowValue(wire.Column{Type: 201}, false, data, config.ModeOracle, options)
+	value, err := DecodeRowValue(wire.Column{Type: 201}, false, data, config.CompatibilityModeOracle, options)
 	want := "2024-11-03 01:30:00.000000001 America/New_York"
 	if err != nil || value != want {
 		t.Fatal("LTZ invented an offset during a DST overlap", value, err)
@@ -96,17 +96,17 @@ func TestTimestampLTZAmbiguity(t *testing.T) {
 	if _, err = local.Time(); !errors.Is(err, dberrors.ErrType) {
 		t.Fatal("ambiguous wall time became a fabricated instant", err)
 	}
-	p, err := EncodeParameter(local, config.ModeOracle, options, 1024)
+	p, err := EncodeParameter(local, config.CompatibilityModeOracle, options, 1024)
 	if err != nil || !reflect.DeepEqual(p.Data, data) {
 		t.Fatal(p, err)
 	}
-	if _, err = EncodeParameter(local, config.ModeOracle, config.SessionOptions{Location: time.UTC}, 1024); !errors.Is(err, dberrors.ErrType) {
+	if _, err = EncodeParameter(local, config.CompatibilityModeOracle, config.SessionOptions{Location: time.UTC}, 1024); !errors.Is(err, dberrors.ErrType) {
 		t.Fatal("ambiguous LTZ changed zone", err)
 	}
 }
 
 func TestTemporalYearOneDecode(t *testing.T) {
-	got, err := DecodeRowValue(wire.Column{Type: 202}, false, []byte{0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0}, config.ModeOracle, config.SessionOptions{ParseTime: true, Location: time.UTC})
+	got, err := DecodeRowValue(wire.Column{Type: 202}, false, []byte{0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0}, config.CompatibilityModeOracle, config.SessionOptions{ParseTime: true, Location: time.UTC})
 	if err != nil || got != (time.Time{}) {
 		t.Fatal(got, err)
 	}

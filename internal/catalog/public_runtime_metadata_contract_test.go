@@ -9,7 +9,7 @@ import (
 )
 
 func TestMetadataCatalogAndRemarks(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, charset := range []string{testUTF8MB4, localFilenameCharset} {
 			for _, framing := range []string{testStandard, testCompression, testOB20} {
 				t.Run(fmt.Sprintf("%d/%s/%s", mode, charset, framing), func(t *testing.T) {

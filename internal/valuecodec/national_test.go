@@ -43,7 +43,7 @@ func TestNStringPrepareCharsets(t *testing.T) {
 				options := config.SessionOptions{Charset: tc.sqlCharset, NCharset: tc.national}
 				value := types.NString(tc.input)
 				if prepare == config.PrepareServer {
-					p, err := EncodeParameter(value, config.ModeOracle, options, 1024)
+					p, err := EncodeParameter(value, config.CompatibilityModeOracle, options, 1024)
 					if tc.literal == "" {
 						if !errors.Is(err, charset.ErrEncoding) {
 							t.Fatal("unrepresentable national parameter accepted", p, err)
@@ -53,7 +53,7 @@ func TestNStringPrepareCharsets(t *testing.T) {
 					}
 					return
 				}
-				literal, err := ClientLiteral(value, config.ModeOracle, options, 1024, 1024)
+				literal, err := ClientLiteral(value, config.CompatibilityModeOracle, options, 1024, 1024)
 				if tc.literal == "" {
 					wantErr := charset.ErrEncoding
 					if tc.name == "malformed-national-text" {

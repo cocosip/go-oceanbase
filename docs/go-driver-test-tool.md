@@ -28,13 +28,13 @@ Build at the repository root, then copy the executable to the test machine; the 
 
 ```powershell
 go build -o bin/obtest.exe ./cmd/obtest
-$env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?mode=auto'
+$env:OB_DSN = 'oceanbase://test%40tenant:password@127.0.0.1:2881/test?compatibilityMode=auto'
 ./bin/obtest.exe -config docs/obtest.example.json -report obtest-run-001.json
 ```
 
 Alternatively, set OB_DSN and run `go run ./cmd/obtest -report obtest-run-001.json` without a configuration file. Linux/macOS builds can use `go build -o bin/obtest ./cmd/obtest`. This stage verified Windows builds/offline entry points only, not other platforms or database execution.
 
-DSNs use the driver's existing URL format; encode username characters such as @. Mode comes from the authenticated physical connection: the tool distinguishes modes through the public catalog API, then pins mode constraints for that target's scenarios. An explicit mode=mysql/oracle adds a constraint and fails on mismatch. See [usage](go-driver-usage.md) and the [architecture design](go-driver-architecture-design.md) for TLS, protocol, authentication and routing settings.
+DSNs use the driver's existing URL format; encode username characters such as @. Mode comes from the authenticated physical connection: the tool distinguishes modes through the public catalog API, then pins mode constraints for that target's scenarios. An explicit compatibilityMode=mysql/oracle adds a constraint and fails on mismatch. See [usage](go-driver-usage.md) and the [architecture design](go-driver-architecture-design.md) for TLS, protocol, authentication and routing settings.
 
 These commands neither connect nor create database objects:
 

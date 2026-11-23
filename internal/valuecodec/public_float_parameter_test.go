@@ -31,15 +31,15 @@ func TestFloat64SQLParameterTypes(t *testing.T) {
 		{sql.NullFloat64{}, 0, true, true},
 		{maxFloat, 0x7fefffffffffffff, false, false},
 	}
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeOracle, oceanbase.ModeMySQL} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeOracle, oceanbase.CompatibilityModeMySQL} {
 		for _, explicit := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d/prepared=%t", mode, explicit), func(t *testing.T) {
 				const query = "INSERT INTO t (v) VALUES (?)"
 				status, typ := byte(2), []byte{5, 0}
-				if mode == oceanbase.ModeOracle {
+				if mode == oceanbase.CompatibilityModeOracle {
 					status = 6
 				}
-				cfg := oceanbase.Config{Mode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
+				cfg := oceanbase.Config{CompatibilityMode: mode, Execution: oceanbase.ExecutionOptions{StatementCacheSize: 1, ReuseParameterTypes: true}}
 				db := publictest.ConfiguredDB(t, cfg, func(ctx context.Context, p *wire.PacketIO) {
 					if !publictest.ServePrepareStatus(ctx, t, p, query, 7, 1, nil, status) {
 						return

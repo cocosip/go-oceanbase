@@ -94,39 +94,39 @@ func TestAutomaticPreparePrevalidation(t *testing.T) {
 	wantValuerErr := errors.New("invalid IN conversion")
 	for _, tc := range []struct {
 		name       string
-		mode       config.Mode
+		mode       config.CompatibilityMode
 		query      string
 		args       func(*oceanbase.LongData, driver.Valuer, driver.Valuer) []any
 		want       error
 		firstCalls int32
 	}{
-		{"valuer", config.ModeMySQL, argumentTimingSelect, func(input *oceanbase.LongData, first, later driver.Valuer) []any {
+		{"valuer", config.CompatibilityModeMySQL, argumentTimingSelect, func(input *oceanbase.LongData, first, later driver.Valuer) []any {
 			return []any{first, later, input}
 		}, wantValuerErr, 1},
-		{"stream-before-valuer", config.ModeMySQL, argumentTimingSelect, func(input *oceanbase.LongData, first, later driver.Valuer) []any {
+		{"stream-before-valuer", config.CompatibilityModeMySQL, argumentTimingSelect, func(input *oceanbase.LongData, first, later driver.Valuer) []any {
 			return []any{input, first, later}
 		}, wantValuerErr, 1},
-		{"invalid-stream", config.ModeMySQL, "SELECT ?,?", func(input *oceanbase.LongData, _, later driver.Valuer) []any {
+		{"invalid-stream", config.CompatibilityModeMySQL, "SELECT ?,?", func(input *oceanbase.LongData, _, later driver.Valuer) []any {
 			input.Length = -2
 			return []any{input, later}
 		}, oceanbase.ErrLongData, 0},
-		{"stream-budget", config.ModeMySQL, "SELECT ?,?", func(input *oceanbase.LongData, _, later driver.Valuer) []any {
+		{"stream-budget", config.CompatibilityModeMySQL, "SELECT ?,?", func(input *oceanbase.LongData, _, later driver.Valuer) []any {
 			input.MaxBytes = 2
 			return []any{input, later}
 		}, wire.ErrMessageTooLarge, 0},
-		{"mysql-name-before-valuer", config.ModeMySQL, argumentTimingSelect, func(input *oceanbase.LongData, first, later driver.Valuer) []any {
+		{"mysql-name-before-valuer", config.CompatibilityModeMySQL, argumentTimingSelect, func(input *oceanbase.LongData, first, later driver.Valuer) []any {
 			return []any{sql.Named("v", first), later, input}
 		}, oceanbase.ErrBind, 0},
-		{"oracle-bind-count", config.ModeOracle, "SELECT :v,:missing FROM dual", func(input *oceanbase.LongData, _, _ driver.Valuer) []any {
+		{"oracle-bind-count", config.CompatibilityModeOracle, "SELECT :v,:missing FROM dual", func(input *oceanbase.LongData, _, _ driver.Valuer) []any {
 			return []any{sql.Named("v", input)}
 		}, oceanbase.ErrBind, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			status := byte(2)
-			if tc.mode == config.ModeOracle {
+			if tc.mode == config.CompatibilityModeOracle {
 				status = 6
 			}
-			db := publictest.ConfiguredDB(t, config.Config{Mode: tc.mode, PrepareMode: config.PrepareServer}, func(ctx context.Context, p *wire.PacketIO) {
+			db := publictest.ConfiguredDB(t, config.Config{CompatibilityMode: tc.mode, PrepareMode: config.PrepareServer}, func(ctx context.Context, p *wire.PacketIO) {
 				// Ping must be the first command after initialization: no PREPARE or upload.
 				if !testpeer.ServeOK(ctx, t, p, []byte{14}, status) {
 					return

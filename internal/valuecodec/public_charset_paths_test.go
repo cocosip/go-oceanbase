@@ -21,7 +21,7 @@ func TestJavaParityCharsetSQLParametersAndResults(t *testing.T) {
 		{"gb2312", "中文", "\xd6\xd0\xce\xc4", 24}, {"euckr", "한글", "\xc7\xd1\xb1\xdb", 19},
 		{"dec8", "ŒŸ", "\xd7\xdd", 3}, {"tis620", "กข", "\xa1\xa2", 18},
 	} {
-		for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+		for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 			options := config.SessionOptions{Charset: tc.name}
 			sql, err := command.EncodeSQL("SELECT '"+tc.text+"'", options.Charset, 4096)
 			if err != nil || string(sql) != "SELECT '"+tc.data+"'" {
@@ -39,10 +39,10 @@ func TestJavaParityCharsetSQLParametersAndResults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mode == config.ModeOracle && string(sql) != "'"+strings.ReplaceAll(tc.data, "'", "''")+"'" {
+			if mode == config.CompatibilityModeOracle && string(sql) != "'"+strings.ReplaceAll(tc.data, "'", "''")+"'" {
 				t.Fatal("client bind", tc.name, sql)
 			}
-			if mode == config.ModeMySQL && literal != "_"+tc.name+" X'"+hex.EncodeToString([]byte(tc.data))+"'" {
+			if mode == config.CompatibilityModeMySQL && literal != "_"+tc.name+" X'"+hex.EncodeToString([]byte(tc.data))+"'" {
 				t.Fatal("client bind", tc.name, literal)
 			}
 			for _, binaryRows := range []bool{false, true} {
@@ -51,7 +51,7 @@ func TestJavaParityCharsetSQLParametersAndResults(t *testing.T) {
 					t.Fatal(tc.name, v, err)
 				}
 			}
-			if mode == config.ModeOracle {
+			if mode == config.CompatibilityModeOracle {
 				options.NCharset = tc.name
 				national, nationalErr := valuecodec.EncodeParameter(types.NString(tc.text), mode, options, 4096)
 				if nationalErr != nil || string(national.Data) != tc.data {
@@ -74,12 +74,12 @@ func TestAddedCharsetColumnLengths(t *testing.T) {
 		{13, 2}, {84, 2}, {24, 2}, {85, 2}, {3, 1}, {18, 1}, {56, 4}, {363, 4},
 	} {
 		column := wire.Column{Type: 253, Charset: tc.collation, Length: 12 * tc.width}
-		if length, ok := valuecodec.ColumnLength(column, config.ModeMySQL); !ok || length != 12 {
+		if length, ok := valuecodec.ColumnLength(column, config.CompatibilityModeMySQL); !ok || length != 12 {
 			t.Errorf("collation %d length: %d, %v", tc.collation, length, ok)
 		}
 	}
 	for _, binaryRows := range []bool{false, true} {
-		v, err := valuecodec.DecodeRowValue(wire.Column{Type: 253, Charset: 56}, binaryRows, []byte{0x2d, 0x4e, 0x3d, 0xd8, 0x00, 0xde}, config.ModeMySQL, config.SessionOptions{Charset: charsetUTF8MB4})
+		v, err := valuecodec.DecodeRowValue(wire.Column{Type: 253, Charset: 56}, binaryRows, []byte{0x2d, 0x4e, 0x3d, 0xd8, 0x00, 0xde}, config.CompatibilityModeMySQL, config.SessionOptions{Charset: charsetUTF8MB4})
 		if err != nil || v != "中😀" {
 			t.Fatalf("UTF16LE result: %v, %v", v, err)
 		}

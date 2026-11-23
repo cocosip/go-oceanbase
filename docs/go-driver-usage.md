@@ -8,17 +8,17 @@ Import `github.com/cocosip/go-oceanbase`. A named import registers the `oceanbas
 
 - `NewConnector(Config)` validates and snapshots configuration without network access; pass it to `sql.OpenDB(connector)` to create a pool.
 - `sql.Open("oceanbase", dsn)` accepts string configuration and also connects lazily. Use `PingContext` with a timeout to verify connectivity.
-- `ModeMySQL` and `ModeOracle` select OceanBase compatibility modes. A mismatch with an explicitly requested mode fails the connection. `ModeAuto` pins the actual mode on each physical connection after authentication; it does not translate SQL dialects.
+- `CompatibilityModeMySQL` and `CompatibilityModeOracle` constrain the mode detected from the authenticated session. A mismatch fails the connection. `CompatibilityModeAuto` (the zero value, or `compatibilityMode=auto`) accepts whichever mode the server reports and pins it on each physical connection after authentication; the reported mode is always MySQL or Oracle. Neither choice translates SQL dialects. To read the detected mode on a pinned session, query `MetadataServerInfo` and use its `compatibility_mode` column.
 - In MySQL mode, `Database` selects the initial database. For Oracle initial-schema, quoting and case rules, see [architecture §6](go-driver-architecture-design.md#6-configuration-model-and-defaults). Do not treat an Oracle schema as a MySQL database operation.
 
 DSNs use URL syntax. In these placeholders, `%40` escapes `@` within the username:
 
 ```text
-oceanbase://app%40tenant:password@127.0.0.1:2881/demo?mode=mysql
-oceanbase://app%40tenant:password@127.0.0.1:2881/?mode=oracle
+oceanbase://app%40tenant:password@127.0.0.1:2881/demo?compatibilityMode=mysql
+oceanbase://app%40tenant:password@127.0.0.1:2881/?compatibilityMode=oracle
 ```
 
-URL-escape password characters such as `@`, `#`, `/` and `?`. Prefer `Config`, or construct URLs with `net/url.UserPassword`; do not concatenate credential-bearing URLs manually. Supported DSN option names are case-insensitive (`connectTimeout`, `connecttimeout` and `CONNECTTIMEOUT` are equivalent), while option values retain their original case and characters. Duplicate names after case folding are rejected, including duplicates with the same value. DSNs reject unknown keys; supported settings are the documented Go option names in the [architecture design](go-driver-architecture-design.md). Do not log DSNs or complete configurations.
+URL-escape password characters such as `@`, `#`, `/` and `?`. Prefer `Config`, or construct URLs with `net/url.UserPassword`; do not concatenate credential-bearing URLs manually. Supported DSN option names are case-insensitive (`connectTimeout`, `connecttimeout` and `CONNECTTIMEOUT` are equivalent), while option values retain their original case and characters, except `compatibilityMode`, whose `auto`, `mysql` and `oracle` values are case-insensitive. Duplicate names after case folding are rejected, including duplicates with the same value. DSNs reject unknown keys; supported settings are the documented Go option names in the [architecture design](go-driver-architecture-design.md). Do not log DSNs or complete configurations.
 
 Compression defaults off, matching Connector/J 2.4.14. To enable it when offered by the server, set `cfg.Protocol.Compression = oceanbase.FeatureAuto` or DSN `compression=auto`; absent server support falls back to ordinary packets. `FeatureRequired` / `compression=required` is an explicit Go extension that fails when support is absent. OB20 still takes precedence over optional compression. The zero policy `FeatureDefault` resolves to compression off and all other protocol policies auto; use named constants instead of numeric values. Off=1 and Required=2 remain stable; Auto moves from 0 to 3, while zero now selects the per-option default.
 
@@ -195,7 +195,7 @@ The [comprehensive program](../examples/usage/main.go) separates [standard opera
 The comprehensive example requires:
 
 - A dedicated test database/schema with CREATE/DROP TABLE and PROCEDURE privileges. Oracle also needs CREATE/DROP TYPE and type-description query privileges.
-- OB_DSN with an explicit mode=mysql or mode=oracle matching the target. Auto is rejected so that SQL is never selected using an unknown mode.
+- OB_DSN with an explicit compatibilityMode=mysql or compatibilityMode=oracle matching the target. No constraint (`auto` or omitted) is rejected so that SQL is never selected using an unknown mode.
 - Server-side preparation, enforced by the example. The MySQL branch enables AllowMultiStatements for fixed SQL; this is not a reason to enable it globally in an application.
 - Random uppercase object names. The program creates tables/procedures/types, writes sample data, checks results and attempts cleanup in reverse dependency order. DDL may commit implicitly and cannot be undone by rollback.
 

@@ -117,7 +117,7 @@ func (r *Resolver) descriptorLocked(ctx context.Context, op *session.Operation, 
 	if op.ResponseActive() {
 		return nil, ErrResponseActive
 	}
-	if key.Mode != config.ModeOracle {
+	if key.Mode != config.CompatibilityModeOracle {
 		return nil, dberrors.ErrUnsupported
 	}
 	if depth > valueformat.MaxComplexDepth || visiting[key] || !valueformat.Identifier(key.Name) {
@@ -233,14 +233,14 @@ func AnonymousDescriptor(column wire.Column) (*valuecodec.Descriptor, error) {
 	default:
 		return nil, dberrors.ErrUnsupported
 	}
-	return &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.ModeOracle, Schema: column.ComplexSchema, Name: "", Version: column.ComplexVersion}, Array: true, Fields: []valuecodec.Field{{Type: typ}}, Shape: &wire.ComplexShape{Array: true, Fields: []*wire.ComplexShape{nil}}}, nil
+	return &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: column.ComplexSchema, Name: "", Version: column.ComplexVersion}, Array: true, Fields: []valuecodec.Field{{Type: typ}}, Shape: &wire.ComplexShape{Array: true, Fields: []*wire.ComplexShape{nil}}}, nil
 }
 
 // Column resolves complex metadata for one wire column.
 func (r *Resolver) Column(ctx context.Context, op *session.Operation, column wire.Column) (*valuecodec.Descriptor, error) {
 	if column.ComplexName == "" {
 		if column.ElementType == 160 {
-			element, err := r.descriptorLocked(ctx, op, valuecodec.Key{Mode: config.ModeOracle, Schema: column.ElementSchema, Name: column.ElementName, Version: column.ElementVersion}, 0, make(map[valuecodec.Key]bool))
+			element, err := r.descriptorLocked(ctx, op, valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: column.ElementSchema, Name: column.ElementName, Version: column.ElementVersion}, 0, make(map[valuecodec.Key]bool))
 			if err != nil {
 				return nil, err
 			}
@@ -256,7 +256,7 @@ func (r *Resolver) Column(ctx context.Context, op *session.Operation, column wir
 
 // AnonymousComplexDescriptor constructs a collection of resolved complex elements.
 func AnonymousComplexDescriptor(version uint64, element *valuecodec.Descriptor) *valuecodec.Descriptor {
-	return &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.ModeOracle, Schema: element.Key.Schema, Name: "", Version: version}, Array: true, Fields: []valuecodec.Field{{Type: element.Key.Name, Child: element}}, Shape: &wire.ComplexShape{Array: true, Fields: []*wire.ComplexShape{element.Shape}}}
+	return &valuecodec.Descriptor{Key: valuecodec.Key{Mode: config.CompatibilityModeOracle, Schema: element.Key.Schema, Name: "", Version: version}, Array: true, Fields: []valuecodec.Field{{Type: element.Key.Name, Child: element}}, Shape: &wire.ComplexShape{Array: true, Fields: []*wire.ComplexShape{element.Shape}}}
 }
 
 // DescribeColumns attaches immutable complex shapes to result metadata.

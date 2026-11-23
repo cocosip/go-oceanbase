@@ -15,7 +15,7 @@ import (
 )
 
 func TestLOBBufferedTransactionContext(t *testing.T) {
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestAutocommitOff, Status: 4}, {Query: publictest.TestOracleReadWrite, Status: 5}}) || !publictest.ServeLOBQueryStatus(ctx, t, p, "SELECT b FROM t", 210, 5, publictest.LobInlineFixture(publictest.TestLOBABC)) {
 			return
 		}
@@ -55,7 +55,7 @@ func TestLOBBufferedTransactionContext(t *testing.T) {
 
 func TestLOBNoReentry(t *testing.T) {
 	locator := publictest.LobOutFixture(3)
-	db := publictest.TxDB(t, config.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, config.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeLOBQuery(ctx, t, p, "SELECT b FROM t", 210, locator) {
 			return
 		}

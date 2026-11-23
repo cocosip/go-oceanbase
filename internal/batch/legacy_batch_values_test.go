@@ -149,7 +149,7 @@ func TestBatchValuesFallback(t *testing.T) {
 }
 
 func TestBatchValuesTransaction(t *testing.T) {
-	db := publictest.TxDB(t, oceanbase.ModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeMySQL, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestMySQLReadWrite, Status: 3}}) || !testpeer.ReadQuery(ctx, t, p, "INSERT INTO t VALUES ( 1 ),( 2 )") || !testpeer.SendPackets(ctx, t, p, publictest.CommandPacket(2, 17, 3)) || !publictest.ServeTxSteps(ctx, t, p, []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}) {
 			return
 		}

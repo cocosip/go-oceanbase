@@ -13,8 +13,8 @@ import (
 
 func catalogOperation(t *testing.T, cfg config.Config, serve func(context.Context, *wire.PacketIO)) *session.Operation {
 	t.Helper()
-	if cfg.Mode == 0 {
-		cfg.Mode = config.ModeMySQL
+	if cfg.CompatibilityMode == config.CompatibilityModeAuto {
+		cfg.CompatibilityMode = config.CompatibilityModeMySQL
 	}
 	if cfg.Session.Charset == "" {
 		cfg.Session.Charset = "utf8mb4"
@@ -31,8 +31,8 @@ func catalogOperation(t *testing.T, cfg config.Config, serve func(context.Contex
 	if cfg.Limits.CleanupTimeout == 0 {
 		cfg.Limits.CleanupTimeout = time.Second
 	}
-	p := &session.Negotiated{Mode: cfg.Mode, Capabilities: wire.ClientProtocol41, OK: wire.OK{Status: 2}, OBVersion: "4.3.5.1"}
-	if cfg.Mode == config.ModeOracle {
+	p := &session.Negotiated{Mode: cfg.CompatibilityMode, Capabilities: wire.ClientProtocol41, OK: wire.OK{Status: 2}, OBVersion: "4.3.5.1"}
+	if cfg.CompatibilityMode == config.CompatibilityModeOracle {
 		p.OK.Status = 6
 	}
 	if serve != nil {

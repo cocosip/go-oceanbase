@@ -10,9 +10,9 @@ import (
 )
 
 func TestDuplicateKeyErrors(t *testing.T) {
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		for _, code := range []uint32{0, 1, 1062, 1064, 1031, 942} {
-			want := mode == oceanbase.ModeMySQL && code == 1062 || mode == oceanbase.ModeOracle && code == 1
+			want := mode == oceanbase.CompatibilityModeMySQL && code == 1062 || mode == oceanbase.CompatibilityModeOracle && code == 1
 			server := &oceanbase.Error{Code: code}
 			for _, err := range []error{server, fmt.Errorf("wrapped: %w", server), &oceanbase.BatchError{Index: 1, Err: server}, errors.Join(server, server)} {
 				if DuplicateKey(err, mode) != want {
@@ -95,10 +95,10 @@ func TestXAFlagRejectionClassification(t *testing.T) {
 		{errors.Join(oceanbase.ErrXA, &oceanbase.Error{Code: 1064}), false},
 		{errors.Join(oceanbase.ErrXA, server, &oceanbase.Error{Code: 1142}), false},
 	} {
-		if XAFlagRejected(tc.err, oceanbase.ModeMySQL) != tc.want {
+		if XAFlagRejected(tc.err, oceanbase.CompatibilityModeMySQL) != tc.want {
 			t.Errorf("classification mismatch: %v", tc.err)
 		}
-		if XAFlagRejected(tc.err, oceanbase.ModeOracle) {
+		if XAFlagRejected(tc.err, oceanbase.CompatibilityModeOracle) {
 			t.Error("Oracle error classified as MySQL flag rejection")
 		}
 	}

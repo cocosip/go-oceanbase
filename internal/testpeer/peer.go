@@ -83,11 +83,11 @@ func TLSConfig(t *testing.T) (*tls.Config, *tls.Config) {
 }
 
 // ModeFromStatus selects the compatibility mode represented by a fixture's server status.
-func ModeFromStatus(status byte) config.Mode {
+func ModeFromStatus(status byte) config.CompatibilityMode {
 	if status&4 != 0 {
-		return config.ModeOracle
+		return config.CompatibilityModeOracle
 	}
-	return config.ModeMySQL
+	return config.CompatibilityModeMySQL
 }
 
 // ReadAuthResponse consumes one authentication response from the client.

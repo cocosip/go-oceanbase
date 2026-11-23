@@ -46,7 +46,7 @@ type Request struct {
 	Changes   []ColumnChange
 }
 
-func predicate(id *catalog.CursorIdentity, mode config.Mode, key map[string]any) (string, []driver.NamedValue, error) {
+func predicate(id *catalog.CursorIdentity, mode config.CompatibilityMode, key map[string]any) (string, []driver.NamedValue, error) {
 	if len(key) != len(id.Keys) {
 		return "", nil, dberrors.ErrCursor
 	}
@@ -64,7 +64,7 @@ func predicate(id *catalog.CursorIdentity, mode config.Mode, key map[string]any)
 	return strings.Join(predicates, " AND "), args, nil
 }
 
-func assignments(id *catalog.CursorIdentity, mode config.Mode, changes []ColumnChange) ([]string, []driver.NamedValue, error) {
+func assignments(id *catalog.CursorIdentity, mode config.CompatibilityMode, changes []ColumnChange) ([]string, []driver.NamedValue, error) {
 	used := make(map[string]bool)
 	var names []string
 	var args []driver.NamedValue

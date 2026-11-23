@@ -15,7 +15,7 @@ import (
 
 func TestInterpolateSharedBudget(t *testing.T) {
 	cfg := config.Config{Limits: config.Limits{MaxMessageBytes: 1000, MaxLOBBytes: 1000}, Session: config.SessionOptions{Charset: "utf8mb4"}}
-	s := session.New(cfg, &session.Negotiated{Mode: config.ModeOracle})
+	s := session.New(cfg, &session.Negotiated{Mode: config.CompatibilityModeOracle})
 	op, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestInterpolateSharedBudget(t *testing.T) {
 		t.Fatal(string(query), err)
 	}
 	cfg.Limits.MaxMessageBytes = 10
-	s = session.New(cfg, &session.Negotiated{Mode: config.ModeOracle})
+	s = session.New(cfg, &session.Negotiated{Mode: config.CompatibilityModeOracle})
 	small, err := s.Acquire(context.Background())
 	if err != nil {
 		t.Fatal(err)

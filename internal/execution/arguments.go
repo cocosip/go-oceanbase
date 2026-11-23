@@ -45,7 +45,7 @@ func hasLong(values []any) bool {
 
 // bind reads fresh routine metadata under the command's existing operation.
 func (e *Engine) bind(ctx context.Context, op *session.Operation, plan sqltext.Plan, args []driver.NamedValue) ([]any, error) {
-	if op.Protocol().Mode != config.ModeMySQL || !hasNamed(args) {
+	if op.Protocol().Mode != config.CompatibilityModeMySQL || !hasNamed(args) {
 		return parameters.Bind(plan, args)
 	}
 	if op.ResponseActive() {

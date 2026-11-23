@@ -14,7 +14,7 @@ import (
 
 func TestDescriptorRefresh(t *testing.T) {
 	const query = "SELECT v FROM complex_fixture"
-	db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 18, 0, [][]byte{complexColumnFixture(1)}) {
 			return
 		}
@@ -62,7 +62,7 @@ func TestDescriptorRefresh(t *testing.T) {
 func TestDescriptorNoReentry(t *testing.T) {
 	const query = "SELECT v, id FROM complex_fixture"
 	column := complexColumnFixture(7)
-	db := publictest.TxDB(t, oceanbase.ModeOracle, func(ctx context.Context, p *wire.PacketIO) {
+	db := publictest.TxDB(t, oceanbase.CompatibilityModeOracle, func(ctx context.Context, p *wire.PacketIO) {
 		if !publictest.ServePrepare(ctx, t, p, query, 17, 0, [][]byte{column, testpeer.TextColumn("id", 8, 63, 0)}) || !testpeer.ReadCommand(ctx, t, p, publictest.ExecuteHeader(17)) {
 			return
 		}

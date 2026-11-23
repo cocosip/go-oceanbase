@@ -64,7 +64,7 @@ func emptyLOBFixtureCases() []emptyLOBFixtureCase {
 
 func TestEmptyLOBWorkflow(t *testing.T) {
 	definition := modeNeutralScenario(t, emptyLOBCase)
-	for _, mode := range []oceanbase.Mode{oceanbase.ModeMySQL, oceanbase.ModeOracle} {
+	for _, mode := range []oceanbase.CompatibilityMode{oceanbase.CompatibilityModeMySQL, oceanbase.CompatibilityModeOracle} {
 		profile := emptyLOBProfileFor(mode)
 		for _, tc := range emptyLOBFixtureCases() {
 			t.Run(modeName(mode)+"/"+tc.name, func(t *testing.T) {
@@ -84,10 +84,10 @@ func TestEmptyLOBWorkflow(t *testing.T) {
 	}
 }
 
-func emptyLOBSteps(t *testing.T, mode oceanbase.Mode, profile emptyLOBProfile, tc emptyLOBFixtureCase) []fixtureStep {
+func emptyLOBSteps(t *testing.T, mode oceanbase.CompatibilityMode, profile emptyLOBProfile, tc emptyLOBFixtureCase) []fixtureStep {
 	t.Helper()
 	ddl := emptyLOBCreateFix + profile.ddl
-	if mode == oceanbase.ModeMySQL {
+	if mode == oceanbase.CompatibilityModeMySQL {
 		ddl += parameterFixtureEngine
 	}
 	body := []fixtureStep{
@@ -101,7 +101,7 @@ func emptyLOBSteps(t *testing.T, mode oceanbase.Mode, profile emptyLOBProfile, t
 		{query: emptyLOBNullFix, rows: newEmptyLOBNullRows(profile)},
 		{query: fixtureDropTableSQL},
 	}
-	if mode == oceanbase.ModeOracle {
+	if mode == oceanbase.CompatibilityModeOracle {
 		body[1].query = "INSERT INTO OBT_OFFLINE_T VALUES (1,EMPTY_BLOB(),EMPTY_CLOB())"
 	}
 	if tc.mutate != nil {

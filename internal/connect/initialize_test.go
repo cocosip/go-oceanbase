@@ -15,21 +15,21 @@ import (
 func TestInitializeVariableLiteral(t *testing.T) {
 	for _, tc := range []struct {
 		name, value, literal string
-		mode                 config.Mode
+		mode                 config.CompatibilityMode
 		status               uint16
 		typ                  byte
 		probe                bool
 	}{
-		{"signed", "+00600", "600", config.ModeMySQL, 2, 8, true},
-		{"unsigned", "18446744073709551615", "18446744073709551615", config.ModeMySQL, 2, 8, true},
-		{"numeric-string", "000600", "'000600'", config.ModeMySQL, 2, 253, true},
-		{"ordinary-string", "x\\'y", "'x\\\\''y'", config.ModeMySQL, 2, 253, false},
-		{"no-backslash", "x\\'y", testSessionQuotedNoBackslash, config.ModeMySQL, 514, 253, false},
-		{"oracle-string", "000600", "'000600'", config.ModeOracle, 6, 253, true},
-		{"oracle-integer", "-00600", "-600", config.ModeOracle, 6, 8, true},
+		{"signed", "+00600", "600", config.CompatibilityModeMySQL, 2, 8, true},
+		{"unsigned", "18446744073709551615", "18446744073709551615", config.CompatibilityModeMySQL, 2, 8, true},
+		{"numeric-string", "000600", "'000600'", config.CompatibilityModeMySQL, 2, 253, true},
+		{"ordinary-string", "x\\'y", "'x\\\\''y'", config.CompatibilityModeMySQL, 2, 253, false},
+		{"no-backslash", "x\\'y", testSessionQuotedNoBackslash, config.CompatibilityModeMySQL, 514, 253, false},
+		{"oracle-string", "000600", "'000600'", config.CompatibilityModeOracle, 6, 253, true},
+		{"oracle-integer", "-00600", "-600", config.CompatibilityModeOracle, 6, 8, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := config.Normalize(config.Config{User: testUser, Mode: tc.mode, Session: config.SessionOptions{SkipVersionProbe: true, Variables: map[string]string{"wait_timeout": tc.value}}})
+			cfg, err := config.Normalize(config.Config{User: testUser, CompatibilityMode: tc.mode, Session: config.SessionOptions{SkipVersionProbe: true, Variables: map[string]string{"wait_timeout": tc.value}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,7 +52,7 @@ func TestInitializeVariableLiteral(t *testing.T) {
 				}
 				if tc.probe {
 					query := "SELECT @@SESSION.wait_timeout"
-					if tc.mode == config.ModeOracle {
+					if tc.mode == config.CompatibilityModeOracle {
 						query += sessionReadDualSuffix
 					}
 					if !testpeer.ReadQuery(ctx, t, p, query) || !testpeer.SendPackets(ctx, t, p, []byte{1}, testpeer.TextColumn("value", tc.typ, 45, 0), []byte{254, 0, 0, byte(tc.status), byte(tc.status >> 8)}, []byte{1, '1'}, []byte{254, 0, 0, byte(tc.status), byte(tc.status >> 8)}) {

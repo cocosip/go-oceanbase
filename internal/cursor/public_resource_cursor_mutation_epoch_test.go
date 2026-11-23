@@ -20,10 +20,10 @@ func TestCursorRefreshTransactionInvalidation(t *testing.T) {
 	for _, kind := range []string{publictest.TransactionMySQLLabel, publictest.TransactionOracleLabel, lobKind} {
 		for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 			t.Run(kind+"/"+variant, func(t *testing.T) {
-				mode, status, ended, typ, quote := config.ModeMySQL, byte(3), byte(2), byte(252), "`"
+				mode, status, ended, typ, quote := config.CompatibilityModeMySQL, byte(3), byte(2), byte(252), "`"
 				finish := []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}
 				if kind != publictest.TransactionMySQLLabel {
-					mode, status, ended, typ, quote = config.ModeOracle, 5, 4, 253, "\""
+					mode, status, ended, typ, quote = config.CompatibilityModeOracle, 5, 4, 253, "\""
 					finish = []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}
 				}
 				row := append(binary.LittleEndian.AppendUint64([]byte{0, 0}, 7), 1, 'v')
@@ -33,7 +33,7 @@ func TestCursorRefreshTransactionInvalidation(t *testing.T) {
 				}
 				table, id, b := quote+"s"+quote+"."+quote+"t"+quote, quote+"id"+quote, quote+"b"+quote
 				query := "SELECT " + id + " AS " + id + "," + b + " AS " + b + " FROM " + table + " WHERE " + id + " = ?"
-				db := publictest.BatchRewriteDB(t, config.Config{Mode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
+				db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
 					if !serveUpdatableEpochCursor(ctx, t, p, mode, typ) || !publictest.ServePrepareStatus(ctx, t, p, query, 82, 1, nil, status) ||
 						!testpeer.ReadCommand(ctx, t, p, binary.LittleEndian.AppendUint64(append(publictest.ExecuteHeader(82), 0, 1, 8, 0), 7)) ||
 						!testpeer.SendPackets(ctx, t, p, []byte{2}, cursorBaseColumn("id", 8), cursorBaseColumn("b", typ), []byte{254, 0, 0, status, 0}, row, []byte{254, 0, 0, ended, 0}) {
@@ -85,19 +85,19 @@ func TestCursorRefreshTransactionInvalidation(t *testing.T) {
 func TestCursorMutationFinalTransactionInvalidation(t *testing.T) {
 	const deleteOperation = "delete"
 	const insertOperation = "insert"
-	for _, mode := range []config.Mode{config.ModeMySQL, config.ModeOracle} {
+	for _, mode := range []config.CompatibilityMode{config.CompatibilityModeMySQL, config.CompatibilityModeOracle} {
 		for _, variant := range []string{publictest.TestCursorEpochPlain, publictest.TestCompression, publictest.TestOB20} {
 			for _, op := range []string{"update", deleteOperation, insertOperation} {
-				t.Run(map[config.Mode]string{config.ModeMySQL: publictest.TransactionMySQLLabel, config.ModeOracle: publictest.TransactionOracleLabel}[mode]+"/"+variant+"/"+op, func(t *testing.T) {
+				t.Run(map[config.CompatibilityMode]string{config.CompatibilityModeMySQL: publictest.TransactionMySQLLabel, config.CompatibilityModeOracle: publictest.TransactionOracleLabel}[mode]+"/"+variant+"/"+op, func(t *testing.T) {
 					status, ended, typ, quote := byte(3), byte(2), byte(252), "`"
 					value := any([]byte("v"))
 					finish := []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 2}}
-					if mode == config.ModeOracle {
+					if mode == config.CompatibilityModeOracle {
 						status, ended, typ, quote, value = 5, 4, 253, "\"", "v"
 						finish = []publictest.TxStep{{Query: publictest.TestRollbackSQL, Status: 4}, {Query: publictest.TestAutocommitOn, Status: 6}}
 					}
 					table, id, b := quote+"s"+quote+"."+quote+"t"+quote, quote+"id"+quote, quote+"b"+quote
-					db := publictest.BatchRewriteDB(t, config.Config{Mode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
+					db := publictest.BatchRewriteDB(t, config.Config{CompatibilityMode: mode}, variant, func(ctx context.Context, p *wire.PacketIO) {
 						if !serveUpdatableEpochCursor(ctx, t, p, mode, typ) {
 							return
 						}
